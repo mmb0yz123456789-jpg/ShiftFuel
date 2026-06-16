@@ -23,6 +23,7 @@
         <a href="index.html#pricing">Pricing</a>
         <a href="index.html#book">Book now</a>
         <a href="track.html">Track</a>
+        <a href="worker-login.html">Worker</a>
         <a href="admin-login.html">Admin</a>
       </nav>
     </header>
@@ -40,7 +41,7 @@
 		<div class="admin-summary">
 		  <div class="summary-card">
 			<span id="total-requests">0</span>
-			<p>Total Requests</p>
+			<p>Open + Completed</p>
 		  </div>
 
 		  <button id="show-open" class="summary-card summary-button">
@@ -63,11 +64,97 @@
       <section class="section admin-section">
         <div class="admin-toolbar">
           <div>
+            <p class="eyebrow">Team</p>
+            <h2>Worker profiles</h2>
+          </div>
+        </div>
+        <div class="admin-edit-panel worker-profile-search-panel">
+          <label>Find worker
+            <select id="worker-profile-select">
+              <option value="">Select worker</option>
+            </select>
+          </label>
+        </div>
+        <div id="worker-profile-list" class="request-list"></div>
+      </section>
+
+      <section class="section admin-section">
+        <div class="admin-toolbar">
+          <div>
             <p class="eyebrow">Queue</p>
             <h2>ChristianaCare requests</h2>
           </div>
         </div>
         <div id="request-list" class="request-list"></div>
+      </section>
+
+      <section class="section admin-section">
+        <div class="admin-toolbar">
+          <div>
+            <p class="eyebrow">Schedule</p>
+            <h2>Worker availability</h2>
+          </div>
+        </div>
+        <form id="worker-schedule-form" class="admin-edit-panel">
+          <div class="field-grid">
+            <label>Worker
+              <select id="worker-select" required>
+                <option value="">Select worker</option>
+              </select>
+            </label>
+            <label>Work location
+              <select id="worker-location" required>
+                <option value="">Select workplace</option>
+                <option selected>ChristianaCare - 4755 Ogletown Stanton Rd, Newark, DE 19718</option>
+              </select>
+            </label>
+          </div>
+          <div class="worker-schedule-actions">
+            <button id="open-workdays-panel" class="button primary" type="button">Work Days and Shift Times</button>
+            <button id="open-days-off-panel" class="button primary" type="button">Days Off</button>
+          </div>
+
+          <div id="workdays-panel" class="worker-availability-window" hidden>
+            <div class="worker-window-heading">
+              <h3>Work Days and Shift Times</h3>
+              <button id="close-workdays-panel" class="button" type="button">Close</button>
+            </div>
+            <div id="worker-days-grid" class="worker-days-grid"></div>
+            <button id="save-workdays" class="button primary" type="button">Save work days</button>
+          </div>
+
+          <div id="days-off-panel" class="worker-availability-window" hidden>
+            <div class="worker-window-heading">
+              <h3>Days Off</h3>
+              <button id="close-days-off-panel" class="button" type="button">Close</button>
+            </div>
+            <p class="field-help">Click any date in the 3-month booking window to make that day unbookable.</p>
+            <div id="worker-days-off-calendar" class="worker-days-off-calendar"></div>
+            <p id="worker-days-off-summary" class="field-help"></p>
+            <button id="save-days-off" class="button primary" type="button">Save days off</button>
+          </div>
+          <p id="worker-schedule-status" class="field-help"></p>
+        </form>
+      </section>
+
+      <section class="section admin-section">
+        <div class="admin-toolbar">
+          <div>
+            <p class="eyebrow">Retention</p>
+            <h2>Service reviews</h2>
+          </div>
+        </div>
+        <div id="review-list" class="request-list"></div>
+      </section>
+
+      <section class="section admin-section">
+        <div class="admin-toolbar">
+          <div>
+            <p class="eyebrow">Hiring</p>
+            <h2>Applicants</h2>
+          </div>
+        </div>
+        <div id="applicant-list" class="request-list"></div>
       </section>
     </main>
 
