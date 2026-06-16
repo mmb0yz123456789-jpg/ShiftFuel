@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Worker Login | ShiftFuel Concierge</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="site-header">
+    <a class="logo" href="index.html">ShiftFuel Concierge</a>
+    <nav class="nav" aria-label="Main navigation">
+      <a href="index.html#services">What we do</a>
+      <a href="index.html#how">How it works</a>
+      <a href="index.html#pricing">Pricing</a>
+      <a href="index.html#book">Book now</a>
+      <a href="track.html">Track</a>
+      <a href="worker-login.html">Worker</a>
+      <a href="admin-login.html">Admin</a>
+    </nav>
+  </header>
+
+  <main>
+    <section class="section admin-hero">
+      <div class="section-heading">
+        <p class="eyebrow">Worker Access</p>
+        <h1>ShiftFuel Worker Portal</h1>
+        <p>Sign in to update your worker profile.</p>
+      </div>
+
+      <form id="worker-login-form" class="booking-form">
+        <fieldset>
+          <legend>Worker Login</legend>
+
+          <label>
+            Worker name
+            <input id="worker-login-name" type="text" value="Mark Urban" required>
+          </label>
+
+          <label>
+            Password
+            <input id="worker-password" type="password" placeholder="Enter worker password" required>
+          </label>
+
+          <button class="button primary" type="submit">Sign In</button>
+          <p class="field-help">Test worker: Test Worker / TestWorker2026!</p>
+        </fieldset>
+      </form>
+
+      <p id="worker-login-message" class="form-status"></p>
+    </section>
+  </main>
+
+  <script>
+    const form = document.getElementById("worker-login-form");
+    const workerName = document.getElementById("worker-login-name");
+    const passwordInput = document.getElementById("worker-password");
+    const message = document.getElementById("worker-login-message");
+
+    const workerAccounts = {
+      "mark urban": { name: "Mark Urban", password: "MarkUrban2026!" },
+      "test worker": { name: "Test Worker", password: "TestWorker2026!" },
+    };
+
+    form.addEventListener("submit", (event) => {
+      event.preventDefault();
+
+      const account = workerAccounts[workerName.value.trim().toLowerCase()];
+
+      if (account && passwordInput.value === account.password) {
+        sessionStorage.setItem("shiftfuel_worker", account.name);
+        window.location.href = "worker.html";
+      } else {
+        message.textContent = "Incorrect worker name or password.";
+      }
+    });
+  </script>
+</body>
+</html>
