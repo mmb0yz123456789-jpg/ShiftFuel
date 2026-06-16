@@ -29,12 +29,20 @@ const fuelConvenienceFeeDisplay = document.querySelector("#fuel-convenience-fee"
 const inspectionFeeDisplay = document.querySelector("#inspection-fee");
 const estimatedTotal = document.querySelector("#estimated-total");
 const statusMessage = document.querySelector("#form-status");
+const applicantForm = document.querySelector("#applicant-form");
+const applicantStatus = document.querySelector("#applicant-status");
 const statusItems = Array.from(document.querySelectorAll("#status-list li"));
 const washPricingToggle = document.querySelector("#wash-pricing-toggle");
 const washPricingDetails = document.querySelector("#wash-pricing-details");
 const addInspectionFromPricing = document.querySelector("#add-inspection-from-pricing");
+const hospitalSelect = form.querySelector('[name="hospital"]');
 
 year.textContent = new Date().getFullYear();
+
+const slotReleasingStatuses = new Set(["complete", "denied", "customer_canceled", "unable_to_complete"]);
+let bookedReturnSlots = new Set();
+let workerAvailabilitySlots = null;
+let workerAvailabilityLoaded = false;
 
 function formatDateInputValue(date) {
   const yearValue = date.getFullYear();
@@ -401,27 +409,167 @@ function populateReturnTimes(slots, placeholder) {
   returnTime.append(createOption("", placeholder));
 
   slots.forEach((slot) => {
-    returnTime.append(createOption(slot, formatTimeLabel(slot)));
+    const option = createOption(slot, formatTimeLabel(slot));
+
+    if (bookedReturnSlots.has(slot)) {
+      option.disabled = true;
+      option.textContent = `${formatTimeLabel(slot)} - booked`;
+    }
+
+    returnTime.append(option);
   });
 
-  if (slots.includes(currentValue)) {
+  if (slots.includes(currentValue) && !bookedReturnSlots.has(currentValue)) {
     returnTime.value = currentValue;
   }
 }
 
-function updateServiceAvailability() {
-  const serviceType = selectedServiceType();
+function normalizeTimeSlot(value) {
+  return String(value || "").slice(0, 5);
+}
 
-  if (!serviceType.needsWash) {
-    populateReturnTimes(timeSlots(7, 22), "Select return time");
-    returnTime.setCustomValidity("");
-    timeHelp.textContent = "Choose the time you want your vehicle returned.";
+function selectedHospital() {
+  return form.querySelector('[name="hospital"]')?.value || "";
+}
+
+function minutesFromSlot(value) {
+  const [hour, minute] = normalizeTimeSlot(value).split(":").map(Number);
+  return hour * 60 + minute;
+}
+
+function slotsWithinAvailability(slots, availabilityRows) {
+  if (!availabilityRows.length) {
+    return [];
+  }
+
+  return slots.filter((slot) => {
+    const slotMinutes = minutesFromSlot(slot);
+    return availabilityRows.some((row) => {
+      const start = minutesFromSlot(row.starts_at);
+      const end = minutesFromSlot(row.ends_at);
+      return slotMinutes >= start && slotMinutes <= end;
+    });
+  });
+}
+
+async function loadWorkerAvailabilitySlots() {
+  workerAvailabilityLoaded = true;
+  workerAvailabilitySlots = null;
+
+  if (!serviceDate.value || !window.ShiftFuelSupabase) {
     return;
   }
 
-  populateReturnTimes(timeSlots(9, 18), "Select car wash return time");
+  const selectedDate = new Date(`${serviceDate.value}T12:00:00`);
+  const dayOfWeek = selectedDate.getDay();
+  const hospital = selectedHospital();
+
+  const { data: employees, error: employeeError } = await window.ShiftFuelSupabase
+    .from("employees")
+    .select("id,home_location,active")
+    .eq("active", true);
+
+  if (employeeError) {
+    console.warn("Worker availability is not configured:", employeeError);
+    return;
+  }
+
+  const employeeIds = (employees || [])
+    .filter((employee) => !hospital || !employee.home_location || employee.home_location === hospital)
+    .map((employee) => employee.id);
+
+  if (!employeeIds.length) {
+    workerAvailabilitySlots = [];
+    return;
+  }
+
+  const { data: daysOff, error: daysOffError } = await window.ShiftFuelSupabase
+    .from("employee_days_off")
+    .select("employee_id,day_off")
+    .in("employee_id", employeeIds)
+    .eq("day_off", serviceDate.value);
+
+  if (daysOffError) {
+    console.warn("Could not load worker days off:", daysOffError);
+    return;
+  }
+
+  const offEmployeeIds = new Set((daysOff || []).map((dayOff) => dayOff.employee_id));
+  const availableEmployeeIds = employeeIds.filter((employeeId) => !offEmployeeIds.has(employeeId));
+
+  if (!availableEmployeeIds.length) {
+    workerAvailabilitySlots = [];
+    return;
+  }
+
+  const { data: availability, error: availabilityError } = await window.ShiftFuelSupabase
+    .from("employee_availability")
+    .select("employee_id,day_of_week,starts_at,ends_at,work_location")
+    .in("employee_id", availableEmployeeIds)
+    .eq("day_of_week", dayOfWeek);
+
+  if (availabilityError) {
+    console.warn("Could not load worker availability:", availabilityError);
+    return;
+  }
+
+  const matchingAvailability = (availability || []).filter((row) => {
+    return !hospital || !row.work_location || row.work_location === hospital;
+  });
+
+  workerAvailabilitySlots = slotsWithinAvailability(timeSlots(0, 24), matchingAvailability);
+}
+
+async function refreshBookedReturnSlots() {
+  if (!serviceDate.value || !window.ShiftFuelSupabase) {
+    bookedReturnSlots = new Set();
+    updateServiceAvailability();
+    return;
+  }
+
+  await loadWorkerAvailabilitySlots();
+
+  const { data, error } = await window.ShiftFuelSupabase
+    .from("service_requests")
+    .select("desired_return_time,status")
+    .eq("service_date", serviceDate.value);
+
+  if (error) {
+    console.warn("Could not load booked time slots:", error);
+    bookedReturnSlots = new Set();
+    updateServiceAvailability();
+    return;
+  }
+
+  bookedReturnSlots = new Set(
+    (data || [])
+      .filter((request) => !slotReleasingStatuses.has(request.status))
+      .map((request) => normalizeTimeSlot(request.desired_return_time))
+      .filter(Boolean)
+  );
+
+  updateServiceAvailability();
+}
+
+function updateServiceAvailability() {
+  const serviceType = selectedServiceType();
+  const availabilitySuffix = workerAvailabilityLoaded && workerAvailabilitySlots?.length === 0
+    ? " No worker availability is saved for this date."
+    : "";
+  const filterByWorkerAvailability = (slots) => Array.isArray(workerAvailabilitySlots)
+    ? slots.filter((slot) => workerAvailabilitySlots.includes(slot))
+    : slots;
+
+  if (!serviceType.needsWash) {
+    populateReturnTimes(filterByWorkerAvailability(timeSlots(7, 22)), "Select return time");
+    returnTime.setCustomValidity("");
+    timeHelp.textContent = `Choose the time you want your vehicle returned.${availabilitySuffix}`;
+    return;
+  }
+
+  populateReturnTimes(filterByWorkerAvailability(timeSlots(9, 18)), "Select car wash return time");
   returnTime.setCustomValidity("");
-  timeHelp.textContent = "Car wash service selected. Return times are limited to 9:00 AM through 6:00 PM.";
+  timeHelp.textContent = `Car wash service selected. Return times are limited to 9:00 AM through 6:00 PM.${availabilitySuffix}`;
 }
 
 function setControlState(control, shouldEnable) {
@@ -467,7 +615,6 @@ function updateServiceDetails() {
 
   if (serviceType.needsFuel) {
     details.push("Fuel filled using the selected fuel type and estimated gallons.");
-    details.push("$15 fuel convenience fee added.");
     details.push(`Regular: ${formatPricePerGallon(averageFuelPrices.Regular)}`);
     details.push(`Mid-grade: ${formatPricePerGallon(averageFuelPrices["Mid-grade"])}`);
     details.push(`Premium: ${formatPricePerGallon(averageFuelPrices.Premium)}`);
@@ -478,6 +625,14 @@ function updateServiceDetails() {
     details.push(...washPackage.includes);
   } else if (serviceType.needsWash) {
     details.push("Select a wash package to see what is included.");
+  }
+
+  if (serviceType.needsFuel && serviceType.needsWash) {
+    details.push("$30 car wash + fuel convenience fee added.");
+  } else if (serviceType.needsFuel) {
+    details.push("$15 fuel convenience fee added.");
+  } else if (serviceType.needsWash) {
+    details.push("$15 car wash convenience fee added.");
   }
 
   if (quickInspection.checked) {
@@ -670,6 +825,8 @@ quickInspection.addEventListener("change", () => {
   updateEstimate();
 });
 returnTime.addEventListener("change", updateServiceAvailability);
+serviceDate.addEventListener("change", refreshBookedReturnSlots);
+hospitalSelect?.addEventListener("change", refreshBookedReturnSlots);
 fuelType.addEventListener("change", updateEstimate);
 fuelEstimate.addEventListener("change", updateEstimate);
 vehicleYear.addEventListener("change", loadModelsForSelection);
@@ -707,6 +864,15 @@ form.addEventListener("submit", async (event) => {
 
   serviceDate.setCustomValidity("");
 
+  if (bookedReturnSlots.has(returnTime.value)) {
+    returnTime.setCustomValidity("That time slot was already booked. Choose another available time.");
+    returnTime.reportValidity();
+    await refreshBookedReturnSlots();
+    return;
+  }
+
+  returnTime.setCustomValidity("");
+
   statusMessage.textContent = "Saving booking to Supabase...";
 
   const payload = getBookingPayload();
@@ -730,10 +896,58 @@ form.addEventListener("submit", async (event) => {
     serviceDate.value = todayValue;
     resetModels();
     updateServiceControls();
+    await refreshBookedReturnSlots();
   } catch (error) {
     console.error("Supabase save error:", error);
     statusMessage.textContent = "Supabase error. Check Console for details.";
   }
 });
 
+applicantForm?.addEventListener("submit", async (event) => {
+  event.preventDefault();
+
+  const data = new FormData(applicantForm);
+  const applicantName = String(data.get("applicantName") || "").trim();
+  const applicantEmail = String(data.get("applicantEmail") || "").trim();
+  const applicantPhone = String(data.get("applicantPhone") || "").trim();
+
+  if (!applicantName || (!applicantEmail && !applicantPhone)) {
+    if (applicantStatus) {
+      applicantStatus.textContent = "Add your name and either a phone number or email.";
+    }
+    return;
+  }
+
+  if (applicantStatus) {
+    applicantStatus.textContent = "Submitting application...";
+  }
+
+  try {
+    const { error } = await window.ShiftFuelSupabase
+      .from("applicants")
+      .insert({
+        name: applicantName,
+        email: applicantEmail || null,
+        phone: applicantPhone || null,
+        availability: String(data.get("applicantAvailability") || "").trim() || null,
+        notes: String(data.get("applicantNotes") || "").trim() || null,
+      });
+
+    if (error) throw error;
+
+    applicantForm.reset();
+
+    if (applicantStatus) {
+      applicantStatus.textContent = "Application submitted. We will follow up soon.";
+    }
+  } catch (error) {
+    console.error("Applicant save error:", error);
+
+    if (applicantStatus) {
+      applicantStatus.textContent = "Could not submit application. Make sure the applicants table is added in Supabase.";
+    }
+  }
+});
+
 updateServiceControls();
+refreshBookedReturnSlots();
