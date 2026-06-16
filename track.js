@@ -17,16 +17,24 @@ const statusLabels = {
   pickup_odometer_photo_uploaded: "Pickup odometer photo uploaded",
   vehicle_picked_up: "Vehicle picked up",
   fueling_in_progress: "Fueling in progress",
+  fueling_complete: "Fueling complete",
   fuel_receipt_uploaded: "Fuel receipt uploaded",
   car_wash_in_progress: "Car wash in progress",
+  car_wash_complete: "Car wash complete",
   car_wash_after_fuel_in_progress: "Car wash in progress",
   wash_receipt_uploaded: "Wash receipt uploaded",
   wash_receipt_after_fuel_uploaded: "Wash receipt uploaded",
   fueling_after_wash_in_progress: "Fueling in progress",
   fuel_receipt_after_wash_uploaded: "Fuel receipt uploaded",
+  receipts_recorded: "Receipts recorded",
+  returned_location_pending: "Vehicle returned",
+  return_location_recorded: "Return location recorded",
+  return_photos_needed: "Return photos needed",
   dropoff_vehicle_photo_uploaded: "Drop-off vehicle photo uploaded",
   dropoff_odometer_photo_uploaded: "Drop-off odometer photo uploaded",
   vehicle_returned: "Vehicle returned",
+  inspection_needed: "Vehicle inspection needed",
+  inspection_recorded: "Vehicle inspection recorded",
   complete: "Complete",
   denied: "Denied",
   customer_canceled: "Canceled by customer",
@@ -63,6 +71,11 @@ function formatCurrency(value) {
   }).format(Number(value || 0));
 }
 
+function hoursSince(value) {
+  const time = new Date(value || Date.now()).getTime();
+  return (Date.now() - time) / (1000 * 60 * 60);
+}
+
 function canCustomerCancel(request) {
   return !terminalStatuses.includes(request.status);
 }
@@ -77,6 +90,23 @@ function cancellationReasonForDisplay(request) {
   }
 
   return "";
+}
+
+function renderAssignedWorker(request) {
+  if (!request.assigned_worker_name) {
+    return "";
+  }
+
+  return `
+    <section class="assigned-worker-card">
+      ${request.assigned_worker_photo_url ? `<img class="worker-avatar" src="${escapeHtml(request.assigned_worker_photo_url)}" alt="${escapeHtml(request.assigned_worker_name)}">` : '<div class="worker-avatar worker-avatar-placeholder">No photo</div>'}
+      <div>
+        <p class="eyebrow">Who is working on your car</p>
+        <h3>${escapeHtml(request.assigned_worker_name)}</h3>
+        ${request.assigned_worker_phone ? `<p><strong>Phone:</strong> ${escapeHtml(request.assigned_worker_phone)}</p>` : '<p class="field-help">Contact information will be added soon.</p>'}
+      </div>
+    </section>
+  `;
 }
 
 function renderTimeline(currentStatus) {
@@ -99,7 +129,209 @@ function renderTimeline(currentStatus) {
   `;
 }
 
-function renderRequest(request) {
+function requestNeedsFuel(request) {
+  return String(request.service_type || "").includes("fuel");
+}
+
+function requestNeedsWash(request) {
+  return String(request.service_type || "").includes("wash");
+}
+
+function renderPhotos(request, photos) {
+  const photoByType = new Map();
+  photos.forEach((photo) => {
+    if (!photoByType.has(photo.photo_type)) {
+      photoByType.set(photo.photo_type, photo);
+    }
+  });
+
+  const photoSlot = (label, types) => {
+    const photo = types.map((type) => photoByType.get(type)).find(Boolean);
+
+    if (!photo) {
+      return `
+        <div class="photo-proof-card photo-proof-missing">
+          <span>${escapeHtml(label)}</span>
+          <p>Not uploaded yet</p>
+        </div>
+      `;
+    }
+
+    return `
+      <a class="photo-proof-card" href="${escapeHtml(photo.image_url)}" target="_blank" rel="noopener">
+        <img src="${escapeHtml(photo.image_url)}" alt="${escapeHtml(label)}">
+        <span>${escapeHtml(label)}</span>
+      </a>
+    `;
+  };
+
+  const section = (title, slots) => `
+    <section class="photo-proof-section">
+      <h3>${escapeHtml(title)}</h3>
+      <div class="photo-proof-grid">
+        ${slots.map((slot) => photoSlot(slot.label, slot.types)).join("")}
+      </div>
+    </section>
+  `;
+
+  return `
+    <div class="photo-proof-sections">
+      ${section("Pickup", [
+        { label: "Driver Side Front", types: ["pickup_driver_front", "pickup_front"] },
+        { label: "Passenger Side Front", types: ["pickup_passenger_front", "pickup_passenger_side"] },
+        { label: "Driver Side Rear", types: ["pickup_driver_rear", "pickup_driver_side"] },
+        { label: "Passenger Side Rear", types: ["pickup_passenger_rear", "pickup_rear"] },
+        { label: "Odometer", types: ["pickup_odometer"] },
+      ])}
+      ${requestNeedsFuel(request) ? section("Fuel Receipt", [
+        { label: "Receipt", types: ["fuel_receipt"] },
+      ]) : ""}
+      ${requestNeedsWash(request) ? section("Car Wash Receipt", [
+        { label: "Receipt", types: ["wash_receipt"] },
+      ]) : ""}
+      ${section("Drop off", [
+        { label: "Driver Side Front", types: ["dropoff_driver_front", "dropoff_front"] },
+        { label: "Passenger Side Front", types: ["dropoff_passenger_front", "dropoff_passenger_side"] },
+        { label: "Driver Side Rear", types: ["dropoff_driver_rear", "dropoff_driver_side"] },
+        { label: "Passenger Side Rear", types: ["dropoff_passenger_rear", "dropoff_rear"] },
+        { label: "Odometer", types: ["dropoff_odometer"] },
+      ])}
+      ${section("Return back", [
+        { label: "Ending Fuel Gauge", types: ["dropoff_fuel_gauge"] },
+      ])}
+    </div>
+  `;
+}
+
+function inspectionSummaryFromNotes(request) {
+  const notes = String(request.notes || "");
+  const codeMatches = Array.from(notes.matchAll(/Trouble code ([A-Z0-9]+): ([\s\S]*?) Possible fixes: ([^\n.]+(?:\.[^\n.]*)?)/g));
+  const psiMatches = Array.from(notes.matchAll(/Tire PSI before\/after: ([^\n.]+(?:\.[^\n]*)?)/g));
+  const latestCode = codeMatches.at(-1);
+  const latestPsi = psiMatches.at(-1);
+
+  if (!latestCode && !latestPsi) {
+    return "";
+  }
+
+  return `
+    <section class="inspection-summary">
+      <h3>Vehicle inspection</h3>
+      ${latestPsi ? `<p><strong>Tire pressure:</strong> ${escapeHtml(latestPsi[1])}</p>` : ""}
+      ${latestCode ? `
+        <p><strong>Trouble code ${escapeHtml(latestCode[1])}:</strong> ${escapeHtml(latestCode[2])}</p>
+        <p><strong>Possible fixes:</strong> ${escapeHtml(latestCode[3])}</p>
+      ` : ""}
+    </section>
+  `;
+}
+
+function serviceTimingFromNotes(request) {
+  const notes = String(request.notes || "");
+  const pickupMatches = Array.from(notes.matchAll(/\[pickup_time ([^\]]+)\]/g));
+  const dropoffMatches = Array.from(notes.matchAll(/\[dropoff_time ([^\]]+)\]/g));
+  const pickup = pickupMatches.at(-1)?.[1] || "";
+  const dropoff = dropoffMatches.at(-1)?.[1] || "";
+
+  if (!pickup && !dropoff) {
+    return "";
+  }
+
+  const format = (value) => new Intl.DateTimeFormat("en-US", {
+    dateStyle: "medium",
+    timeStyle: "short",
+  }).format(new Date(value));
+
+  return `
+    <section class="inspection-summary">
+      <h3>Service timing</h3>
+      ${pickup ? `<p><strong>Pickup photo timestamp:</strong> ${escapeHtml(format(pickup))}</p>` : ""}
+      ${dropoff ? `<p><strong>Drop-off photo timestamp:</strong> ${escapeHtml(format(dropoff))}</p>` : ""}
+    </section>
+  `;
+}
+
+async function loadRequestPhotos(requestId) {
+  const { data, error } = await shiftFuelDb
+    .from("photos")
+    .select("photo_type,image_url,created_at")
+    .eq("service_request_id", requestId)
+    .order("created_at", { ascending: true });
+
+  if (error) {
+    console.warn("Photo lookup skipped:", error);
+    return [];
+  }
+
+  return data || [];
+}
+
+async function loadRequestReview(requestId) {
+  const { data, error } = await shiftFuelDb
+    .from("service_reviews")
+    .select("id,rating,comments,submitted_at")
+    .eq("service_request_id", requestId)
+    .maybeSingle();
+
+  if (error) {
+    console.warn("Review lookup skipped:", error);
+    return null;
+  }
+
+  return data || null;
+}
+
+function shouldShowReviewPrompt(request, review) {
+  return request.status === "complete" && !review && hoursSince(request.updated_at || request.created_at) <= 24;
+}
+
+function renderReviewPrompt(request, review) {
+  if (review) {
+    return "";
+  }
+
+  if (!shouldShowReviewPrompt(request, review)) {
+    return "";
+  }
+
+  const ratingLabels = {
+    5: "5 - Amazing",
+    4: "4 - Good",
+    3: "3 - Okay",
+    2: "2 - Poor",
+    1: "1 - Terrible",
+  };
+
+  return `
+    <section class="review-panel">
+      <h3>Please review our service</h3>
+      <p class="field-help">Tell us how we did. After you submit, this review request will disappear from tracking.</p>
+      <p class="field-help">5 is amazing. 1 is terrible. Comments are optional for 4-5 and required for 1-3.</p>
+      <div class="rating-options" role="radiogroup" aria-label="Service rating">
+        ${[5, 4, 3, 2, 1].map((rating) => `
+          <label>
+            <input type="radio" name="service-rating" value="${rating}">
+            <span>${ratingLabels[rating]}</span>
+          </label>
+        `).join("")}
+      </div>
+      <label>
+        Comments
+        <textarea id="service-review-comments" rows="3" placeholder="Optional for 4-5. Required if rating is 3 or below."></textarea>
+      </label>
+      <button
+        class="button primary submit-service-review"
+        data-request-id="${escapeHtml(request.id)}"
+        data-customer-name="${escapeHtml(request.customer_name)}"
+        data-customer-phone="${escapeHtml(request.customer_phone)}"
+        data-customer-email="${escapeHtml(request.customer_email || "")}"
+        type="button"
+      >Submit review</button>
+    </section>
+  `;
+}
+
+function renderRequest(request, photos = [], review = null) {
   const statusLabel = statusLabels[request.status] || request.status;
   const cancellationReason = cancellationReasonForDisplay(request);
 
@@ -113,8 +345,6 @@ function renderRequest(request) {
         <span class="status-pill">${escapeHtml(statusLabel)}</span>
       </div>
 
-      ${renderTimeline(request.status)}
-
       <div class="request-details">
         <p><strong>Customer:</strong> ${escapeHtml(request.customer_name)}</p>
         <p><strong>Vehicle:</strong> ${escapeHtml(request.vehicle_year)} ${escapeHtml(request.vehicle_make)} ${escapeHtml(request.vehicle_model)}, ${escapeHtml(request.vehicle_color)}</p>
@@ -124,6 +354,11 @@ function renderRequest(request) {
         <p><strong>Final total:</strong> ${formatCurrency(request.final_total)}</p>
         ${cancellationReason ? `<p><strong>Reason:</strong> ${escapeHtml(cancellationReason)}</p>` : ""}
       </div>
+      ${renderAssignedWorker(request)}
+      ${serviceTimingFromNotes(request)}
+      ${inspectionSummaryFromNotes(request)}
+      ${renderPhotos(request, photos)}
+      ${renderReviewPrompt(request, review)}
       ${canCustomerCancel(request) ? `
         <div class="tracking-actions">
           <button class="button danger show-cancel-request" type="button">Cancel request</button>
@@ -149,8 +384,15 @@ trackForm.addEventListener("submit", async (event) => {
   const phone = cleanPhone(trackingPhone.value);
   const email = trackingEmail.value.trim().toLowerCase();
 
-  trackMessage.textContent = "Looking up request...";
   trackingResult.innerHTML = "";
+
+  if (!id && !phone && !email) {
+    trackMessage.textContent = "Enter a phone number, email address, or request ID to track a request.";
+    trackingPhone.focus();
+    return;
+  }
+
+  trackMessage.textContent = "Looking up request...";
 
   let query = shiftFuelDb
     .from("service_requests")
@@ -171,7 +413,13 @@ trackForm.addEventListener("submit", async (event) => {
     return;
   }
 
-  let matchedRequest = data[0];
+  let matchedRequest = null;
+
+  if (id || email) {
+    matchedRequest = phone
+      ? data.find((request) => cleanPhone(request.customer_phone) === phone)
+      : data[0];
+  }
 
   if (phone && !id && !email) {
     matchedRequest = data.find((request) => {
@@ -185,12 +433,79 @@ trackForm.addEventListener("submit", async (event) => {
   }
 
   trackMessage.textContent = "";
-  renderRequest(matchedRequest);
+  const photos = await loadRequestPhotos(matchedRequest.id);
+  const review = await loadRequestReview(matchedRequest.id);
+  renderRequest(matchedRequest, photos, review);
 });
 
 trackingResult.addEventListener("click", async (event) => {
   const showCancelButton = event.target.closest(".show-cancel-request");
   const confirmCancelButton = event.target.closest(".confirm-cancel-request");
+  const submitReviewButton = event.target.closest(".submit-service-review");
+
+  if (submitReviewButton) {
+    const panel = submitReviewButton.closest(".review-panel");
+    const rating = panel.querySelector("input[name='service-rating']:checked")?.value;
+    const comments = panel.querySelector("#service-review-comments")?.value.trim() || "";
+    const requestId = submitReviewButton.dataset.requestId;
+
+    if (!rating) {
+      trackMessage.textContent = "Choose a rating before submitting your review.";
+      return;
+    }
+
+    if (Number(rating) <= 3 && !comments) {
+      trackMessage.textContent = "Please add a comment for ratings of 3 or below so we know what to fix.";
+      panel.querySelector("#service-review-comments")?.focus();
+      return;
+    }
+
+    submitReviewButton.disabled = true;
+    submitReviewButton.textContent = "Submitting...";
+    trackMessage.textContent = "";
+
+    const reviewRow = {
+      service_request_id: requestId,
+      rating: Number(rating),
+      comments,
+      customer_name: submitReviewButton.dataset.customerName || null,
+      customer_phone: submitReviewButton.dataset.customerPhone || null,
+      customer_email: submitReviewButton.dataset.customerEmail || null,
+    };
+
+    let { error } = await shiftFuelDb.from("service_reviews").insert(reviewRow);
+
+    if (error?.code === "PGRST204") {
+      delete reviewRow.customer_name;
+      delete reviewRow.customer_phone;
+      delete reviewRow.customer_email;
+      ({ error } = await shiftFuelDb.from("service_reviews").insert(reviewRow));
+    }
+
+    if (error?.code === "23505") {
+      panel.remove();
+      trackMessage.textContent = "Thank you for reviewing our service.";
+      return;
+    }
+
+    if (error) {
+      console.error("Review submit error:", error);
+      if (error.code === "42P01" || error.code === "PGRST205") {
+        trackMessage.textContent = "Review table is missing in Supabase. Run supabase-service-reviews.sql.";
+      } else if (error.code === "42501" || String(error.message || "").toLowerCase().includes("row-level security")) {
+        trackMessage.textContent = "Supabase blocked review saving. Run the review SQL again so the insert policy is added.";
+      } else {
+        trackMessage.textContent = `Could not save the review: ${error.message || "Supabase rejected the request."}`;
+      }
+      submitReviewButton.disabled = false;
+      submitReviewButton.textContent = "Submit review";
+      return;
+    }
+
+    panel.remove();
+    trackMessage.textContent = "Thank you for reviewing our service.";
+    return;
+  }
 
   if (showCancelButton) {
     const panel = trackingResult.querySelector(".cancel-panel");
@@ -256,5 +571,7 @@ trackingResult.addEventListener("click", async (event) => {
   }
 
   trackMessage.textContent = "Request canceled.";
-  renderRequest(data);
+  const photos = await loadRequestPhotos(data.id);
+  const review = await loadRequestReview(data.id);
+  renderRequest(data, photos, review);
 });
