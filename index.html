@@ -15,6 +15,7 @@
 			<a href="index.html#pricing">Pricing</a>
 			<a href="index.html#book">Book now</a>
 			<a href="track.html">Track</a>
+			<a href="worker-login.html">Worker</a>
 			<a href="admin-login.html">Admin</a>
 		</nav>
 	</header>
@@ -27,7 +28,7 @@
           <p class="hero-copy">
             ShiftFuel Concierge lets ChristianaCare employees request fuel
             fill-ups, tire pressure checks, washer fluid top-offs, and future
-            detailing services without leaving their shift.
+            car wash services without leaving their shift.
           </p>
           <p class="location-note">
             Launch location: ChristianaCare, 4755 Ogletown Stanton Rd, Newark, DE 19718.
@@ -63,12 +64,12 @@
             <p>Request fuel service from your parking lot or garage during your shift.</p>
           </article>
           <article class="service-card">
-            <h3>Fuel, Wash, or Both</h3>
-            <p>Choose fuel, CarSpaDE wash service, or combine both in one request.</p>
+            <h3>Car Wash</h3>
+            <p>Choose a CarSpaDE wash package while you are working.</p>
           </article>
           <article class="service-card">
-            <h3>Car Wash</h3>
-            <p>CarSpaDE single-wash options are available every day from 9 AM to 6 PM.</p>
+            <h3>Both</h3>
+            <p>Combine fuel fill-up and car wash in one request.</p>
           </article>
         </div>
       </section>
@@ -129,13 +130,12 @@
               <ul>
                 <li>Tire pressure check</li>
                 <li>Washer fluid level</li>
-                <li>Exterior condition notes</li>
                 <li>Dashboard warning light glance</li>
               </ul>
             </div>
           </article>
           <article class="price-card wash-price-card">
-            <p class="plan">CarSpaDE Washes</p>
+            <p class="plan">Car Wash</p>
             <h3>$12 to $27 + $15</h3>
             <p>Double Wash, Shine, Shine & Protect, or Buff & Shine, plus a $15 convenience fee. Available 9 AM to 6 PM.</p>
             <button id="wash-pricing-toggle" class="button secondary compact-button" type="button" aria-expanded="false" aria-controls="wash-pricing-details">
@@ -335,7 +335,6 @@
                       <ul>
                         <li>Tire pressure check</li>
                         <li>Washer fluid level</li>
-                        <li>Exterior condition notes</li>
                         <li>Dashboard warning light glance</li>
                       </ul>
                     </div>
@@ -390,23 +389,53 @@
               </div>
             </fieldset>
 
+            <fieldset>
+              <legend>Agreement</legend>
+              <label class="checkbox-label">
+                <input id="terms-agreement" name="termsAgreement" type="checkbox" value="yes" required>
+                <span>I agree that ShiftFuel Concierge may pick up, service, and return my vehicle using the instructions I provided.</span>
+              </label>
+              <p class="field-help">By booking, you agree to provide accurate vehicle, key, parking, fuel, and service instructions. ShiftFuel documents pickup and return condition with photos and will contact you if a requested service cannot be completed.</p>
+            </fieldset>
+
             <button class="button primary" type="submit">Submit booking request</button>
             <p id="form-status" class="form-status" role="status"></p>
           </form>
-
-          <aside class="status-panel" aria-label="Status tracker preview">
-            <p class="eyebrow">Status tracker</p>
-            <h3>Customer request timeline</h3>
-            <ul id="status-list" class="status-list">
-              <li class="active">Request received</li>
-              <li>Key received</li>
-              <li>Vehicle picked up</li>
-              <li>Fueling in progress</li>
-              <li>Vehicle returned</li>
-              <li>Complete</li>
-            </ul>
-          </aside>
         </div>
+      </section>
+
+      <section id="hiring" class="section hiring-section">
+        <div class="section-heading">
+          <p class="eyebrow">Hiring</p>
+          <h2>Apply to work with ShiftFuel.</h2>
+          <p>Submit your interest and availability. We will follow up before any customer vehicle work is assigned.</p>
+        </div>
+        <form id="applicant-form" class="booking-form compact-form">
+          <div class="field-grid">
+            <label>
+              <span>Name</span>
+              <input type="text" name="applicantName" placeholder="Full name" required>
+            </label>
+            <label>
+              <span>Email</span>
+              <input type="email" name="applicantEmail" placeholder="you@example.com">
+            </label>
+            <label>
+              <span>Phone</span>
+              <input type="tel" name="applicantPhone" placeholder="(302) 555-0100">
+            </label>
+            <label>
+              <span>Availability</span>
+              <input type="text" name="applicantAvailability" placeholder="Weekdays, weekends, evenings">
+            </label>
+          </div>
+          <label>
+            <span>Experience or notes</span>
+            <textarea name="applicantNotes" rows="3" placeholder="Driving, customer service, car wash, or fuel service experience"></textarea>
+          </label>
+          <button class="button primary" type="submit">Submit application</button>
+          <p id="applicant-status" class="form-status" role="status"></p>
+        </form>
       </section>
 
       <section class="section roadmap">
