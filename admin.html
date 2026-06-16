@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>ShiftFuel Admin</title>
+    <link rel="stylesheet" href="styles.css">
+  </head>
+
+  <body>
+
+    <script>
+      if (sessionStorage.getItem("shiftfuel_admin") !== "true") {
+        window.location.href = "admin-login.html";
+      }
+    </script>
+
+    <header class="site-header">
+      <a class="logo" href="index.html">ShiftFuel Concierge</a>
+      <nav class="nav" aria-label="Main navigation">
+        <a href="index.html#services">What we do</a>
+        <a href="index.html#how">How it works</a>
+        <a href="index.html#pricing">Pricing</a>
+        <a href="index.html#book">Book now</a>
+        <a href="track.html">Track</a>
+        <a href="admin-login.html">Admin</a>
+      </nav>
+    </header>
+
+    <main>
+      <section class="section admin-hero">
+        <div class="section-heading">
+          <p class="eyebrow">Admin dashboard</p>
+          <h1>Service requests</h1>
+          <p>
+            This local dashboard shows where booking submissions go right now.
+            The same fields map to Supabase tables when the cloud backend is connected.
+          </p>
+        </div>
+		<div class="admin-summary">
+		  <div class="summary-card">
+			<span id="total-requests">0</span>
+			<p>Total Requests</p>
+		  </div>
+
+		  <button id="show-open" class="summary-card summary-button">
+			<span id="open-requests">0</span>
+			<p>Open Requests</p>
+		  </button>
+
+		  <button id="show-complete" class="summary-card summary-button">
+			<span id="complete-requests">0</span>
+			<p>Completed Requests</p>
+		  </button>
+
+		  <button id="show-denied" class="summary-card summary-button">
+			<span id="denied-requests">0</span>
+			<p>Closed Requests</p>
+		  </button>
+		</div>
+      </section>
+
+      <section class="section admin-section">
+        <div class="admin-toolbar">
+          <div>
+            <p class="eyebrow">Queue</p>
+            <h2>ChristianaCare requests</h2>
+          </div>
+        </div>
+        <div id="request-list" class="request-list"></div>
+      </section>
+    </main>
+
+	<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+	<script src="supabase-client.js"></script>
+	<script src="admin.js"></script>
+  </body>
+</html>

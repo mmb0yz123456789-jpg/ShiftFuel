@@ -1,0 +1,440 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>ShiftFuel Concierge</title>
+    <link rel="stylesheet" href="styles.css">
+  </head>
+  <body>
+	<header class="site-header">
+		<a class="logo" href="index.html">ShiftFuel Concierge</a>
+		<nav class="nav" aria-label="Main navigation">
+			<a href="index.html#services">What we do</a>
+			<a href="index.html#how">How it works</a>
+			<a href="index.html#pricing">Pricing</a>
+			<a href="index.html#book">Book now</a>
+			<a href="track.html">Track</a>
+			<a href="admin-login.html">Admin</a>
+		</nav>
+	</header>
+
+    <main id="home">
+      <section class="hero">
+        <div class="hero-content">
+          <p class="eyebrow">Delaware hospital shift vehicle service</p>
+          <h1>Your car handled while you work.</h1>
+          <p class="hero-copy">
+            ShiftFuel Concierge lets ChristianaCare employees request fuel
+            fill-ups, tire pressure checks, washer fluid top-offs, and future
+            detailing services without leaving their shift.
+          </p>
+          <p class="location-note">
+            Launch location: ChristianaCare, 4755 Ogletown Stanton Rd, Newark, DE 19718.
+          </p>
+          <div class="actions">
+            <a class="button primary" href="#book">Book a fuel service</a>
+		    <a class="button secondary" href="track.html">Track My Vehicle</a>
+            <a class="button secondary" href="#trust">See safety steps</a>
+          </div>
+          <div class="hero-points" aria-label="Supported access">
+            <span>iPhone</span>
+            <span>Android</span>
+            <span>Laptop</span>
+            <span>Wi-Fi or cellular</span>
+          </div>
+        </div>
+      </section>
+
+      <section id="services" class="section">
+        <div class="section-heading">
+          <p class="eyebrow">What we do</p>
+          <h2>Basic car care while employees are on shift.</h2>
+          <p>
+            The MVP starts in Delaware with ChristianaCare employees: fuel,
+            quick checks, and clear status updates from request to return.
+            Initial service area is ChristianaCare at 4755 Ogletown Stanton Rd,
+            Newark, DE 19718.
+          </p>
+        </div>
+        <div class="service-grid">
+          <article class="service-card">
+            <h3>Fuel Fill-Up</h3>
+            <p>Request fuel service from your parking lot or garage during your shift.</p>
+          </article>
+          <article class="service-card">
+            <h3>Fuel, Wash, or Both</h3>
+            <p>Choose fuel, CarSpaDE wash service, or combine both in one request.</p>
+          </article>
+          <article class="service-card">
+            <h3>Car Wash</h3>
+            <p>CarSpaDE single-wash options are available every day from 9 AM to 6 PM.</p>
+          </article>
+        </div>
+      </section>
+
+      <section id="how" class="section split">
+        <div>
+          <p class="eyebrow">How it works</p>
+          <h2>Book it, hand off keys, get status updates.</h2>
+        </div>
+        <ol class="steps">
+          <li>Employee submits contact, vehicle, parking, and service details.</li>
+          <li>ShiftFuel accepts the request and confirms key handoff instructions.</li>
+          <li>Photos document odometer, fuel gauge, exterior condition, and receipt.</li>
+          <li>The vehicle is returned, status is marked complete, and final total is saved.</li>
+        </ol>
+      </section>
+
+      <section id="trust" class="section trust">
+        <div class="section-heading">
+          <p class="eyebrow">Safety and trust</p>
+          <h2>Proof is built into every request.</h2>
+          <p>
+            Each service request can collect timestamped photos so customers and
+            admins can see exactly what happened before, during, and after service.
+          </p>
+        </div>
+        <div class="proof-grid">
+          <span>Starting odometer</span>
+          <span>Starting fuel gauge</span>
+          <span>Exterior photos</span>
+          <span>Fuel receipt</span>
+          <span>Ending odometer</span>
+          <span>Ending fuel gauge</span>
+          <span>Returned parking spot</span>
+        </div>
+      </section>
+
+      <section id="pricing" class="section">
+        <div class="section-heading">
+          <p class="eyebrow">Pricing</p>
+          <h2>Simple launch pricing.</h2>
+        </div>
+        <div class="pricing-grid">
+          <article class="price-card featured">
+            <p class="plan">Fuel Concierge</p>
+            <h3>Fuel cost + $15</h3>
+            <p>Best first offer for employees who just need a fuel fill-up.</p>
+          </article>
+          <article class="price-card quick-inspection-card">
+            <p class="plan">Quick Inspection Add-On</p>
+            <h3>$5</h3>
+            <p>Add a simple visual inspection after choosing fuel, car wash, or both.</p>
+            <button id="add-inspection-from-pricing" class="button secondary compact-button" type="button" aria-describedby="inspection-pricing-details">
+              Add inspection
+            </button>
+            <div id="inspection-pricing-details" class="inspection-pricing-details" role="tooltip">
+              <h4>Inspection covers</h4>
+              <ul>
+                <li>Tire pressure check</li>
+                <li>Washer fluid level</li>
+                <li>Exterior condition notes</li>
+                <li>Dashboard warning light glance</li>
+              </ul>
+            </div>
+          </article>
+          <article class="price-card wash-price-card">
+            <p class="plan">CarSpaDE Washes</p>
+            <h3>$12 to $27 + $15</h3>
+            <p>Double Wash, Shine, Shine & Protect, or Buff & Shine, plus a $15 convenience fee. Available 9 AM to 6 PM.</p>
+            <button id="wash-pricing-toggle" class="button secondary compact-button" type="button" aria-expanded="false" aria-controls="wash-pricing-details">
+              Details
+            </button>
+            <div id="wash-pricing-details" class="wash-pricing-details" hidden>
+              <div>
+                <h4>Buff & Shine - $27</h4>
+                <p>Fire Bath, ceramic finish, Dry N' Shine, ICE Instant Shine, Salt Shield, Tire Shine, wheel cleaning, conditioners, clear coat, presoak, drying agent, and spot-free rinse.</p>
+              </div>
+              <div>
+                <h4>Shine & Protect - $20</h4>
+                <p>ICE Instant Shine, Salt Shield, Tire Shine, triple wheel cleaning, conditioners, clear coat, presoak, drying agent, and spot-free rinse.</p>
+              </div>
+              <div>
+                <h4>Shine - $16</h4>
+                <p>Tri-Foam Conditioner, clear coat, presoak, double tire and wheel cleaning, drying agent, and spot-free rinse.</p>
+              </div>
+              <div>
+                <h4>Double Wash - $12</h4>
+                <p>High pH and Low pH presoak, double tire and wheel cleaning, drying agent, and spot-free rinse.</p>
+              </div>
+            </div>
+          </article>
+        </div>
+      </section>
+
+      <section id="book" class="section booking-section">
+        <div class="section-heading">
+          <p class="eyebrow">Book now</p>
+          <h2>Request a fuel service.</h2>
+          <p>
+            This starter form captures the information the real web app will send
+            to Supabase, Stripe, and the admin dashboard.
+          </p>
+        </div>
+
+        <div class="booking-layout">
+          <form id="booking-form" class="booking-form">
+            <p class="form-note"><span class="required-mark">Required</span> fields must be completed before submitting. Optional fields can be skipped.</p>
+            <fieldset>
+              <legend>Customer sign-up</legend>
+              <div class="field-grid">
+                <label>
+                  <span>Name <span class="required-mark">Required</span></span>
+                  <input name="name" type="text" placeholder="Jordan Smith" required>
+                </label>
+                <label>
+                  <span>Phone number <span class="required-mark">Required</span></span>
+                  <input name="phone" type="tel" placeholder="(555) 123-4567" required>
+                </label>
+                <label>
+                  <span>Email <span class="optional-mark">Optional</span></span>
+                  <input name="email" type="email" placeholder="jordan@example.com">
+                </label>
+                <label>
+                  <span>Workplace / hospital <span class="required-mark">Required</span></span>
+                  <select name="hospital" required>
+                    <option value="">Select workplace</option>
+                    <option>ChristianaCare - 4755 Ogletown Stanton Rd, Newark, DE 19718</option>
+                  </select>
+                </label>
+              </div>
+            </fieldset>
+
+            <fieldset>
+              <legend>Vehicle</legend>
+              <div class="field-grid">
+                <label>
+                  <span>Year <span class="required-mark">Required</span></span>
+                  <select id="vehicle-year" name="year" required>
+                    <option value="">Select year</option>
+                  </select>
+                </label>
+                <label>
+                  <span>Make <span class="required-mark">Required</span></span>
+                  <select id="vehicle-make" name="make" required>
+                    <option value="">Select make</option>
+                  </select>
+                </label>
+                <label>
+                  <span>Model <span class="required-mark">Required</span></span>
+                  <select id="vehicle-model" name="model" required disabled>
+                    <option value="">Select year and make first</option>
+                  </select>
+                  <span id="model-help" class="field-help">Models load after you choose a year and make.</span>
+                </label>
+                <label>
+                  <span>Color <span class="required-mark">Required</span></span>
+                  <input name="color" type="text" placeholder="Silver" required>
+                </label>
+                <label>
+                  <span>License plate <span class="required-mark">Required</span></span>
+                  <input name="license" type="text" placeholder="ABC-1234" required>
+                </label>
+              </div>
+            </fieldset>
+
+            <fieldset>
+              <legend>Parking and key handoff</legend>
+              <div class="field-grid">
+                <label>
+                  <span>Parking lot / garage <span class="required-mark">Required</span></span>
+                  <input id="parking-location" name="parkingLocation" type="text" placeholder="Garage B, Level 3" required>
+                </label>
+                <label>
+                  <span>Parking spot <span class="required-mark">Required</span></span>
+                  <input name="parkingSpot" type="text" placeholder="B3-142" required>
+                </label>
+                <label>
+                  <span>Google Maps parking link <span class="optional-mark">Optional</span></span>
+                  <input id="parking-map-url" name="parkingMapUrl" type="url" placeholder="Paste a Google Maps link">
+                  <span class="field-help">Optional. Paste a map link if you already have one for the pickup location.</span>
+                </label>
+                <label>
+                  <span>Key handoff building / entrance <span class="required-mark">Required</span></span>
+                  <select name="keyMethod" required>
+                    <option value="">Select key handoff location</option>
+                    <option>Main entrance / lobby desk</option>
+                    <option>Emergency Department entrance</option>
+                    <option>Women & Children's entrance</option>
+                    <option>Center for Heart & Vascular Health entrance</option>
+                    <option>Helen F. Graham Cancer Center entrance</option>
+                    <option>Employee entrance</option>
+                    <option>Security desk</option>
+                    <option>Meet at vehicle</option>
+                    <option>Lockbox</option>
+                    <option>Other building / entrance</option>
+                  </select>
+                </label>
+                <label>
+                  <span>Key handoff details <span class="optional-mark">Optional</span></span>
+                  <input name="keyHandoffDetails" type="text" placeholder="Example: unit desk, lockbox code, person to ask for">
+                  <span class="field-help">Add anything that helps us find the key quickly.</span>
+                </label>
+              </div>
+            </fieldset>
+
+            <fieldset>
+              <legend>Service request</legend>
+              <div class="service-choice-grid">
+                <div class="service-controls">
+                  <label>
+                    <span>Service needed <span class="required-mark">Required</span></span>
+                    <select id="service" name="service" required>
+                      <option value="">Select service</option>
+                      <option value="car-wash">Car Wash</option>
+                      <option value="fuel">Fuel</option>
+                      <option value="car-wash-fuel">Car Wash + Fuel</option>
+                    </select>
+                  </label>
+                  <label class="car-wash-control conditional-control">
+                    <span>Car wash package <span class="required-mark">Required when visible</span></span>
+                    <select id="car-wash-package" name="carWashPackage">
+                      <option value="">Select wash package</option>
+                      <option value="buff-shine">Buff & Shine - $27</option>
+                      <option value="shine-protect">Shine & Protect - $20</option>
+                      <option value="shine">Shine - $16</option>
+                      <option value="double-wash">Double Wash - $12</option>
+                    </select>
+                  </label>
+                  <label class="fuel-control conditional-control">
+                    <span>Fuel type <span class="required-mark">Required when visible</span></span>
+                    <select id="fuel-type" name="fuel">
+                      <option value="">Select fuel type</option>
+                      <option>Regular</option>
+                      <option>Mid-grade</option>
+                      <option>Premium</option>
+                      <option>Diesel</option>
+                    </select>
+                  </label>
+                  <label class="fuel-control conditional-control">
+                    <span>Estimated fuel needed, in gallons <span class="required-mark">Required when visible</span></span>
+                    <select id="fuel-estimate" name="fuelEstimate">
+                      <option value="">Select fuel range</option>
+                    </select>
+                  </label>
+                  <label>
+                    <span>Service date <span class="required-mark">Required</span></span>
+                    <input id="service-date" name="serviceDate" type="date" required>
+                    <span class="field-help">Choose a service date within the next 3 months. Past dates are not available.</span>
+                  </label>
+                  <label>
+                    <span>Desired return time <span class="required-mark">Required</span></span>
+                    <select id="return-time" name="returnTime" required>
+                      <option value="">Select return time</option>
+                    </select>
+                    <span id="time-help" class="field-help">Car wash services are available from 9:00 AM to 6:00 PM every day.</span>
+                  </label>
+                  <div class="inspection-addon-control">
+                    <label class="checkbox-label" aria-describedby="inspection-addon-details">
+                      <input id="quick-inspection" name="quickInspection" type="checkbox" value="yes">
+                      <span>Add a quick vehicle inspection for $5 <span class="optional-mark">Optional</span></span>
+                    </label>
+                    <div id="inspection-addon-details" class="inspection-addon-details" role="tooltip">
+                      <h4>Inspection covers</h4>
+                      <ul>
+                        <li>Tire pressure check</li>
+                        <li>Washer fluid level</li>
+                        <li>Exterior condition notes</li>
+                        <li>Dashboard warning light glance</li>
+                      </ul>
+                    </div>
+                  </div>
+                </div>
+                <aside id="service-details-panel" class="service-details-panel" aria-live="polite">
+                  <p class="eyebrow">Service details</p>
+                  <h3>Select a service</h3>
+                  <p>Choose Car Wash, Fuel, or Car Wash + Fuel to see what is included.</p>
+                </aside>
+              </div>
+              <label>
+                <span>Notes <span class="optional-mark">Optional</span></span>
+                <textarea name="notes" rows="4" placeholder="Anything we should know?"></textarea>
+              </label>
+            </fieldset>
+
+            <fieldset>
+              <legend>Payment authorization</legend>
+              <div class="payment-box">
+                <p><strong>Stripe-ready flow:</strong> authorize the estimated fuel or wash amount plus service fee now, then capture the final total after the receipt is uploaded.</p>
+                <dl>
+                  <div id="payment-wash-row" hidden>
+                    <dt>Car wash package</dt>
+                    <dd id="estimated-wash">$0</dd>
+                  </div>
+                  <div id="payment-wash-convenience-row" hidden>
+                    <dt>Car wash convenience fee</dt>
+                    <dd id="wash-convenience-fee">$0</dd>
+                  </div>
+                  <div id="payment-price-row" hidden>
+                    <dt>Average price used</dt>
+                    <dd id="average-price">$0.000/gal</dd>
+                  </div>
+                  <div id="payment-fuel-row" hidden>
+                    <dt>Estimated fuel</dt>
+                    <dd id="estimated-fuel">$0</dd>
+                  </div>
+                  <div id="payment-convenience-row" hidden>
+                    <dt>Fuel convenience fee</dt>
+                    <dd id="fuel-convenience-fee">$0</dd>
+                  </div>
+                  <div id="payment-inspection-row" hidden>
+                    <dt>Quick inspection</dt>
+                    <dd id="inspection-fee">$0</dd>
+                  </div>
+                  <div>
+                    <dt>Estimated authorization</dt>
+                    <dd id="estimated-total">$0</dd>
+                  </div>
+                </dl>
+              </div>
+            </fieldset>
+
+            <button class="button primary" type="submit">Submit booking request</button>
+            <p id="form-status" class="form-status" role="status"></p>
+          </form>
+
+          <aside class="status-panel" aria-label="Status tracker preview">
+            <p class="eyebrow">Status tracker</p>
+            <h3>Customer request timeline</h3>
+            <ul id="status-list" class="status-list">
+              <li class="active">Request received</li>
+              <li>Key received</li>
+              <li>Vehicle picked up</li>
+              <li>Fueling in progress</li>
+              <li>Vehicle returned</li>
+              <li>Complete</li>
+            </ul>
+          </aside>
+        </div>
+      </section>
+
+      <section class="section roadmap">
+        <div>
+          <p class="eyebrow">Next build order</p>
+          <h2>From website to web app.</h2>
+        </div>
+        <div class="roadmap-list">
+          <span>1. Landing page</span>
+          <span>2. Booking form</span>
+          <span>3. Supabase database</span>
+          <span>4. Admin dashboard</span>
+          <span>5. Photo upload</span>
+          <span>6. Stripe authorization</span>
+          <span>7. Status tracker</span>
+          <span>8. Text and email notifications</span>
+        </div>
+      </section>
+    </main>
+
+    <footer class="site-footer">
+      <p>&copy; <span id="year"></span> ShiftFuel Concierge. Built first for ChristianaCare teams in Delaware.</p>
+    </footer>
+	<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+	<script src="supabase-client.js"></script>
+	
+	<!-- Keep storage.js for now until Supabase is working -->
+    <script src="storage.js"></script>
+    <script src="script.js"></script>
+  </body>
+</html>

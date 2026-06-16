@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Track Request | ShiftFuel Concierge</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+	<header class="site-header">
+		<a class="logo" href="index.html">ShiftFuel Concierge</a>
+		<nav class="nav" aria-label="Main navigation">
+			<a href="index.html#services">What we do</a>
+			<a href="index.html#how">How it works</a>
+			<a href="index.html#pricing">Pricing</a>
+			<a href="index.html#book">Book now</a>
+			<a href="track.html">Track</a>
+			<a href="admin-login.html">Admin</a>
+		</nav>
+	</header>
+
+  <main>
+    <section class="section admin-hero">
+      <div class="section-heading">
+        <p class="eyebrow">Customer tracking</p>
+        <h1>Track your vehicle service</h1>
+        <p>
+          Enter your phone number, email address, or request ID to view your current service status.
+        </p>
+      </div>
+
+      <form id="track-form" class="booking-form">
+        <fieldset>
+          <legend>Find request</legend>
+
+          <label>
+            Phone Number
+            <input id="tracking-phone" type="tel" placeholder="(302) 555-1234">
+          </label>
+
+          <label>
+            Email Address
+            <input id="tracking-email" type="email" placeholder="name@email.com">
+          </label>
+
+          <label>
+            Request ID (Optional)
+            <input id="tracking-id" type="text" placeholder="Paste request ID">
+          </label>
+
+          <button class="button primary" type="submit">Track Request</button>
+        </fieldset>
+      </form>
+
+      <p id="track-message" class="form-status"></p>
+    </section>
+
+    <section class="section">
+      <div id="tracking-result"></div>
+    </section>
+  </main>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="supabase-client.js"></script>
+  <script src="track.js"></script>
+</body>
+</html>
