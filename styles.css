@@ -164,6 +164,63 @@ h3 {
   background: var(--brand-dark);
 }
 
+.upload-action-button {
+  width: 100%;
+  justify-self: stretch;
+  grid-column: 1 / -1;
+  box-shadow: 0 10px 24px rgba(8, 113, 95, 0.18);
+}
+
+.file-button-control {
+  display: grid;
+  gap: 8px;
+}
+
+.file-button-control input[type="file"] {
+  position: absolute;
+  inline-size: 1px;
+  block-size: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.photo-panel input[type="file"]::file-selector-button,
+.receipt-panel input[type="file"]::file-selector-button,
+.photo-upload-panel input[type="file"]::file-selector-button,
+.photo-action input[type="file"]::file-selector-button {
+  min-height: 38px;
+  margin-right: 10px;
+  padding: 8px 14px;
+  border: 1px solid var(--brand);
+  border-radius: 8px;
+  color: #ffffff;
+  background: var(--brand);
+  font: inherit;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.photo-panel input[type="file"]::file-selector-button:hover,
+.receipt-panel input[type="file"]::file-selector-button:hover,
+.photo-upload-panel input[type="file"]::file-selector-button:hover,
+.photo-action input[type="file"]::file-selector-button:hover {
+  background: var(--brand-dark);
+}
+
+.file-button-text {
+  justify-self: start;
+  min-height: 42px;
+  padding: 10px 16px;
+  box-shadow: 0 10px 24px rgba(8, 113, 95, 0.18);
+}
+
+.selected-file-name {
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
 .button.secondary {
   color: var(--brand);
   background: rgba(255, 255, 255, 0.72);
@@ -900,6 +957,160 @@ textarea:focus {
   background: white;
 }
 
+.worker-schedule-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.worker-availability-window {
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: white;
+  box-shadow: 0 14px 34px rgba(22, 33, 29, 0.08);
+}
+
+.worker-availability-window[hidden] {
+  display: none;
+}
+
+.worker-window-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.worker-window-heading h3,
+.worker-calendar-month h4 {
+  margin: 0;
+}
+
+.worker-days-grid {
+  display: grid;
+  gap: 10px;
+}
+
+.worker-day-row {
+  display: grid;
+  grid-template-columns: minmax(150px, 220px) repeat(2, minmax(130px, 180px)) minmax(170px, auto);
+  gap: 12px;
+  align-items: end;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: white;
+}
+
+.worker-day-toggle {
+  justify-self: start;
+  align-self: center;
+  min-height: 48px;
+  width: fit-content;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-soft);
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.worker-day-copy-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  justify-content: flex-start;
+}
+
+.worker-day-copy-actions .button {
+  min-height: 42px;
+  padding: 8px 12px;
+}
+
+.worker-day-copy-actions .button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.worker-days-grid.paste-ready .worker-paste-day:not(:disabled),
+.worker-days-grid.copy-ready .worker-copy-day {
+  color: #ffffff;
+  background: var(--brand);
+  box-shadow: 0 8px 18px rgba(8, 113, 95, 0.18);
+}
+
+.worker-days-grid.paste-ready .worker-copy-day,
+.worker-days-grid.copy-ready .worker-paste-day {
+  color: var(--brand-dark);
+  background: white;
+  box-shadow: none;
+}
+
+.worker-days-off-calendar {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 14px;
+}
+
+.worker-calendar-month {
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: white;
+}
+
+.calendar-weekdays,
+.calendar-days {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.calendar-weekdays span {
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 800;
+  text-align: center;
+}
+
+.calendar-day,
+.calendar-empty {
+  display: grid;
+  min-height: 38px;
+  place-items: center;
+}
+
+.calendar-day {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-soft);
+  color: var(--ink);
+  font: inherit;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.calendar-day:hover {
+  border-color: var(--brand);
+  color: var(--brand-dark);
+}
+
+.calendar-day.day-off {
+  border-color: #a82020;
+  background: #a82020;
+  color: #ffffff;
+}
+
+.calendar-day:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
 .admin-view-buttons {
   display: flex;
   flex-wrap: wrap;
@@ -927,6 +1138,8 @@ textarea:focus {
 .admin-edit-panel,
 .return-location-panel,
 .receipt-panel,
+.inspection-panel,
+.complete-panel,
 .photo-panel {
   display: grid;
   gap: 14px;
@@ -940,8 +1153,64 @@ textarea:focus {
 .admin-edit-panel[hidden],
 .return-location-panel[hidden],
 .receipt-panel[hidden],
+.inspection-panel[hidden],
+.complete-panel[hidden],
 .photo-panel[hidden] {
   display: none;
+}
+
+.guided-step {
+  display: grid;
+  gap: 8px;
+  margin-top: 16px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: white;
+}
+
+.guided-step h4 {
+  margin: 0;
+}
+
+.workflow-step-note {
+  align-self: center;
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.duplicate-photo-warning {
+  color: #a33b20;
+  font-weight: 700;
+}
+
+.total-edit-panel {
+  display: grid;
+  gap: 12px;
+  margin-top: 12px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: white;
+}
+
+.total-edit-panel[hidden] {
+  display: none;
+}
+
+.trouble-code-output,
+.inspection-summary {
+  display: grid;
+  gap: 8px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: white;
+}
+
+.trouble-code-output p,
+.inspection-summary p {
+  margin: 0;
 }
 
 .admin-button-row {
@@ -957,3 +1226,205 @@ textarea:focus {
   gap: 12px;
 }
 
+.photo-proof-section {
+  display: grid;
+  gap: 12px;
+  margin-top: 18px;
+}
+
+.photo-proof-sections {
+  display: grid;
+  gap: 18px;
+  margin-top: 18px;
+}
+
+.photo-proof-section h3 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.photo-proof-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 12px;
+}
+
+.photo-proof-card {
+  display: grid;
+  gap: 8px;
+  color: inherit;
+  text-decoration: none;
+}
+
+.photo-proof-card img {
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  object-fit: cover;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-soft);
+}
+
+.photo-proof-card span {
+  font-size: 0.85rem;
+  text-transform: capitalize;
+  color: var(--muted);
+}
+
+.photo-proof-missing {
+  min-height: 120px;
+  align-content: center;
+  padding: 14px;
+  border: 1px dashed var(--line);
+  border-radius: 8px;
+  background: var(--surface-soft);
+}
+
+.photo-proof-missing p {
+  margin: 0;
+  color: var(--muted);
+}
+
+.review-panel {
+  display: grid;
+  gap: 14px;
+  margin-top: 18px;
+  padding: 18px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fbfcfb;
+}
+
+.review-panel h3 {
+  margin: 0;
+}
+
+.rating-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.rating-options label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: white;
+  font-weight: 700;
+}
+
+.rating-options span {
+  white-space: nowrap;
+}
+
+.applicant-status-control {
+  min-width: min(100%, 220px);
+}
+
+.applicant-status-control select {
+  min-height: 42px;
+}
+
+.worker-assignment-panel,
+.assigned-worker-card {
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1fr) minmax(180px, 260px);
+  gap: 14px;
+  align-items: center;
+  margin-top: 16px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: white;
+}
+
+.assigned-worker-card {
+  grid-template-columns: 72px minmax(0, 1fr);
+}
+
+.worker-assignment-panel h4,
+.assigned-worker-card h3 {
+  margin: 0;
+}
+
+.worker-avatar,
+.worker-profile-photo {
+  width: 72px;
+  height: 72px;
+  object-fit: cover;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  background: var(--surface-soft);
+}
+
+.worker-avatar-placeholder,
+.worker-profile-photo-placeholder {
+  display: grid;
+  place-items: center;
+  color: var(--muted);
+  font-size: 0.75rem;
+  font-weight: 800;
+  text-align: center;
+}
+
+.worker-select-label {
+  min-width: 0;
+}
+
+.worker-profile-form input[type="file"]::file-selector-button,
+.worker-profile-card input[type="file"]::file-selector-button {
+  min-height: 38px;
+  margin-right: 10px;
+  padding: 8px 14px;
+  border: 1px solid var(--brand);
+  border-radius: 8px;
+  color: #ffffff;
+  background: var(--brand);
+  font: inherit;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.worker-profile-preview {
+  display: flex;
+  align-items: center;
+  min-height: 82px;
+}
+
+.worker-profile-card {
+  cursor: pointer;
+}
+
+.worker-profile-card.active-worker-profile {
+  border-color: var(--brand);
+  box-shadow: 0 10px 26px rgba(8, 113, 95, 0.12);
+}
+
+.worker-job-card + h3,
+#worker-job-list h3 {
+  margin: 14px 0 0;
+}
+
+@media (max-width: 900px) {
+  .worker-days-off-calendar {
+    grid-template-columns: 1fr;
+  }
+
+  .worker-assignment-panel {
+    grid-template-columns: 72px minmax(0, 1fr);
+  }
+
+  .worker-select-label {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 640px) {
+  .worker-schedule-actions,
+  .worker-day-row {
+    grid-template-columns: 1fr;
+  }
+}
