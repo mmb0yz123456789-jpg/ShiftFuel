@@ -1739,10 +1739,15 @@ form.addEventListener("submit", async (event) => {
   // Open the payment modal — Stripe flow runs there
   const payload = getBookingPayload();
   const estimatedDisplay = document.querySelector('#estimated-total')?.textContent || '$0.00';
-  openPaymentModal(estimatedDisplay);
-
   // Store payload so the modal submit can use it
-  paymentModal._pendingPayload = payload;
+  if (paymentModal) {
+    paymentModal._pendingPayload = payload;
+    openPaymentModal(estimatedDisplay);
+  } else {
+    // Fallback: modal not found, save booking without payment
+    console.error('Payment modal not found in DOM');
+    statusMessage.textContent = 'Payment modal failed to load. Please hard-refresh the page (Ctrl+Shift+R).';
+  }
 });
 
 async function saveBooking(payload) {
