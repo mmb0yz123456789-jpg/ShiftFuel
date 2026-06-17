@@ -221,6 +221,46 @@ h3 {
   font-size: 0.9rem;
 }
 
+.resume-upload-control {
+  border: 1.5px solid var(--brand);
+  border-radius: 10px;
+  padding: 16px 18px;
+  gap: 12px;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.resume-upload-control:hover,
+.resume-upload-control:focus-within {
+  background: rgba(8, 113, 95, 0.04);
+  border-color: var(--brand-dark);
+}
+
+.resume-upload-control.drag-over {
+  background: rgba(8, 113, 95, 0.08);
+  border-color: var(--brand-dark);
+  border-style: dashed;
+}
+
+.resume-upload-control .selected-file-name {
+  color: var(--brand-dark);
+  font-weight: 600;
+  font-size: 0.9rem;
+  word-break: break-all;
+}
+
+.resume-upload-control .selected-file-name:empty::before,
+.resume-upload-control .selected-file-name[data-empty]::before {
+  content: 'No file chosen';
+  color: var(--muted);
+  font-weight: 400;
+}
+
+.resume-drop-hint {
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
 .button.secondary {
   color: var(--brand);
   background: rgba(255, 255, 255, 0.72);

@@ -467,9 +467,12 @@
             <span>Experience or notes</span>
             <textarea name="applicantNotes" rows="3" placeholder="Driving, customer service, car wash, or fuel service experience"></textarea>
           </label>
-          <label>
+          <label class="file-button-control resume-upload-control" id="resume-drop-zone">
             <span>Resume <span class="optional-mark">Optional</span></span>
-            <input type="file" name="applicantResume" accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document">
+            <input type="file" name="applicantResume" id="applicant-resume-input" accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document">
+            <span class="button primary file-button-text" aria-hidden="true">Upload Resume</span>
+            <span class="selected-file-name" id="resume-file-name">No file chosen</span>
+            <span class="resume-drop-hint" aria-hidden="true">or drag and drop here</span>
           </label>
           <button class="button primary" type="submit">Submit application</button>
           <p id="applicant-status" class="form-status" role="status"></p>

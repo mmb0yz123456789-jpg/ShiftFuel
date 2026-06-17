@@ -1761,3 +1761,48 @@ applicantForm?.addEventListener("submit", async (event) => {
 
 updateServiceControls();
 refreshBookedReturnSlots();
+
+// Resume upload control — filename display + drag-and-drop
+(function () {
+  const dropZone = document.getElementById('resume-drop-zone');
+  const fileInput = document.getElementById('applicant-resume-input');
+  const fileNameEl = document.getElementById('resume-file-name');
+  if (!dropZone || !fileInput || !fileNameEl) return;
+
+  function showFileName(file) {
+    fileNameEl.textContent = file ? file.name : 'No file chosen';
+    fileNameEl.removeAttribute('data-empty');
+  }
+
+  fileInput.addEventListener('change', () => {
+    showFileName(fileInput.files?.[0] || null);
+  });
+
+  dropZone.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    dropZone.classList.add('drag-over');
+  });
+
+  dropZone.addEventListener('dragleave', (e) => {
+    if (!dropZone.contains(e.relatedTarget)) {
+      dropZone.classList.remove('drag-over');
+    }
+  });
+
+  dropZone.addEventListener('drop', (e) => {
+    e.preventDefault();
+    dropZone.classList.remove('drag-over');
+    const file = e.dataTransfer?.files?.[0];
+    if (!file) return;
+    const accepted = ['.pdf', '.doc', '.docx'];
+    const ext = '.' + file.name.split('.').pop().toLowerCase();
+    if (!accepted.includes(ext)) {
+      fileNameEl.textContent = 'Please upload a PDF or Word document.';
+      return;
+    }
+    const dt = new DataTransfer();
+    dt.items.add(file);
+    fileInput.files = dt.files;
+    showFileName(file);
+  });
+}());
