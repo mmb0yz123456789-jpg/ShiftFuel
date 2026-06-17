@@ -134,6 +134,28 @@
       <section class="section admin-section" data-page-section="workers" hidden>
         <div class="admin-toolbar">
           <div>
+            <p class="eyebrow">Team</p>
+            <h2>Worker profiles</h2>
+          </div>
+        </div>
+        <div class="admin-edit-panel worker-profile-search-panel">
+          <label>Find active worker
+            <select id="worker-profile-select-active">
+              <option value="">Select active worker</option>
+            </select>
+          </label>
+          <label>Find inactive worker
+            <select id="worker-profile-select-inactive">
+              <option value="">Select inactive worker</option>
+            </select>
+          </label>
+        </div>
+        <div id="worker-profile-list" class="request-list"></div>
+      </section>
+
+      <section class="section admin-section" data-page-section="workers" hidden>
+        <div class="admin-toolbar">
+          <div>
             <p class="eyebrow">Schedule</p>
             <h2>Worker availability</h2>
           </div>
@@ -177,28 +199,6 @@
           </div>
           <p id="worker-schedule-status" class="field-help"></p>
         </form>
-      </section>
-
-      <section class="section admin-section" data-page-section="workers" hidden>
-        <div class="admin-toolbar">
-          <div>
-            <p class="eyebrow">Team</p>
-            <h2>Worker profiles</h2>
-          </div>
-        </div>
-        <div class="admin-edit-panel worker-profile-search-panel">
-          <label>Find active worker
-            <select id="worker-profile-select-active">
-              <option value="">Select active worker</option>
-            </select>
-          </label>
-          <label>Find inactive worker
-            <select id="worker-profile-select-inactive">
-              <option value="">Select inactive worker</option>
-            </select>
-          </label>
-        </div>
-        <div id="worker-profile-list" class="request-list"></div>
       </section>
 
     </main>
