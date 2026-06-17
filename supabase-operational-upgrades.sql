@@ -23,6 +23,9 @@ create table if not exists employees (
   active boolean not null default true,
   home_location text,
   photo_url text,
+  photo_zoom numeric(4, 2) not null default 1,
+  photo_position_x numeric(6, 2) not null default 0,
+  photo_position_y numeric(6, 2) not null default 0,
   started_at date,
   worker_password_hash text,
   worker_password_salt text,
@@ -34,6 +37,9 @@ create table if not exists employees (
 alter table employees
   add column if not exists employee_code text,
   add column if not exists photo_url text,
+  add column if not exists photo_zoom numeric(4, 2) not null default 1,
+  add column if not exists photo_position_x numeric(6, 2) not null default 0,
+  add column if not exists photo_position_y numeric(6, 2) not null default 0,
   add column if not exists started_at date,
   add column if not exists worker_password_hash text,
   add column if not exists worker_password_salt text,
@@ -56,7 +62,8 @@ alter table service_requests
   add column if not exists assigned_employee_id uuid references employees(id),
   add column if not exists assigned_worker_name text,
   add column if not exists assigned_worker_phone text,
-  add column if not exists assigned_worker_photo_url text;
+  add column if not exists assigned_worker_photo_url text,
+  add column if not exists assigned_worker_photo_zoom numeric(4, 2) not null default 1;
 
 insert into employees (employee_code, full_name, active, home_location)
 select 'EMP-MARK01', 'Mark Urban', true, 'ChristianaCare - 4755 Ogletown Stanton Rd, Newark, DE 19718'
