@@ -1208,7 +1208,8 @@ function renderWorkerReceiptPanel(request, mode = 'all') {
 }
 
 function renderWorkerReturnLocationPanel(request) {
-  const returnLocation = request.return_parking_location || '';
+  const customerParking = [request.parking_location, request.parking_spot ? `spot ${request.parking_spot}` : ''].filter(Boolean).join(', ');
+  const returnLocation = request.return_parking_location || customerParking;
 
   return `
     <div class="return-location-panel" data-return-for="${escapeHtml(request.id)}">
@@ -1321,7 +1322,7 @@ async function loadWorkerJobs() {
 
   const { data, error } = await workerDb
     .from('service_requests')
-    .select('id,customer_name,customer_phone,customer_email,vehicle_year,vehicle_make,vehicle_model,vehicle_color,license_plate,service_type,service_label,hospital,address_street,address_apt,address_city,address_state,address_zip,parking_location,parking_spot,parking_map_url,key_handoff_details,service_date,desired_return_time,status,assigned_employee_id,fuel_type,wash_package_label,estimated_fuel_range,quick_inspection,notes,return_parking_location,return_parking_spot,return_parking_map_url')
+    .select('id,customer_name,customer_phone,customer_email,vehicle_year,vehicle_make,vehicle_model,vehicle_color,license_plate,service_type,service_label,hospital,address_street,address_apt,address_city,address_state,address_zip,parking_location,parking_spot,parking_map_url,key_handoff_details,service_date,desired_return_time,status,assigned_employee_id,fuel_type,wash_package_label,estimated_fuel_range,quick_inspection,notes,return_parking_location,return_parking_spot,return_parking_map_url,final_total,payment_intent_id,payment_status')
     .in('status', workerOpenStatuses)
     .order('service_date', { ascending: true });
 
@@ -1695,7 +1696,11 @@ async function completeWorkerRequest(button) {
 
   if (!request) return;
 
-  if (request.final_total == null) {
+  const receiptTotals = receiptTotalsFromNotes(request);
+  const hasReceipts = (serviceNeedsFuel(request) ? receiptTotals.fuel > 0 : true)
+    && (serviceNeedsWash(request) ? receiptTotals.wash > 0 : true);
+
+  if (!hasReceipts) {
     alert('Save the receipt total before completing this request.');
     return;
   }
@@ -1708,6 +1713,46 @@ async function completeWorkerRequest(button) {
   if (request.quick_inspection && request.status !== 'inspection_recorded') {
     alert('Complete the quick inspection before completing this request.');
     return;
+  }
+
+  button.disabled = true;
+  button.textContent = 'Completing...';
+
+  // Compute the correct final total from saved receipts
+  const finalTotal = finalTotalFromSavedReceipts(request, receiptTotals);
+
+  // If final_total not yet saved (e.g. receipts saved but return location skipped capture),
+  // write it now and attempt Stripe capture before marking complete
+  if (request.final_total == null || request.final_total !== finalTotal) {
+    const { error: updateErr } = await workerDb.rpc('worker_update_request', {
+      p_token: SESSION_WORKER_TOKEN,
+      p_request_id: id,
+      p_data: { final_total: finalTotal },
+    });
+    if (updateErr) {
+      console.error('Failed to save final total:', updateErr);
+      button.disabled = false;
+      button.textContent = 'Complete request';
+      alert('Could not save the final total. Please try again.');
+      return;
+    }
+
+    if (request.payment_intent_id && request.payment_status === 'authorized') {
+      try {
+        const amountCents = Math.round(finalTotal * 100);
+        const res = await fetch('/api/capture-payment', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ payment_intent_id: request.payment_intent_id, amount_cents: amountCents }),
+        });
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          console.error('Stripe capture failed:', data.error);
+        }
+      } catch (err) {
+        console.error('Stripe capture error:', err.message);
+      }
+    }
   }
 
   await updateWorkerJobStatus(id, 'complete');

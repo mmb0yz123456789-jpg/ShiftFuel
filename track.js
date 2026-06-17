@@ -10,7 +10,8 @@ const TRACK_LOCK_KEY = "shiftfuel_track_locked_until";
 const TRACK_ATTEMPT_KEY = "shiftfuel_track_failed_attempts";
 let verifiedTrackingContact = { phone: "", email: "" };
 
-const terminalStatuses = ["complete", "denied", "customer_canceled", "unable_to_complete"];
+const terminalStatuses = ["complete", "denied", "customer_canceled", "unable_to_complete", "auto_reversed"];
+const closedStatuses   = ["denied", "customer_canceled", "unable_to_complete", "auto_reversed"];
 
 function initPhotoLightbox() {
   if (document.getElementById('photo-lightbox')) return;
@@ -573,52 +574,115 @@ async function markReviewComplete(requestId) {
   }
 }
 
-function renderRequest(request, photos = [], review = null) {
+function renderRequestCard(request, photos = [], review = null) {
   const statusLabel = statusLabels[request.status] || request.status;
   const cancellationReason = cancellationReasonForDisplay(request);
+  const vehicle = [request.vehicle_year, request.vehicle_make, request.vehicle_model].filter(Boolean).join(' ');
+  const serviceDate = request.service_date
+    ? new Date(request.service_date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+    : '';
 
-  trackingResult.innerHTML = `
-    <article class="request-card" data-request-id="${escapeHtml(request.id)}">
-      <div class="request-card-header">
-        <div>
-          <p class="eyebrow">${escapeHtml(request.id)}</p>
-          <h2>${escapeHtml(statusLabel)}</h2>
-        </div>
-        <span class="status-pill">${escapeHtml(statusLabel)}</span>
-      </div>
+  return `
+    <article class="request-card track-request-card" data-request-id="${escapeHtml(request.id)}">
+      <details class="track-request-details">
+        <summary class="track-request-summary">
+          <div class="track-request-summary-main">
+            <span class="track-request-vehicle">${escapeHtml(vehicle)}</span>
+            <span class="track-request-meta">${serviceDate ? escapeHtml(serviceDate) + ' · ' : ''}${escapeHtml(request.service_label || request.service_type || '')}</span>
+          </div>
+          <span class="status-pill">${escapeHtml(statusLabel)}</span>
+        </summary>
 
-      <div class="request-details">
-        <p><strong>Customer:</strong> ${escapeHtml(request.customer_name)}</p>
-        <p><strong>Vehicle:</strong> ${escapeHtml(request.vehicle_year)} ${escapeHtml(request.vehicle_make)} ${escapeHtml(request.vehicle_model)}, ${escapeHtml(request.vehicle_color)}</p>
-        <p><strong>Service:</strong> ${escapeHtml(request.service_type)}</p>
-        <p><strong>Parking:</strong> ${escapeHtml(request.parking_location)}, spot ${escapeHtml(request.parking_spot)}</p>
-        ${request.return_parking_location ? `<p><strong>Vehicle return location:</strong> ${escapeHtml(request.return_parking_location)}</p>` : ""}
-        <p><strong>Estimated total:</strong> ${formatCurrency(request.estimated_total)}</p>
-        <p><strong>Final total:</strong> ${formatCurrency(request.final_total)}</p>
-        ${cancellationReason ? `<p><strong>Reason:</strong> ${escapeHtml(cancellationReason)}</p>` : ""}
-      </div>
-      ${renderAssignedWorker(request)}
-      ${serviceTimingFromNotes(request)}
-      ${serviceSummaryFromRequest(request)}
-      ${inspectionSummaryFromNotes(request)}
-      ${renderPhotos(request, photos)}
-      ${renderReviewPrompt(request, review)}
-      ${canCustomerCancel(request) ? `
-        <div class="tracking-actions">
-          <button class="button danger show-cancel-request" type="button">Cancel request</button>
+        <div class="track-request-body">
+          <div class="request-details">
+            <p><strong>Date:</strong> ${escapeHtml(serviceDate)}</p>
+            <p><strong>Vehicle:</strong> ${escapeHtml(vehicle)}${request.vehicle_color ? ', ' + escapeHtml(request.vehicle_color) : ''}</p>
+            <p><strong>Service:</strong> ${escapeHtml(request.service_label || request.service_type || '')}</p>
+            <p><strong>Parking:</strong> ${[request.parking_location, request.parking_spot ? 'spot ' + request.parking_spot : ''].filter(Boolean).map(escapeHtml).join(', ')}</p>
+            ${request.return_parking_location ? `<p><strong>Vehicle returned to:</strong> ${escapeHtml(request.return_parking_location)}</p>` : ''}
+            ${request.estimated_total != null ? `<p><strong>Estimated total:</strong> ${formatCurrency(request.estimated_total)}</p>` : ''}
+            ${request.final_total != null ? `<p><strong>Final total:</strong> ${formatCurrency(request.final_total)}</p>` : ''}
+            ${cancellationReason ? `<p><strong>Reason:</strong> ${escapeHtml(cancellationReason)}</p>` : ''}
+            ${request.status === 'auto_reversed' ? `<p class="track-auto-reversed-note">Your service was not completed on the scheduled date, so your payment has been reversed.</p>` : ''}
+          </div>
+          ${renderAssignedWorker(request)}
+          ${renderTimeline(request.status)}
+          ${serviceTimingFromNotes(request)}
+          ${inspectionSummaryFromNotes(request)}
+          ${renderPhotos(request, photos)}
+          ${renderReviewPrompt(request, review)}
+          ${canCustomerCancel(request) ? `
+            <div class="tracking-actions">
+              <button class="button danger show-cancel-request" type="button">Cancel request</button>
+            </div>
+            <div class="cancel-panel" hidden>
+              <label>
+                Reason for cancellation
+                <textarea class="customer-cancel-reason" rows="3" placeholder="Example: I no longer need service today."></textarea>
+              </label>
+              <button class="button danger confirm-cancel-request" data-request-id="${escapeHtml(request.id)}" type="button">
+                Confirm cancellation
+              </button>
+            </div>
+          ` : ''}
         </div>
-        <div class="cancel-panel" hidden>
-          <label>
-            Reason for cancellation
-            <textarea id="customer-cancel-reason" rows="3" placeholder="Example: I no longer need service today."></textarea>
-          </label>
-          <button class="button danger confirm-cancel-request" data-request-id="${escapeHtml(request.id)}" type="button">
-            Confirm cancellation
-          </button>
-        </div>
-      ` : ""}
+      </details>
     </article>
   `;
+}
+
+async function renderAllRequests(requests, phone, email) {
+  const now = Date.now();
+  const TWENTY_FOUR_HOURS = 24 * 60 * 60 * 1000;
+
+  const inProgress = requests.filter(r => !terminalStatuses.includes(r.status));
+  const completed  = requests.filter(r => r.status === 'complete'
+    && (now - new Date(r.updated_at || r.created_at).getTime()) <= TWENTY_FOUR_HOURS);
+
+  let html = `<div class="track-sections">`;
+
+  // In Progress section
+  html += `
+    <details class="track-section" open>
+      <summary class="track-section-header">
+        Requests in progress
+        <span class="track-section-count">${inProgress.length}</span>
+      </summary>
+      <div class="track-section-body">
+  `;
+  if (inProgress.length === 0) {
+    html += `<p class="track-empty-msg">No requests in progress.</p>`;
+  } else {
+    for (const request of inProgress) {
+      const photos = await loadRequestPhotos(request.id, phone, email);
+      const review = await loadRequestReview(request.id, phone, email);
+      html += renderRequestCard(request, photos, review);
+    }
+  }
+  html += `</div></details>`;
+
+  // Completed section
+  html += `
+    <details class="track-section">
+      <summary class="track-section-header">
+        Completed requests
+        <span class="track-section-count">${completed.length}</span>
+      </summary>
+      <div class="track-section-body">
+  `;
+  if (completed.length === 0) {
+    html += `<p class="track-empty-msg">No completed requests available.</p>`;
+  } else {
+    for (const request of completed) {
+      const photos = await loadRequestPhotos(request.id, phone, email);
+      const review = await loadRequestReview(request.id, phone, email);
+      html += renderRequestCard(request, photos, review);
+    }
+  }
+  html += `</div></details>`;
+
+  html += `</div>`;
+  trackingResult.innerHTML = html;
 }
 
 trackForm.addEventListener("submit", async (event) => {
@@ -649,9 +713,9 @@ trackForm.addEventListener("submit", async (event) => {
     return;
   }
 
-  trackMessage.textContent = "Looking up request...";
+  trackMessage.textContent = "Looking up requests...";
 
-  let matchedRequest = null;
+  let matchedRequests = [];
   const rpcRequestId = id || null;
   const { data: rpcData, error: rpcError } = await shiftFuelDb
     .rpc("public_track_request", {
@@ -661,7 +725,7 @@ trackForm.addEventListener("submit", async (event) => {
     });
 
   if (!rpcError) {
-    matchedRequest = rpcData?.[0] || null;
+    matchedRequests = rpcData || [];
   } else {
     if (!isMissingRpcError(rpcError)) {
       console.warn("Track lookup blocked:", rpcError);
@@ -684,27 +748,20 @@ trackForm.addEventListener("submit", async (event) => {
 
     const { data, error } = await query;
 
-    if (error || !data || data.length === 0) {
+    if (error) {
       console.error("Tracking lookup error:", error);
       recordTrackFailedAttempt();
       return;
     }
 
-    if (id) {
-      matchedRequest = data.find((request) => {
-        const phoneMatches = phone && cleanPhone(request.customer_phone) === phone;
-        const emailMatches = email && String(request.customer_email || "").toLowerCase() === email;
-        return phoneMatches || emailMatches;
-      });
-    } else {
-      matchedRequest = data.find((request) => {
-        return cleanPhone(request.customer_phone) === phone
-          && String(request.customer_email || "").toLowerCase() === email;
-      });
-    }
+    matchedRequests = (data || []).filter((request) => {
+      const phoneMatches = phone && cleanPhone(request.customer_phone) === phone;
+      const emailMatches = email && String(request.customer_email || "").toLowerCase() === email;
+      return id ? (phoneMatches || emailMatches) : (phoneMatches && emailMatches);
+    });
   }
 
-  if (!matchedRequest) {
+  if (matchedRequests.length === 0) {
     recordTrackFailedAttempt();
     return;
   }
@@ -712,9 +769,7 @@ trackForm.addEventListener("submit", async (event) => {
   clearTrackAttempts();
   verifiedTrackingContact = { phone, email };
   trackMessage.textContent = "";
-  const photos = await loadRequestPhotos(matchedRequest.id, phone, email);
-  const review = await loadRequestReview(matchedRequest.id, phone, email);
-  renderRequest(matchedRequest, photos, review);
+  await renderAllRequests(matchedRequests, phone, email);
 });
 
 trackingResult.addEventListener("click", async (event) => {
@@ -808,8 +863,9 @@ trackingResult.addEventListener("click", async (event) => {
   }
 
   if (showCancelButton) {
-    const panel = trackingResult.querySelector(".cancel-panel");
-    const reasonInput = trackingResult.querySelector("#customer-cancel-reason");
+    const card = showCancelButton.closest(".track-request-card") || trackingResult;
+    const panel = card.querySelector(".cancel-panel");
+    const reasonInput = card.querySelector(".customer-cancel-reason");
 
     if (panel) {
       panel.hidden = !panel.hidden;
@@ -827,7 +883,8 @@ trackingResult.addEventListener("click", async (event) => {
   }
 
   const requestId = confirmCancelButton.dataset.requestId;
-  const reasonInput = trackingResult.querySelector("#customer-cancel-reason");
+  const card = confirmCancelButton.closest(".track-request-card") || trackingResult;
+  const reasonInput = card.querySelector(".customer-cancel-reason");
   const reason = reasonInput?.value.trim() || "";
 
   if (!reason) {
