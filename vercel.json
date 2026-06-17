@@ -1,8 +1,8 @@
 {
   "crons": [
     {
-      "path": "/api/void-lapsed-payments",
-      "schedule": "*/30 * * * *"
+      "path": "/api/auto-reverse-payments",
+      "schedule": "0 8 * * *"
     }
   ]
 }

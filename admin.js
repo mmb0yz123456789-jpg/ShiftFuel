@@ -96,8 +96,8 @@ let adminCroppedPreviewUrl = '';
 let adminCroppedPhotoBlob = null;
 let adminPhotoDeleted = false; // true when admin clicks "Delete photo"
 
-const terminalStatuses = ['complete', 'denied', 'customer_canceled', 'unable_to_complete'];
-const closedStatuses = ['denied', 'customer_canceled', 'unable_to_complete'];
+const terminalStatuses = ['complete', 'denied', 'customer_canceled', 'unable_to_complete', 'auto_reversed'];
+const closedStatuses = ['denied', 'customer_canceled', 'unable_to_complete', 'auto_reversed'];
 
 const statusLabels = {
   request_received: 'Request received',
@@ -128,6 +128,7 @@ const statusLabels = {
   denied: 'Denied',
   customer_canceled: 'Canceled by customer',
   unable_to_complete: 'Unable to complete',
+  auto_reversed: 'Missed — auto-reversed',
 };
 
 const applicantStatusLabels = {
@@ -160,6 +161,30 @@ function escapeHtml(value) {
 
 function money(value) {
   return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(Number(value || 0));
+}
+
+const PAYMENT_STATUS_LABELS = {
+  not_started:   'Not started',
+  authorized:    'Authorized (hold on card)',
+  captured:      'Captured (charged)',
+  voided:        'Voided (hold released)',
+  refunded:      'Refunded',
+  auto_reversed: 'Auto-reversed (missed service)',
+};
+
+function paymentStatusLabel(request) {
+  const label = PAYMENT_STATUS_LABELS[request.payment_status] || request.payment_status || 'Unknown';
+  const amount = request.payment_status === 'captured' && request.final_total != null
+    ? ` — ${money(request.final_total)}`
+    : request.payment_status === 'authorized' && request.estimated_total != null
+    ? ` — ${money(request.estimated_total)} estimated hold`
+    : '';
+  return `${label}${amount}`;
+}
+
+function formatTimestamp(iso) {
+  if (!iso) return '';
+  return new Date(iso).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' });
 }
 
 const fallbackPsiGuides = [
@@ -451,8 +476,10 @@ function requestCardDetails(request) {
       ${hasPayment ? `<p><strong>Estimated total:</strong> ${money(request.estimated_total)} | <strong>Final total:</strong> ${request.final_total == null ? 'Not recorded' : money(request.final_total)}</p>` : ''}
       ${(receiptTotals.fuel || receiptTotals.wash) ? `<p><strong>Receipt totals:</strong> Fuel ${money(receiptTotals.fuel)} | Car wash ${money(receiptTotals.wash)}</p>` : ''}
       ${hasPayment ? `<p><strong>Fees:</strong> Fuel convenience ${money(fees.fuel)} | Wash convenience ${money(fees.wash)} | Inspection ${money(fees.inspection)}</p>` : ''}
-      ${request.payment_intent_id ? `<p><strong>Payment authorization:</strong> ${request.payment_status === 'captured' ? `Captured ${money(request.final_total)}` : `Authorized (${request.payment_status || 'authorized'})`}</p>` : ''}
-      ${(request.payment_intent_id && request.payment_status !== 'captured') ? `
+      ${request.payment_intent_id ? `<hr class="details-divider">
+      <p><strong>Payment status:</strong> ${paymentStatusLabel(request)}</p>
+      ${request.auto_reversed_at ? `<p><strong>Auto-reversed:</strong> ${formatTimestamp(request.auto_reversed_at)} — service was not completed on the scheduled date.</p>` : ''}` : ''}
+      ${(request.payment_intent_id && request.payment_status === 'authorized') ? `
         <div class="admin-button-row">
           <button class="button primary charge-customer-btn" data-request-id="${escapeHtml(request.id)}">
             Charge customer${request.final_total != null ? ` ${money(request.final_total)}` : ''}
