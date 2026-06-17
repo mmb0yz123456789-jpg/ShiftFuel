@@ -180,8 +180,12 @@
               <legend>Returning customer</legend>
               <div class="returning-customer-lookup">
                 <label>
-                  <span>Phone or email used before <span class="optional-mark">Optional</span></span>
-                  <input id="returning-customer-search" type="text" placeholder="(302) 555-0100 or email@example.com">
+                  <span>Phone used before <span class="optional-mark">Optional</span></span>
+                  <input id="returning-customer-search" type="tel" placeholder="(302) 555-0100">
+                </label>
+                <label>
+                  <span>Email used before <span class="optional-mark">Optional</span></span>
+                  <input id="returning-customer-email" type="email" placeholder="email@example.com">
                 </label>
                 <button id="returning-customer-button" class="button secondary" type="button">Find my info</button>
               </div>
@@ -445,6 +449,10 @@
             <span>Experience or notes</span>
             <textarea name="applicantNotes" rows="3" placeholder="Driving, customer service, car wash, or fuel service experience"></textarea>
           </label>
+          <label>
+            <span>Resume <span class="optional-mark">Optional</span></span>
+            <input type="file" name="applicantResume" accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document">
+          </label>
           <button class="button primary" type="submit">Submit application</button>
           <p id="applicant-status" class="form-status" role="status"></p>
         </form>
@@ -477,5 +485,7 @@
 	<!-- Keep storage.js for now until Supabase is working -->
     <script src="storage.js"></script>
     <script src="script.js"></script>
+    <script defer src="/_vercel/insights/script.js"></script>
+    <script defer src="/_vercel/speed-insights/script.js"></script>
   </body>
 </html>

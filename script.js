@@ -37,9 +37,11 @@ const washPricingDetails = document.querySelector("#wash-pricing-details");
 const addInspectionFromPricing = document.querySelector("#add-inspection-from-pricing");
 const hospitalSelect = form.querySelector('[name="hospital"]');
 const returningCustomerSearch = document.querySelector("#returning-customer-search");
+const returningCustomerEmail = document.querySelector("#returning-customer-email");
 const returningCustomerButton = document.querySelector("#returning-customer-button");
 const returningCustomerStatus = document.querySelector("#returning-customer-status");
 const returningCustomerResults = document.querySelector("#returning-customer-results");
+const RESUME_BUCKET = "applicant-resumes";
 
 year.textContent = new Date().getFullYear();
 
@@ -724,11 +726,11 @@ function renderReturningCustomerResults(requests) {
 
 async function lookupReturningCustomer() {
   const lookup = returningCustomerSearch?.value.trim() || "";
+  const lookupEmail = returningCustomerEmail?.value.trim().toLowerCase() || "";
   const phone = cleanLookupPhone(lookup);
-  const email = lookup.toLowerCase();
 
-  if (!lookup) {
-    returningCustomerStatus.textContent = "Enter the phone or email used on a previous booking.";
+  if (!phone || !lookupEmail) {
+    returningCustomerStatus.textContent = "Enter both the phone number and email used on a previous booking.";
     returningCustomerSearch?.focus();
     return;
   }
@@ -785,8 +787,8 @@ async function lookupReturningCustomer() {
     const seenVehicles = new Set();
     returningCustomerMatches = (data || []).filter((request) => {
       const matchesPhone = phone && cleanLookupPhone(request.customer_phone) === phone;
-      const matchesEmail = email && String(request.customer_email || "").toLowerCase() === email;
-      return matchesPhone || matchesEmail;
+      const matchesEmail = lookupEmail && String(request.customer_email || "").toLowerCase() === lookupEmail;
+      return matchesPhone && matchesEmail;
     }).filter((request) => {
       const key = [request.license_plate, request.vehicle_year, request.vehicle_make, request.vehicle_model].join("|").toLowerCase();
       if (seenVehicles.has(key)) return false;
@@ -919,6 +921,27 @@ function addScheduleToNotes(row, payload) {
   row.notes = row.notes ? `${row.notes}\n${scheduleNote}` : scheduleNote;
 }
 
+async function uploadApplicantResume(file, applicantName) {
+  if (!file) {
+    return { resumeUrl: null, resumeStoragePath: null };
+  }
+
+  const safeName = String(applicantName || "applicant").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+  const extension = file.name.split(".").pop() || "pdf";
+  const resumeStoragePath = `${Date.now()}-${safeName || "applicant"}.${extension}`;
+  const { error } = await window.ShiftFuelSupabase.storage
+    .from(RESUME_BUCKET)
+    .upload(resumeStoragePath, file, { upsert: false });
+
+  if (error) throw error;
+
+  const { data } = window.ShiftFuelSupabase.storage.from(RESUME_BUCKET).getPublicUrl(resumeStoragePath);
+  return {
+    resumeUrl: data?.publicUrl || null,
+    resumeStoragePath,
+  };
+}
+
 function getServiceRequestInsert(payload) {
   return {
     customer_name: payload.customer.name,
@@ -1014,6 +1037,12 @@ returningCustomerSearch?.addEventListener("keydown", (event) => {
     lookupReturningCustomer();
   }
 });
+returningCustomerEmail?.addEventListener("keydown", (event) => {
+  if (event.key === "Enter") {
+    event.preventDefault();
+    lookupReturningCustomer();
+  }
+});
 returningCustomerResults?.addEventListener("click", (event) => {
   const card = event.target.closest("[data-returning-index]");
   if (!card) return;
@@ -1081,6 +1110,7 @@ form.addEventListener("submit", async (event) => {
     form.reset();
     returningCustomerMatches = [];
     if (returningCustomerSearch) returningCustomerSearch.value = "";
+    if (returningCustomerEmail) returningCustomerEmail.value = "";
     if (returningCustomerStatus) returningCustomerStatus.textContent = "";
     if (returningCustomerResults) {
       returningCustomerResults.hidden = true;
@@ -1105,6 +1135,7 @@ applicantForm?.addEventListener("submit", async (event) => {
   const applicantName = String(data.get("applicantName") || "").trim();
   const applicantEmail = String(data.get("applicantEmail") || "").trim();
   const applicantPhone = String(data.get("applicantPhone") || "").trim();
+  const applicantResume = data.get("applicantResume");
 
   if (!applicantName || (!applicantEmail && !applicantPhone)) {
     if (applicantStatus) {
@@ -1118,15 +1149,30 @@ applicantForm?.addEventListener("submit", async (event) => {
   }
 
   try {
-    const { error } = await window.ShiftFuelSupabase
+    const resume = applicantResume instanceof File && applicantResume.size > 0
+      ? await uploadApplicantResume(applicantResume, applicantName)
+      : { resumeUrl: null, resumeStoragePath: null };
+    const applicantRow = {
+      name: applicantName,
+      email: applicantEmail || null,
+      phone: applicantPhone || null,
+      availability: String(data.get("applicantAvailability") || "").trim() || null,
+      notes: String(data.get("applicantNotes") || "").trim() || null,
+      resume_url: resume.resumeUrl,
+      resume_storage_path: resume.resumeStoragePath,
+    };
+
+    let { error } = await window.ShiftFuelSupabase
       .from("applicants")
-      .insert({
-        name: applicantName,
-        email: applicantEmail || null,
-        phone: applicantPhone || null,
-        availability: String(data.get("applicantAvailability") || "").trim() || null,
-        notes: String(data.get("applicantNotes") || "").trim() || null,
-      });
+      .insert(applicantRow);
+
+    if (error?.code === "PGRST204") {
+      delete applicantRow.resume_url;
+      delete applicantRow.resume_storage_path;
+      ({ error } = await window.ShiftFuelSupabase
+        .from("applicants")
+        .insert(applicantRow));
+    }
 
     if (error) throw error;
 
