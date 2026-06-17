@@ -30,28 +30,33 @@ function mountCardElement() {
   }
 }
 
-// Payment modal
-const paymentModal = document.querySelector('#payment-modal');
-const paymentModalAmount = document.querySelector('#payment-modal-amount');
-const paymentModalSubmit = document.querySelector('#payment-modal-submit');
-const paymentModalCancel = document.querySelector('#payment-modal-cancel');
+// Payment modal — lazy lookups so the dialog exists before we query it
+function getPaymentModal()       { return document.querySelector('#payment-modal'); }
+function getPaymentModalAmount() { return document.querySelector('#payment-modal-amount'); }
+function getPaymentModalSubmit() { return document.querySelector('#payment-modal-submit'); }
 
 function openPaymentModal(amountDisplay) {
-  if (!paymentModal) return;
-  if (paymentModalAmount) paymentModalAmount.textContent = amountDisplay;
+  const modal = getPaymentModal();
+  if (!modal) return;
+  const amountEl = getPaymentModalAmount();
+  if (amountEl) amountEl.textContent = amountDisplay;
   mountCardElement();
-  paymentModal.showModal();
+  modal.showModal();
 }
 
 function closePaymentModal() {
-  if (paymentModal) paymentModal.close();
+  const modal = getPaymentModal();
+  if (modal) modal.close();
   const display = document.querySelector('#card-errors');
   if (display) display.textContent = '';
 }
 
-paymentModalCancel?.addEventListener('click', closePaymentModal);
-paymentModal?.addEventListener('click', (e) => {
-  if (e.target === paymentModal) closePaymentModal();
+document.addEventListener('DOMContentLoaded', () => {
+  document.querySelector('#payment-modal-cancel')?.addEventListener('click', closePaymentModal);
+  document.querySelector('#payment-modal')?.addEventListener('click', (e) => {
+    if (e.target === document.querySelector('#payment-modal')) closePaymentModal();
+  });
+  document.querySelector('#payment-modal-submit')?.addEventListener('click', handlePaymentModalSubmit);
 });
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -1740,11 +1745,11 @@ form.addEventListener("submit", async (event) => {
   const payload = getBookingPayload();
   const estimatedDisplay = document.querySelector('#estimated-total')?.textContent || '$0.00';
   // Store payload so the modal submit can use it
-  if (paymentModal) {
-    paymentModal._pendingPayload = payload;
+  const modal = getPaymentModal();
+  if (modal) {
+    modal._pendingPayload = payload;
     openPaymentModal(estimatedDisplay);
   } else {
-    // Fallback: modal not found, save booking without payment
     console.error('Payment modal not found in DOM');
     statusMessage.textContent = 'Payment modal failed to load. Please hard-refresh the page (Ctrl+Shift+R).';
   }
@@ -1790,15 +1795,16 @@ async function saveBooking(payload) {
   }
 }
 
-paymentModalSubmit?.addEventListener('click', async () => {
-  const payload = paymentModal?._pendingPayload;
+async function handlePaymentModalSubmit() {
+  const modal = getPaymentModal();
+  const submitBtn = getPaymentModalSubmit();
+  const payload = modal?._pendingPayload;
   if (!payload) return;
 
   const cardErrors = document.querySelector('#card-errors');
   if (cardErrors) cardErrors.textContent = '';
 
-  paymentModalSubmit.disabled = true;
-  paymentModalSubmit.textContent = 'Authorizing…';
+  if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = 'Authorizing…'; }
 
   const estimatedCents = Math.max(Math.round((payload.payment.estimatedAmount || 0) * 100), 50);
 
@@ -1815,8 +1821,7 @@ paymentModalSubmit?.addEventListener('click', async () => {
     payload.payment.paymentIntentId = piData.payment_intent_id;
   } catch (err) {
     if (cardErrors) cardErrors.textContent = err.message;
-    paymentModalSubmit.disabled = false;
-    paymentModalSubmit.textContent = 'Authorize payment';
+    if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = 'Authorize payment'; }
     return;
   }
 
@@ -1826,18 +1831,16 @@ paymentModalSubmit?.addEventListener('click', async () => {
 
   if (stripeError) {
     if (cardErrors) cardErrors.textContent = stripeError.message;
-    paymentModalSubmit.disabled = false;
-    paymentModalSubmit.textContent = 'Authorize payment';
+    if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = 'Authorize payment'; }
     return;
   }
 
   payload.payment.paymentIntentId = paymentIntent.id;
   closePaymentModal();
-  paymentModalSubmit.disabled = false;
-  paymentModalSubmit.textContent = 'Authorize payment';
+  if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = 'Authorize payment'; }
 
   await saveBooking(payload);
-});
+}
 
 applicantForm?.addEventListener("submit", async (event) => {
   event.preventDefault();
