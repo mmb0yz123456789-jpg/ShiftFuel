@@ -64,13 +64,13 @@
     </section>
   </main>
 
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="supabase-client.js"></script>
   <script>
     const form = document.getElementById("admin-login-form");
     const usernameInput = document.getElementById("admin-username");
     const passwordInput = document.getElementById("admin-password");
     const message = document.getElementById("login-message");
-    const ADMIN_USERNAME_HASH = "bb231df866f8d13d03a2dcd0ae16c5307a3437bb095c3b0ad5c7324f4afe9130";
-    const ADMIN_PASSWORD_HASH = "5dcc42b2c69708ecddfaffac8db472d340a5385e5360c49ba89ab884d507642a";
     const LOCK_KEY = "shiftfuel_admin_locked_until";
     const ATTEMPT_KEY = "shiftfuel_admin_failed_attempts";
 
@@ -97,15 +97,26 @@
       const password = passwordInput.value;
       const username = usernameInput.value.trim().toLowerCase();
       const usernameHash = await sha256Hex(username);
-      const hash = await sha256Hex(password);
+      const passwordHash = await sha256Hex(password);
 
-      if (usernameHash === ADMIN_USERNAME_HASH && hash === ADMIN_PASSWORD_HASH) {
+      message.textContent = "Signing in...";
+
+      try {
+        const { data: token, error } = await window.ShiftFuelSupabase.rpc("admin_create_session", {
+          p_username_hash: usernameHash,
+          p_password_hash: passwordHash,
+        });
+
+        if (error) throw error;
+
         localStorage.removeItem(ATTEMPT_KEY);
         localStorage.removeItem(LOCK_KEY);
         sessionStorage.setItem("shiftfuel_admin", "true");
+        sessionStorage.setItem("shiftfuel_admin_token", token);
         sessionStorage.setItem("shiftfuel_admin_expires", String(Date.now() + 8 * 60 * 60 * 1000));
         window.location.href = "admin.html";
-      } else {
+      } catch {
+        message.textContent = "";
         const attempts = Number(localStorage.getItem(ATTEMPT_KEY) || 0) + 1;
         localStorage.setItem(ATTEMPT_KEY, String(attempts));
 
@@ -116,7 +127,7 @@
           return;
         }
 
-        message.textContent = `Incorrect password. ${5 - attempts} attempt${5 - attempts === 1 ? "" : "s"} left before a temporary lock.`;
+        message.textContent = `Incorrect username or password. ${5 - attempts} attempt${5 - attempts === 1 ? "" : "s"} left before a temporary lock.`;
       }
     });
   </script>

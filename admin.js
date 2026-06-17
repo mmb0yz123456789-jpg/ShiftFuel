@@ -83,6 +83,10 @@ let showAllTime = false;
 let lastSearchResults = [];
 let vehiclePsiGuides = [];
 
+function adminToken() {
+  return sessionStorage.getItem('shiftfuel_admin_token');
+}
+
 // Admin profile photo editor state (mirrors worker.js)
 let adminPhotoZoom = 1;
 let adminPhotoPosition = { x: 0, y: 0 };
@@ -1046,19 +1050,25 @@ async function ensureEmployee(fullName) {
     // Re-activate if they were accidentally deactivated.
     if (!existing.active) {
       console.warn(`ensureEmployee: "${fullName}" (${existing.id}) was inactive — re-activating.`);
-      await db.from('employees').update({ active: true, profile_updated_at: new Date().toISOString() }).eq('id', existing.id);
+      const { error } = await db.rpc('admin_update_employee', {
+        p_token: adminToken(),
+        p_employee_id: existing.id,
+        p_data: { active: true, profile_updated_at: new Date().toISOString() },
+      });
+      if (error) throw error;
     }
     return;
   }
 
-  const { error: insertError } = await db
-    .from('employees')
-    .insert({
+  const { error: insertError } = await db.rpc('admin_insert_employee', {
+    p_token: adminToken(),
+    p_data: {
       employee_code: employeeCode,
       full_name: fullName,
       active: true,
       home_location: DEFAULT_WORK_LOCATION,
-    });
+    },
+  });
 
   if (insertError) throw insertError;
 }
@@ -1613,23 +1623,19 @@ async function saveAdminWorkerProfile(button) {
     Object.assign(updates, await passwordFields(password));
   }
 
-  const { data, error } = await db
-    .from('employees')
-    .update(updates)
-    .eq('id', employeeId)
-    .select('id,employee_code,full_name,phone,email,photo_url,original_photo_url,cropped_photo_url,photo_zoom,photo_position_x,photo_position_y,home_location,started_at,active')
-    .single();
+  const { data: rpcRows, error } = await db.rpc('admin_update_employee', {
+    p_token: adminToken(),
+    p_employee_id: employeeId,
+    p_data: updates,
+  });
 
   if (error) {
     console.warn(`saveAdminWorkerProfile: DB update failed for employee ${employeeId}:`, error);
     throw error;
   }
 
-  // Sync work_location in availability rows so the worker's schedule select stays current.
-  await db
-    .from('employee_availability')
-    .update({ work_location: data.home_location })
-    .eq('employee_id', employeeId);
+  // admin_update_employee also syncs employee_availability.work_location when home_location changes.
+  const data = (rpcRows || [])[0];
 
   // Propagate name/phone/photo to open service requests (non-fatal).
   const { error: srError } = await db
@@ -1668,10 +1674,11 @@ async function resetAdminWorkerPassword(button) {
 
   if (status) status.textContent = 'Resetting worker password...';
 
-  const { error } = await db
-    .from('employees')
-    .update(await passwordFields(password))
-    .eq('id', employeeId);
+  const { error } = await db.rpc('admin_update_employee', {
+    p_token: adminToken(),
+    p_employee_id: employeeId,
+    p_data: await passwordFields(password),
+  });
 
   if (error) throw error;
 
@@ -1688,10 +1695,11 @@ async function deactivateAdminWorkerProfile(button) {
   const confirmed = window.confirm(`Deactivate ${employee.full_name}? They will no longer appear in the worker schedule or assignment dropdowns. You can reactivate them at any time.`);
   if (!confirmed) return;
 
-  const { error } = await db
-    .from('employees')
-    .update({ active: false, profile_updated_at: new Date().toISOString() })
-    .eq('id', employeeId);
+  const { error } = await db.rpc('admin_update_employee', {
+    p_token: adminToken(),
+    p_employee_id: employeeId,
+    p_data: { active: false, profile_updated_at: new Date().toISOString() },
+  });
 
   if (error) throw error;
 
@@ -1716,10 +1724,11 @@ async function reactivateAdminWorkerProfile(button) {
   // Block reactivation if another active worker already has this phone.
   await validateUniqueWorkerPhone(employeeId, employee.phone || null);
 
-  const { error } = await db
-    .from('employees')
-    .update({ active: true, profile_updated_at: new Date().toISOString() })
-    .eq('id', employeeId);
+  const { error } = await db.rpc('admin_update_employee', {
+    p_token: adminToken(),
+    p_employee_id: employeeId,
+    p_data: { active: true, profile_updated_at: new Date().toISOString() },
+  });
 
   if (error) throw error;
 
@@ -1754,19 +1763,14 @@ async function permanentlyDeleteInactiveWorker(button) {
 
   if (status) status.textContent = 'Deleting worker...';
 
-  // 1. Clear live assignment references on service_requests (keep name/phone/photo text).
-  await db
-    .from('service_requests')
-    .update({ assigned_employee_id: null })
-    .eq('assigned_employee_id', employeeId);
+  // Clear DB records (service_requests assignment + availability + days_off + employee row).
+  const { error: deleteError } = await db.rpc('admin_delete_employee', {
+    p_token: adminToken(),
+    p_employee_id: employeeId,
+  });
+  if (deleteError) throw deleteError;
 
-  // 2. Delete employee_availability rows.
-  await db.from('employee_availability').delete().eq('employee_id', employeeId);
-
-  // 3. Delete employee_days_off rows.
-  await db.from('employee_days_off').delete().eq('employee_id', employeeId);
-
-  // 4. Attempt to delete storage files under service-photos/workers/{employeeId}/.
+  // Attempt to delete storage files under service-photos/workers/{employeeId}/.
   try {
     const { data: storageFiles } = await db.storage
       .from('service-photos')
@@ -1779,11 +1783,7 @@ async function permanentlyDeleteInactiveWorker(button) {
     console.warn('Could not remove worker storage files (non-fatal):', storageErr);
   }
 
-  // 5. Delete the employee row.
-  const { error } = await db.from('employees').delete().eq('id', employeeId);
-  if (error) throw error;
-
-  // 6. Remove from in-memory list and clear selection.
+  // Remove from in-memory list and clear selection.
   allEmployees = allEmployees.filter((e) => e.id !== employeeId);
   selectedScheduleEmployeeId = '';
   if (workerSelect) workerSelect.value = '';
@@ -2003,9 +2003,10 @@ async function hireApplicant(applicantId) {
   }
 
   if (employee) {
-    const { error } = await db
-      .from('employees')
-      .update({
+    const { error } = await db.rpc('admin_update_employee', {
+      p_token: adminToken(),
+      p_employee_id: employee.id,
+      p_data: {
         full_name: applicant.name,
         email: applicant.email || null,
         phone,
@@ -2013,32 +2014,31 @@ async function hireApplicant(applicantId) {
         home_location: DEFAULT_WORK_LOCATION,
         ...passwordUpdate,
         profile_updated_at: new Date().toISOString(),
-      })
-      .eq('id', employee.id);
-
+      },
+    });
     if (error) throw error;
   } else {
     const randomSuffix = Array.from(crypto.getRandomValues(new Uint8Array(3)), (value) => value.toString(16).padStart(2, '0')).join('').toUpperCase();
-    const employeeCode = `EMP-${randomSuffix}`;
-    const { error } = await db
-      .from('employees')
-      .insert({
-        employee_code: employeeCode,
+    const { error } = await db.rpc('admin_insert_employee', {
+      p_token: adminToken(),
+      p_data: {
+        employee_code: `EMP-${randomSuffix}`,
         full_name: applicant.name,
         email: applicant.email || null,
         phone,
         active: true,
         home_location: DEFAULT_WORK_LOCATION,
         ...passwordUpdate,
-      });
-
+      },
+    });
     if (error) throw error;
   }
 
-  const { error: statusError } = await db
-    .from('applicants')
-    .update({ status: 'hired' })
-    .eq('id', applicantId);
+  const { error: statusError } = await db.rpc('admin_update_applicant', {
+    p_token: adminToken(),
+    p_applicant_id: applicantId,
+    p_data: { status: 'hired' },
+  });
 
   if (statusError) throw statusError;
 
@@ -2065,10 +2065,11 @@ applicantList?.addEventListener('change', async (event) => {
     return;
   }
 
-  const { error } = await db
-    .from('applicants')
-    .update({ status: select.value })
-    .eq('id', select.dataset.id);
+  const { error } = await db.rpc('admin_update_applicant', {
+    p_token: adminToken(),
+    p_applicant_id: select.dataset.id,
+    p_data: { status: select.value },
+  });
 
   if (error) {
     console.error('Applicant status update failed:', error);
@@ -3483,57 +3484,47 @@ async function upsertWorker(schedule) {
 
   if (existing?.length) {
     const employeeId = existing[0].id;
-    const { error } = await db
-      .from('employees')
-      .update({ active: true, home_location: schedule.workerLocation })
-      .eq('id', employeeId);
-
+    const { error } = await db.rpc('admin_update_employee', {
+      p_token: adminToken(),
+      p_employee_id: employeeId,
+      p_data: { active: true, home_location: schedule.workerLocation },
+    });
     if (error) throw error;
     return employeeId;
   } else {
-    const { data, error } = await db
-      .from('employees')
-      .insert({
+    const codePrefix = schedule.workerName.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6) || 'WORKER';
+    const { data, error } = await db.rpc('admin_insert_employee', {
+      p_token: adminToken(),
+      p_data: {
+        employee_code: `EMP-${codePrefix}`,
         full_name: schedule.workerName,
         active: true,
         home_location: schedule.workerLocation,
-      })
-      .select('id')
-      .single();
-
+      },
+    });
     if (error) throw error;
-    return data.id;
+    return (data || [])[0]?.id;
   }
 }
 
 async function saveWorkerAvailabilityToSupabase(schedule) {
   const employeeId = schedule.employeeId || await upsertWorker(schedule);
 
-  const { error: deleteAvailabilityError } = await db.from('employee_availability').delete().eq('employee_id', employeeId);
-  if (deleteAvailabilityError) throw deleteAvailabilityError;
+  const { error } = await db.rpc('admin_save_availability', {
+    p_token: adminToken(),
+    p_employee_id: employeeId,
+    p_workdays: schedule.workdays.map((day) => ({
+      day_of_week: day.dayOfWeek,
+      starts_at: day.startsAt,
+      ends_at: day.endsAt,
+    })),
+    p_location: schedule.workerLocation,
+  });
+  if (error) throw error;
 
-  const availabilityRows = schedule.workdays.map((workday) => ({
-    employee_id: employeeId,
-    day_of_week: workday.dayOfWeek,
-    starts_at: workday.startsAt,
-    ends_at: workday.endsAt,
-    work_location: schedule.workerLocation,
-  }));
-
-  if (availabilityRows.length) {
-    const { error: availabilityError } = await db.from('employee_availability').insert(availabilityRows);
-    if (availabilityError) throw availabilityError;
-  }
-
-  const { data: updatedEmployee, error: employeeError } = await db
-    .from('employees')
-    .update({ home_location: schedule.workerLocation, profile_updated_at: new Date().toISOString() })
-    .eq('id', employeeId)
-    .select('id,employee_code,full_name,phone,email,photo_url,home_location,started_at,active')
-    .single();
-
-  if (employeeError) throw employeeError;
-  allEmployees = allEmployees.map((employee) => employee.id === employeeId ? updatedEmployee : employee);
+  allEmployees = allEmployees.map((e) => e.id === employeeId
+    ? { ...e, home_location: schedule.workerLocation }
+    : e);
   renderWorkerSelect();
   renderWorkerProfiles();
 }
@@ -3541,18 +3532,12 @@ async function saveWorkerAvailabilityToSupabase(schedule) {
 async function saveWorkerDaysOffToSupabase(schedule) {
   const employeeId = schedule.employeeId || await upsertWorker(schedule);
 
-  const { error: deleteDaysOffError } = await db.from('employee_days_off').delete().eq('employee_id', employeeId);
-  if (deleteDaysOffError) throw deleteDaysOffError;
-
-  const dayOffRows = schedule.daysOff.map((dayOff) => ({
-    employee_id: employeeId,
-    day_off: dayOff,
-  }));
-
-  if (dayOffRows.length) {
-    const { error: daysOffError } = await db.from('employee_days_off').insert(dayOffRows);
-    if (daysOffError) throw daysOffError;
-  }
+  const { error } = await db.rpc('admin_save_days_off', {
+    p_token: adminToken(),
+    p_employee_id: employeeId,
+    p_days_off: schedule.daysOff,
+  });
+  if (error) throw error;
 }
 
 openWorkdaysPanel?.addEventListener('click', () => {
