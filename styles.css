@@ -961,6 +961,123 @@ textarea:focus {
     url("https://images.unsplash.com/photo-1503376780353-7e6692767b70?auto=format&fit=crop&w=1800&q=80") center / cover;
 }
 
+/* ── Track Request: accordion sections ─────────────────────────── */
+.track-sections {
+  display: grid;
+  gap: 16px;
+  margin-top: 24px;
+}
+
+.track-section {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #fff;
+  overflow: hidden;
+}
+
+.track-section > summary {
+  list-style: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 16px 20px;
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 1rem;
+  color: var(--text);
+  user-select: none;
+}
+
+.track-section > summary::-webkit-details-marker { display: none; }
+
+.track-section > summary::after {
+  content: "▸";
+  font-size: 0.85em;
+  transition: transform 0.18s;
+  flex-shrink: 0;
+}
+
+.track-section[open] > summary::after {
+  transform: rotate(90deg);
+}
+
+.track-section-count {
+  background: var(--accent);
+  color: #fff;
+  font-size: 0.75rem;
+  font-weight: 700;
+  border-radius: 99px;
+  padding: 2px 9px;
+  margin-left: auto;
+}
+
+.track-section-body {
+  padding: 0 16px 16px;
+  display: grid;
+  gap: 12px;
+}
+
+.track-empty-msg {
+  color: var(--muted);
+  font-size: 0.9rem;
+  padding: 8px 4px;
+}
+
+/* ── Track Request: individual cards ────────────────────────────── */
+.track-request-card {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--surface, #fafafa);
+}
+
+.track-request-card > summary {
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.track-request-card > summary::-webkit-details-marker { display: none; }
+
+.track-request-summary-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.track-request-vehicle {
+  font-weight: 600;
+  font-size: 0.95rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.track-request-meta {
+  font-size: 0.82rem;
+  color: var(--muted);
+  margin-top: 2px;
+}
+
+.track-request-body {
+  padding: 12px 16px 16px;
+  border-top: 1px solid var(--line);
+}
+
+.track-auto-reversed-note {
+  background: #fff3cd;
+  border: 1px solid #ffc107;
+  border-radius: 6px;
+  padding: 10px 14px;
+  font-size: 0.88rem;
+  color: #7d5a00;
+  margin-bottom: 12px;
+}
+
 .portal-login-page {
   min-height: 100vh;
   background:
