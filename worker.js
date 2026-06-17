@@ -1261,10 +1261,10 @@ function renderWorkerInspectionPanel(request) {
         <label>Passenger rear PSI after
           <input class="inspection-pr-after" type="number" min="0" step="1" value="${escapeHtml(rearPsi)}" placeholder="35">
         </label>
-        <label>Trouble code
-          <input class="inspection-trouble-code" type="text" placeholder="P0304">
-        </label>
       </div>
+      <label>Trouble code
+        <input class="inspection-trouble-code" type="text" placeholder="P0304">
+      </label>
       <div class="trouble-code-output" aria-live="polite">
         <p class="field-help">Type a code to preview what the customer will see.</p>
       </div>

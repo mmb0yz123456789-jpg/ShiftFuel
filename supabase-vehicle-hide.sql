@@ -16,7 +16,10 @@ ALTER TABLE public.service_requests
 
 -- ── 2. Update lookup RPC to exclude hidden vehicles ──────────────────────────
 -- Adds AND NOT sr.vehicle_hidden to the WHERE clause.
--- Everything else is identical to the original.
+-- Must DROP first because PostgreSQL won't replace a function whose
+-- return type definition differs from the stored one.
+
+DROP FUNCTION IF EXISTS public.public_returning_customer_lookup(text, text);
 
 CREATE OR REPLACE FUNCTION public.public_returning_customer_lookup(
   p_phone text,

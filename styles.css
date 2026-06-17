@@ -677,18 +677,18 @@ label {
 
 .inspection-addon-details {
   position: absolute;
-  left: 0;
-  top: calc(100% + 8px);
+  left: calc(100% + 12px);
+  top: 50%;
+  transform: translateY(-50%) translateX(-4px);
   z-index: 5;
   visibility: hidden;
   opacity: 0;
-  width: min(100%, 340px);
-  padding: 16px;
+  width: 220px;
+  padding: 14px 16px;
   color: #ffffff;
   background: var(--brand-dark);
   border-radius: 8px;
   box-shadow: var(--shadow);
-  transform: translateY(-4px);
   transition: opacity 0.18s ease, transform 0.18s ease, visibility 0.18s ease;
 }
 
@@ -696,7 +696,7 @@ label {
 .inspection-addon-control:focus-within .inspection-addon-details {
   visibility: visible;
   opacity: 1;
-  transform: translateY(0);
+  transform: translateY(-50%) translateX(0);
 }
 
 .inspection-addon-details h4 {
@@ -797,6 +797,43 @@ textarea:focus {
 .payment-box dd {
   margin: 0;
   font-weight: 800;
+}
+
+#card-element-wrap {
+  display: grid;
+  gap: 6px;
+}
+
+.card-element-label {
+  display: grid;
+  gap: 6px;
+  font-weight: 600;
+  font-size: 0.9rem;
+  color: var(--text);
+}
+
+#card-element {
+  padding: 11px 14px;
+  border: 1.5px solid var(--line);
+  border-radius: 8px;
+  background: white;
+  transition: border-color 0.15s;
+}
+
+#card-element.StripeElement--focus {
+  border-color: var(--brand);
+  outline: none;
+}
+
+#card-element.StripeElement--invalid {
+  border-color: #c0392b;
+}
+
+.card-errors {
+  color: #c0392b;
+  font-size: 0.88rem;
+  min-height: 1.2em;
+  margin: 0;
 }
 
 .form-status {
