@@ -799,6 +799,55 @@ textarea:focus {
   font-weight: 800;
 }
 
+/* Payment modal */
+.payment-modal {
+  border: none;
+  border-radius: 12px;
+  padding: 0;
+  width: min(480px, 94vw);
+  box-shadow: 0 8px 40px rgba(0,0,0,0.22);
+  background: var(--surface, #fff);
+}
+
+.payment-modal::backdrop {
+  background: rgba(0, 0, 0, 0.5);
+}
+
+.payment-modal-inner {
+  padding: 32px 28px 28px;
+  display: grid;
+  gap: 16px;
+}
+
+.payment-modal-title {
+  margin: 0;
+  font-size: 1.3rem;
+  color: var(--text);
+}
+
+.payment-modal-desc {
+  margin: 0;
+  color: var(--text-muted, #555);
+  font-size: 0.93rem;
+  line-height: 1.5;
+}
+
+.payment-modal-amount {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.payment-modal-card-wrap {
+  display: grid;
+  gap: 6px;
+}
+
+.payment-modal-actions {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
 #card-element-wrap {
   display: grid;
   gap: 6px;

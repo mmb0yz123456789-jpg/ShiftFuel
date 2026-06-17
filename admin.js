@@ -453,9 +453,17 @@ function requestCardDetails(request) {
       ${hasPayment ? `<p><strong>Fees:</strong> Fuel convenience ${money(fees.fuel)} | Wash convenience ${money(fees.wash)} | Inspection ${money(fees.inspection)}</p>` : ''}
       ${request.payment_intent_id ? `<p><strong>Payment authorization:</strong> ${request.payment_status === 'captured' ? `Captured ${money(request.final_total)}` : `Authorized (${request.payment_status || 'authorized'})`}</p>` : ''}
       ${(request.payment_intent_id && request.payment_status !== 'captured') ? `
-        <button class="button primary charge-customer-btn" data-request-id="${escapeHtml(request.id)}" data-final-total="${escapeHtml(String(request.final_total ?? ''))}">
-          Charge customer${request.final_total != null ? ` ${money(request.final_total)}` : ''}
-        </button>` : ''}
+        <div class="admin-button-row">
+          <button class="button primary charge-customer-btn" data-request-id="${escapeHtml(request.id)}">
+            Charge customer${request.final_total != null ? ` ${money(request.final_total)}` : ''}
+          </button>
+        </div>` : ''}
+      ${(request.payment_intent_id && request.payment_status === 'captured') ? `
+        <div class="admin-button-row">
+          <button class="button refund-customer-btn" data-request-id="${escapeHtml(request.id)}">
+            Refund / Adjust
+          </button>
+        </div>` : ''}
     </div>
   `;
 }
@@ -2366,7 +2374,29 @@ async function saveServiceUnable(button) {
     .eq('id', id);
 
   if (error) throw error;
+  const nextStatus = nextStatusAfterServiceUnable(request, type);
+  if (closedStatuses.includes(nextStatus)) {
+    await voidPaymentHold(request);
+  }
   await loadRequests();
+}
+
+async function voidPaymentHold(request) {
+  if (!request?.payment_intent_id || request.payment_status !== 'authorized') return;
+  try {
+    await fetch('/api/cancel-payment', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ payment_intent_id: request.payment_intent_id }),
+    });
+    await db.rpc('admin_update_request', {
+      p_token: adminToken(),
+      p_request_id: request.id,
+      p_data: { payment_status: 'voided' },
+    });
+  } catch (err) {
+    console.error('Failed to void payment hold:', err.message);
+  }
 }
 
 async function saveDenyReason(button) {
@@ -2408,6 +2438,7 @@ async function saveDenyReason(button) {
   }
 
   if (error) throw error;
+  await voidPaymentHold(request);
   await loadRequests();
 }
 
@@ -2706,6 +2737,49 @@ async function chargeCustomer(button) {
   await loadRequests();
 }
 
+async function refundCustomer(button) {
+  const requestId = button.dataset.requestId;
+  const request = allRequests.find(r => r.id === requestId);
+  if (!request) return;
+
+  const input = prompt(
+    `Enter refund amount in dollars (leave blank to refund the full captured amount of ${money(request.final_total)}):`
+  );
+  if (input === null) return; // cancelled
+
+  const refundAmount = input.trim() === '' ? null : parseFloat(input.trim());
+  if (refundAmount !== null && (isNaN(refundAmount) || refundAmount <= 0)) {
+    alert('Please enter a valid dollar amount.');
+    return;
+  }
+
+  const displayAmount = refundAmount != null ? money(refundAmount) : `full amount (${money(request.final_total)})`;
+  const confirmed = confirm(`Refund ${displayAmount} to the customer? This cannot be undone.`);
+  if (!confirmed) return;
+
+  button.disabled = true;
+  button.textContent = 'Refunding…';
+
+  const body = { payment_intent_id: request.payment_intent_id };
+  if (refundAmount != null) body.amount_cents = Math.round(refundAmount * 100);
+
+  const res = await fetch('/api/refund-payment', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  const result = await res.json();
+  if (!res.ok) throw new Error(result.error || 'Refund failed');
+
+  await db.rpc('admin_update_request', {
+    p_token: adminToken(),
+    p_request_id: requestId,
+    p_data: { payment_status: 'refunded' },
+  });
+
+  await loadRequests();
+}
+
 requestList.addEventListener('click', async (event) => {
   const button = event.target.closest('button');
   if (!button) return;
@@ -2862,6 +2936,11 @@ requestList.addEventListener('click', async (event) => {
 
     if (button.classList.contains('charge-customer-btn')) {
       await chargeCustomer(button);
+      return;
+    }
+
+    if (button.classList.contains('refund-customer-btn')) {
+      await refundCustomer(button);
       return;
     }
   } catch (error) {

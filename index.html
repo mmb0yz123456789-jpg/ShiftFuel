@@ -412,12 +412,6 @@
                     <dd id="estimated-total">$0</dd>
                   </div>
                 </dl>
-                <div id="card-element-wrap">
-                  <label class="card-element-label">Card details
-                    <div id="card-element"></div>
-                  </label>
-                  <p id="card-errors" class="card-errors" role="alert"></p>
-                </div>
               </div>
             </fieldset>
 
@@ -515,5 +509,23 @@
     <script src="script.js"></script>
     <script defer src="/_vercel/insights/script.js"></script>
     <script defer src="/_vercel/speed-insights/script.js"></script>
+
+    <dialog id="payment-modal" class="payment-modal">
+      <div class="payment-modal-inner">
+        <h2 class="payment-modal-title">Authorize payment</h2>
+        <p class="payment-modal-desc">Your card will be authorized for the estimated amount. The final charge is adjusted after your service is complete.</p>
+        <p class="payment-modal-amount">Estimated: <strong id="payment-modal-amount">$0.00</strong></p>
+        <div class="payment-modal-card-wrap">
+          <label class="card-element-label">Card details
+            <div id="card-element"></div>
+          </label>
+          <p id="card-errors" class="card-errors" role="alert"></p>
+        </div>
+        <div class="payment-modal-actions">
+          <button id="payment-modal-submit" class="button primary" type="button">Authorize payment</button>
+          <button id="payment-modal-cancel" class="button" type="button">Cancel</button>
+        </div>
+      </div>
+    </dialog>
   </body>
 </html>

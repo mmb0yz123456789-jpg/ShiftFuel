@@ -1571,6 +1571,7 @@ async function saveWorkerFinalTotal(button) {
 async function saveWorkerReturnLocation(button) {
   const id = button.dataset.id;
   const panel = button.closest('.return-location-panel');
+  const request = allWorkerJobs.find((item) => item.id === id);
   const returnParkingLocation = panel.querySelector('.return-parking-location').value.trim();
 
   if (!returnParkingLocation) {
@@ -1590,6 +1591,25 @@ async function saveWorkerReturnLocation(button) {
   });
 
   if (error) throw error;
+
+  // Capture the Stripe hold at the final total now that the car is parked
+  if (request?.payment_intent_id && request?.payment_status === 'authorized' && request?.final_total != null) {
+    try {
+      const amountCents = Math.round(request.final_total * 100);
+      const res = await fetch('/api/capture-payment', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ payment_intent_id: request.payment_intent_id, amount_cents: amountCents }),
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        console.error('Stripe capture failed:', data.error);
+      }
+    } catch (err) {
+      console.error('Stripe capture error:', err.message);
+    }
+  }
+
   await loadWorkerJobs();
 }
 
