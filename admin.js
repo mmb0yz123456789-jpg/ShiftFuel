@@ -10,6 +10,7 @@ const showDenied = document.querySelector('#show-denied');
 const workerScheduleForm = document.querySelector('#worker-schedule-form');
 const workerScheduleStatus = document.querySelector('#worker-schedule-status');
 const workerSelect = document.querySelector('#worker-select');
+const workerLocation = document.querySelector('#worker-location');
 const workerDaysGrid = document.querySelector('#worker-days-grid');
 const workerDaysOffCalendar = document.querySelector('#worker-days-off-calendar');
 const workerDaysOffSummary = document.querySelector('#worker-days-off-summary');
@@ -100,6 +101,34 @@ function money(value) {
   return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(Number(value || 0));
 }
 
+function randomPassword(length = 12) {
+  const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#';
+  const values = new Uint32Array(length);
+  crypto.getRandomValues(values);
+  return Array.from(values, (value) => alphabet[value % alphabet.length]).join('');
+}
+
+function randomSalt() {
+  const values = new Uint8Array(16);
+  crypto.getRandomValues(values);
+  return Array.from(values, (value) => value.toString(16).padStart(2, '0')).join('');
+}
+
+async function sha256Hex(value) {
+  const bytes = new TextEncoder().encode(value);
+  const digest = await crypto.subtle.digest('SHA-256', bytes);
+  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('');
+}
+
+async function passwordFields(password) {
+  const salt = randomSalt();
+  return {
+    worker_password_salt: salt,
+    worker_password_hash: await sha256Hex(`${salt}:${password}`),
+    password_updated_at: new Date().toISOString(),
+  };
+}
+
 function formatDateTime(value) {
   if (!value) return '';
   return new Intl.DateTimeFormat('en-US', {
@@ -153,6 +182,34 @@ function receiptTotalsFromNotes(request) {
     fuel: latest ? Number(latest[1]) || 0 : 0,
     wash: latest ? Number(latest[2]) || 0 : 0,
   };
+}
+
+function serviceUnableMap(request) {
+  const notes = String(request.notes || '');
+  return {
+    fuel: /\[service_unable fuel\]/.test(notes),
+    wash: /\[service_unable wash\]/.test(notes),
+  };
+}
+
+function serviceUnable(request, type) {
+  return Boolean(serviceUnableMap(request)[type]);
+}
+
+function serviceDoneOrUnable(request, type) {
+  const receiptTotals = receiptTotalsFromNotes(request);
+  return serviceUnable(request, type) || Number(receiptTotals[type] || 0) > 0;
+}
+
+function nextStatusAfterServiceUnable(request, type) {
+  const fuelDone = type === 'fuel' || !serviceNeedsFuel(request) || serviceDoneOrUnable(request, 'fuel');
+  const washDone = type === 'wash' || !serviceNeedsWash(request) || serviceDoneOrUnable(request, 'wash');
+
+  if (fuelDone && washDone) {
+    return 'receipts_recorded';
+  }
+
+  return type === 'fuel' ? 'fuel_receipt_uploaded' : 'wash_receipt_uploaded';
 }
 
 function photoTimestampNote(stage, timestamp) {
@@ -249,6 +306,7 @@ function requestCardDetails(request) {
       ${request.return_parking_location ? `<p><strong>Return parking:</strong> ${escapeHtml(request.return_parking_location)}, spot ${escapeHtml(request.return_parking_spot)}</p>` : ''}
       <p><strong>Service date/time:</strong> ${escapeHtml(request.service_date || '')} ${escapeHtml(request.desired_return_time || '')}</p>
       <p><strong>Estimated total:</strong> ${money(request.estimated_total)} | <strong>Final total:</strong> ${request.final_total == null ? 'Not recorded' : money(request.final_total)}</p>
+      ${request.cancellation_reason ? `<p><strong>Reason:</strong> ${escapeHtml(request.cancellation_reason)}</p>` : ''}
       ${(receiptTotals.fuel || receiptTotals.wash) ? `<p><strong>Receipt totals:</strong> Fuel ${money(receiptTotals.fuel)} | Car wash ${money(receiptTotals.wash)}</p>` : ''}
       <p><strong>Fees used:</strong> Fuel convenience ${money(fees.fuel)} | Wash convenience ${money(fees.wash)} | Inspection ${money(fees.inspection)}</p>
       ${request.notes ? `<p><strong>Notes:</strong> ${escapeHtml(request.notes)}</p>` : ''}
@@ -362,22 +420,28 @@ function renderActions(request) {
     actions.push(stepInstruction('Upload the pickup photo set below.'));
     activePanel = renderPhotoPanel(request, 'pickup');
   } else if (request.status === 'vehicle_picked_up') {
-    if (serviceNeedsFuel(request)) {
+    if (serviceNeedsFuel(request) && !serviceDoneOrUnable(request, 'fuel')) {
       actions.push(primaryStatusButton(request, `Fuel - ${request.fuel_type || 'fuel type not listed'}`, 'fueling_complete'));
+      actions.push(serviceUnableButton(request, 'fuel'));
     }
-    if (serviceNeedsWash(request)) {
+    if (serviceNeedsWash(request) && !serviceDoneOrUnable(request, 'wash')) {
       actions.push(primaryStatusButton(request, `Car wash - ${request.wash_package_label || 'selected wash'}`, 'car_wash_complete'));
+      actions.push(serviceUnableButton(request, 'wash'));
     }
   } else if (request.status === 'fueling_complete') {
     actions.push(stepInstruction(`Upload the fuel receipt and enter the fuel total for ${request.fuel_type || 'the selected fuel type'}.`));
     activePanel = renderReceiptPanel(request, 'fuel');
+    actions.push(serviceUnableButton(request, 'fuel'));
   } else if (request.status === 'car_wash_complete') {
     actions.push(stepInstruction(`Upload the car wash receipt and enter the total for ${request.wash_package_label || 'the selected wash'}.`));
     activePanel = renderReceiptPanel(request, 'wash');
-  } else if (request.status === 'fuel_receipt_uploaded' && serviceNeedsWash(request)) {
+    actions.push(serviceUnableButton(request, 'wash'));
+  } else if (request.status === 'fuel_receipt_uploaded' && serviceNeedsWash(request) && !serviceDoneOrUnable(request, 'wash')) {
     actions.push(primaryStatusButton(request, `Car wash - ${request.wash_package_label || 'selected wash'}`, 'car_wash_complete'));
-  } else if (request.status === 'wash_receipt_uploaded' && serviceNeedsFuel(request)) {
+    actions.push(serviceUnableButton(request, 'wash'));
+  } else if (request.status === 'wash_receipt_uploaded' && serviceNeedsFuel(request) && !serviceDoneOrUnable(request, 'fuel')) {
     actions.push(primaryStatusButton(request, `Fuel - ${request.fuel_type || 'fuel type not listed'}`, 'fueling_complete'));
+    actions.push(serviceUnableButton(request, 'fuel'));
   } else if (request.status === 'receipts_recorded') {
     actions.push(primaryStatusButton(request, 'Returned', 'returned_location_pending'));
   } else if (request.status === 'returned_location_pending') {
@@ -407,8 +471,7 @@ function renderActions(request) {
   if (back) {
     actions.push(back);
   }
-  actions.push(`<button class="button danger update-status" data-id="${request.id}" data-status="unable_to_complete" type="button">Unable to complete</button>`);
-  actions.push(`<button class="button danger update-status" data-id="${request.id}" data-status="denied" type="button">Deny</button>`);
+  actions.push(`<button class="button danger show-deny-reason" data-id="${escapeHtml(request.id)}" type="button">Deny</button>`);
   actions.push(`<button class="button secondary edit-request" data-id="${request.id}" type="button">Edit</button>`);
 
   return `
@@ -418,7 +481,48 @@ function renderActions(request) {
       <div class="admin-button-row">${actions.join('')}</div>
     </div>
     ${activePanel}
+    ${renderDenyReasonPanel(request)}
+    ${renderServiceUnablePanel(request)}
     ${renderEditPanel(request)}
+  `;
+}
+
+function renderDenyReasonPanel(request) {
+  return `
+    <div class="deny-reason-panel" data-deny-for="${escapeHtml(request.id)}" hidden>
+      <h4>Reason for denial</h4>
+      <p class="field-help">Add why this request is being denied. This keeps the record clear for admin and tracking.</p>
+      <label>
+        Reason
+        <textarea class="deny-reason" rows="3" placeholder="Example: Outside service area, duplicate test request, unavailable time slot."></textarea>
+      </label>
+      <div class="admin-button-row">
+        <button class="button danger save-deny-reason" data-id="${escapeHtml(request.id)}" type="button">Deny request</button>
+        <button class="button secondary cancel-deny-reason" type="button">Keep request open</button>
+      </div>
+    </div>
+  `;
+}
+
+function serviceUnableButton(request, type) {
+  const label = type === 'fuel' ? 'Fuel unable' : 'Car wash unable';
+  return `<button class="button danger show-service-unable" data-id="${escapeHtml(request.id)}" data-service-type="${escapeHtml(type)}" type="button">${label}</button>`;
+}
+
+function renderServiceUnablePanel(request) {
+  return `
+    <div class="service-unable-panel" data-service-unable-for="${escapeHtml(request.id)}" hidden>
+      <h4>Reason service cannot be completed</h4>
+      <p class="field-help service-unable-label"></p>
+      <label>
+        Reason
+        <textarea class="service-unable-reason" rows="3" placeholder="Example: Car wash closed at this location, fuel pump unavailable, customer vehicle issue."></textarea>
+      </label>
+      <div class="admin-button-row">
+        <button class="button danger save-service-unable" data-id="${escapeHtml(request.id)}" type="button">Save reason</button>
+        <button class="button secondary cancel-service-unable" type="button">Keep service active</button>
+      </div>
+    </div>
   `;
 }
 
@@ -500,9 +604,9 @@ function renderReceiptPanel(request, mode = 'all') {
   const isWashMode = mode === 'wash';
   const receiptTotals = receiptTotalsFromNotes(request);
   const nextStatus = isFuelMode
-    ? serviceNeedsWash(request) && !receiptTotals.wash ? 'fuel_receipt_uploaded' : 'receipts_recorded'
+    ? serviceNeedsWash(request) && !serviceDoneOrUnable(request, 'wash') ? 'fuel_receipt_uploaded' : 'receipts_recorded'
     : isWashMode
-      ? serviceNeedsFuel(request) && !receiptTotals.fuel ? 'wash_receipt_uploaded' : 'receipts_recorded'
+      ? serviceNeedsFuel(request) && !serviceDoneOrUnable(request, 'fuel') ? 'wash_receipt_uploaded' : 'receipts_recorded'
       : 'receipts_recorded';
   const help = isFuelMode
     ? 'Upload the fuel receipt and enter the fuel total. The app will keep this total for final confirmation.'
@@ -530,18 +634,23 @@ function renderReceiptPanel(request, mode = 'all') {
 }
 
 function renderReturnLocationPanel(request) {
+  const returnParkingLocation = request.return_parking_location || request.parking_location || '';
+  const returnParkingSpot = request.return_parking_spot || request.parking_spot || '';
+  const returnParkingMapUrl = request.return_parking_map_url || request.parking_map_url || '';
+
   return `
     <div class="return-location-panel" data-return-for="${request.id}">
       <h4>Record return/drop-off location before drop-off photos</h4>
+      <p class="field-help">These fields start with the pickup location. Change them only if the vehicle was returned somewhere different.</p>
       <div class="field-grid">
         <label>Return parking lot / garage
-          <input class="return-parking-location" type="text" value="${escapeHtml(request.return_parking_location || '')}" placeholder="Garage B, Level 3">
+          <input class="return-parking-location" type="text" value="${escapeHtml(returnParkingLocation)}" placeholder="Garage B, Level 3">
         </label>
         <label>Return parking spot
-          <input class="return-parking-spot" type="text" value="${escapeHtml(request.return_parking_spot || '')}" placeholder="B3-142">
+          <input class="return-parking-spot" type="text" value="${escapeHtml(returnParkingSpot)}" placeholder="B3-142">
         </label>
         <label>Return Google Maps link
-          <input class="return-parking-map-url" type="url" value="${escapeHtml(request.return_parking_map_url || '')}" placeholder="Paste map link">
+          <input class="return-parking-map-url" type="url" value="${escapeHtml(returnParkingMapUrl)}" placeholder="Paste map link">
         </label>
       </div>
       <button class="button primary save-return-location" data-id="${request.id}" type="button">Save return location</button>
@@ -808,9 +917,13 @@ function renderWorkerProfiles() {
         <label>Profile photo
           <input class="admin-worker-photo" type="file" accept="image/*">
         </label>
+        <label>New portal password
+          <input class="admin-worker-password" type="text" placeholder="Leave blank unless resetting">
+        </label>
       </div>
       <div class="admin-button-row">
         <button class="button primary save-worker-profile" data-id="${escapeHtml(employee.id)}" type="button" ${String(employee.id).startsWith('local-') ? 'disabled' : ''}>Save worker profile</button>
+        <button class="button secondary reset-worker-password" data-id="${escapeHtml(employee.id)}" type="button" ${String(employee.id).startsWith('local-') ? 'disabled' : ''}>Reset password</button>
         <button class="button danger delete-worker-profile" data-id="${escapeHtml(employee.id)}" type="button" ${String(employee.id).startsWith('local-') ? 'disabled' : ''}>Delete worker</button>
       </div>
       <p class="field-help admin-worker-status">${String(employee.id).startsWith('local-') ? 'Run the Supabase worker upgrade before saving this worker.' : ''}</p>
@@ -920,6 +1033,45 @@ async function uploadAdminWorkerPhoto(employeeId, file) {
   return data?.publicUrl || path;
 }
 
+async function mergeEmployeeByPhoneIfNeeded(employeeId, phone) {
+  if (!phone) return employeeId;
+
+  const { data, error } = await db
+    .from('employees')
+    .select('id,employee_code,full_name,phone,email,photo_url,home_location,started_at,active')
+    .eq('phone', phone)
+    .neq('id', employeeId)
+    .limit(1);
+
+  if (error) throw error;
+
+  const existing = data?.[0];
+  if (!existing) return employeeId;
+
+  const confirmed = window.confirm(`That phone number already belongs to ${existing.full_name} (${existing.employee_code}). Move this worker profile into that existing employee ID?`);
+  if (!confirmed) {
+    throw new Error('Phone number already belongs to another worker.');
+  }
+
+  await db
+    .from('service_requests')
+    .update({
+      assigned_employee_id: existing.id,
+      assigned_worker_name: existing.full_name,
+      assigned_worker_phone: existing.phone || null,
+      assigned_worker_photo_url: existing.photo_url || null,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('assigned_employee_id', employeeId);
+
+  await db
+    .from('employees')
+    .update({ active: false, profile_updated_at: new Date().toISOString() })
+    .eq('id', employeeId);
+
+  return existing.id;
+}
+
 async function saveAdminWorkerProfile(button) {
   const card = button.closest('.worker-profile-card');
   const employeeId = button.dataset.id;
@@ -930,14 +1082,30 @@ async function saveAdminWorkerProfile(button) {
   if (status) status.textContent = 'Saving worker profile...';
 
   const photoUrl = file ? await uploadAdminWorkerPhoto(employeeId, file) : existingEmployee?.photo_url || null;
+  const phone = card?.querySelector('.admin-worker-phone')?.value.trim() || null;
+  const targetEmployeeId = await mergeEmployeeByPhoneIfNeeded(employeeId, phone);
+
+  if (targetEmployeeId !== employeeId) {
+    selectedScheduleEmployeeId = targetEmployeeId;
+    await loadEmployees();
+    await loadRequests();
+    if (status) status.textContent = 'Worker merged into existing employee ID.';
+    return;
+  }
+
   const updates = {
     full_name: card?.querySelector('.admin-worker-name')?.value.trim() || existingEmployee?.full_name || DEFAULT_WORKER_NAME,
-    phone: card?.querySelector('.admin-worker-phone')?.value.trim() || null,
+    phone,
     home_location: card?.querySelector('.admin-worker-location')?.value || existingEmployee?.home_location || DEFAULT_WORK_LOCATION,
     started_at: card?.querySelector('.admin-worker-started')?.value || null,
     photo_url: photoUrl,
     profile_updated_at: new Date().toISOString(),
   };
+  const password = card?.querySelector('.admin-worker-password')?.value.trim();
+
+  if (password) {
+    Object.assign(updates, await passwordFields(password));
+  }
 
   const { data, error } = await db
     .from('employees')
@@ -959,12 +1127,34 @@ async function saveAdminWorkerProfile(button) {
     .eq('assigned_employee_id', employeeId);
 
   allEmployees = allEmployees.map((employee) => employee.id === employeeId ? data : employee);
+  selectedScheduleEmployeeId = employeeId;
   if (workerLocation && employeeId === selectedScheduleEmployeeId) {
     workerLocation.value = data.home_location || DEFAULT_WORK_LOCATION;
   }
   renderWorkerSelect();
   renderWorkerProfiles();
   renderRequests();
+  if (status) status.textContent = 'Worker profile saved.';
+}
+
+async function resetAdminWorkerPassword(button) {
+  const card = button.closest('.worker-profile-card');
+  const employeeId = button.dataset.id;
+  const status = card?.querySelector('.admin-worker-status');
+  const passwordInput = card?.querySelector('.admin-worker-password');
+  const password = passwordInput?.value.trim() || randomPassword();
+
+  if (status) status.textContent = 'Resetting worker password...';
+
+  const { error } = await db
+    .from('employees')
+    .update(await passwordFields(password))
+    .eq('id', employeeId);
+
+  if (error) throw error;
+
+  if (passwordInput) passwordInput.value = password;
+  if (status) status.textContent = `Password reset. Give this password to the worker: ${password}`;
 }
 
 async function deleteAdminWorkerProfile(button) {
@@ -996,9 +1186,12 @@ async function deleteAdminWorkerProfile(button) {
     renderWorkerDaysGrid([]);
     renderWorkerDaysOffCalendar();
     if (workerLocation) workerLocation.value = DEFAULT_WORK_LOCATION;
+    if (workerScheduleStatus) workerScheduleStatus.textContent = '';
   }
 
   renderWorkerSelect();
+  if (workerSelect) workerSelect.value = '';
+  if (workerProfileSelect) workerProfileSelect.value = '';
   renderWorkerProfiles();
   renderRequests();
 }
@@ -1099,7 +1292,7 @@ function renderApplicants(applicants) {
   }
 
   applicantList.innerHTML = applicants.map((applicant) => `
-    <article class="request-card">
+    <article class="request-card" data-applicant-id="${escapeHtml(applicant.id)}">
       <div class="request-card-header">
         <div>
           <p class="eyebrow">${escapeHtml(formatDateTime(applicant.created_at))}</p>
@@ -1134,6 +1327,7 @@ async function loadApplicants() {
   const { data, error } = await db
     .from('applicants')
     .select('id,name,email,phone,availability,notes,status,created_at')
+    .neq('status', 'hired')
     .order('created_at', { ascending: false });
 
   if (error) {
@@ -1145,12 +1339,98 @@ async function loadApplicants() {
   renderApplicants(data || []);
 }
 
+async function hireApplicant(applicantId) {
+  const { data: applicant, error: applicantError } = await db
+    .from('applicants')
+    .select('id,name,email,phone,availability,notes')
+    .eq('id', applicantId)
+    .single();
+
+  if (applicantError) throw applicantError;
+
+  const generatedPassword = randomPassword();
+  const passwordUpdate = await passwordFields(generatedPassword);
+  const phone = applicant.phone || null;
+  let employee = null;
+
+  if (!phone) {
+    throw new Error('Applicant needs a phone number before hiring.');
+  }
+
+  if (phone) {
+    const { data: existingByPhone, error: phoneError } = await db
+      .from('employees')
+      .select('id')
+      .eq('phone', phone)
+      .limit(1);
+
+    if (phoneError) throw phoneError;
+    employee = existingByPhone?.[0] || null;
+  }
+
+  if (employee) {
+    const { error } = await db
+      .from('employees')
+      .update({
+        full_name: applicant.name,
+        email: applicant.email || null,
+        phone,
+        active: true,
+        home_location: DEFAULT_WORK_LOCATION,
+        ...passwordUpdate,
+        profile_updated_at: new Date().toISOString(),
+      })
+      .eq('id', employee.id);
+
+    if (error) throw error;
+  } else {
+    const randomSuffix = Array.from(crypto.getRandomValues(new Uint8Array(3)), (value) => value.toString(16).padStart(2, '0')).join('').toUpperCase();
+    const employeeCode = `EMP-${randomSuffix}`;
+    const { error } = await db
+      .from('employees')
+      .insert({
+        employee_code: employeeCode,
+        full_name: applicant.name,
+        email: applicant.email || null,
+        phone,
+        active: true,
+        home_location: DEFAULT_WORK_LOCATION,
+        ...passwordUpdate,
+      });
+
+    if (error) throw error;
+  }
+
+  const { error: statusError } = await db
+    .from('applicants')
+    .update({ status: 'hired' })
+    .eq('id', applicantId);
+
+  if (statusError) throw statusError;
+
+  applicantList?.querySelector(`[data-applicant-id="${applicantId}"]`)?.remove();
+  await loadEmployees();
+  await loadApplicants();
+  alert(`Applicant hired. Temporary worker password: ${generatedPassword}`);
+}
+
 applicantList?.addEventListener('change', async (event) => {
   if (!event.target.classList.contains('applicant-status-select')) {
     return;
   }
 
   const select = event.target;
+
+  if (select.value === 'hired') {
+    try {
+      await hireApplicant(select.dataset.id);
+    } catch (error) {
+      console.error('Applicant hire failed:', error);
+      alert('Could not hire applicant. Make sure phone numbers are unique and worker password columns exist.');
+    }
+    return;
+  }
+
   const { error } = await db
     .from('applicants')
     .update({ status: select.value })
@@ -1165,7 +1445,22 @@ applicantList?.addEventListener('change', async (event) => {
 workerProfileList?.addEventListener('click', async (event) => {
   const button = event.target.closest('.save-worker-profile');
   const deleteButton = event.target.closest('.delete-worker-profile');
-  const profileCard = event.target.closest('.worker-profile-card');
+  const resetPasswordButton = event.target.closest('.reset-worker-password');
+
+  if (resetPasswordButton) {
+    resetPasswordButton.disabled = true;
+
+    try {
+      await resetAdminWorkerPassword(resetPasswordButton);
+    } catch (error) {
+      console.error('Worker password reset failed:', error);
+      const status = resetPasswordButton.closest('.worker-profile-card')?.querySelector('.admin-worker-status');
+      if (status) status.textContent = 'Could not reset worker password.';
+    } finally {
+      resetPasswordButton.disabled = false;
+    }
+    return;
+  }
 
   if (deleteButton) {
     deleteButton.disabled = true;
@@ -1183,12 +1478,6 @@ workerProfileList?.addEventListener('click', async (event) => {
     return;
   }
 
-  if (profileCard && !button && !event.target.closest('input, select, textarea, label')) {
-    await loadAdminWorkerSchedule(profileCard.dataset.workerId);
-    profileCard.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    return;
-  }
-
   if (!button) return;
 
   button.disabled = true;
@@ -1199,7 +1488,7 @@ workerProfileList?.addEventListener('click', async (event) => {
     console.error('Worker profile save failed:', error);
     const status = button.closest('.worker-profile-card')?.querySelector('.admin-worker-status');
     if (status) {
-      status.textContent = 'Could not save worker profile. Check Supabase setup.';
+      status.textContent = `Could not save worker profile: ${error.message || 'Check Supabase setup.'}`;
     }
   } finally {
     button.disabled = false;
@@ -1367,6 +1656,85 @@ async function saveFinalTotal(button) {
     .from('service_requests')
     .update(updates)
     .eq('id', id);
+
+  if (error) throw error;
+  await loadRequests();
+}
+
+async function saveServiceUnable(button) {
+  const id = button.dataset.id;
+  const panel = button.closest('.service-unable-panel');
+  const request = allRequests.find((item) => item.id === id);
+  const type = panel?.dataset.serviceType;
+  const reason = panel?.querySelector('.service-unable-reason')?.value.trim();
+
+  if (!request || !type) return;
+
+  if (!reason) {
+    alert('Add a reason before saving.');
+    return;
+  }
+
+  const label = type === 'fuel' ? 'Fuel' : 'Car wash';
+  const receiptTotals = receiptTotalsFromNotes(request);
+  const finalTotal = finalTotalFromSavedReceipts(request, receiptTotals);
+  const note = `[service_unable ${type}] ${label} could not be completed: ${reason}`;
+  const notes = request.notes ? `${request.notes}\n${note}` : note;
+
+  button.disabled = true;
+  button.textContent = 'Saving...';
+
+  const { error } = await db
+    .from('service_requests')
+    .update({
+      status: nextStatusAfterServiceUnable(request, type),
+      final_total: finalTotal,
+      notes,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', id);
+
+  if (error) throw error;
+  await loadRequests();
+}
+
+async function saveDenyReason(button) {
+  const id = button.dataset.id;
+  const panel = button.closest('.deny-reason-panel');
+  const request = allRequests.find((item) => item.id === id);
+  const reason = panel?.querySelector('.deny-reason')?.value.trim();
+
+  if (!request) return;
+
+  if (!reason) {
+    alert('Add a reason before denying this request.');
+    return;
+  }
+
+  button.disabled = true;
+  button.textContent = 'Denying...';
+
+  const note = `Admin denial reason: ${reason}`;
+  const notes = request.notes ? `${request.notes}\n${note}` : note;
+  const updates = {
+    status: 'denied',
+    cancellation_reason: reason,
+    notes,
+    updated_at: new Date().toISOString(),
+  };
+
+  let { error } = await db
+    .from('service_requests')
+    .update(updates)
+    .eq('id', id);
+
+  if (error?.code === 'PGRST204' && String(error.message || '').includes("'cancellation_reason'")) {
+    delete updates.cancellation_reason;
+    ({ error } = await db
+      .from('service_requests')
+      .update(updates)
+      .eq('id', id));
+  }
 
   if (error) throw error;
   await loadRequests();
@@ -1648,6 +2016,60 @@ requestList.addEventListener('click', async (event) => {
 
     if (button.classList.contains('save-final-total')) {
       await saveFinalTotal(button);
+      return;
+    }
+
+    if (button.classList.contains('show-service-unable')) {
+      const panel = requestList.querySelector(`[data-service-unable-for="${button.dataset.id}"]`);
+      if (panel) {
+        const serviceType = button.dataset.serviceType;
+        panel.dataset.serviceType = serviceType;
+        const label = panel.querySelector('.service-unable-label');
+        if (label) {
+          label.textContent = serviceType === 'fuel'
+            ? 'Explain why fuel cannot be completed. The rest of the request will keep moving.'
+            : 'Explain why the car wash cannot be completed. The rest of the request will keep moving.';
+        }
+        panel.hidden = false;
+        panel.querySelector('.service-unable-reason')?.focus();
+      }
+      return;
+    }
+
+    if (button.classList.contains('cancel-service-unable')) {
+      const panel = button.closest('.service-unable-panel');
+      if (panel) {
+        panel.hidden = true;
+        panel.querySelector('.service-unable-reason').value = '';
+      }
+      return;
+    }
+
+    if (button.classList.contains('save-service-unable')) {
+      await saveServiceUnable(button);
+      return;
+    }
+
+    if (button.classList.contains('show-deny-reason')) {
+      const panel = requestList.querySelector(`[data-deny-for="${button.dataset.id}"]`);
+      if (panel) {
+        panel.hidden = false;
+        panel.querySelector('.deny-reason')?.focus();
+      }
+      return;
+    }
+
+    if (button.classList.contains('cancel-deny-reason')) {
+      const panel = button.closest('.deny-reason-panel');
+      if (panel) {
+        panel.hidden = true;
+        panel.querySelector('.deny-reason').value = '';
+      }
+      return;
+    }
+
+    if (button.classList.contains('save-deny-reason')) {
+      await saveDenyReason(button);
       return;
     }
 

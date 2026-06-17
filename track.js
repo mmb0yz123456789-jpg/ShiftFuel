@@ -81,15 +81,53 @@ function canCustomerCancel(request) {
 }
 
 function cancellationReasonForDisplay(request) {
-  if (request.cancellation_reason) {
-    return request.cancellation_reason;
+  const reason = String(request.cancellation_reason || "").trim();
+
+  if (!reason || !["denied", "customer_canceled"].includes(request.status)) {
+    return "";
   }
 
-  if (terminalStatuses.includes(request.status) && request.notes) {
-    return request.notes;
+  const looksLikeOperationalNotes = /\[(pickup_time|dropoff_time|receipt_totals|service_unable)\]|Quick inspection recorded|receipt recorded/i.test(reason);
+
+  if (looksLikeOperationalNotes) {
+    return "";
   }
 
-  return "";
+  return reason;
+}
+
+function savedFeeOrDefault(value, fallback) {
+  const amount = Number(value);
+  return Number.isFinite(amount) && amount > 0 ? amount : fallback;
+}
+
+function requestNeedsFuel(request) {
+  return String(request.service_type || "").includes("fuel");
+}
+
+function requestNeedsWash(request) {
+  return String(request.service_type || "").includes("wash");
+}
+
+function receiptTotalsFromNotes(request) {
+  const matches = Array.from(String(request.notes || "").matchAll(/\[receipt_totals fuel=([0-9.]+) wash=([0-9.]+)\]/g));
+  const latest = matches.at(-1);
+
+  return {
+    fuel: latest ? Number(latest[1]) || 0 : 0,
+    wash: latest ? Number(latest[2]) || 0 : 0,
+  };
+}
+
+function serviceUnableReasonsFromNotes(request) {
+  const notes = String(request.notes || "");
+  const reasons = { fuel: "", wash: "" };
+
+  for (const match of notes.matchAll(/\[service_unable (fuel|wash)\] [^:]+: ([^\n]+)/g)) {
+    reasons[match[1]] = match[2];
+  }
+
+  return reasons;
 }
 
 function renderAssignedWorker(request) {
@@ -129,14 +167,6 @@ function renderTimeline(currentStatus) {
   `;
 }
 
-function requestNeedsFuel(request) {
-  return String(request.service_type || "").includes("fuel");
-}
-
-function requestNeedsWash(request) {
-  return String(request.service_type || "").includes("wash");
-}
-
 function renderPhotos(request, photos) {
   const photoByType = new Map();
   photos.forEach((photo) => {
@@ -165,8 +195,8 @@ function renderPhotos(request, photos) {
     `;
   };
 
-  const section = (title, slots) => `
-    <section class="photo-proof-section">
+  const section = (title, slots, isCompact = false) => `
+    <section class="photo-proof-section ${isCompact ? "photo-proof-section-compact" : ""}">
       <h3>${escapeHtml(title)}</h3>
       <div class="photo-proof-grid">
         ${slots.map((slot) => photoSlot(slot.label, slot.types)).join("")}
@@ -185,10 +215,10 @@ function renderPhotos(request, photos) {
       ])}
       ${requestNeedsFuel(request) ? section("Fuel Receipt", [
         { label: "Receipt", types: ["fuel_receipt"] },
-      ]) : ""}
+      ], true) : ""}
       ${requestNeedsWash(request) ? section("Car Wash Receipt", [
         { label: "Receipt", types: ["wash_receipt"] },
-      ]) : ""}
+      ], true) : ""}
       ${section("Drop off", [
         { label: "Driver Side Front", types: ["dropoff_driver_front", "dropoff_front"] },
         { label: "Passenger Side Front", types: ["dropoff_passenger_front", "dropoff_passenger_side"] },
@@ -198,15 +228,15 @@ function renderPhotos(request, photos) {
       ])}
       ${section("Return back", [
         { label: "Ending Fuel Gauge", types: ["dropoff_fuel_gauge"] },
-      ])}
+      ], true)}
     </div>
   `;
 }
 
 function inspectionSummaryFromNotes(request) {
   const notes = String(request.notes || "");
-  const codeMatches = Array.from(notes.matchAll(/Trouble code ([A-Z0-9]+): ([\s\S]*?) Possible fixes: ([^\n.]+(?:\.[^\n.]*)?)/g));
-  const psiMatches = Array.from(notes.matchAll(/Tire PSI before\/after: ([^\n.]+(?:\.[^\n]*)?)/g));
+  const codeMatches = Array.from(notes.matchAll(/Trouble code ([A-Z0-9]+): ([\s\S]*?) Possible fixes: ([^\n]+)/g));
+  const psiMatches = Array.from(notes.matchAll(/Tire PSI before\/after: ([\s\S]*?)(?:\. Trouble code|\n|$)/g));
   const latestCode = codeMatches.at(-1);
   const latestPsi = psiMatches.at(-1);
 
@@ -217,11 +247,48 @@ function inspectionSummaryFromNotes(request) {
   return `
     <section class="inspection-summary">
       <h3>Vehicle inspection</h3>
-      ${latestPsi ? `<p><strong>Tire pressure:</strong> ${escapeHtml(latestPsi[1])}</p>` : ""}
+      ${latestPsi ? `<p><strong>Tire pressure:</strong> ${escapeHtml(latestPsi[1].trim().replace(/\.$/, ""))}.</p>` : ""}
       ${latestCode ? `
-        <p><strong>Trouble code ${escapeHtml(latestCode[1])}:</strong> ${escapeHtml(latestCode[2])}</p>
-        <p><strong>Possible fixes:</strong> ${escapeHtml(latestCode[3])}</p>
+        <p><strong>Trouble code ${escapeHtml(latestCode[1])}:</strong> ${escapeHtml(latestCode[2].trim())}</p>
+        <p><strong>Possible fixes:</strong> ${escapeHtml(latestCode[3].trim())}</p>
       ` : ""}
+    </section>
+  `;
+}
+
+function serviceSummaryFromRequest(request) {
+  const receiptTotals = receiptTotalsFromNotes(request);
+  const unableReasons = serviceUnableReasonsFromNotes(request);
+  const fuelFee = requestNeedsFuel(request) && receiptTotals.fuel > 0 ? savedFeeOrDefault(request.fuel_convenience_fee, 15) : 0;
+  const washFee = requestNeedsWash(request) && receiptTotals.wash > 0 ? savedFeeOrDefault(request.wash_convenience_fee, 15) : 0;
+  const inspectionFee = request.quick_inspection ? savedFeeOrDefault(request.quick_inspection_fee, 5) : 0;
+  const lines = [];
+
+  if (requestNeedsFuel(request)) {
+    lines.push(unableReasons.fuel
+      ? `<p><strong>Fuel:</strong> Not completed. ${escapeHtml(unableReasons.fuel)}</p>`
+      : `<p><strong>Fuel:</strong> ${formatCurrency(receiptTotals.fuel)} receipt + ${formatCurrency(fuelFee)} convenience fee.</p>`);
+  }
+
+  if (requestNeedsWash(request)) {
+    lines.push(unableReasons.wash
+      ? `<p><strong>Car wash:</strong> Not completed. ${escapeHtml(unableReasons.wash)}</p>`
+      : `<p><strong>Car wash:</strong> ${formatCurrency(receiptTotals.wash)} receipt + ${formatCurrency(washFee)} convenience fee.</p>`);
+  }
+
+  if (request.quick_inspection) {
+    lines.push(`<p><strong>Quick inspection:</strong> ${formatCurrency(inspectionFee)}</p>`);
+  }
+
+  if (!lines.length && request.final_total == null) {
+    return "";
+  }
+
+  return `
+    <section class="inspection-summary">
+      <h3>Service summary</h3>
+      ${lines.join("")}
+      <p><strong>Final total:</strong> ${formatCurrency(request.final_total)}</p>
     </section>
   `;
 }
@@ -331,6 +398,10 @@ function renderReviewPrompt(request, review) {
   `;
 }
 
+function routeHomeAfterReview() {
+  window.location.href = "index.html";
+}
+
 function renderRequest(request, photos = [], review = null) {
   const statusLabel = statusLabels[request.status] || request.status;
   const cancellationReason = cancellationReasonForDisplay(request);
@@ -350,12 +421,15 @@ function renderRequest(request, photos = [], review = null) {
         <p><strong>Vehicle:</strong> ${escapeHtml(request.vehicle_year)} ${escapeHtml(request.vehicle_make)} ${escapeHtml(request.vehicle_model)}, ${escapeHtml(request.vehicle_color)}</p>
         <p><strong>Service:</strong> ${escapeHtml(request.service_type)}</p>
         <p><strong>Parking:</strong> ${escapeHtml(request.parking_location)}, spot ${escapeHtml(request.parking_spot)}</p>
+        ${request.return_parking_location ? `<p><strong>Drop-off site:</strong> ${escapeHtml(request.return_parking_location)}, spot ${escapeHtml(request.return_parking_spot || "")}</p>` : ""}
+        ${request.return_parking_map_url ? `<p><strong>Drop-off map:</strong> <a href="${escapeHtml(request.return_parking_map_url)}" target="_blank" rel="noopener">Open map</a></p>` : ""}
         <p><strong>Estimated total:</strong> ${formatCurrency(request.estimated_total)}</p>
         <p><strong>Final total:</strong> ${formatCurrency(request.final_total)}</p>
         ${cancellationReason ? `<p><strong>Reason:</strong> ${escapeHtml(cancellationReason)}</p>` : ""}
       </div>
       ${renderAssignedWorker(request)}
       ${serviceTimingFromNotes(request)}
+      ${serviceSummaryFromRequest(request)}
       ${inspectionSummaryFromNotes(request)}
       ${renderPhotos(request, photos)}
       ${renderReviewPrompt(request, review)}
@@ -485,6 +559,7 @@ trackingResult.addEventListener("click", async (event) => {
     if (error?.code === "23505") {
       panel.remove();
       trackMessage.textContent = "Thank you for reviewing our service.";
+      routeHomeAfterReview();
       return;
     }
 
@@ -504,6 +579,7 @@ trackingResult.addEventListener("click", async (event) => {
 
     panel.remove();
     trackMessage.textContent = "Thank you for reviewing our service.";
+    routeHomeAfterReview();
     return;
   }
 
@@ -574,4 +650,18 @@ trackingResult.addEventListener("click", async (event) => {
   const photos = await loadRequestPhotos(data.id);
   const review = await loadRequestReview(data.id);
   renderRequest(data, photos, review);
+});
+
+trackingResult.addEventListener("change", (event) => {
+  if (event.target.name !== "service-rating") {
+    return;
+  }
+
+  const rating = Number(event.target.value);
+  const panel = event.target.closest(".review-panel");
+  const submitButton = panel?.querySelector(".submit-service-review");
+
+  if (rating >= 4 && submitButton && !submitButton.disabled) {
+    submitButton.click();
+  }
 });

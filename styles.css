@@ -413,6 +413,49 @@ h3 {
   font-weight: 700;
 }
 
+.returning-customer-panel {
+  background: #f3f8f5;
+  border-color: rgba(0, 116, 93, 0.22);
+}
+
+.returning-customer-lookup {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 14px;
+}
+
+.returning-customer-results {
+  display: grid;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.returning-customer-card {
+  display: grid;
+  gap: 4px;
+  width: 100%;
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.returning-customer-card:hover {
+  border-color: var(--brand);
+}
+
+.returning-customer-card span {
+  font-weight: 800;
+}
+
+.returning-customer-card small {
+  color: var(--muted);
+}
+
 fieldset {
   margin: 0;
   padding: 24px;
@@ -675,6 +718,70 @@ textarea:focus {
   border-bottom: 1px solid var(--line);
 }
 
+.portal-login-page {
+  min-height: 100vh;
+  background:
+    linear-gradient(90deg, rgba(245, 247, 244, 0.98) 0%, rgba(245, 247, 244, 0.94) 38%, rgba(245, 247, 244, 0.76) 62%, rgba(245, 247, 244, 0.46) 100%),
+    url("https://images.unsplash.com/photo-1503376780353-7e6692767b70?auto=format&fit=crop&w=1800&q=80") center right / cover fixed;
+}
+
+.portal-login-page main {
+  min-height: calc(100vh - 84px);
+}
+
+.portal-login-page .admin-hero {
+  min-height: calc(100vh - 84px);
+  display: grid;
+  align-content: center;
+  gap: 28px;
+  background: transparent;
+  border-bottom: 0;
+}
+
+.portal-login-page .section-heading {
+  max-width: 640px;
+  margin-bottom: 0;
+}
+
+.portal-login-page .booking-form {
+  width: min(100%, 640px);
+  background: transparent;
+  box-shadow: none;
+}
+
+.portal-login-page .booking-form fieldset {
+  padding: 28px;
+  background: rgba(255, 255, 255, 0.84);
+  border-color: rgba(10, 61, 54, 0.18);
+  box-shadow: 0 22px 70px rgba(8, 27, 23, 0.14);
+  backdrop-filter: blur(10px);
+}
+
+.worker-portal-page {
+  background:
+    linear-gradient(rgba(245, 247, 244, 0.9), rgba(245, 247, 244, 0.96)),
+    url("https://images.unsplash.com/photo-1503376780353-7e6692767b70?auto=format&fit=crop&w=1800&q=80") center top / cover fixed;
+}
+
+.worker-portal-hero {
+  min-height: 420px;
+  display: grid;
+  align-items: end;
+  padding-top: 96px;
+  background:
+    linear-gradient(90deg, rgba(245, 247, 244, 0.96), rgba(245, 247, 244, 0.72), rgba(245, 247, 244, 0.34)),
+    url("https://images.unsplash.com/photo-1503376780353-7e6692767b70?auto=format&fit=crop&w=1800&q=80") center / cover;
+  border-bottom: 1px solid var(--line);
+}
+
+.worker-portal-hero .section-heading {
+  max-width: 780px;
+}
+
+.worker-account-section {
+  background: rgba(245, 247, 244, 0.92);
+}
+
 .admin-summary {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -862,8 +969,24 @@ textarea:focus {
     grid-template-columns: 1fr;
   }
 
+  .returning-customer-lookup {
+    grid-template-columns: 1fr;
+  }
+
   fieldset {
     padding: 18px;
+  }
+
+  .portal-login-page {
+    background:
+      linear-gradient(rgba(245, 247, 244, 0.96), rgba(245, 247, 244, 0.92)),
+      url("https://images.unsplash.com/photo-1503376780353-7e6692767b70?auto=format&fit=crop&w=1800&q=80") center / cover fixed;
+  }
+
+  .portal-login-page .admin-hero {
+    min-height: auto;
+    padding-top: 56px;
+    padding-bottom: 56px;
   }
 }
 
@@ -1263,6 +1386,14 @@ textarea:focus {
   border: 1px solid var(--line);
   border-radius: 8px;
   background: var(--surface-soft);
+}
+
+.photo-proof-section-compact .photo-proof-grid {
+  grid-template-columns: repeat(auto-fit, minmax(104px, 136px));
+}
+
+.photo-proof-section-compact .photo-proof-card img {
+  max-width: 136px;
 }
 
 .photo-proof-card span {

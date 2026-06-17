@@ -7,7 +7,7 @@
     <link rel="stylesheet" href="styles.css">
   </head>
 
-  <body>
+  <body class="worker-portal-page">
     <script>
       if (!sessionStorage.getItem("shiftfuel_worker")) {
         window.location.href = "worker-login.html";
@@ -28,56 +28,19 @@
     </header>
 
     <main>
-      <section class="section admin-hero">
+      <section class="section worker-portal-hero">
         <div class="section-heading">
           <p class="eyebrow">Worker Portal</p>
           <h1 id="worker-portal-heading">Worker profile</h1>
-          <p>Update the worker information customers see when this worker is assigned to their vehicle.</p>
+          <p>View jobs in your work area, update availability, and keep your account information current.</p>
+          <div class="actions">
+            <a class="button primary" href="#worker-jobs">View jobs</a>
+            <a class="button secondary" href="#worker-password-form">Reset password</a>
+          </div>
         </div>
-
-        <form id="worker-profile-form" class="booking-form worker-profile-form">
-          <fieldset>
-            <legend>Worker profile</legend>
-
-            <div class="worker-profile-preview">
-              <img id="worker-profile-photo-preview" class="worker-profile-photo" alt="Mark Urban profile photo" hidden>
-              <div id="worker-profile-photo-placeholder" class="worker-profile-photo worker-profile-photo-placeholder">No photo</div>
-            </div>
-
-            <div class="field-grid">
-              <label>
-                Worker name
-                <input id="worker-profile-name" type="text" required>
-              </label>
-              <label>
-                Phone number
-                <input id="worker-profile-phone" type="tel" placeholder="(302) 555-0100">
-              </label>
-              <label>
-                Work location
-                <select id="worker-profile-location">
-                  <option value="">Select workplace</option>
-                  <option selected>ChristianaCare - 4755 Ogletown Stanton Rd, Newark, DE 19718</option>
-                </select>
-              </label>
-              <label>
-                Started
-                <input id="worker-profile-started" type="date" disabled>
-              </label>
-            </div>
-
-            <label>
-              Profile photo
-              <input id="worker-profile-photo" type="file" accept="image/*">
-            </label>
-
-            <button class="button primary" type="submit">Save worker profile</button>
-            <p id="worker-profile-status" class="form-status" role="status"></p>
-          </fieldset>
-        </form>
       </section>
 
-      <section class="section admin-section">
+      <section id="worker-jobs" class="section admin-section">
         <div class="admin-toolbar">
           <div>
             <p class="eyebrow">Jobs</p>
@@ -137,6 +100,74 @@
           </div>
         </div>
         <div id="worker-review-list" class="request-list"></div>
+      </section>
+
+      <section id="worker-account" class="section admin-section worker-account-section">
+        <div class="admin-toolbar">
+          <div>
+            <p class="eyebrow">Account</p>
+            <h2>Worker profile</h2>
+          </div>
+        </div>
+
+        <form id="worker-profile-form" class="booking-form worker-profile-form">
+          <fieldset>
+            <legend>Worker profile</legend>
+
+            <div class="worker-profile-preview">
+              <img id="worker-profile-photo-preview" class="worker-profile-photo" alt="Worker profile photo" hidden>
+              <div id="worker-profile-photo-placeholder" class="worker-profile-photo worker-profile-photo-placeholder">No photo</div>
+            </div>
+
+            <div class="field-grid">
+              <label>
+                Worker name
+                <input id="worker-profile-name" type="text" required>
+              </label>
+              <label>
+                Phone number
+                <input id="worker-profile-phone" type="tel" placeholder="(302) 555-0100">
+              </label>
+              <label>
+                Work location
+                <select id="worker-profile-location">
+                  <option value="">Select workplace</option>
+                  <option selected>ChristianaCare - 4755 Ogletown Stanton Rd, Newark, DE 19718</option>
+                </select>
+              </label>
+              <label>
+                Started
+                <input id="worker-profile-started" type="date" disabled>
+              </label>
+            </div>
+
+            <label>
+              Profile photo
+              <input id="worker-profile-photo" type="file" accept="image/*">
+            </label>
+
+            <button class="button primary" type="submit">Save worker profile</button>
+            <p id="worker-profile-status" class="form-status" role="status"></p>
+          </fieldset>
+        </form>
+
+        <form id="worker-password-form" class="booking-form worker-profile-form">
+          <fieldset>
+            <legend>Reset worker password</legend>
+            <div class="field-grid">
+              <label>
+                New password
+                <input id="worker-new-password" type="password" minlength="8" placeholder="At least 8 characters">
+              </label>
+              <label>
+                Confirm password
+                <input id="worker-confirm-password" type="password" minlength="8">
+              </label>
+            </div>
+            <button class="button primary" type="submit">Update password</button>
+            <p id="worker-password-status" class="form-status" role="status"></p>
+          </fieldset>
+        </form>
       </section>
     </main>
 

@@ -6,7 +6,7 @@
   <title>Worker Login | ShiftFuel Concierge</title>
   <link rel="stylesheet" href="styles.css">
 </head>
-<body>
+<body class="portal-login-page worker-login-page">
   <header class="site-header">
     <a class="logo" href="index.html">ShiftFuel Concierge</a>
     <nav class="nav" aria-label="Main navigation">
@@ -43,7 +43,6 @@
           </label>
 
           <button class="button primary" type="submit">Sign In</button>
-          <p class="field-help">Test worker: Test Worker / TestWorker2026!</p>
         </fieldset>
       </form>
 
@@ -62,18 +61,63 @@
       "test worker": { name: "Test Worker", password: "TestWorker2026!" },
     };
 
-    form.addEventListener("submit", (event) => {
+    function cleanPhone(value) {
+      return String(value || "").replace(/\D/g, "");
+    }
+
+    async function sha256Hex(value) {
+      const bytes = new TextEncoder().encode(value);
+      const digest = await crypto.subtle.digest("SHA-256", bytes);
+      return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
+    }
+
+    form.addEventListener("submit", async (event) => {
       event.preventDefault();
 
-      const account = workerAccounts[workerName.value.trim().toLowerCase()];
+      const loginValue = workerName.value.trim();
+      const password = passwordInput.value;
+      message.textContent = "Signing in...";
 
-      if (account && passwordInput.value === account.password) {
+      try {
+        const { data, error } = await window.ShiftFuelSupabase
+          .from("employees")
+          .select("id,full_name,phone,active,worker_password_hash,worker_password_salt")
+          .eq("active", true);
+
+        if (error) throw error;
+
+        const cleanedLoginPhone = cleanPhone(loginValue);
+        const employee = (data || []).find((item) => {
+          return item.full_name?.toLowerCase() === loginValue.toLowerCase()
+            || (cleanedLoginPhone && cleanPhone(item.phone) === cleanedLoginPhone);
+        });
+
+        if (employee?.worker_password_hash && employee?.worker_password_salt) {
+          const hash = await sha256Hex(`${employee.worker_password_salt}:${password}`);
+
+          if (hash === employee.worker_password_hash) {
+            sessionStorage.setItem("shiftfuel_worker", employee.full_name);
+            sessionStorage.setItem("shiftfuel_worker_id", employee.id);
+            window.location.href = "worker.html";
+            return;
+          }
+        }
+      } catch (error) {
+        console.warn("Worker Supabase login failed, trying local fallback:", error);
+      }
+
+      const account = workerAccounts[loginValue.toLowerCase()];
+
+      if (account && password === account.password) {
         sessionStorage.setItem("shiftfuel_worker", account.name);
         window.location.href = "worker.html";
-      } else {
-        message.textContent = "Incorrect worker name or password.";
+        return;
       }
+
+      message.textContent = "Incorrect worker name or password.";
     });
   </script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="supabase-client.js"></script>
 </body>
 </html>
