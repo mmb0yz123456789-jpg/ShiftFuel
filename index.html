@@ -276,7 +276,7 @@
               </div>
             </fieldset>
 
-            <fieldset>
+            <fieldset id="parking-fieldset" hidden>
               <legend id="parking-key-handoff-heading">Parking and key handoff</legend>
               <div class="field-grid">
                 <label>
@@ -300,7 +300,7 @@
               </div>
             </fieldset>
 
-            <fieldset>
+            <fieldset id="service-fieldset" hidden>
               <legend>Service request</legend>
               <div class="service-choice-grid">
                 <div class="service-controls">
@@ -378,7 +378,7 @@
               </label>
             </fieldset>
 
-            <fieldset>
+            <fieldset id="payment-fieldset" hidden>
               <legend>Payment authorization</legend>
               <div class="payment-box">
                 <p><strong>Stripe-ready flow:</strong> authorize the estimated fuel or wash amount plus service fee now, then capture the final total after the receipt is uploaded.</p>
@@ -415,7 +415,7 @@
               </div>
             </fieldset>
 
-            <fieldset>
+            <fieldset id="agreement-fieldset" hidden>
               <legend>Agreement</legend>
               <label id="returning-parking-confirmation-control" class="checkbox-label returning-confirmation-control" hidden>
                 <input id="returning-parking-confirmation" name="returningParkingConfirmation" type="checkbox" value="yes">
@@ -432,7 +432,7 @@
               <p class="field-help">By booking, you agree to provide accurate vehicle, key, parking, fuel, and service instructions. ShiftFuel documents pickup and return condition with photos and will contact you if a requested service cannot be completed.</p>
             </fieldset>
 
-            <button class="button primary" type="submit">Submit booking request</button>
+            <button id="booking-submit-btn" class="button primary" type="submit" hidden>Submit booking request</button>
             <p id="form-status" class="form-status" role="status"></p>
           </form>
         </div>

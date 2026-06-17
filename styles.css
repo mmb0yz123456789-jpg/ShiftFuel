@@ -901,7 +901,7 @@ textarea:focus {
 
 .admin-summary {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(6, minmax(0, 1fr));
   gap: 18px;
 }
 
@@ -939,6 +939,7 @@ textarea:focus {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-wrap: wrap;
   gap: 18px;
 }
 
@@ -1043,9 +1044,12 @@ textarea:focus {
   .service-choice-grid,
   .split,
   .roadmap,
-  .admin-actions,
-  .admin-summary {
+  .admin-actions {
     grid-template-columns: 1fr;
+  }
+
+  .admin-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .status-panel {
@@ -2046,4 +2050,442 @@ textarea:focus {
   .worker-day-row {
     grid-template-columns: 1fr;
   }
+}
+
+/* ─── Modal overlay ─────────────────────────────────────────────── */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  background: rgba(0, 0, 0, 0.52);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+
+.modal-overlay[hidden] {
+  display: none;
+}
+
+.modal-dialog {
+  background: var(--surface);
+  border-radius: 12px;
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.22);
+  width: 100%;
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 18px 22px 14px;
+  border-bottom: 1px solid var(--line);
+}
+
+.modal-header h2 {
+  margin: 0;
+  font-size: 1.2rem;
+}
+
+.modal-close {
+  width: 34px;
+  height: 34px;
+  border: none;
+  background: none;
+  font-size: 1.4rem;
+  cursor: pointer;
+  color: var(--muted);
+  border-radius: 6px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.modal-close:hover {
+  background: var(--line);
+  color: var(--text);
+}
+
+.modal-body {
+  padding: 18px 22px 22px;
+  overflow-y: auto;
+}
+
+/* ─── Admin hero stats ──────────────────────────────────────────── */
+.admin-hero-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin-bottom: 28px;
+}
+
+.admin-hero-top .section-heading {
+  margin-bottom: 0;
+}
+
+.admin-hero-stats {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 14px 20px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  box-shadow: var(--shadow);
+  flex-shrink: 0;
+}
+
+.hero-stat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+
+.hero-stat-value {
+  font-size: 1.5rem;
+  font-weight: 800;
+  color: var(--brand);
+  line-height: 1;
+}
+
+.hero-stat-label {
+  font-size: 0.75rem;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.hero-stat-divider {
+  width: 1px;
+  height: 36px;
+  background: var(--line);
+}
+
+/* ─── Edit panel section labels ─────────────────────────────────── */
+.edit-section-label {
+  margin: 16px 0 6px;
+  font-size: 0.8rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+}
+
+.edit-admin-badge {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 7px;
+  background: #fef3c7;
+  border: 1px solid #fbbf24;
+  border-radius: 10px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: #92400e;
+  text-transform: none;
+  letter-spacing: 0;
+  vertical-align: middle;
+}
+
+/* ─── Ticket detail modal ────────────────────────────────────────── */
+.ticket-detail-dialog {
+  max-width: 680px;
+  width: 100%;
+}
+
+.ticket-detail-section {
+  margin-top: 18px;
+}
+
+.ticket-photos-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 10px;
+  margin-top: 10px;
+}
+
+/* ─── Workers sections always-visible separator ──────────────────── */
+.admin-workers-section {
+  border-top: 2px solid var(--line);
+}
+
+/* ─── Admin page-level tab nav ──────────────────────────────────── */
+.admin-page-tabs {
+  display: flex;
+  gap: 0;
+  padding: 0 clamp(20px, 5vw, 72px);
+  background: var(--bg);
+  border-bottom: 2px solid var(--line);
+  position: sticky;
+  top: 0;
+  z-index: 20;
+}
+
+.admin-page-tab {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 14px 22px;
+  background: none;
+  border: none;
+  border-bottom: 3px solid transparent;
+  margin-bottom: -2px;
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--muted);
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+}
+
+.admin-page-tab:hover { color: var(--text); }
+
+.admin-page-tab.active {
+  color: var(--brand);
+  border-bottom-color: var(--brand);
+}
+
+.page-tab-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 6px;
+  background: var(--brand);
+  color: #fff;
+  border-radius: 11px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  line-height: 1;
+}
+
+/* ─── Find Tickets search row ────────────────────────────────────── */
+.find-tickets-search-row {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.find-tickets-search-row input {
+  flex: 1;
+  padding: 10px 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  font-size: 1rem;
+}
+
+.find-tickets-sort-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 8px 0 10px;
+  border-bottom: 1px solid var(--line);
+  margin-bottom: 12px;
+}
+
+.find-tickets-result-count {
+  font-size: 0.85rem;
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.find-tickets-sort-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.find-tickets-sort-label select {
+  padding: 4px 8px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  font-size: 0.85rem;
+}
+
+/* ─── Find ticket result card ────────────────────────────────────── */
+.find-ticket-result-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  gap: 8px;
+}
+
+/* ─── Admin tab nav (legacy - kept for future use) ──────────────── */
+.admin-tab-nav {
+  display: flex;
+  gap: 4px;
+  padding: 0 clamp(20px, 5vw, 72px);
+  border-bottom: 2px solid var(--line);
+  background: var(--surface);
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
+.admin-tab-btn {
+  padding: 12px 20px;
+  background: none;
+  border: none;
+  border-bottom: 3px solid transparent;
+  margin-bottom: -2px;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--muted);
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+}
+
+.admin-tab-btn:hover {
+  color: var(--text);
+}
+
+.admin-tab-btn.active {
+  color: var(--brand);
+  border-bottom-color: var(--brand);
+}
+
+/* ─── Summary cards – 6-card layout ────────────────────────────── */
+@media (max-width: 900px) {
+  .admin-summary {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+.find-tickets-icon {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 1.8rem;
+  line-height: 1;
+}
+
+/* ─── Reviews section header ────────────────────────────────────── */
+.review-filter-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.review-average {
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: var(--brand);
+  white-space: nowrap;
+}
+
+.star-filter-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.star-filter-btn {
+  padding: 5px 10px;
+  background: white;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  font-size: 0.8rem;
+  color: #b45309;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.star-filter-btn:hover {
+  border-color: var(--brand);
+  color: var(--brand);
+}
+
+.star-filter-btn.active {
+  background: var(--brand);
+  border-color: var(--brand);
+  color: #fff;
+}
+
+.star-filter-all {
+  color: var(--muted);
+}
+
+.star-filter-all.active {
+  color: #fff;
+}
+
+/* ─── Review stars in card ──────────────────────────────────────── */
+.review-stars {
+  color: #b45309;
+  letter-spacing: 1px;
+}
+
+/* ─── Find Tickets modal ────────────────────────────────────────── */
+.find-tickets-dialog {
+  max-width: 560px;
+  width: 100%;
+}
+
+.find-tickets-search-label {
+  display: block;
+  margin-bottom: 14px;
+}
+
+.find-tickets-search-label input {
+  width: 100%;
+  padding: 10px 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  font-size: 1rem;
+}
+
+.find-tickets-results {
+  display: grid;
+  gap: 8px;
+  max-height: 60vh;
+  overflow-y: auto;
+}
+
+.find-ticket-result {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  padding: 12px 14px;
+  background: white;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  cursor: pointer;
+  text-align: left;
+  transition: border-color 0.15s, box-shadow 0.15s;
+  width: 100%;
+}
+
+.find-ticket-result:hover {
+  border-color: var(--brand);
+  box-shadow: 0 2px 8px rgba(0, 116, 93, 0.12);
+}
+
+.find-ticket-name {
+  font-weight: 700;
+  font-size: 1rem;
+}
+
+.find-ticket-meta {
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.find-tickets-empty {
+  color: var(--muted);
+  text-align: center;
+  padding: 20px;
 }

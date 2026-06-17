@@ -1,12 +1,36 @@
 const db = window.ShiftFuelSupabase;
 const requestList = document.querySelector('#request-list');
-const totalRequests = document.querySelector('#total-requests');
 const openRequests = document.querySelector('#open-requests');
 const completeRequests = document.querySelector('#complete-requests');
 const deniedRequests = document.querySelector('#denied-requests');
+const totalReviewsEl = document.querySelector('#total-reviews');
+const totalApplicantsEl = document.querySelector('#total-applicants');
 const showOpen = document.querySelector('#show-open');
 const showComplete = document.querySelector('#show-complete');
 const showDenied = document.querySelector('#show-denied');
+const showReviews = document.querySelector('#show-reviews');
+const showApplicants = document.querySelector('#show-applicants');
+const findTicketsBtn = document.querySelector('#find-tickets-btn');
+const findTicketsModal = document.querySelector('#find-tickets-modal');
+const closeFindTicketsBtn = document.querySelector('#close-find-tickets');
+const findTicketsSearch = document.querySelector('#find-tickets-search');
+const findTicketsResults = document.querySelector('#find-tickets-results');
+const reviewAverageDisplay = document.querySelector('#review-average-display');
+const starFilterButtons = document.querySelector('.star-filter-buttons');
+const adminAvgRating = document.querySelector('#admin-avg-rating');
+const adminCompletedCount = document.querySelector('#admin-completed-count');
+const requestQueueHeading = document.querySelector('#request-queue-heading');
+const requestQueueEyebrow = document.querySelector('#request-queue-eyebrow');
+const showAllTimeBtn = document.querySelector('#show-all-time-btn');
+const ticketDetailModal = document.querySelector('#ticket-detail-modal');
+const closeTicketDetailBtn = document.querySelector('#close-ticket-detail');
+const ticketDetailBody = document.querySelector('#ticket-detail-body');
+const adminPageTabs = document.querySelectorAll('.admin-page-tab');
+const workerCountBadge = document.querySelector('#worker-count-badge');
+const findTicketsGoBtn = document.querySelector('#find-tickets-go');
+const findTicketsSortBar = document.querySelector('#find-tickets-sort-bar');
+const findTicketsSortSelect = document.querySelector('#find-tickets-sort');
+const findTicketsResultCount = document.querySelector('#find-tickets-result-count');
 const workerScheduleForm = document.querySelector('#worker-schedule-form');
 const workerScheduleStatus = document.querySelector('#worker-schedule-status');
 const workerSelect = document.querySelector('#worker-select');
@@ -47,8 +71,16 @@ let selectedWorkerDaysOff = new Set();
 let copiedWorkerDaySchedule = null;
 let allRequests = [];
 let allEmployees = [];
+let allReviews = [];
+let allReviewRequestMap = new Map();
+let allApplicantsList = [];
 let selectedScheduleEmployeeId = '';
 let currentView = 'open';
+let currentAdminTab = 'requests';
+let currentPageTab = 'dashboard';
+let currentReviewFilter = null;
+let showAllTime = false;
+let lastSearchResults = [];
 let vehiclePsiGuides = [];
 
 // Admin profile photo editor state (mirrors worker.js)
@@ -101,6 +133,17 @@ const applicantStatusLabels = {
   hired: 'Hired',
   declined: 'Declined',
 };
+
+function updateHeroStats() {
+  if (adminAvgRating && allReviews.length) {
+    const avg = (allReviews.reduce((s, r) => s + Number(r.rating), 0) / allReviews.length).toFixed(1);
+    adminAvgRating.textContent = `★ ${avg}`;
+  } else if (adminAvgRating) {
+    adminAvgRating.textContent = '—';
+  }
+  const completeCount = allRequests.filter((r) => r.status === 'complete').length;
+  if (adminCompletedCount) adminCompletedCount.textContent = completeCount;
+}
 
 function escapeHtml(value) {
   return String(value ?? '')
@@ -399,7 +442,7 @@ function requestCardDetails(request) {
       <p><strong>Vehicle:</strong> ${escapeHtml([request.vehicle_year, request.vehicle_make, request.vehicle_model, request.vehicle_color].filter(Boolean).join(' '))}${request.license_plate ? ` | Plate: ${escapeHtml(request.license_plate)}` : ''}</p>
       ${request.return_parking_location ? `<p><strong>Vehicle return location:</strong> ${escapeHtml(request.return_parking_location)}</p>` : ''}
       ${request.cancellation_reason ? `<p><strong>Cancellation reason:</strong> ${escapeHtml(request.cancellation_reason)}</p>` : ''}
-      ${request.notes ? `<p><strong>Notes:</strong> ${escapeHtml(request.notes)}</p>` : ''}
+      ${(request.notes && isOpen(request)) ? `<p><strong>Notes:</strong> ${escapeHtml(request.notes)}</p>` : ''}
       ${hasPayment ? `<hr class="details-divider">` : ''}
       ${hasPayment ? `<p><strong>Estimated total:</strong> ${money(request.estimated_total)} | <strong>Final total:</strong> ${request.final_total == null ? 'Not recorded' : money(request.final_total)}</p>` : ''}
       ${(receiptTotals.fuel || receiptTotals.wash) ? `<p><strong>Receipt totals:</strong> Fuel ${money(receiptTotals.fuel)} | Car wash ${money(receiptTotals.wash)}</p>` : ''}
@@ -507,9 +550,11 @@ function filePicker(label, className, extraAttributes = '', accept = 'image/*') 
 
 function renderActions(request) {
   if (!isOpen(request)) {
+    const isComplete = request.status === 'complete';
+    const label = isComplete ? 'Edit' : 'Edit / reopen';
     return `
       <div class="admin-button-row">
-        <button class="button secondary edit-request" data-id="${request.id}" type="button">Edit / reopen</button>
+        <button class="button secondary edit-request" data-id="${request.id}" type="button">${label}</button>
       </div>
       ${renderEditPanel(request)}
     `;
@@ -811,58 +856,160 @@ function renderTotalEditForm(request, type) {
 }
 
 function renderEditPanel(request) {
+  const canReopen = !isOpen(request) && request.status !== 'complete';
   return `
     <div class="admin-edit-panel" data-edit-for="${request.id}" hidden>
       <h4>Edit request</h4>
+
+      <p class="edit-section-label">Customer</p>
       <div class="field-grid">
-        <label>Pickup parking lot / garage
+        <label>Customer name
+          <input class="edit-customer-name" type="text" value="${escapeHtml(request.customer_name || '')}">
+        </label>
+        <label>Phone
+          <input class="edit-customer-phone" type="tel" value="${escapeHtml(request.customer_phone || '')}">
+        </label>
+        <label>Email
+          <input class="edit-customer-email" type="email" value="${escapeHtml(request.customer_email || '')}">
+        </label>
+      </div>
+
+      <p class="edit-section-label">Service address</p>
+      <div class="field-grid">
+        <label>Street address
+          <input class="edit-address-street" type="text" value="${escapeHtml(request.address_street || '')}">
+        </label>
+        <label>Apt / suite
+          <input class="edit-address-apt" type="text" value="${escapeHtml(request.address_apt || '')}">
+        </label>
+        <label>City
+          <input class="edit-address-city" type="text" value="${escapeHtml(request.address_city || '')}">
+        </label>
+        <label>State
+          <input class="edit-address-state" type="text" value="${escapeHtml(request.address_state || '')}">
+        </label>
+        <label>ZIP
+          <input class="edit-address-zip" type="text" value="${escapeHtml(request.address_zip || '')}">
+        </label>
+        <label>Parking lot / garage
           <input class="edit-parking-location" type="text" value="${escapeHtml(request.parking_location || '')}">
         </label>
-        <label>Pickup parking spot
+        <label>Parking spot
           <input class="edit-parking-spot" type="text" value="${escapeHtml(request.parking_spot || '')}">
         </label>
+        <label>Key handoff details
+          <input class="edit-key-handoff" type="text" value="${escapeHtml(request.key_handoff_details || '')}">
+        </label>
+      </div>
+
+      <p class="edit-section-label">Vehicle</p>
+      <div class="field-grid">
+        <label>Year
+          <input class="edit-vehicle-year" type="text" value="${escapeHtml(request.vehicle_year || '')}">
+        </label>
+        <label>Make
+          <input class="edit-vehicle-make" type="text" value="${escapeHtml(request.vehicle_make || '')}">
+        </label>
+        <label>Model
+          <input class="edit-vehicle-model" type="text" value="${escapeHtml(request.vehicle_model || '')}">
+        </label>
+        <label>Color
+          <input class="edit-vehicle-color" type="text" value="${escapeHtml(request.vehicle_color || '')}">
+        </label>
+        <label>License plate
+          <input class="edit-license-plate" type="text" value="${escapeHtml(request.license_plate || '')}">
+        </label>
+      </div>
+
+      <p class="edit-section-label">Service</p>
+      <div class="field-grid">
         <label>Service date
           <input class="edit-service-date" type="date" value="${escapeHtml(request.service_date || '')}">
         </label>
         <label>Desired return time
           <input class="edit-return-time" type="time" value="${escapeHtml(String(request.desired_return_time || '').slice(0,5))}">
         </label>
+        <label>Fuel type
+          <input class="edit-fuel-type" type="text" value="${escapeHtml(request.fuel_type || '')}">
+        </label>
+        <label>Vehicle return location
+          <input class="edit-return-location" type="text" value="${escapeHtml(request.return_parking_location || '')}">
+        </label>
       </div>
+
+      <p class="edit-section-label">Payment <span class="edit-admin-badge">Admin only</span></p>
+      <div class="field-grid">
+        <label>Estimated total ($)
+          <input class="edit-estimated-total" type="number" min="0" step="0.01" value="${escapeHtml(request.estimated_total != null ? String(request.estimated_total) : '')}">
+        </label>
+        <label>Final total ($)
+          <input class="edit-final-total" type="number" min="0" step="0.01" value="${escapeHtml(request.final_total != null ? String(request.final_total) : '')}">
+        </label>
+      </div>
+
       <label>Admin notes
         <textarea class="edit-notes" rows="3">${escapeHtml(request.notes || '')}</textarea>
       </label>
+
       <div class="admin-button-row">
         <button class="button primary save-edit" data-id="${request.id}" type="button">Save changes</button>
-        ${!isOpen(request) ? `<button class="button secondary update-status" data-id="${request.id}" data-status="accepted" type="button">Reopen as accepted</button>` : ''}
+        ${canReopen ? `<button class="button secondary update-status" data-id="${request.id}" data-status="accepted" type="button">Reopen as accepted</button>` : ''}
       </div>
+      <p class="edit-save-status field-help" data-status-for="${request.id}"></p>
     </div>
   `;
 }
 
 function renderRequests() {
+  const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+
   const filtered = allRequests.filter((request) => {
     if (currentView === 'open') return isOpen(request);
-    if (currentView === 'complete') return request.status === 'complete';
-    if (currentView === 'closed') return closedStatuses.includes(request.status);
+    if (currentView === 'complete') {
+      if (!showAllTime && request.status === 'complete') {
+        return (request.updated_at || request.created_at) >= sevenDaysAgo;
+      }
+      return request.status === 'complete';
+    }
+    if (currentView === 'closed') {
+      if (!showAllTime && closedStatuses.includes(request.status)) {
+        return (request.updated_at || request.created_at) >= sevenDaysAgo;
+      }
+      return closedStatuses.includes(request.status);
+    }
     return true;
   });
 
   const openCount = allRequests.filter(isOpen).length;
-  const completeCount = allRequests.filter((request) => request.status === 'complete').length;
-  const closedCount = allRequests.filter((request) => closedStatuses.includes(request.status)).length;
+  const completeCount = allRequests.filter((r) => r.status === 'complete').length;
+  const closedCount = allRequests.filter((r) => closedStatuses.includes(r.status)).length;
 
-  totalRequests.textContent = openCount + completeCount;
-  openRequests.textContent = openCount;
-  completeRequests.textContent = completeCount;
-  deniedRequests.textContent = closedCount;
+  if (openRequests) openRequests.textContent = openCount;
+  if (completeRequests) completeRequests.textContent = completeCount;
+  if (deniedRequests) deniedRequests.textContent = closedCount;
 
-  [showOpen, showComplete, showDenied].forEach((button) => button?.classList.remove('active'));
+  // Update hero completed count
+  if (adminCompletedCount) adminCompletedCount.textContent = completeCount;
+
+  // Update heading and show-all button
+  const headings = { open: 'Open requests', complete: 'Completed requests', closed: 'Closed requests' };
+  if (requestQueueHeading) requestQueueHeading.textContent = headings[currentView] || 'Requests';
+  if (requestQueueEyebrow) requestQueueEyebrow.textContent = currentView === 'open' ? 'Queue' : 'History';
+
+  const needsShowAll = (currentView === 'complete' || currentView === 'closed') && !showAllTime;
+  if (showAllTimeBtn) showAllTimeBtn.style.display = needsShowAll ? '' : 'none';
+
+  // Summary card active state
+  [showOpen, showComplete, showDenied].forEach((btn) => btn?.classList.remove('active'));
   if (currentView === 'open') showOpen?.classList.add('active');
   if (currentView === 'complete') showComplete?.classList.add('active');
   if (currentView === 'closed') showDenied?.classList.add('active');
 
   if (filtered.length === 0) {
-    requestList.innerHTML = '<div class="empty-state"><p>No requests in this view.</p></div>';
+    const msg = needsShowAll
+      ? '<div class="empty-state"><p>No requests in the last 7 days. <button class="button secondary inline-show-all" type="button">Show all time</button></p></div>'
+      : '<div class="empty-state"><p>No requests in this view.</p></div>';
+    requestList.innerHTML = msg;
     return;
   }
 
@@ -965,6 +1112,7 @@ async function loadEmployees() {
       selectedScheduleEmployeeId = '';
     }
 
+    if (workerCountBadge) workerCountBadge.textContent = allEmployees.filter((e) => e.active).length;
     renderWorkerSelect();
     renderWorkerProfiles();
   } catch (error) {
@@ -1661,28 +1809,48 @@ async function loadRequests() {
   }
 
   allRequests = data || [];
+  updateHeroStats();
   renderRequests();
 }
 
-function renderReviews(reviews, requestMap = new Map()) {
-  if (!reviewList) {
+function renderReviews(reviews, requestMap = new Map(), starFilter = null) {
+  if (!reviewList) return;
+
+  // Update average rating display (from all reviews, not filtered)
+  if (reviewAverageDisplay) {
+    if (reviews.length) {
+      const avg = (reviews.reduce((s, r) => s + Number(r.rating), 0) / reviews.length).toFixed(1);
+      reviewAverageDisplay.textContent = `Avg: ${avg} / 5`;
+    } else {
+      reviewAverageDisplay.textContent = '';
+    }
+  }
+
+  // Update star filter button active state
+  if (starFilterButtons) {
+    starFilterButtons.querySelectorAll('.star-filter-btn').forEach((btn) => {
+      const btnStars = btn.dataset.stars === '' ? null : Number(btn.dataset.stars);
+      btn.classList.toggle('active', btnStars === starFilter);
+    });
+  }
+
+  const filtered = starFilter ? reviews.filter((r) => Number(r.rating) === starFilter) : reviews;
+
+  if (!filtered.length) {
+    reviewList.innerHTML = '<div class="empty-state"><p>No reviews in this view.</p></div>';
     return;
   }
 
-  if (!reviews.length) {
-    reviewList.innerHTML = '<div class="empty-state"><p>No reviews saved yet.</p></div>';
-    return;
-  }
-
-  reviewList.innerHTML = reviews.map((review) => {
+  reviewList.innerHTML = filtered.map((review) => {
     const request = requestMap.get(review.service_request_id) || {};
+    const stars = '★'.repeat(Math.max(0, Math.min(5, Number(review.rating))));
 
     return `
       <article class="request-card">
         <div class="request-card-header">
           <div>
             <p class="eyebrow">${escapeHtml(review.service_request_id)}</p>
-            <h3>${escapeHtml(review.rating)} / 5 rating</h3>
+            <h3><span class="review-stars">${stars}</span> ${escapeHtml(String(review.rating))} / 5</h3>
           </div>
           <span class="status-pill">${escapeHtml(formatDateTime(review.submitted_at))}</span>
         </div>
@@ -1729,7 +1897,11 @@ async function loadReviews() {
     }
   }
 
-  renderReviews(reviews, requestMap);
+  allReviews = reviews;
+  allReviewRequestMap = requestMap;
+  if (totalReviewsEl) totalReviewsEl.textContent = allReviews.length;
+  updateHeroStats();
+  renderReviews(allReviews, allReviewRequestMap, currentReviewFilter);
 }
 
 function renderApplicants(applicants) {
@@ -1796,7 +1968,9 @@ async function loadApplicants() {
     return;
   }
 
-  renderApplicants(data || []);
+  allApplicantsList = data || [];
+  if (totalApplicantsEl) totalApplicantsEl.textContent = allApplicantsList.length;
+  renderApplicants(allApplicantsList);
 }
 
 async function hireApplicant(applicantId) {
@@ -2351,20 +2525,42 @@ async function completeRequest(button) {
 async function saveEdit(button) {
   const id = button.dataset.id;
   const panel = button.closest('.admin-edit-panel');
+  const statusEl = panel.querySelector('.edit-save-status');
 
-  const { error } = await db
-    .from('service_requests')
-    .update({
-      parking_location: panel.querySelector('.edit-parking-location').value.trim(),
-      parking_spot: panel.querySelector('.edit-parking-spot').value.trim(),
-      service_date: panel.querySelector('.edit-service-date').value || null,
-      desired_return_time: panel.querySelector('.edit-return-time').value || null,
-      notes: panel.querySelector('.edit-notes').value.trim(),
-      updated_at: new Date().toISOString(),
-    })
-    .eq('id', id);
+  const val = (cls) => panel.querySelector(cls)?.value?.trim() ?? '';
+  const numVal = (cls) => { const v = val(cls); return v === '' ? null : Number(v); };
+
+  const updates = {
+    customer_name: val('.edit-customer-name') || null,
+    customer_phone: val('.edit-customer-phone') || null,
+    customer_email: val('.edit-customer-email') || null,
+    address_street: val('.edit-address-street') || null,
+    address_apt: val('.edit-address-apt') || null,
+    address_city: val('.edit-address-city') || null,
+    address_state: val('.edit-address-state') || null,
+    address_zip: val('.edit-address-zip') || null,
+    parking_location: val('.edit-parking-location') || null,
+    parking_spot: val('.edit-parking-spot') || null,
+    key_handoff_details: val('.edit-key-handoff') || null,
+    vehicle_year: val('.edit-vehicle-year') || null,
+    vehicle_make: val('.edit-vehicle-make') || null,
+    vehicle_model: val('.edit-vehicle-model') || null,
+    vehicle_color: val('.edit-vehicle-color') || null,
+    license_plate: val('.edit-license-plate') || null,
+    service_date: val('.edit-service-date') || null,
+    desired_return_time: val('.edit-return-time') || null,
+    fuel_type: val('.edit-fuel-type') || null,
+    return_parking_location: val('.edit-return-location') || null,
+    estimated_total: numVal('.edit-estimated-total'),
+    final_total: numVal('.edit-final-total'),
+    notes: val('.edit-notes') || null,
+    updated_at: new Date().toISOString(),
+  };
+
+  const { error } = await db.from('service_requests').update(updates).eq('id', id);
 
   if (error) throw error;
+  if (statusEl) { statusEl.textContent = 'Saved.'; setTimeout(() => { statusEl.textContent = ''; }, 2500); }
   await loadRequests();
 }
 
@@ -2470,6 +2666,12 @@ requestList.addEventListener('click', async (event) => {
   if (!button) return;
 
   try {
+    if (button.classList.contains('inline-show-all')) {
+      showAllTime = true;
+      renderRequests();
+      return;
+    }
+
     if (button.classList.contains('update-status')) {
       await updateRequestStatus(button.dataset.id, button.dataset.status);
       return;
@@ -2675,9 +2877,313 @@ requestList.addEventListener('input', (event) => {
     : '<p class="field-help">Type a code to preview what the customer will see.</p>';
 });
 
-showOpen?.addEventListener('click', () => { currentView = 'open'; renderRequests(); });
-showComplete?.addEventListener('click', () => { currentView = 'complete'; renderRequests(); });
-showDenied?.addEventListener('click', () => { currentView = 'closed'; renderRequests(); });
+showOpen?.addEventListener('click', () => {
+  currentView = 'open';
+  showAllTime = false;
+  switchAdminTab('requests');
+  renderRequests();
+});
+showComplete?.addEventListener('click', () => {
+  currentView = 'complete';
+  showAllTime = false;
+  switchAdminTab('requests');
+  renderRequests();
+});
+showDenied?.addEventListener('click', () => {
+  currentView = 'closed';
+  showAllTime = false;
+  switchAdminTab('requests');
+  renderRequests();
+});
+showReviews?.addEventListener('click', () => switchAdminTab('reviews'));
+showApplicants?.addEventListener('click', () => switchAdminTab('applicants'));
+
+showAllTimeBtn?.addEventListener('click', () => {
+  showAllTime = true;
+  if (showAllTimeBtn) showAllTimeBtn.style.display = 'none';
+  renderRequests();
+});
+
+function switchPageTab(page) {
+  currentPageTab = page;
+  adminPageTabs.forEach((btn) => btn.classList.toggle('active', btn.dataset.page === page));
+  document.querySelectorAll('[data-page-section]').forEach((el) => {
+    el.hidden = el.dataset.pageSection !== page;
+  });
+}
+
+function switchAdminTab(tab) {
+  currentAdminTab = tab;
+  // Only affect panels in the dashboard page
+  document.querySelectorAll('[data-tab-panel]').forEach((panel) => {
+    panel.hidden = panel.dataset.tabPanel !== tab;
+  });
+  // Update summary card active state
+  [showOpen, showComplete, showDenied].forEach((btn) => btn?.classList.remove('active'));
+  showReviews?.classList.toggle('active', tab === 'reviews');
+  showApplicants?.classList.toggle('active', tab === 'applicants');
+}
+
+adminPageTabs.forEach((btn) => {
+  btn.addEventListener('click', () => switchPageTab(btn.dataset.page));
+});
+
+// Find Tickets modal
+findTicketsBtn?.addEventListener('click', openFindTicketsModal);
+closeFindTicketsBtn?.addEventListener('click', closeFindTicketsModal);
+findTicketsModal?.addEventListener('click', (e) => { if (e.target === findTicketsModal) closeFindTicketsModal(); });
+
+function openFindTicketsModal() {
+  if (!findTicketsModal) return;
+  findTicketsModal.hidden = false;
+  document.body.style.overflow = 'hidden';
+  if (findTicketsSearch) { findTicketsSearch.value = ''; findTicketsSearch.focus(); }
+  if (findTicketsResults) findTicketsResults.innerHTML = '<p class="find-tickets-empty">Enter a name, phone number, or email to search.</p>';
+  if (findTicketsSortBar) findTicketsSortBar.hidden = true;
+  lastSearchResults = [];
+}
+
+function closeFindTicketsModal() {
+  if (!findTicketsModal) return;
+  findTicketsModal.hidden = true;
+  document.body.style.overflow = '';
+}
+
+function normalizePhone(s) {
+  return String(s || '').replace(/\D/g, '');
+}
+
+function fuzzyMatch(haystack, needle) {
+  if (!haystack || !needle) return false;
+  const h = String(haystack).toLowerCase();
+  const n = needle.toLowerCase();
+  // Exact substring
+  if (h.includes(n)) return true;
+  // Allow up to 1 character difference for strings longer than 4 chars
+  if (n.length > 4) {
+    for (let i = 0; i <= h.length - n.length + 1; i++) {
+      let mismatches = 0;
+      for (let j = 0; j < n.length; j++) {
+        if (h[i + j] !== n[j]) mismatches++;
+        if (mismatches > 1) break;
+      }
+      if (mismatches <= 1) return true;
+    }
+  }
+  return false;
+}
+
+function ticketMatchesQuery(r, q) {
+  const qDigits = normalizePhone(q);
+  if (qDigits.length >= 7) {
+    const phoneDigits = normalizePhone(r.customer_phone);
+    if (phoneDigits.includes(qDigits) || qDigits.includes(phoneDigits.slice(-qDigits.length))) return true;
+  }
+  return fuzzyMatch(r.customer_name, q) || fuzzyMatch(r.customer_email, q);
+}
+
+function runFindTicketsSearch() {
+  if (!findTicketsResults) return;
+  const q = findTicketsSearch?.value?.trim() ?? '';
+  if (!q) {
+    findTicketsResults.innerHTML = '<p class="find-tickets-empty">Enter a name, phone number, or email to search.</p>';
+    if (findTicketsSortBar) findTicketsSortBar.hidden = true;
+    return;
+  }
+  const results = allRequests.filter((r) => ticketMatchesQuery(r, q));
+  lastSearchResults = results;
+  const sortOrder = findTicketsSortSelect?.value || 'newest';
+  renderSearchResults(results, sortOrder);
+}
+
+function renderSearchResults(results, sortOrder = 'newest') {
+  if (!findTicketsResults) return;
+
+  const sorted = [...results].sort((a, b) => {
+    const da = a.service_date || a.created_at || '';
+    const db = b.service_date || b.created_at || '';
+    return sortOrder === 'newest' ? db.localeCompare(da) : da.localeCompare(db);
+  });
+
+  if (findTicketsSortBar) findTicketsSortBar.hidden = false;
+  if (findTicketsResultCount) {
+    findTicketsResultCount.textContent = sorted.length === 1 ? '1 result' : `${sorted.length} results`;
+  }
+
+  if (!sorted.length) {
+    findTicketsResults.innerHTML = '<p class="find-tickets-empty">No matching tickets found.</p>';
+    return;
+  }
+
+  findTicketsResults.innerHTML = sorted.map((r) => `
+    <button class="find-ticket-result" data-request-id="${escapeHtml(r.id)}">
+      <div class="find-ticket-result-header">
+        <span class="find-ticket-name">${escapeHtml(r.customer_name || 'Customer')}</span>
+        <span class="status-pill">${escapeHtml(statusLabels[r.status] || r.status)}</span>
+      </div>
+      <span class="find-ticket-meta">${escapeHtml(r.customer_phone || 'No phone')} &middot; ${escapeHtml(r.customer_email || 'No email')}</span>
+      <span class="find-ticket-meta">
+        ${escapeHtml(r.service_date || 'Date not set')}
+        ${r.vehicle_year || r.vehicle_make || r.vehicle_model
+          ? ' &middot; ' + escapeHtml([r.vehicle_year, r.vehicle_make, r.vehicle_model].filter(Boolean).join(' '))
+          : ''}
+      </span>
+    </button>
+  `).join('');
+}
+
+// Trigger search on Enter key
+findTicketsSearch?.addEventListener('keydown', (e) => { if (e.key === 'Enter') runFindTicketsSearch(); });
+findTicketsGoBtn?.addEventListener('click', runFindTicketsSearch);
+findTicketsSortSelect?.addEventListener('change', () => {
+  renderSearchResults(lastSearchResults, findTicketsSortSelect.value);
+});
+
+findTicketsResults?.addEventListener('click', (e) => {
+  const btn = e.target.closest('.find-ticket-result');
+  if (!btn) return;
+  const requestId = btn.dataset.requestId;
+  const request = allRequests.find((r) => r.id === requestId);
+  if (!request) return;
+  closeFindTicketsModal();
+  openTicketDetailModal(request);
+});
+
+closeTicketDetailBtn?.addEventListener('click', closeTicketDetailModal);
+ticketDetailModal?.addEventListener('click', (e) => { if (e.target === ticketDetailModal) closeTicketDetailModal(); });
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') {
+    if (!ticketDetailModal?.hidden) closeTicketDetailModal();
+    else if (!findTicketsModal?.hidden) closeFindTicketsModal();
+  }
+});
+
+function closeTicketDetailModal() {
+  if (!ticketDetailModal) return;
+  ticketDetailModal.hidden = true;
+  document.body.style.overflow = '';
+}
+
+async function openTicketDetailModal(request) {
+  if (!ticketDetailModal || !ticketDetailBody) return;
+  const title = document.querySelector('#ticket-detail-title');
+  if (title) title.textContent = `${request.customer_name || 'Ticket'} — ${escapeHtml(request.service_date || request.id.slice(0, 8))}`;
+  ticketDetailBody.innerHTML = '<p class="field-help">Loading...</p>';
+  ticketDetailModal.hidden = false;
+  document.body.style.overflow = 'hidden';
+
+  const photos = await loadTicketPhotos(request.id);
+  const photosHtml = photos.length
+    ? `<div class="ticket-detail-section">
+        <p class="edit-section-label">Photos (${photos.length})</p>
+        <div class="ticket-photos-grid">
+          ${photos.map((p) => {
+            const thumb = p.thumbnail_url || p.image_url;
+            const full = p.original_url || p.image_url;
+            const label = (p.photo_type || '').replace(/_/g, ' ');
+            return `<div class="photo-proof-card photo-proof-loaded" role="button" tabindex="0"
+              data-lightbox-src="${escapeHtml(full)}" data-lightbox-label="${escapeHtml(label)}">
+              <img src="${escapeHtml(thumb)}" alt="${escapeHtml(label)}" loading="lazy">
+              <span>${escapeHtml(label)}</span>
+            </div>`;
+          }).join('')}
+        </div>
+      </div>`
+    : '<p class="field-help" style="margin-top:12px">No photos attached to this ticket.</p>';
+
+  ticketDetailBody.innerHTML = `
+    <div class="request-card-header" style="margin-bottom:6px">
+      <div>
+        <p class="eyebrow">${escapeHtml(request.id)}</p>
+        <h3 style="margin:0">${escapeHtml(request.customer_name || 'Customer')}</h3>
+      </div>
+      <span class="status-pill">${escapeHtml(statusLabels[request.status] || request.status)}</span>
+    </div>
+    ${requestCardDetails(request)}
+    ${photosHtml}
+    <div class="ticket-detail-edit-section" style="margin-top:18px">
+      <div class="admin-button-row">
+        <button class="button secondary toggle-ticket-edit" type="button">Edit request</button>
+        <button class="button secondary close-ticket-detail-inner" type="button">Close</button>
+      </div>
+      <div class="ticket-inline-edit" hidden>
+        ${renderEditPanel(request)}
+      </div>
+    </div>
+  `;
+  // Show the inner edit panel (without extra hidden wrapper)
+  const innerEdit = ticketDetailBody.querySelector('.ticket-inline-edit .admin-edit-panel');
+  if (innerEdit) innerEdit.hidden = false;
+}
+
+async function loadTicketPhotos(requestId) {
+  const { data, error } = await db
+    .from('photos')
+    .select('photo_type,image_url,thumbnail_url,original_url,created_at')
+    .eq('service_request_id', requestId)
+    .order('created_at', { ascending: true });
+  if (error) { console.warn('Could not load ticket photos:', error); return []; }
+  return data || [];
+}
+
+ticketDetailBody?.addEventListener('click', async (e) => {
+  const button = e.target.closest('button');
+  if (!button) return;
+
+  if (button.classList.contains('close-ticket-detail-inner')) {
+    closeTicketDetailModal();
+    return;
+  }
+
+  if (button.classList.contains('toggle-ticket-edit')) {
+    const editSection = ticketDetailBody.querySelector('.ticket-inline-edit');
+    if (editSection) {
+      editSection.hidden = !editSection.hidden;
+      button.textContent = editSection.hidden ? 'Edit request' : 'Hide edit form';
+    }
+    return;
+  }
+
+  if (button.classList.contains('save-edit')) {
+    button.disabled = true;
+    try {
+      await saveEdit(button);
+      // Refresh the detail view with updated request
+      const id = button.dataset.id;
+      const updated = allRequests.find((r) => r.id === id);
+      if (updated) await openTicketDetailModal(updated);
+    } catch (err) {
+      console.error('Edit save failed:', err);
+      const statusEl = button.closest('.admin-edit-panel')?.querySelector('.edit-save-status');
+      if (statusEl) statusEl.textContent = `Save failed: ${err.message || 'Check console'}`;
+    } finally {
+      button.disabled = false;
+    }
+    return;
+  }
+
+  if (button.classList.contains('update-status')) {
+    button.disabled = true;
+    try {
+      await updateRequestStatus(button.dataset.id, button.dataset.status);
+      const updated = allRequests.find((r) => r.id === button.dataset.id);
+      if (updated) await openTicketDetailModal(updated);
+    } catch (err) {
+      console.error('Status update failed:', err);
+    } finally {
+      button.disabled = false;
+    }
+    return;
+  }
+});
+
+// Star filter for reviews
+starFilterButtons?.addEventListener('click', (e) => {
+  const btn = e.target.closest('.star-filter-btn');
+  if (!btn) return;
+  currentReviewFilter = btn.dataset.stars === '' ? null : Number(btn.dataset.stars);
+  renderReviews(allReviews, allReviewRequestMap, currentReviewFilter);
+});
 
 function daysOffFromText(value) {
   return String(value || '')
