@@ -45,6 +45,7 @@ const workerReviewList = document.querySelector('#worker-review-list');
 
 const SESSION_WORKER_NAME = sessionStorage.getItem('shiftfuel_worker') || 'Mark Urban';
 const SESSION_WORKER_ID = sessionStorage.getItem('shiftfuel_worker_id') || '';
+const SESSION_WORKER_TOKEN = sessionStorage.getItem('shiftfuel_worker_token') || '';
 const SERVICE_CENTERS = [
   'ShiftFuel - 132 Christiana Mall, Newark, DE 19702',
 ];
@@ -535,32 +536,12 @@ async function ensureWorkerProfile() {
     };
   }
 
-  let { data: inserted, error: insertError } = await workerDb
-    .from('employees')
-    .insert({
-      employee_code: `EMP-${SESSION_WORKER_NAME.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6) || 'WORKER'}`,
-      full_name: SESSION_WORKER_NAME,
-      active: true,
-      home_location: DEFAULT_WORK_LOCATION,
-    })
-    .select('id,employee_code,full_name,phone,photo_url,original_photo_url,cropped_photo_url,photo_zoom,photo_position_x,photo_position_y,home_location,started_at')
-    .single();
-
-  if (insertError) {
-    const fallback = await workerDb
-      .from('employees')
-      .insert({
-        employee_code: `EMP-${SESSION_WORKER_NAME.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6) || 'WORKER'}`,
-        full_name: SESSION_WORKER_NAME,
-        active: true,
-        home_location: DEFAULT_WORK_LOCATION,
-      })
-      .select('id,full_name,phone,home_location')
-      .single();
-
-    inserted = fallback.data;
-    insertError = fallback.error;
-  }
+  // Worker not found in the database. Workers must be created by an admin before first login.
+  // Direct INSERT is blocked by RLS — throw a clear error so the user sees a helpful message.
+  const insertError = new Error(
+    `Worker profile for "${SESSION_WORKER_NAME}" not found. Ask your admin to create your worker profile first.`
+  );
+  const inserted = null;
 
   if (insertError) throw insertError;
   return {
@@ -885,27 +866,16 @@ async function saveWorkerAvailability() {
   }
 
   const workLocation = workerLocation?.value || DEFAULT_WORK_LOCATION;
-  const { error: deleteError } = await workerDb
-    .from('employee_availability')
-    .delete()
-    .eq('employee_id', currentEmployee.id);
-
-  if (deleteError) throw deleteError;
-
-  const { error: insertError } = await workerDb.from('employee_availability').insert(workdays.map((day) => ({
-    employee_id: currentEmployee.id,
-    day_of_week: day.dayOfWeek,
-    starts_at: day.startsAt,
-    ends_at: day.endsAt,
-    work_location: workLocation,
-  })));
-
-  if (insertError) throw insertError;
-
-  await workerDb
-    .from('employees')
-    .update({ home_location: workLocation, profile_updated_at: new Date().toISOString() })
-    .eq('id', currentEmployee.id);
+  const { error } = await workerDb.rpc('worker_save_availability', {
+    p_token: SESSION_WORKER_TOKEN,
+    p_workdays: workdays.map((day) => ({
+      day_of_week: day.dayOfWeek,
+      starts_at: day.startsAt,
+      ends_at: day.endsAt,
+    })),
+    p_location: workLocation,
+  });
+  if (error) throw error;
 
   currentEmployee.home_location = workLocation;
   if (workerProfileLocation) workerProfileLocation.value = workLocation;
@@ -915,22 +885,11 @@ async function saveWorkerAvailability() {
 async function saveWorkerDaysOff() {
   if (!currentEmployee) return;
 
-  const { error: deleteError } = await workerDb
-    .from('employee_days_off')
-    .delete()
-    .eq('employee_id', currentEmployee.id);
-
-  if (deleteError) throw deleteError;
-
-  const rows = Array.from(selectedWorkerDaysOff).sort().map((dayOff) => ({
-    employee_id: currentEmployee.id,
-    day_off: dayOff,
-  }));
-
-  if (rows.length) {
-    const { error: insertError } = await workerDb.from('employee_days_off').insert(rows);
-    if (insertError) throw insertError;
-  }
+  const { error } = await workerDb.rpc('worker_save_days_off', {
+    p_token: SESSION_WORKER_TOKEN,
+    p_days_off: Array.from(selectedWorkerDaysOff).sort(),
+  });
+  if (error) throw error;
 
   setScheduleStatus('Days off saved and marked unbookable.');
 }
@@ -1937,42 +1896,13 @@ workerProfileForm?.addEventListener('submit', async (event) => {
       profile_updated_at: new Date().toISOString(),
     };
 
-    let profileSelect = 'id,employee_code,full_name,phone,photo_url,original_photo_url,cropped_photo_url,photo_zoom,photo_position_x,photo_position_y,home_location,started_at';
-    let { data, error } = await workerDb
-      .from('employees')
-      .update(employeeUpdates)
-      .eq('id', currentEmployee.id)
-      .select(profileSelect)
-      .single();
-
-    if (error?.code === 'PGRST204' && String(error.message || '').includes("'photo_position_")) {
-      delete employeeUpdates.photo_position_x;
-      delete employeeUpdates.photo_position_y;
-      profileSelect = 'id,employee_code,full_name,phone,photo_url,photo_zoom,home_location,started_at';
-      ({ data, error } = await workerDb
-        .from('employees')
-        .update(employeeUpdates)
-        .eq('id', currentEmployee.id)
-        .select(profileSelect)
-        .single());
-      if (data) {
-        data.photo_position_x = photoPositionX;
-        data.photo_position_y = photoPositionY;
-      }
-    }
-
-    if (error?.code === 'PGRST204' && String(error.message || '').includes("'photo_zoom'")) {
-      delete employeeUpdates.photo_zoom;
-      ({ data, error } = await workerDb
-        .from('employees')
-        .update(employeeUpdates)
-        .eq('id', currentEmployee.id)
-        .select('id,employee_code,full_name,phone,photo_url,home_location,started_at')
-        .single());
-      if (data) data.photo_zoom = photoZoom;
-    }
+    const { data: rpcRows, error } = await workerDb.rpc('worker_update_profile', {
+      p_token: SESSION_WORKER_TOKEN,
+      p_data: employeeUpdates,
+    });
 
     if (error) throw error;
+    const data = (rpcRows || [])[0] || { ...currentEmployee, ...employeeUpdates };
 
     await workerDb
       .from('service_requests')
@@ -2211,10 +2141,12 @@ workerPasswordForm?.addEventListener('submit', async (event) => {
   setWorkerPasswordStatus('Updating password...');
 
   try {
-    const { error } = await workerDb
-      .from('employees')
-      .update(await passwordFields(password))
-      .eq('id', currentEmployee.id);
+    const { worker_password_hash, worker_password_salt } = await passwordFields(password);
+    const { error } = await workerDb.rpc('worker_change_password', {
+      p_token: SESSION_WORKER_TOKEN,
+      p_hash: worker_password_hash,
+      p_salt: worker_password_salt,
+    });
 
     if (error) throw error;
 

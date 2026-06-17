@@ -118,10 +118,20 @@
           const hash = await sha256Hex(`${employee.worker_password_salt}:${password}`);
 
           if (hash === employee.worker_password_hash) {
+            // Create a server-side session token so write RPCs can verify identity.
+            let workerToken = null;
+            try {
+              const { data: token, error: tokenError } = await window.ShiftFuelSupabase
+                .rpc("worker_create_session", { p_employee_id: employee.id });
+              if (!tokenError) workerToken = token;
+            } catch {
+              // Non-fatal — worker can still log in; write RPCs will reject without token.
+            }
             localStorage.removeItem(ATTEMPT_KEY);
             localStorage.removeItem(LOCK_KEY);
             sessionStorage.setItem("shiftfuel_worker", employee.full_name);
             sessionStorage.setItem("shiftfuel_worker_id", employee.id);
+            if (workerToken) sessionStorage.setItem("shiftfuel_worker_token", workerToken);
             sessionStorage.setItem("shiftfuel_worker_expires", String(Date.now() + 8 * 60 * 60 * 1000));
             window.location.href = "worker.html";
             return;
