@@ -1507,7 +1507,7 @@ returningCustomerEmail?.addEventListener("keydown", (event) => {
     lookupReturningCustomer();
   }
 });
-returningCustomerResults?.addEventListener("click", (event) => {
+returningCustomerResults?.addEventListener("click", async (event) => {
   const deleteBtn = event.target.closest("[data-returning-delete]");
   if (deleteBtn) {
     const index = Number(deleteBtn.dataset.returningDelete);
@@ -1515,6 +1515,24 @@ returningCustomerResults?.addEventListener("click", (event) => {
     if (!request) return;
     const confirmed = confirm("Are you sure you want to delete this vehicle? This will not erase your current service selections.");
     if (!confirmed) return;
+
+    deleteBtn.disabled = true;
+    deleteBtn.textContent = "Deleting...";
+
+    const phone = cleanLookupPhone(returningCustomerSearch?.value.trim() || "");
+    const email = (returningCustomerEmail?.value.trim() || "").toLowerCase();
+
+    if (window.ShiftFuelSupabase && phone && email) {
+      const { error } = await window.ShiftFuelSupabase.rpc("public_hide_vehicle", {
+        p_request_id: request.id,
+        p_phone: phone,
+        p_email: email,
+      });
+      if (error) {
+        console.warn("Could not delete vehicle from database:", error);
+      }
+    }
+
     const wasSelected = currentlyAppliedRequestId === request.id;
     returningCustomerMatches.splice(index, 1);
     if (wasSelected) {
@@ -1522,7 +1540,11 @@ returningCustomerResults?.addEventListener("click", (event) => {
       currentlyAppliedRequestId = null;
     }
     renderReturningCustomerResults(returningCustomerMatches);
-    returningCustomerStatus.textContent = "Vehicle deleted. Your service selections are still saved.";
+    if (!returningCustomerMatches.length) {
+      returningCustomerStatus.textContent = "No saved vehicles remaining. Fill in your vehicle details below.";
+    } else {
+      returningCustomerStatus.textContent = "Vehicle removed. Your service selections are still saved.";
+    }
     return;
   }
   const button = event.target.closest("[data-returning-index]");
