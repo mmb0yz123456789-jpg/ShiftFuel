@@ -25,11 +25,15 @@ const saveDaysOffButton = document.querySelector('#save-days-off');
 const reviewList = document.querySelector('#review-list');
 const applicantList = document.querySelector('#applicant-list');
 const workerProfileList = document.querySelector('#worker-profile-list');
-const workerProfileSelect = document.querySelector('#worker-profile-select');
+const workerProfileSelectActive = document.querySelector('#worker-profile-select-active');
+const workerProfileSelectInactive = document.querySelector('#worker-profile-select-inactive');
 
 const PHOTO_BUCKET = 'service-photos';
 const DEFAULT_WORKER_NAME = 'Mark Urban';
-const DEFAULT_WORK_LOCATION = 'ChristianaCare - 4755 Ogletown Stanton Rd, Newark, DE 19718';
+const SERVICE_CENTERS = [
+  'ShiftFuel - 132 Christiana Mall, Newark, DE 19702',
+];
+const DEFAULT_WORK_LOCATION = SERVICE_CENTERS[0];
 const workerDayOptions = [
   { dayOfWeek: 1, label: 'Monday' },
   { dayOfWeek: 2, label: 'Tuesday' },
@@ -46,6 +50,15 @@ let allEmployees = [];
 let selectedScheduleEmployeeId = '';
 let currentView = 'open';
 let vehiclePsiGuides = [];
+
+// Admin profile photo editor state (mirrors worker.js)
+let adminPhotoZoom = 1;
+let adminPhotoPosition = { x: 0, y: 0 };
+let adminPhotoDisplayDrag = null;
+let adminBoundaryPreviewUrl = '';
+let adminCroppedPreviewUrl = '';
+let adminCroppedPhotoBlob = null;
+let adminPhotoDeleted = false; // true when admin clicks "Delete photo"
 
 const terminalStatuses = ['complete', 'denied', 'customer_canceled', 'unable_to_complete'];
 const closedStatuses = ['denied', 'customer_canceled', 'unable_to_complete'];
@@ -352,23 +365,45 @@ function feeSummary(request) {
   };
 }
 
+function adminFormatAddress(request) {
+  if (request.address_street) {
+    return [request.address_street, request.address_apt, request.address_city, request.address_state, request.address_zip].filter(Boolean).join(', ');
+  }
+  return request.hospital || 'Not provided';
+}
+
+function adminFormatService(request) {
+  const parts = [request.service_label || request.service_type];
+  if (request.fuel_type) parts.push(`Fuel: ${request.fuel_type}`);
+  if (request.estimated_fuel_range) parts.push(`Est. range: ${request.estimated_fuel_range}`);
+  if (request.wash_package_label) parts.push(`Wash: ${request.wash_package_label}`);
+  if (request.quick_inspection) parts.push('Quick inspection');
+  if (request.service_date) parts.push(request.service_date);
+  if (request.desired_return_time) parts.push(`Return by: ${request.desired_return_time}`);
+  return parts.filter(Boolean).join(' | ');
+}
+
 function requestCardDetails(request) {
   const fees = feeSummary(request);
   const receiptTotals = receiptTotalsFromNotes(request);
+  const hasPayment = request.estimated_total != null || request.final_total != null || receiptTotals.fuel || receiptTotals.wash;
 
   return `
     <div class="request-details">
-      <p><strong>Customer:</strong> ${escapeHtml(request.customer_name)} | ${escapeHtml(request.customer_phone)} | ${escapeHtml(request.customer_email || '')}</p>
-      <p><strong>Vehicle:</strong> ${escapeHtml(request.vehicle_year)} ${escapeHtml(request.vehicle_make)} ${escapeHtml(request.vehicle_model)}, ${escapeHtml(request.vehicle_color)} | Plate: ${escapeHtml(request.license_plate)}</p>
-      <p><strong>Service:</strong> ${escapeHtml(request.service_label || request.service_type)} ${request.wash_package_label ? `| Wash: ${escapeHtml(request.wash_package_label)}` : ''} ${request.fuel_type ? `| Fuel: ${escapeHtml(request.fuel_type)}` : ''}</p>
-      <p><strong>Pickup parking:</strong> ${escapeHtml(request.parking_location)}, spot ${escapeHtml(request.parking_spot)}</p>
-      ${request.return_parking_location ? `<p><strong>Return parking:</strong> ${escapeHtml(request.return_parking_location)}, spot ${escapeHtml(request.return_parking_spot)}</p>` : ''}
-      <p><strong>Service date/time:</strong> ${escapeHtml(request.service_date || '')} ${escapeHtml(request.desired_return_time || '')}</p>
-      <p><strong>Estimated total:</strong> ${money(request.estimated_total)} | <strong>Final total:</strong> ${request.final_total == null ? 'Not recorded' : money(request.final_total)}</p>
-      ${request.cancellation_reason ? `<p><strong>Reason:</strong> ${escapeHtml(request.cancellation_reason)}</p>` : ''}
-      ${(receiptTotals.fuel || receiptTotals.wash) ? `<p><strong>Receipt totals:</strong> Fuel ${money(receiptTotals.fuel)} | Car wash ${money(receiptTotals.wash)}</p>` : ''}
-      <p><strong>Fees used:</strong> Fuel convenience ${money(fees.fuel)} | Wash convenience ${money(fees.wash)} | Inspection ${money(fees.inspection)}</p>
+      <p><strong>Customer:</strong> ${escapeHtml(request.customer_name || '')}</p>
+      <p><strong>Phone:</strong> ${escapeHtml(request.customer_phone || 'Not provided')}${request.customer_email ? ` | ${escapeHtml(request.customer_email)}` : ''}</p>
+      <p><strong>Service address:</strong> ${escapeHtml(adminFormatAddress(request))}</p>
+      <p><strong>Parking:</strong> ${[request.parking_location, request.parking_spot ? `spot ${request.parking_spot}` : ''].filter(Boolean).map(escapeHtml).join(', ') || 'Not provided'}</p>
+      ${request.key_handoff_details ? `<p><strong>Key handoff:</strong> ${escapeHtml(request.key_handoff_details)}</p>` : ''}
+      <p><strong>Service:</strong> ${escapeHtml(adminFormatService(request))}</p>
+      <p><strong>Vehicle:</strong> ${escapeHtml([request.vehicle_year, request.vehicle_make, request.vehicle_model, request.vehicle_color].filter(Boolean).join(' '))}${request.license_plate ? ` | Plate: ${escapeHtml(request.license_plate)}` : ''}</p>
+      ${request.return_parking_location ? `<p><strong>Vehicle return location:</strong> ${escapeHtml(request.return_parking_location)}</p>` : ''}
+      ${request.cancellation_reason ? `<p><strong>Cancellation reason:</strong> ${escapeHtml(request.cancellation_reason)}</p>` : ''}
       ${request.notes ? `<p><strong>Notes:</strong> ${escapeHtml(request.notes)}</p>` : ''}
+      ${hasPayment ? `<hr class="details-divider">` : ''}
+      ${hasPayment ? `<p><strong>Estimated total:</strong> ${money(request.estimated_total)} | <strong>Final total:</strong> ${request.final_total == null ? 'Not recorded' : money(request.final_total)}</p>` : ''}
+      ${(receiptTotals.fuel || receiptTotals.wash) ? `<p><strong>Receipt totals:</strong> Fuel ${money(receiptTotals.fuel)} | Car wash ${money(receiptTotals.wash)}</p>` : ''}
+      ${hasPayment ? `<p><strong>Fees:</strong> Fuel convenience ${money(fees.fuel)} | Wash convenience ${money(fees.wash)} | Inspection ${money(fees.inspection)}</p>` : ''}
     </div>
   `;
 }
@@ -380,8 +415,20 @@ function renderWorkerAssignment(request) {
 
   const assignedName = request.assigned_worker_name || '';
   const assignedPhone = request.assigned_worker_phone || '';
-  const assignedPhoto = request.assigned_worker_photo_url || '';
   const selectedId = request.assigned_employee_id || '';
+  const assignedEmployee = allEmployees.find((e) => e.id === selectedId);
+  // Use live employee photo (current after profile updates); fall back to snapshot on request row.
+  const croppedUrl  = assignedEmployee?.cropped_photo_url  || assignedEmployee?.photo_url || request.assigned_worker_photo_url || '';
+  const originalUrl = assignedEmployee?.original_photo_url || assignedEmployee?.photo_url || request.assigned_worker_original_photo_url || '';
+
+  const photoFrame = window.ShiftFuelPhoto
+    ? window.ShiftFuelPhoto.renderPhotoFrame(
+        { photo_url: croppedUrl, cropped_photo_url: croppedUrl, original_photo_url: originalUrl, name: assignedName },
+        { clickable: true }
+      )
+    : (croppedUrl
+        ? `<div class="worker-profile-photo-frame"><img class="worker-profile-photo" src="${escapeHtml(croppedUrl)}" alt="${escapeHtml(assignedName)}"></div>`
+        : `<div class="worker-profile-photo-frame"><div class="worker-profile-photo-placeholder">No photo</div></div>`);
 
   return `
     <section class="worker-assignment-panel">
@@ -390,12 +437,12 @@ function renderWorkerAssignment(request) {
         <h4>${assignedName ? escapeHtml(assignedName) : 'Choose who is working on this car'}</h4>
         ${assignedPhone ? `<p class="field-help">Customer contact: ${escapeHtml(assignedPhone)}</p>` : '<p class="field-help">Assign a worker after accepting the request.</p>'}
       </div>
-      ${assignedPhoto ? `<img class="worker-avatar" src="${escapeHtml(assignedPhoto)}" alt="${escapeHtml(assignedName)}">` : '<div class="worker-avatar worker-avatar-placeholder">No photo</div>'}
+      ${photoFrame}
       <label class="worker-select-label">
         Worker
         <select class="assign-worker-select" data-id="${escapeHtml(request.id)}">
           <option value="">Select worker</option>
-          ${allEmployees.map((employee) => `
+          ${allEmployees.filter((e) => e.active).map((employee) => `
             <option value="${escapeHtml(employee.id)}" ${employee.id === selectedId ? 'selected' : ''}>${escapeHtml(employee.full_name)} (${escapeHtml(employee.employee_code)})</option>
           `).join('')}
         </select>
@@ -701,23 +748,15 @@ function renderReceiptPanel(request, mode = 'all') {
 }
 
 function renderReturnLocationPanel(request) {
-  const returnParkingLocation = request.return_parking_location || request.parking_location || '';
-  const returnParkingSpot = request.return_parking_spot || request.parking_spot || '';
-  const returnParkingMapUrl = request.return_parking_map_url || request.parking_map_url || '';
+  const returnLocation = request.return_parking_location || '';
 
   return `
     <div class="return-location-panel" data-return-for="${request.id}">
-      <h4>Record return/drop-off location before drop-off photos</h4>
-      <p class="field-help">These fields start with the pickup location. Change them only if the vehicle was returned somewhere different.</p>
+      <h4>Vehicle Return Location</h4>
+      <p class="field-help">Record exactly where the vehicle was left after service.</p>
       <div class="field-grid">
-        <label>Return parking lot / garage
-          <input class="return-parking-location" type="text" value="${escapeHtml(returnParkingLocation)}" placeholder="Garage B, Level 3">
-        </label>
-        <label>Return parking spot
-          <input class="return-parking-spot" type="text" value="${escapeHtml(returnParkingSpot)}" placeholder="B3-142">
-        </label>
-        <label>Return Google Maps link
-          <input class="return-parking-map-url" type="url" value="${escapeHtml(returnParkingMapUrl)}" placeholder="Paste map link">
+        <label>Vehicle return location
+          <input class="return-parking-location" type="text" value="${escapeHtml(returnLocation)}" placeholder="Example: Returned to Lot F, space F-19">
         </label>
       </div>
       <button class="button primary save-return-location" data-id="${request.id}" type="button">Save return location</button>
@@ -848,13 +887,20 @@ async function ensureEmployee(fullName) {
   const employeeCode = `EMP-${codePrefix}`;
   const { data, error } = await db
     .from('employees')
-    .select('id')
+    .select('id,active')
     .eq('full_name', fullName)
     .limit(1);
 
   if (error) throw error;
 
-  if (data?.length) {
+  const existing = data?.[0];
+
+  if (existing) {
+    // Re-activate if they were accidentally deactivated.
+    if (!existing.active) {
+      console.warn(`ensureEmployee: "${fullName}" (${existing.id}) was inactive — re-activating.`);
+      await db.from('employees').update({ active: true, profile_updated_at: new Date().toISOString() }).eq('id', existing.id);
+    }
     return;
   }
 
@@ -878,6 +924,11 @@ function normalizeEmployee(employee) {
     phone: employee.phone || '',
     email: employee.email || '',
     photo_url: employee.photo_url || '',
+    original_photo_url: employee.original_photo_url || '',
+    cropped_photo_url: employee.cropped_photo_url || '',
+    photo_zoom: Number(employee.photo_zoom || 1),
+    photo_position_x: Number(employee.photo_position_x || 0),
+    photo_position_y: Number(employee.photo_position_y || 0),
     home_location: employee.home_location || DEFAULT_WORK_LOCATION,
     started_at: employee.started_at || '',
     active: employee.active !== false,
@@ -891,8 +942,7 @@ async function loadEmployees() {
 
     let { data, error } = await db
       .from('employees')
-      .select('id,employee_code,full_name,phone,email,photo_url,home_location,started_at,active')
-      .eq('active', true)
+      .select('id,employee_code,full_name,phone,email,photo_url,original_photo_url,cropped_photo_url,photo_zoom,photo_position_x,photo_position_y,home_location,started_at,active')
       .order('full_name', { ascending: true });
 
     if (error) {
@@ -900,7 +950,6 @@ async function loadEmployees() {
       const fallback = await db
         .from('employees')
         .select('id,employee_code,full_name,phone,email,home_location,active')
-        .eq('active', true)
         .order('full_name', { ascending: true });
 
       data = fallback.data;
@@ -910,6 +959,12 @@ async function loadEmployees() {
     if (error) throw error;
 
     allEmployees = (data || []).map(normalizeEmployee);
+
+    if (selectedScheduleEmployeeId && !allEmployees.some((e) => e.id === selectedScheduleEmployeeId)) {
+      console.warn(`Worker ID ${selectedScheduleEmployeeId} not found in employees table. Clearing selection.`);
+      selectedScheduleEmployeeId = '';
+    }
+
     renderWorkerSelect();
     renderWorkerProfiles();
   } catch (error) {
@@ -949,19 +1004,76 @@ function renderWorkerProfiles() {
   const employee = allEmployees.find((item) => item.id === selectedScheduleEmployeeId);
 
   if (!employee) {
-    workerProfileList.innerHTML = '<div class="empty-state"><p>Select a worker to edit their profile.</p></div>';
+    console.warn(`renderWorkerProfiles: "${selectedScheduleEmployeeId}" not found in allEmployees. Clearing selection.`);
+    selectedScheduleEmployeeId = '';
+    if (workerSelect) workerSelect.value = '';
+    if (workerProfileSelectActive) workerProfileSelectActive.value = '';
+    if (workerProfileSelectInactive) workerProfileSelectInactive.value = '';
+    workerProfileList.innerHTML = '<div class="empty-state"><p>Select a worker to view or edit their profile.</p></div>';
     return;
   }
 
+  const isLocal = String(employee.id).startsWith('local-');
+  const statusLabel = employee.active ? 'Active' : 'Inactive';
+  const statusClass = employee.active ? 'status-pill status-active' : 'status-pill status-inactive';
+
+  // Reset photo editor state for newly rendered card
+  adminPhotoZoom = Number(employee.photo_zoom || 1);
+  adminPhotoPosition = { x: Number(employee.photo_position_x || 0), y: Number(employee.photo_position_y || 0) };
+  adminCroppedPhotoBlob = null;
+  adminPhotoDeleted = false;
+  if (adminCroppedPreviewUrl) { URL.revokeObjectURL(adminCroppedPreviewUrl); adminCroppedPreviewUrl = ''; }
+  if (adminBoundaryPreviewUrl) { URL.revokeObjectURL(adminBoundaryPreviewUrl); adminBoundaryPreviewUrl = ''; }
+
   workerProfileList.innerHTML = `
-    <article class="request-card worker-profile-card ${employee.id === selectedScheduleEmployeeId ? 'active-worker-profile' : ''}" data-worker-id="${escapeHtml(employee.id)}">
+    <article class="request-card worker-profile-card" data-worker-id="${escapeHtml(employee.id)}">
       <div class="request-card-header">
         <div>
           <p class="eyebrow">Worker profile</p>
           <h3>${escapeHtml(employee.full_name)}</h3>
+          <span class="${statusClass}">${statusLabel}</span>
         </div>
-        ${employee.photo_url ? `<img class="worker-avatar" src="${escapeHtml(employee.photo_url)}" alt="${escapeHtml(employee.full_name)}">` : '<div class="worker-avatar worker-avatar-placeholder">No photo</div>'}
       </div>
+
+      <div class="worker-profile-preview">
+        ${(() => {
+          const displayUrl  = employee.cropped_photo_url  || employee.photo_url || '';
+          const modalUrl    = employee.original_photo_url || employee.cropped_photo_url || employee.photo_url || '';
+          const clickAttrs  = displayUrl ? `data-open-worker-photo="true" tabindex="0" role="button" aria-label="View larger photo" data-photo-url="${escapeHtml(modalUrl)}" data-photo-name="${escapeHtml(employee.full_name)}"` : '';
+          return `
+        <div class="worker-profile-photo-frame ${displayUrl ? 'worker-photo-clickable' : ''}"
+             id="admin-photo-frame" ${clickAttrs}>
+          ${displayUrl
+            ? `<img id="admin-photo-preview" class="worker-profile-photo" src="${escapeHtml(displayUrl)}" alt="${escapeHtml(employee.full_name)}">`
+            : `<img id="admin-photo-preview" class="worker-profile-photo" style="display:none" alt="${escapeHtml(employee.full_name)}">`}
+          <div id="admin-photo-placeholder" class="worker-profile-photo-placeholder" ${displayUrl ? 'style="display:none"' : ''}>No photo</div>
+        </div>`;
+        })()}
+      </div>
+
+      <div class="profile-photo-actions">
+        <span>Profile photo</span>
+        <button id="admin-edit-photo" class="button secondary" type="button" ${isLocal ? 'disabled' : ''}>Edit profile photo</button>
+        <input id="admin-photo-file" class="visually-hidden-file" type="file" accept="image/*">
+      </div>
+      <div id="admin-photo-editor-actions" class="worker-photo-editor-actions" hidden>
+        <button id="admin-upload-new-photo" class="button secondary" type="button">Upload new photo</button>
+        <button id="admin-edit-framing" class="button secondary" type="button" ${employee.photo_url ? '' : 'disabled'}>Edit current framing</button>
+        <button id="admin-delete-photo" class="button danger" type="button" ${employee.photo_url ? '' : 'disabled'}>Delete photo</button>
+      </div>
+      <div id="admin-photo-boundary-panel" class="photo-boundary-panel" hidden>
+        <p class="eyebrow">Profile picture boundary</p>
+        <div id="admin-photo-boundary-preview" class="photo-boundary-preview">
+          <img id="admin-photo-boundary-image" alt="Selected profile photo">
+          <span class="photo-boundary-overlay" aria-hidden="true"></span>
+        </div>
+        <label>Preview zoom
+          <input id="admin-photo-zoom-slider" class="admin-photo-zoom-slider" type="range" min="1" max="2.5" step="0.05" value="${adminPhotoZoom}">
+        </label>
+        <p class="field-help">The uploaded photo stays whole. The clear circle shows what customers will see.</p>
+        <p class="field-help">Zoom in, then drag the photo to center it inside the circle.</p>
+      </div>
+
       <div class="field-grid">
         <label>Name
           <input class="admin-worker-name" type="text" value="${escapeHtml(employee.full_name || '')}">
@@ -972,52 +1084,225 @@ function renderWorkerProfiles() {
         <label>Phone
           <input class="admin-worker-phone" type="tel" value="${escapeHtml(employee.phone || '')}">
         </label>
+        <label>Email
+          <input class="admin-worker-email" type="email" value="${escapeHtml(employee.email || '')}">
+        </label>
         <label>Work location
           <select class="admin-worker-location">
-            <option value="">Select workplace</option>
-            <option ${employee.home_location === DEFAULT_WORK_LOCATION ? 'selected' : ''}>${escapeHtml(DEFAULT_WORK_LOCATION)}</option>
+            <option value="">Select service center</option>
+            ${SERVICE_CENTERS.map(loc => `<option value="${escapeHtml(loc)}" ${employee.home_location === loc ? 'selected' : ''}>${escapeHtml(loc)}</option>`).join('')}
           </select>
         </label>
         <label>Started
           <input class="admin-worker-started" type="date" value="${escapeHtml(employee.started_at || '')}">
-        </label>
-        <label>Profile photo
-          <input class="admin-worker-photo" type="file" accept="image/*">
         </label>
         <label>New portal password
           <input class="admin-worker-password" type="text" placeholder="Leave blank unless resetting">
         </label>
       </div>
       <div class="admin-button-row">
-        <button class="button primary save-worker-profile" data-id="${escapeHtml(employee.id)}" type="button" ${String(employee.id).startsWith('local-') ? 'disabled' : ''}>Save worker profile</button>
-        <button class="button secondary reset-worker-password" data-id="${escapeHtml(employee.id)}" type="button" ${String(employee.id).startsWith('local-') ? 'disabled' : ''}>Reset password</button>
-        <button class="button danger delete-worker-profile" data-id="${escapeHtml(employee.id)}" type="button" ${String(employee.id).startsWith('local-') ? 'disabled' : ''}>Delete worker</button>
+        <button class="button primary save-worker-profile" data-id="${escapeHtml(employee.id)}" type="button" ${isLocal ? 'disabled' : ''}>Save worker profile</button>
+        <button class="button secondary reset-worker-password" data-id="${escapeHtml(employee.id)}" type="button" ${isLocal ? 'disabled' : ''}>Reset password</button>
+        ${employee.active
+          ? `<button class="button danger deactivate-worker-profile" data-id="${escapeHtml(employee.id)}" type="button" ${isLocal ? 'disabled' : ''}>Deactivate worker</button>`
+          : `<button class="button primary reactivate-worker-profile" data-id="${escapeHtml(employee.id)}" type="button" ${isLocal ? 'disabled' : ''}>Reactivate worker</button>
+             <button class="button danger permanently-delete-worker" data-id="${escapeHtml(employee.id)}" type="button" ${isLocal ? 'disabled' : ''}>Permanently delete worker</button>`
+        }
       </div>
-      <p class="field-help admin-worker-status">${String(employee.id).startsWith('local-') ? 'Run the Supabase worker upgrade before saving this worker.' : ''}</p>
+      <p class="field-help admin-worker-status">${isLocal ? 'Run the Supabase worker upgrade before saving this worker.' : ''}</p>
     </article>
   `;
+
+  // Wire up photo editor after DOM is written
+  wireAdminPhotoEditor();
+}
+
+function applyAdminPhotoZoom() {
+  // CSS vars are only needed by the boundary editor preview image.
+  // The display frame uses object-fit: cover / object-position: center.
+  const boundaryImage = document.querySelector('#admin-photo-boundary-image');
+  const zoomSlider = document.querySelector('#admin-photo-zoom-slider');
+  const zoomVal = String(adminPhotoZoom);
+  const posX = `${adminPhotoPosition.x}%`;
+  const posY = `${adminPhotoPosition.y}%`;
+
+  if (boundaryImage) {
+    boundaryImage.style.setProperty('--profile-photo-zoom', zoomVal);
+    boundaryImage.style.setProperty('--profile-photo-x', posX);
+    boundaryImage.style.setProperty('--profile-photo-y', posY);
+  }
+  if (zoomSlider) zoomSlider.value = zoomVal;
+}
+
+function showAdminPhotoPreview(photoUrl) {
+  const frame = document.querySelector('#admin-photo-frame');
+  const preview = document.querySelector('#admin-photo-preview');
+  const placeholder = document.querySelector('#admin-photo-placeholder');
+  if (!preview || !placeholder) return;
+  if (photoUrl) {
+    preview.src = photoUrl;
+    preview.style.display = '';
+    placeholder.style.display = 'none';
+    // Keep the click-to-enlarge pointing at whatever is currently displayed.
+    if (frame) {
+      frame.dataset.openWorkerPhoto = 'true';
+      frame.dataset.photoUrl = photoUrl;
+      frame.classList.add('worker-photo-clickable');
+      if (!frame.getAttribute('tabindex')) frame.setAttribute('tabindex', '0');
+    }
+  } else {
+    preview.removeAttribute('src');
+    preview.style.display = 'none';
+    placeholder.style.display = '';
+    if (frame) {
+      delete frame.dataset.openWorkerPhoto;
+      delete frame.dataset.photoUrl;
+      frame.classList.remove('worker-photo-clickable');
+      frame.removeAttribute('tabindex');
+    }
+  }
+  applyAdminPhotoZoom();
+}
+
+function wireAdminPhotoEditor() {
+  const editBtn = document.querySelector('#admin-edit-photo');
+  const fileInput = document.querySelector('#admin-photo-file');
+  const actionsPanel = document.querySelector('#admin-photo-editor-actions');
+  const boundaryPanel = document.querySelector('#admin-photo-boundary-panel');
+  const boundaryPreview = document.querySelector('#admin-photo-boundary-preview');
+  const boundaryImage = document.querySelector('#admin-photo-boundary-image');
+  const zoomSlider = document.querySelector('#admin-photo-zoom-slider');
+
+  editBtn?.addEventListener('click', () => {
+    if (actionsPanel) actionsPanel.hidden = !actionsPanel.hidden;
+  });
+
+  document.querySelector('#admin-upload-new-photo')?.addEventListener('click', () => {
+    if (actionsPanel) actionsPanel.hidden = true;
+    if (fileInput) fileInput.value = '';
+    fileInput?.click();
+  });
+
+  document.querySelector('#admin-edit-framing')?.addEventListener('click', () => {
+    if (actionsPanel) actionsPanel.hidden = true;
+    const employee = allEmployees.find((e) => e.id === selectedScheduleEmployeeId);
+    const sourceUrl = employee?.original_photo_url || employee?.photo_url;
+    if (!sourceUrl) return;
+    // Load the original (uncropped) photo for framing. adminCroppedPhotoBlob = null → no re-upload of original.
+    adminPhotoZoom = Number(employee.photo_zoom || 1);
+    adminPhotoPosition = { x: Number(employee.photo_position_x || 0), y: Number(employee.photo_position_y || 0) };
+    if (adminBoundaryPreviewUrl) { URL.revokeObjectURL(adminBoundaryPreviewUrl); adminBoundaryPreviewUrl = ''; }
+    if (boundaryImage) { boundaryImage.crossOrigin = 'anonymous'; boundaryImage.src = sourceUrl; }
+    if (boundaryPanel) boundaryPanel.hidden = false;
+    applyAdminPhotoZoom();
+    const status = document.querySelector('.admin-worker-status');
+    if (status) status.textContent = 'Adjust zoom and position, then save.';
+  });
+
+  document.querySelector('#admin-delete-photo')?.addEventListener('click', () => {
+    if (actionsPanel) actionsPanel.hidden = true;
+    adminPhotoDeleted = true;
+    adminCroppedPhotoBlob = null;
+    adminPhotoZoom = 1;
+    adminPhotoPosition = { x: 0, y: 0 };
+    if (adminCroppedPreviewUrl) { URL.revokeObjectURL(adminCroppedPreviewUrl); adminCroppedPreviewUrl = ''; }
+    if (adminBoundaryPreviewUrl) { URL.revokeObjectURL(adminBoundaryPreviewUrl); adminBoundaryPreviewUrl = ''; }
+    showAdminPhotoPreview('');
+    if (boundaryPanel) boundaryPanel.hidden = true;
+    if (boundaryImage) boundaryImage.removeAttribute('src');
+    applyAdminPhotoZoom();
+    const status = document.querySelector('.admin-worker-status');
+    if (status) status.textContent = 'Photo will be deleted when you save.';
+  });
+
+  fileInput?.addEventListener('change', () => {
+    const file = fileInput.files?.[0];
+    if (!file) return;
+    if (adminCroppedPreviewUrl) URL.revokeObjectURL(adminCroppedPreviewUrl);
+    if (adminBoundaryPreviewUrl) URL.revokeObjectURL(adminBoundaryPreviewUrl);
+    adminCroppedPreviewUrl = URL.createObjectURL(file);
+    adminBoundaryPreviewUrl = URL.createObjectURL(file);
+    adminCroppedPhotoBlob = file;
+    adminPhotoDeleted = false;
+    adminPhotoZoom = 1;
+    adminPhotoPosition = { x: 0, y: 0 };
+    showAdminPhotoPreview(adminCroppedPreviewUrl);
+    if (boundaryImage) { boundaryImage.crossOrigin = 'anonymous'; boundaryImage.src = adminBoundaryPreviewUrl; }
+    if (boundaryPanel) boundaryPanel.hidden = false;
+    applyAdminPhotoZoom();
+    const status = document.querySelector('.admin-worker-status');
+    if (status) status.textContent = 'Photo selected. Adjust framing, then save.';
+  });
+
+  zoomSlider?.addEventListener('input', () => {
+    adminPhotoZoom = Number(zoomSlider.value || 1);
+    applyAdminPhotoZoom();
+  });
+
+  boundaryPreview?.addEventListener('pointerdown', (event) => {
+    if (boundaryPanel?.hidden || !boundaryImage?.getAttribute('src')) return;
+    adminPhotoDisplayDrag = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      originalX: adminPhotoPosition.x,
+      originalY: adminPhotoPosition.y,
+    };
+    boundaryPreview.setPointerCapture(event.pointerId);
+    boundaryPreview.classList.add('is-dragging');
+  });
+
+  boundaryPreview?.addEventListener('pointermove', (event) => {
+    if (!adminPhotoDisplayDrag || adminPhotoDisplayDrag.pointerId !== event.pointerId) return;
+    const size = boundaryPreview.getBoundingClientRect().width || 320;
+    adminPhotoPosition = {
+      x: Math.max(-50, Math.min(50, adminPhotoDisplayDrag.originalX + ((event.clientX - adminPhotoDisplayDrag.startX) / size) * 100)),
+      y: Math.max(-50, Math.min(50, adminPhotoDisplayDrag.originalY + ((event.clientY - adminPhotoDisplayDrag.startY) / size) * 100)),
+    };
+    applyAdminPhotoZoom();
+  });
+
+  const endDrag = (event) => {
+    if (!adminPhotoDisplayDrag || adminPhotoDisplayDrag.pointerId !== event.pointerId) return;
+    boundaryPreview?.releasePointerCapture(event.pointerId);
+    boundaryPreview?.classList.remove('is-dragging');
+    adminPhotoDisplayDrag = null;
+  };
+  boundaryPreview?.addEventListener('pointerup', endDrag);
+  boundaryPreview?.addEventListener('pointercancel', endDrag);
 }
 
 function renderWorkerSelect() {
-  const existingSelection = selectedScheduleEmployeeId || workerSelect.value;
-  const options = `
-    <option value="">Select worker</option>
-    ${allEmployees.map((employee) => `
-      <option value="${escapeHtml(employee.id)}" ${employee.id === existingSelection ? 'selected' : ''}>${escapeHtml(employee.full_name)} (${escapeHtml(employee.employee_code)})</option>
-    `).join('')}
-  `;
+  const sel = selectedScheduleEmployeeId || workerSelect?.value;
+  const activeEmployees = allEmployees.filter((e) => e.active);
+  const inactiveEmployees = allEmployees.filter((e) => !e.active);
 
-  if (workerSelect) workerSelect.innerHTML = options;
-  if (workerProfileSelect) workerProfileSelect.innerHTML = options;
+  const toOption = (e) => `<option value="${escapeHtml(e.id)}" ${e.id === sel ? 'selected' : ''}>${escapeHtml(e.full_name)} (${escapeHtml(e.employee_code)})</option>`;
 
-  if (existingSelection && allEmployees.some((employee) => employee.id === existingSelection)) {
-    selectedScheduleEmployeeId = existingSelection;
+  // Schedule section: active workers only
+  if (workerSelect) {
+    workerSelect.innerHTML = `<option value="">Select worker</option>${activeEmployees.map(toOption).join('')}`;
+  }
+
+  // Profile active dropdown
+  if (workerProfileSelectActive) {
+    workerProfileSelectActive.innerHTML = `<option value="">Select active worker</option>${activeEmployees.map(toOption).join('')}`;
+  }
+
+  // Profile inactive dropdown
+  if (workerProfileSelectInactive) {
+    workerProfileSelectInactive.innerHTML = `<option value="">Select inactive worker</option>${inactiveEmployees.map(toOption).join('')}`;
+  }
+
+  if (sel && allEmployees.some((e) => e.id === sel)) {
+    selectedScheduleEmployeeId = sel;
   } else {
     selectedScheduleEmployeeId = '';
   }
 
   if (workerSelect) workerSelect.value = selectedScheduleEmployeeId || '';
-  if (workerProfileSelect) workerProfileSelect.value = selectedScheduleEmployeeId || '';
+  if (workerProfileSelectActive) workerProfileSelectActive.value = selectedScheduleEmployeeId || '';
+  if (workerProfileSelectInactive) workerProfileSelectInactive.value = selectedScheduleEmployeeId || '';
 }
 
 function syncSelectedWorker(employeeId) {
@@ -1027,7 +1312,8 @@ function syncSelectedWorker(employeeId) {
 
   selectedScheduleEmployeeId = employeeId;
   if (workerSelect) workerSelect.value = employeeId;
-  if (workerProfileSelect) workerProfileSelect.value = employeeId;
+  if (workerProfileSelectActive) workerProfileSelectActive.value = employeeId;
+  if (workerProfileSelectInactive) workerProfileSelectInactive.value = employeeId;
   renderWorkerProfiles();
   return true;
 }
@@ -1089,54 +1375,34 @@ async function loadAdminWorkerSchedule(employeeId) {
   renderWorkerProfiles();
 }
 
-async function uploadAdminWorkerPhoto(employeeId, file) {
-  const safeName = file.name.replace(/[^a-z0-9.-]/gi, '-').toLowerCase();
-  const path = `workers/${employeeId}/${Date.now()}-${safeName || 'profile.jpg'}`;
+async function uploadAdminWorkerPhoto(employeeId, blob) {
+  const safeName = (blob.name || 'profile.jpg').replace(/[^a-z0-9.-]/gi, '-').toLowerCase();
+  const path = `workers/${employeeId}/${Date.now()}-${safeName}`;
 
-  const { error } = await db.storage.from(PHOTO_BUCKET).upload(path, file, { upsert: false });
+  const { error } = await db.storage.from(PHOTO_BUCKET).upload(path, blob, { upsert: false });
   if (error) throw error;
 
   const { data } = db.storage.from(PHOTO_BUCKET).getPublicUrl(path);
   return data?.publicUrl || path;
 }
 
-async function mergeEmployeeByPhoneIfNeeded(employeeId, phone) {
-  if (!phone) return employeeId;
+async function validateUniqueWorkerPhone(employeeId, phone) {
+  if (!phone) return;
 
   const { data, error } = await db
     .from('employees')
-    .select('id,employee_code,full_name,phone,email,photo_url,home_location,started_at,active')
+    .select('id,full_name,employee_code')
     .eq('phone', phone)
+    .eq('active', true)
     .neq('id', employeeId)
     .limit(1);
 
   if (error) throw error;
 
-  const existing = data?.[0];
-  if (!existing) return employeeId;
-
-  const confirmed = window.confirm(`That phone number already belongs to ${existing.full_name} (${existing.employee_code}). Move this worker profile into that existing employee ID?`);
-  if (!confirmed) {
-    throw new Error('Phone number already belongs to another worker.');
+  const conflict = data?.[0];
+  if (conflict) {
+    throw new Error(`Phone number is already used by ${conflict.full_name} (${conflict.employee_code}).`);
   }
-
-  await db
-    .from('service_requests')
-    .update({
-      assigned_employee_id: existing.id,
-      assigned_worker_name: existing.full_name,
-      assigned_worker_phone: existing.phone || null,
-      assigned_worker_photo_url: existing.photo_url || null,
-      updated_at: new Date().toISOString(),
-    })
-    .eq('assigned_employee_id', employeeId);
-
-  await db
-    .from('employees')
-    .update({ active: false, profile_updated_at: new Date().toISOString() })
-    .eq('id', employeeId);
-
-  return existing.id;
 }
 
 async function saveAdminWorkerProfile(button) {
@@ -1144,28 +1410,53 @@ async function saveAdminWorkerProfile(button) {
   const employeeId = button.dataset.id;
   const existingEmployee = allEmployees.find((employee) => employee.id === employeeId);
   const status = card?.querySelector('.admin-worker-status');
-  const file = card?.querySelector('.admin-worker-photo')?.files?.[0];
 
   if (status) status.textContent = 'Saving worker profile...';
 
-  const photoUrl = file ? await uploadAdminWorkerPhoto(employeeId, file) : existingEmployee?.photo_url || null;
+  // Validate phone uniqueness BEFORE uploading photo so a conflict never orphans an upload.
   const phone = card?.querySelector('.admin-worker-phone')?.value.trim() || null;
-  const targetEmployeeId = await mergeEmployeeByPhoneIfNeeded(employeeId, phone);
+  await validateUniqueWorkerPhone(employeeId, phone);
 
-  if (targetEmployeeId !== employeeId) {
-    selectedScheduleEmployeeId = targetEmployeeId;
-    await loadEmployees();
-    await loadRequests();
-    if (status) status.textContent = 'Worker merged into existing employee ID.';
-    return;
+  // Resolve photo URLs: delete → clear both; new upload → upload original + canvas-crop;
+  // edit framing only → canvas-crop to refresh cropped_photo_url; else keep existing.
+  let originalPhotoUrl = existingEmployee?.original_photo_url || existingEmployee?.photo_url || null;
+  let croppedPhotoUrl  = existingEmployee?.cropped_photo_url  || existingEmployee?.photo_url || null;
+  const boundaryImage  = document.querySelector('#admin-photo-boundary-image');
+
+  if (adminPhotoDeleted) {
+    originalPhotoUrl = null;
+    croppedPhotoUrl  = null;
+    adminPhotoZoom   = 1;
+    adminPhotoPosition = { x: 0, y: 0 };
+  } else if (adminCroppedPhotoBlob) {
+    // New photo uploaded — upload original then generate cropped version.
+    originalPhotoUrl = await uploadAdminWorkerPhoto(employeeId, adminCroppedPhotoBlob);
+    const croppedFile = boundaryImage?.naturalWidth
+      ? await window.ShiftFuelPhoto?.cropToBlobFromBoundaryEditor(boundaryImage, adminPhotoZoom, adminPhotoPosition.x, adminPhotoPosition.y)
+      : null;
+    croppedPhotoUrl = croppedFile
+      ? await uploadAdminWorkerPhoto(employeeId, croppedFile)
+      : originalPhotoUrl;
+  } else if (boundaryImage?.naturalWidth && boundaryImage.getAttribute('src')) {
+    // Edit framing — regenerate crop from boundary editor without re-uploading original.
+    const croppedFile = await window.ShiftFuelPhoto?.cropToBlobFromBoundaryEditor(boundaryImage, adminPhotoZoom, adminPhotoPosition.x, adminPhotoPosition.y);
+    if (croppedFile) croppedPhotoUrl = await uploadAdminWorkerPhoto(employeeId, croppedFile);
   }
+
+  const photoUrl = croppedPhotoUrl || originalPhotoUrl; // backward-compat photo_url = cropped version
 
   const updates = {
     full_name: card?.querySelector('.admin-worker-name')?.value.trim() || existingEmployee?.full_name || DEFAULT_WORKER_NAME,
     phone,
+    email: card?.querySelector('.admin-worker-email')?.value.trim() || existingEmployee?.email || null,
     home_location: card?.querySelector('.admin-worker-location')?.value || existingEmployee?.home_location || DEFAULT_WORK_LOCATION,
     started_at: card?.querySelector('.admin-worker-started')?.value || null,
     photo_url: photoUrl,
+    original_photo_url: originalPhotoUrl,
+    cropped_photo_url: croppedPhotoUrl,
+    photo_zoom: adminPhotoZoom,
+    photo_position_x: adminPhotoPosition.x,
+    photo_position_y: adminPhotoPosition.y,
     profile_updated_at: new Date().toISOString(),
   };
   const password = card?.querySelector('.admin-worker-password')?.value.trim();
@@ -1178,24 +1469,40 @@ async function saveAdminWorkerProfile(button) {
     .from('employees')
     .update(updates)
     .eq('id', employeeId)
-    .select('id,employee_code,full_name,phone,email,photo_url,home_location,started_at,active')
+    .select('id,employee_code,full_name,phone,email,photo_url,original_photo_url,cropped_photo_url,photo_zoom,photo_position_x,photo_position_y,home_location,started_at,active')
     .single();
 
-  if (error) throw error;
+  if (error) {
+    console.warn(`saveAdminWorkerProfile: DB update failed for employee ${employeeId}:`, error);
+    throw error;
+  }
 
+  // Sync work_location in availability rows so the worker's schedule select stays current.
   await db
+    .from('employee_availability')
+    .update({ work_location: data.home_location })
+    .eq('employee_id', employeeId);
+
+  // Propagate name/phone/photo to open service requests (non-fatal).
+  const { error: srError } = await db
     .from('service_requests')
     .update({
       assigned_worker_name: data.full_name,
       assigned_worker_phone: data.phone || null,
-      assigned_worker_photo_url: data.photo_url || null,
+      assigned_worker_photo_url: data.cropped_photo_url || data.photo_url || null,
+      assigned_worker_original_photo_url: data.original_photo_url || null,
       updated_at: new Date().toISOString(),
     })
     .eq('assigned_employee_id', employeeId);
 
-  allEmployees = allEmployees.map((employee) => employee.id === employeeId ? data : employee);
+  if (srError) {
+    console.warn(`saveAdminWorkerProfile: could not update service_requests for employee ${employeeId}:`, srError);
+  }
+
+  // Normalize the returned row so photo_zoom/position defaults are always numbers.
+  allEmployees = allEmployees.map((employee) => employee.id === employeeId ? normalizeEmployee(data) : employee);
   selectedScheduleEmployeeId = employeeId;
-  if (workerLocation && employeeId === selectedScheduleEmployeeId) {
+  if (workerLocation) {
     workerLocation.value = data.home_location || DEFAULT_WORK_LOCATION;
   }
   renderWorkerSelect();
@@ -1224,41 +1531,118 @@ async function resetAdminWorkerPassword(button) {
   if (status) status.textContent = `Password reset. Give this password to the worker: ${password}`;
 }
 
-async function deleteAdminWorkerProfile(button) {
+async function deactivateAdminWorkerProfile(button) {
   const employeeId = button.dataset.id;
   const employee = allEmployees.find((item) => item.id === employeeId);
 
-  if (!employee || String(employeeId).startsWith('local-')) {
-    return;
-  }
+  if (!employee || String(employeeId).startsWith('local-')) return;
 
-  const confirmed = window.confirm(`Delete ${employee.full_name} from active workers? Past requests will keep their saved worker history.`);
+  const confirmed = window.confirm(`Deactivate ${employee.full_name}? They will no longer appear in the worker schedule or assignment dropdowns. You can reactivate them at any time.`);
   if (!confirmed) return;
 
   const { error } = await db
     .from('employees')
-    .update({
-      active: false,
-      profile_updated_at: new Date().toISOString(),
-    })
+    .update({ active: false, profile_updated_at: new Date().toISOString() })
     .eq('id', employeeId);
 
   if (error) throw error;
 
-  allEmployees = allEmployees.filter((item) => item.id !== employeeId);
-
-  if (selectedScheduleEmployeeId === employeeId) {
-    selectedScheduleEmployeeId = '';
-    selectedWorkerDaysOff = new Set();
-    renderWorkerDaysGrid([]);
-    renderWorkerDaysOffCalendar();
-    if (workerLocation) workerLocation.value = DEFAULT_WORK_LOCATION;
-    if (workerScheduleStatus) workerScheduleStatus.textContent = '';
-  }
+  // Update in-memory record — keep them in allEmployees so the profile dropdown still shows them.
+  allEmployees = allEmployees.map((e) => e.id === employeeId ? { ...e, active: false } : e);
 
   renderWorkerSelect();
+  renderWorkerProfiles();
+  renderRequests();
+}
+
+async function reactivateAdminWorkerProfile(button) {
+  const employeeId = button.dataset.id;
+  const employee = allEmployees.find((item) => item.id === employeeId);
+  const card = button.closest('.worker-profile-card');
+  const status = card?.querySelector('.admin-worker-status');
+
+  if (!employee || String(employeeId).startsWith('local-')) return;
+
+  if (status) status.textContent = 'Checking phone number...';
+
+  // Block reactivation if another active worker already has this phone.
+  await validateUniqueWorkerPhone(employeeId, employee.phone || null);
+
+  const { error } = await db
+    .from('employees')
+    .update({ active: true, profile_updated_at: new Date().toISOString() })
+    .eq('id', employeeId);
+
+  if (error) throw error;
+
+  allEmployees = allEmployees.map((e) => e.id === employeeId ? { ...e, active: true } : e);
+
+  renderWorkerSelect();
+  renderWorkerProfiles();
+  renderRequests();
+  if (status) status.textContent = 'Worker reactivated.';
+}
+
+
+async function permanentlyDeleteInactiveWorker(button) {
+  const employeeId = button.dataset.id;
+  const employee = allEmployees.find((item) => item.id === employeeId);
+  const card = button.closest('.worker-profile-card');
+  const status = card?.querySelector('.admin-worker-status');
+
+  if (!employee || String(employeeId).startsWith('local-')) return;
+
+  if (employee.active) {
+    throw new Error('Active workers cannot be permanently deleted. Deactivate first.');
+  }
+
+  const confirmation = window.prompt(
+    `This will permanently delete ${employee.full_name} and all related records.\n\nCompleted service requests will keep the worker name/phone/photo as text but lose the live link.\n\nType DELETE to confirm.`
+  );
+  if (confirmation !== 'DELETE') {
+    if (status) status.textContent = 'Permanent delete cancelled.';
+    return;
+  }
+
+  if (status) status.textContent = 'Deleting worker...';
+
+  // 1. Clear live assignment references on service_requests (keep name/phone/photo text).
+  await db
+    .from('service_requests')
+    .update({ assigned_employee_id: null })
+    .eq('assigned_employee_id', employeeId);
+
+  // 2. Delete employee_availability rows.
+  await db.from('employee_availability').delete().eq('employee_id', employeeId);
+
+  // 3. Delete employee_days_off rows.
+  await db.from('employee_days_off').delete().eq('employee_id', employeeId);
+
+  // 4. Attempt to delete storage files under service-photos/workers/{employeeId}/.
+  try {
+    const { data: storageFiles } = await db.storage
+      .from('service-photos')
+      .list(`workers/${employeeId}`);
+    if (storageFiles?.length) {
+      const paths = storageFiles.map((f) => `workers/${employeeId}/${f.name}`);
+      await db.storage.from('service-photos').remove(paths);
+    }
+  } catch (storageErr) {
+    console.warn('Could not remove worker storage files (non-fatal):', storageErr);
+  }
+
+  // 5. Delete the employee row.
+  const { error } = await db.from('employees').delete().eq('id', employeeId);
+  if (error) throw error;
+
+  // 6. Remove from in-memory list and clear selection.
+  allEmployees = allEmployees.filter((e) => e.id !== employeeId);
+  selectedScheduleEmployeeId = '';
   if (workerSelect) workerSelect.value = '';
-  if (workerProfileSelect) workerProfileSelect.value = '';
+  if (workerProfileSelectActive) workerProfileSelectActive.value = '';
+  if (workerProfileSelectInactive) workerProfileSelectInactive.value = '';
+
+  renderWorkerSelect();
   renderWorkerProfiles();
   renderRequests();
 }
@@ -1519,13 +1903,14 @@ applicantList?.addEventListener('change', async (event) => {
 });
 
 workerProfileList?.addEventListener('click', async (event) => {
-  const button = event.target.closest('.save-worker-profile');
-  const deleteButton = event.target.closest('.delete-worker-profile');
+  const saveButton = event.target.closest('.save-worker-profile');
+  const deactivateButton = event.target.closest('.deactivate-worker-profile');
+  const reactivateButton = event.target.closest('.reactivate-worker-profile');
+  const permanentDeleteButton = event.target.closest('.permanently-delete-worker');
   const resetPasswordButton = event.target.closest('.reset-worker-password');
 
   if (resetPasswordButton) {
     resetPasswordButton.disabled = true;
-
     try {
       await resetAdminWorkerPassword(resetPasswordButton);
     } catch (error) {
@@ -1538,36 +1923,56 @@ workerProfileList?.addEventListener('click', async (event) => {
     return;
   }
 
-  if (deleteButton) {
-    deleteButton.disabled = true;
-
+  if (deactivateButton) {
+    deactivateButton.disabled = true;
     try {
-      await deleteAdminWorkerProfile(deleteButton);
+      await deactivateAdminWorkerProfile(deactivateButton);
     } catch (error) {
-      console.error('Worker delete failed:', error);
-      const status = deleteButton.closest('.worker-profile-card')?.querySelector('.admin-worker-status');
-      if (status) {
-        status.textContent = 'Could not delete worker. Check Supabase setup.';
-      }
-      deleteButton.disabled = false;
+      console.error('Worker deactivate failed:', error);
+      const status = deactivateButton.closest('.worker-profile-card')?.querySelector('.admin-worker-status');
+      if (status) status.textContent = `Could not deactivate worker: ${error.message}`;
+      deactivateButton.disabled = false;
     }
     return;
   }
 
-  if (!button) return;
+  if (reactivateButton) {
+    reactivateButton.disabled = true;
+    try {
+      await reactivateAdminWorkerProfile(reactivateButton);
+    } catch (error) {
+      console.error('Worker reactivate failed:', error);
+      const status = reactivateButton.closest('.worker-profile-card')?.querySelector('.admin-worker-status');
+      if (status) status.textContent = `Could not reactivate worker: ${error.message}`;
+      reactivateButton.disabled = false;
+    }
+    return;
+  }
 
-  button.disabled = true;
+  if (permanentDeleteButton) {
+    permanentDeleteButton.disabled = true;
+    try {
+      await permanentlyDeleteInactiveWorker(permanentDeleteButton);
+    } catch (error) {
+      console.error('Worker permanent delete failed:', error);
+      const status = permanentDeleteButton.closest('.worker-profile-card')?.querySelector('.admin-worker-status');
+      if (status) status.textContent = `Could not delete worker: ${error.message}`;
+      permanentDeleteButton.disabled = false;
+    }
+    return;
+  }
 
+  if (!saveButton) return;
+
+  saveButton.disabled = true;
   try {
-    await saveAdminWorkerProfile(button);
+    await saveAdminWorkerProfile(saveButton);
   } catch (error) {
     console.error('Worker profile save failed:', error);
-    const status = button.closest('.worker-profile-card')?.querySelector('.admin-worker-status');
-    if (status) {
-      status.textContent = `Could not save worker profile: ${error.message || 'Check Supabase setup.'}`;
-    }
+    const status = saveButton.closest('.worker-profile-card')?.querySelector('.admin-worker-status');
+    if (status) status.textContent = `Could not save: ${error.message || 'Check Supabase setup.'}`;
   } finally {
-    button.disabled = false;
+    saveButton.disabled = false;
   }
 });
 
@@ -1575,7 +1980,8 @@ async function handleWorkerSelection(employeeId, shouldScroll = false) {
   if (!employeeId) {
     selectedScheduleEmployeeId = '';
     if (workerSelect) workerSelect.value = '';
-    if (workerProfileSelect) workerProfileSelect.value = '';
+    if (workerProfileSelectActive) workerProfileSelectActive.value = '';
+    if (workerProfileSelectInactive) workerProfileSelectInactive.value = '';
     renderWorkerProfiles();
     return;
   }
@@ -1592,12 +1998,18 @@ workerSelect?.addEventListener('change', () => {
   handleWorkerSelection(workerSelect.value, true);
 });
 
-workerProfileSelect?.addEventListener('input', () => {
-  handleWorkerSelection(workerProfileSelect.value);
+workerProfileSelectActive?.addEventListener('change', () => {
+  if (workerProfileSelectActive.value) {
+    if (workerProfileSelectInactive) workerProfileSelectInactive.value = '';
+    handleWorkerSelection(workerProfileSelectActive.value);
+  }
 });
 
-workerProfileSelect?.addEventListener('change', () => {
-  handleWorkerSelection(workerProfileSelect.value);
+workerProfileSelectInactive?.addEventListener('change', () => {
+  if (workerProfileSelectInactive.value) {
+    if (workerProfileSelectActive) workerProfileSelectActive.value = '';
+    handleWorkerSelection(workerProfileSelectInactive.value);
+  }
 });
 
 async function updateRequestStatus(id, status) {
@@ -1614,7 +2026,8 @@ async function updateWorkerAssignment(requestId, employeeId) {
         assigned_employee_id: employee.id,
         assigned_worker_name: employee.full_name,
         assigned_worker_phone: employee.phone || null,
-        assigned_worker_photo_url: employee.photo_url || null,
+        assigned_worker_photo_url: employee.cropped_photo_url || employee.photo_url || null,
+        assigned_worker_original_photo_url: employee.original_photo_url || null,
         updated_at: new Date().toISOString(),
       }
     : {
@@ -1854,11 +2267,9 @@ async function saveReturnLocation(button) {
   const id = button.dataset.id;
   const panel = button.closest('.return-location-panel');
   const returnParkingLocation = panel.querySelector('.return-parking-location').value.trim();
-  const returnParkingSpot = panel.querySelector('.return-parking-spot').value.trim();
-  const returnParkingMapUrl = panel.querySelector('.return-parking-map-url').value.trim();
 
-  if (!returnParkingLocation || !returnParkingSpot) {
-    alert('Add the return parking lot/garage and spot before saving.');
+  if (!returnParkingLocation) {
+    alert('Enter the vehicle return location before saving.');
     return;
   }
 
@@ -1866,8 +2277,8 @@ async function saveReturnLocation(button) {
     .from('service_requests')
     .update({
       return_parking_location: returnParkingLocation,
-      return_parking_spot: returnParkingSpot,
-      return_parking_map_url: returnParkingMapUrl || null,
+      return_parking_spot: null,
+      return_parking_map_url: null,
       status: 'return_location_recorded',
       updated_at: new Date().toISOString(),
     })
@@ -1983,8 +2394,8 @@ async function uploadPhoto(button) {
     return;
   }
 
-  if (photoType.startsWith('dropoff') && (!request.return_parking_location || !request.return_parking_spot)) {
-    alert('Record the return/drop-off location before uploading drop-off photos.');
+  if (photoType.startsWith('dropoff') && !request.return_parking_location) {
+    alert('Record the vehicle return location before uploading drop-off photos.');
     return;
   }
 
@@ -2720,6 +3131,7 @@ renderWorkerDaysGrid(workerDayOptions.map(({ dayOfWeek }) => ({
 })));
 renderWorkerDaysOffCalendar();
 
+window.ShiftFuelPhoto?.initPhotoModal();
 loadVehiclePsiGuides().finally(() => {
   loadEmployees().then(loadRequests);
 });

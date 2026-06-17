@@ -131,9 +131,14 @@
           </div>
         </div>
         <div class="admin-edit-panel worker-profile-search-panel">
-          <label>Find worker
-            <select id="worker-profile-select">
-              <option value="">Select worker</option>
+          <label>Find active worker
+            <select id="worker-profile-select-active">
+              <option value="">Select active worker</option>
+            </select>
+          </label>
+          <label>Find inactive worker
+            <select id="worker-profile-select-inactive">
+              <option value="">Select inactive worker</option>
             </select>
           </label>
         </div>
@@ -163,6 +168,7 @@
 
 	<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 	<script src="supabase-client.js"></script>
+	<script src="photo-utils.js"></script>
 	<script src="admin.js"></script>
   <script defer src="/_vercel/insights/script.js"></script>
   <script defer src="/_vercel/speed-insights/script.js"></script>

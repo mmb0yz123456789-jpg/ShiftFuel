@@ -34,8 +34,17 @@ const applicantStatus = document.querySelector("#applicant-status");
 const statusItems = Array.from(document.querySelectorAll("#status-list li"));
 const washPricingToggle = document.querySelector("#wash-pricing-toggle");
 const washPricingDetails = document.querySelector("#wash-pricing-details");
+const inspectionPricingToggle = document.querySelector("#inspection-pricing-toggle");
+const inspectionPricingDetails = document.querySelector("#inspection-pricing-details");
 const addInspectionFromPricing = document.querySelector("#add-inspection-from-pricing");
-const hospitalSelect = form.querySelector('[name="hospital"]');
+const addressStreet = form.querySelector('#address-street');
+const addressApt    = form.querySelector('#address-apt');
+const addressCity   = form.querySelector('#address-city');
+const addressState  = form.querySelector('#address-state');
+const addressZip    = form.querySelector('#address-zip');
+const addressAreaStatus = document.querySelector('#address-area-status');
+const validateAddressBtn = document.querySelector('#validate-address-btn');
+const vehicleFieldset = document.querySelector('#vehicle-fieldset');
 const returningCustomerSearch = document.querySelector("#returning-customer-search");
 const returningCustomerEmail = document.querySelector("#returning-customer-email");
 const returningCustomerButton = document.querySelector("#returning-customer-button");
@@ -56,6 +65,68 @@ let workerAvailabilitySlots = null;
 let workerAvailabilityLoaded = false;
 let returningCustomerMatches = [];
 let returningCustomerNeedsConfirmation = false;
+let currentlyAppliedRequestId = null;
+let addressValidated = false;
+let isReturningCustomer = false;
+
+function setAddressStatus(type, message) {
+  if (!addressAreaStatus) return;
+  addressAreaStatus.textContent = message;
+  addressAreaStatus.dataset.status = type || '';
+}
+
+function resetAddressValidation() {
+  if (!addressValidated) {
+    const hasContent = [addressStreet, addressApt, addressCity, addressState, addressZip]
+      .some(f => f?.value?.trim());
+    if (hasContent) setAddressStatus('warning', 'Please validate your service address before continuing.');
+    else setAddressStatus('', '');
+    return;
+  }
+  addressValidated = false;
+  if (!isReturningCustomer) {
+    if (vehicleFieldset) vehicleFieldset.hidden = true;
+    setAddressStatus('warning', 'Please validate your service address before continuing.');
+  } else {
+    setAddressStatus('warning', 'Your vehicle and service selections are still saved. Please validate the updated address before submitting.');
+  }
+}
+
+[addressStreet, addressApt, addressCity, addressState, addressZip]
+  .filter(Boolean)
+  .forEach(f => f.addEventListener('input', resetAddressValidation));
+
+validateAddressBtn?.addEventListener('click', async () => {
+  const fullAddress = getServiceAddress();
+  if (!fullAddress) {
+    setAddressStatus('error', 'Please enter your service address before validating.');
+    return;
+  }
+  setAddressStatus('', 'Verifying address…');
+  validateAddressBtn.disabled = true;
+  try {
+    const result = await validateServiceArea(fullAddress);
+    if (!result.valid) {
+      setAddressStatus('error', result.message);
+      addressValidated = false;
+      if (!isReturningCustomer && vehicleFieldset) vehicleFieldset.hidden = true;
+      return;
+    }
+    if (result.canonicalAddress) {
+      const choice = await showAddressConfirmModal(fullAddress, result.canonicalAddress);
+      if (choice === 'edit') {
+        setAddressStatus('warning', 'Please validate your service address before continuing.');
+        addressValidated = false;
+        return;
+      }
+    }
+    addressValidated = true;
+    setAddressStatus('success', 'Address verified.');
+    if (vehicleFieldset) vehicleFieldset.hidden = false;
+  } finally {
+    validateAddressBtn.disabled = false;
+  }
+});
 
 function formatDateInputValue(date) {
   const yearValue = date.getFullYear();
@@ -460,7 +531,137 @@ function normalizeTimeSlot(value) {
 }
 
 function selectedHospital() {
-  return form.querySelector('[name="hospital"]')?.value || "";
+  return ""; // location filtering handled by geocoding; all workers shown
+}
+
+function getServiceAddress() {
+  return [
+    addressStreet?.value?.trim(),
+    addressApt?.value?.trim(),
+    addressCity?.value?.trim(),
+    addressState?.value?.trim(),
+    addressZip?.value?.trim(),
+  ].filter(Boolean).join(', ');
+}
+
+// ── Service area geocoding ────────────────────────────────────────────────────
+
+const SERVICE_ANCHOR_LAT = 39.6789; // 132 Christiana Mall, Newark DE 19702
+const SERVICE_ANCHOR_LON = -75.6653;
+const SERVICE_MAX_MILES = 20;
+
+function haversineMiles(lat1, lon1, lat2, lon2) {
+  const R = 3958.8;
+  const toRad = (d) => (d * Math.PI) / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLon = toRad(lon2 - lon1);
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+async function nominatimSearch(query) {
+  const url = `https://nominatim.openstreetmap.org/search?format=json&addressdetails=1&q=${encodeURIComponent(query)}&limit=1`;
+  const response = await fetch(url, {
+    headers: { "Accept-Language": "en", "User-Agent": "ShiftFuelConcierge/1.0" },
+  });
+  if (!response.ok) return null;
+  const results = await response.json();
+  return results?.length ? results[0] : null;
+}
+
+async function validateServiceArea(workplaceText) {
+  try {
+    // Try the full address first; fall back to city+state+zip so that streets
+    // missing from OpenStreetMap still pass area validation.
+    let result = await nominatimSearch(workplaceText);
+
+    if (!result) {
+      const city  = addressCity?.value?.trim()  || '';
+      const state = addressState?.value?.trim() || '';
+      const zip   = addressZip?.value?.trim()   || '';
+      const fallback = [city, state, zip].filter(Boolean).join(', ');
+      if (fallback) result = await nominatimSearch(fallback);
+    }
+
+    if (!result) {
+      return {
+        valid: false,
+        message: "We could not verify this address. Please check your address and try again.",
+      };
+    }
+
+    const dist = haversineMiles(
+      SERVICE_ANCHOR_LAT, SERVICE_ANCHOR_LON,
+      Number(result.lat), Number(result.lon)
+    );
+    if (dist > SERVICE_MAX_MILES) {
+      return { valid: false, message: "We currently do not serve this area." };
+    }
+
+    // Build a clean canonical address from Nominatim's structured data.
+    const a = result.address || {};
+    const canonicalParts = [
+      [a.house_number, a.road].filter(Boolean).join(' '),
+      a.city || a.town || a.village || a.county,
+      a.state,
+      a.postcode,
+    ].filter(Boolean);
+    return { valid: true, canonicalAddress: canonicalParts.join(', ') };
+  } catch {
+    return { valid: true }; // fail open if geocoding service is unreachable
+  }
+}
+
+function showAddressConfirmModal(enteredAddress, canonicalAddress) {
+  return new Promise((resolve) => {
+    let modal = document.querySelector('#address-confirm-modal');
+    if (!modal) {
+      modal = document.createElement('div');
+      modal.id = 'address-confirm-modal';
+      modal.innerHTML = `
+        <div class="address-confirm-dialog">
+          <p class="eyebrow">Confirm your address</p>
+          <p>We verified your address. Please confirm before continuing.</p>
+          <div class="address-confirm-row">
+            <div>
+              <strong>You entered</strong>
+              <p id="address-confirm-entered"></p>
+            </div>
+            <div>
+              <strong>Verified as</strong>
+              <p id="address-confirm-found"></p>
+            </div>
+          </div>
+          <div class="address-confirm-actions">
+            <button id="address-confirm-continue" class="button primary" type="button">Confirm and continue</button>
+            <button id="address-confirm-edit" class="button secondary" type="button">Edit my address</button>
+          </div>
+        </div>
+      `;
+      document.body.appendChild(modal);
+    }
+
+    modal.querySelector('#address-confirm-entered').textContent = enteredAddress;
+    modal.querySelector('#address-confirm-found').textContent = canonicalAddress;
+    modal.hidden = false;
+
+    const continueBtn = modal.querySelector('#address-confirm-continue');
+    const editBtn     = modal.querySelector('#address-confirm-edit');
+
+    const cleanup = (choice) => {
+      modal.hidden = true;
+      continueBtn.removeEventListener('click', onContinue);
+      editBtn.removeEventListener('click', onEdit);
+      resolve(choice);
+    };
+    const onContinue = () => cleanup('continue');
+    const onEdit     = () => cleanup('edit');
+
+    continueBtn.addEventListener('click', onContinue);
+    editBtn.addEventListener('click', onEdit);
+  });
 }
 
 function minutesFromSlot(value) {
@@ -816,10 +1017,11 @@ function renderReturningCustomerResults(requests) {
     <article class="returning-customer-card">
       <span>${escapeHtml(returningVehicleLabel(request) || "Previous vehicle")}</span>
       <small>${escapeHtml(returningServiceLabel(request))}</small>
-      <small>${escapeHtml(request.customer_name || "Customer")} | ${escapeHtml(request.hospital || "Workplace not listed")} | ${escapeHtml(shortDate(request.service_date || request.created_at))}</small>
+      <small>${escapeHtml(request.customer_name || "Customer")} | ${escapeHtml(request.address_street ? [request.address_street, request.address_city, request.address_state, request.address_zip].filter(Boolean).join(", ") : (request.hospital || "Address not listed"))} | ${escapeHtml(shortDate(request.service_date || request.created_at))}</small>
       <div class="returning-customer-actions">
         <button class="button primary" type="button" data-returning-index="${index}" data-returning-mode="same-car">Use this car</button>
         <button class="button secondary" type="button" data-returning-index="${index}" data-returning-mode="new-car">Add new car but keep same service</button>
+        <button class="button danger" type="button" data-returning-delete="${index}">Delete this car</button>
       </div>
     </article>
   `).join("");
@@ -886,10 +1088,14 @@ async function lookupReturningCustomer() {
       "vehicle_color",
       "license_plate",
       "hospital",
+      "address_street",
+      "address_apt",
+      "address_city",
+      "address_state",
+      "address_zip",
       "parking_location",
       "parking_spot",
       "parking_map_url",
-      "key_handoff_method",
       "key_handoff_details",
       "service_type",
       "service_label",
@@ -1006,14 +1212,13 @@ function updateReturningConfirmationText() {
     form.elements.parkingLocation?.value || "parking location not entered",
     form.elements.parkingSpot?.value ? `spot ${form.elements.parkingSpot.value}` : "spot not entered",
   ].join(", ");
-  const key = form.elements.keyMethod?.value || "key location not selected";
-  const details = form.elements.keyHandoffDetails?.value ? ` (${form.elements.keyHandoffDetails.value})` : "";
+  const keyInstructions = form.elements.keyHandoffDetails?.value || "key handoff instructions not entered";
   const desiredTime = returnTime.value ? formatTimeLabel(returnTime.value) : "return time not selected";
 
   const parkingLabel = returningParkingConfirmationControl?.querySelector("span");
   const timeLabel = returningTimeConfirmationControl?.querySelector("span");
   if (parkingLabel) {
-    parkingLabel.textContent = `Did you confirm your parking and key location: ${parking}; key handoff: ${key}${details}?`;
+    parkingLabel.textContent = `Did you confirm your parking and key handoff instructions: ${parking}; ${keyInstructions}?`;
   }
   if (timeLabel) {
     timeLabel.textContent = `Did you confirm your desired return time: ${desiredTime}?`;
@@ -1029,17 +1234,26 @@ function scrollToParkingVerification() {
 async function applyReturningCustomer(index, mode = "same-car") {
   const request = returningCustomerMatches[index];
   if (!request) return;
+  currentlyAppliedRequestId = request.id;
 
   form.elements.name.value = request.customer_name || "";
   form.elements.phone.value = request.customer_phone || "";
   form.elements.email.value = request.customer_email || "";
-  form.elements.hospital.value = request.hospital || "";
+  // Fill address fields; fall back to the old single-field value for legacy bookings.
+  if (addressStreet) addressStreet.value = request.address_street || request.hospital || "";
+  if (addressApt)    addressApt.value    = request.address_apt    || "";
+  if (addressCity)   addressCity.value   = request.address_city   || "";
+  if (addressState)  addressState.value  = request.address_state  || "DE";
+  if (addressZip)    addressZip.value    = request.address_zip    || "";
+  isReturningCustomer = true;
+  addressValidated = false;
+  if (vehicleFieldset) vehicleFieldset.hidden = false;
+  setAddressStatus('warning', 'Please validate your service address before continuing.');
   form.elements.color.value = request.vehicle_color || "";
   form.elements.license.value = request.license_plate || "";
   form.elements.parkingLocation.value = request.parking_location || "";
   form.elements.parkingSpot.value = request.parking_spot || "";
   form.elements.parkingMapUrl.value = request.parking_map_url || "";
-  form.elements.keyMethod.value = request.key_handoff_method || "";
   form.elements.keyHandoffDetails.value = request.key_handoff_details || "";
   applyReturningService(request);
 
@@ -1092,11 +1306,15 @@ function getBookingPayload() {
       licensePlate: data.get("license"),
     },
     request: {
-      hospital: data.get("hospital"),
+      hospital: getServiceAddress(),
+      addressStreet: addressStreet?.value?.trim() || "",
+      addressApt:    addressApt?.value?.trim()    || "",
+      addressCity:   addressCity?.value?.trim()   || "",
+      addressState:  addressState?.value?.trim()  || "",
+      addressZip:    addressZip?.value?.trim()    || "",
       parkingLocation: data.get("parkingLocation"),
       parkingSpot: data.get("parkingSpot"),
       parkingMapUrl: data.get("parkingMapUrl"),
-      keyHandoffMethod: data.get("keyMethod"),
       keyHandoffDetails: data.get("keyHandoffDetails"),
       serviceType: selectedService,
       serviceDate: data.get("serviceDate"),
@@ -1184,9 +1402,13 @@ function getServiceRequestInsert(payload) {
     vehicle_color: payload.vehicle.color,
     license_plate: payload.vehicle.licensePlate,
     hospital: payload.request.hospital,
+    address_street: payload.request.addressStreet || null,
+    address_apt:    payload.request.addressApt    || null,
+    address_city:   payload.request.addressCity   || null,
+    address_state:  payload.request.addressState  || null,
+    address_zip:    payload.request.addressZip    || null,
     parking_location: payload.request.parkingLocation,
     parking_spot: payload.request.parkingSpot,
-    key_handoff_method: payload.request.keyHandoffMethod,
     key_handoff_details: payload.request.keyHandoffDetails,
     service_type: payload.request.serviceType,
     service_date: payload.request.serviceDate,
@@ -1257,7 +1479,6 @@ quickInspection.addEventListener("change", () => {
 returnTime.addEventListener("change", updateServiceAvailability);
 returnTime.addEventListener("change", updateReturningConfirmationText);
 serviceDate.addEventListener("change", refreshBookedReturnSlots);
-hospitalSelect?.addEventListener("change", refreshBookedReturnSlots);
 fuelType.addEventListener("change", updateEstimate);
 fuelEstimate.addEventListener("change", updateEstimate);
 vehicleYear.addEventListener("change", loadModelsForSelection);
@@ -1276,6 +1497,23 @@ returningCustomerEmail?.addEventListener("keydown", (event) => {
   }
 });
 returningCustomerResults?.addEventListener("click", (event) => {
+  const deleteBtn = event.target.closest("[data-returning-delete]");
+  if (deleteBtn) {
+    const index = Number(deleteBtn.dataset.returningDelete);
+    const request = returningCustomerMatches[index];
+    if (!request) return;
+    const confirmed = confirm("Are you sure you want to delete this vehicle? This will not erase your current service selections.");
+    if (!confirmed) return;
+    const wasSelected = currentlyAppliedRequestId === request.id;
+    returningCustomerMatches.splice(index, 1);
+    if (wasSelected) {
+      clearVehicleFields();
+      currentlyAppliedRequestId = null;
+    }
+    renderReturningCustomerResults(returningCustomerMatches);
+    returningCustomerStatus.textContent = "Vehicle deleted. Your service selections are still saved.";
+    return;
+  }
   const button = event.target.closest("[data-returning-index]");
   if (!button) return;
   applyReturningCustomer(Number(button.dataset.returningIndex), button.dataset.returningMode || "same-car");
@@ -1331,7 +1569,7 @@ function validateReturningConfirmation() {
   return true;
 }
 
-["parkingLocation", "parkingSpot", "parkingMapUrl", "keyMethod", "keyHandoffDetails"].forEach((fieldName) => {
+["parkingLocation", "parkingSpot", "parkingMapUrl", "keyHandoffDetails"].forEach((fieldName) => {
   form.elements[fieldName]?.addEventListener("input", updateReturningConfirmationText);
   form.elements[fieldName]?.addEventListener("change", updateReturningConfirmationText);
 });
@@ -1341,6 +1579,13 @@ washPricingToggle.addEventListener("click", () => {
   washPricingDetails.hidden = !shouldShow;
   washPricingToggle.setAttribute("aria-expanded", String(shouldShow));
   washPricingToggle.textContent = shouldShow ? "Hide details" : "Details";
+});
+
+inspectionPricingToggle?.addEventListener("click", () => {
+  const shouldShow = inspectionPricingDetails.hidden;
+  inspectionPricingDetails.hidden = !shouldShow;
+  inspectionPricingToggle.setAttribute("aria-expanded", String(shouldShow));
+  inspectionPricingToggle.textContent = shouldShow ? "Hide details" : "Details";
 });
 
 addInspectionFromPricing.addEventListener("click", () => {
@@ -1381,6 +1626,23 @@ form.addEventListener("submit", async (event) => {
     return;
   }
 
+  if (!addressValidated) {
+    setAddressStatus('error', 'Please validate your service address before continuing.');
+    addressStreet?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    return;
+  }
+  // Re-verify on submit — no bypass allowed
+  statusMessage.textContent = "Verifying service area…";
+  const areaResult = await validateServiceArea(getServiceAddress());
+  if (!areaResult.valid) {
+    statusMessage.textContent = "";
+    addressValidated = false;
+    setAddressStatus('error', areaResult.message);
+    if (!isReturningCustomer && vehicleFieldset) vehicleFieldset.hidden = true;
+    return;
+  }
+  setAddressStatus('success', 'Address verified.');
+
   statusMessage.textContent = "Saving booking to Supabase...";
 
   const payload = getBookingPayload();
@@ -1397,6 +1659,10 @@ form.addEventListener("submit", async (event) => {
 
     statusMessage.textContent = "Booking saved to Supabase!";
     console.log("Saved request:", data);
+    setAddressStatus('', '');
+    addressValidated = false;
+    isReturningCustomer = false;
+    if (vehicleFieldset) vehicleFieldset.hidden = true;
 
     form.reset();
     returningCustomerMatches = [];

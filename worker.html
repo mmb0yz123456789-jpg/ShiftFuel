@@ -64,8 +64,7 @@
         <form id="worker-schedule-form" class="admin-edit-panel">
           <label>Work location
             <select id="worker-location" required>
-              <option value="">Select workplace</option>
-              <option selected>ChristianaCare - 4755 Ogletown Stanton Rd, Newark, DE 19718</option>
+              <option value="">Select service center</option>
             </select>
           </label>
           <div class="worker-schedule-actions">
@@ -137,8 +136,7 @@
               <label>
                 Work location
                 <select id="worker-profile-location">
-                  <option value="">Select workplace</option>
-                  <option selected>ChristianaCare - 4755 Ogletown Stanton Rd, Newark, DE 19718</option>
+                  <option value="">Select service center</option>
                 </select>
               </label>
               <label>
@@ -151,6 +149,10 @@
               <span>Profile photo</span>
               <button id="edit-worker-photo" class="button secondary" type="button">Edit profile photo</button>
               <input id="worker-profile-photo" class="visually-hidden-file" type="file" accept="image/*">
+            </div>
+            <div id="worker-photo-editor-actions" class="worker-photo-editor-actions" hidden>
+              <button id="upload-new-worker-photo" class="button secondary" type="button">Upload new photo</button>
+              <button id="edit-worker-framing" class="button secondary" type="button">Edit current framing</button>
             </div>
             <div id="worker-photo-boundary-panel" class="photo-boundary-panel" hidden>
               <p class="eyebrow">Profile picture boundary</p>
@@ -197,6 +199,7 @@
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="supabase-client.js"></script>
+    <script src="photo-utils.js"></script>
     <script src="worker.js"></script>
     <script defer src="/_vercel/insights/script.js"></script>
     <script defer src="/_vercel/speed-insights/script.js"></script>

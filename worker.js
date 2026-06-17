@@ -45,7 +45,10 @@ const workerReviewList = document.querySelector('#worker-review-list');
 
 const SESSION_WORKER_NAME = sessionStorage.getItem('shiftfuel_worker') || 'Mark Urban';
 const SESSION_WORKER_ID = sessionStorage.getItem('shiftfuel_worker_id') || '';
-const DEFAULT_WORK_LOCATION = 'ChristianaCare - 4755 Ogletown Stanton Rd, Newark, DE 19718';
+const SERVICE_CENTERS = [
+  'ShiftFuel - 132 Christiana Mall, Newark, DE 19702',
+];
+const DEFAULT_WORK_LOCATION = SERVICE_CENTERS[0];
 const PHOTO_BUCKET = 'service-photos';
 const workerDayOptions = [
   { dayOfWeek: 1, label: 'Monday' },
@@ -59,6 +62,18 @@ const workerDayOptions = [
 
 let currentEmployee = null;
 let selectedWorkerDaysOff = new Set();
+
+// Populate work location dropdowns from the shared SERVICE_CENTERS list.
+function populateLocationSelects() {
+  const options = SERVICE_CENTERS.map(loc =>
+    `<option value="${loc}">${loc}</option>`
+  ).join('');
+  [workerLocation, workerProfileLocation].forEach(sel => {
+    if (!sel) return;
+    sel.innerHTML = `<option value="">Select service center</option>${options}`;
+  });
+}
+populateLocationSelects();
 let copiedWorkerDaySchedule = null;
 let allWorkerJobs = [];
 let vehiclePsiGuides = [];
@@ -358,36 +373,59 @@ async function passwordFields(password) {
 }
 
 function applyWorkerPhotoZoom() {
+  // CSS vars are only used by the boundary editor preview.
+  // The display frame uses object-fit: cover / object-position: center.
   const zoom = String(workerProfilePhotoZoom || 1);
   const positionX = `${workerProfilePhotoPosition.x || 0}%`;
   const positionY = `${workerProfilePhotoPosition.y || 0}%`;
-  [workerProfilePhotoPreview, workerPhotoBoundaryImage].forEach((image) => {
-    if (image) {
-      image.style.setProperty('--profile-photo-zoom', zoom);
-      image.style.setProperty('--profile-photo-x', positionX);
-      image.style.setProperty('--profile-photo-y', positionY);
-    }
-  });
+  if (workerPhotoBoundaryImage) {
+    workerPhotoBoundaryImage.style.setProperty('--profile-photo-zoom', zoom);
+    workerPhotoBoundaryImage.style.setProperty('--profile-photo-x', positionX);
+    workerPhotoBoundaryImage.style.setProperty('--profile-photo-y', positionY);
+  }
   if (workerPhotoDisplayZoom) workerPhotoDisplayZoom.value = zoom;
 }
 
-function showWorkerPhoto(photoUrl, zoom = workerProfilePhotoZoom, position = workerProfilePhotoPosition) {
+// displayUrl — shown in the circular avatar (cropped version).
+// modalUrl   — shown when the user clicks to enlarge (original version); defaults to displayUrl.
+function showWorkerPhoto(displayUrl, modalUrl, zoom = workerProfilePhotoZoom, position = workerProfilePhotoPosition) {
+  // Support legacy 3-arg call: showWorkerPhoto(url, zoom, position)
+  if (typeof modalUrl === 'number' || (modalUrl && typeof modalUrl === 'object' && 'x' in modalUrl)) {
+    position = zoom;
+    zoom = modalUrl;
+    modalUrl = displayUrl;
+  }
   workerProfilePhotoZoom = Number(zoom || 1);
   workerProfilePhotoPosition = {
     x: Number(position?.x || 0),
     y: Number(position?.y || 0),
   };
+  const hasPhoto = Boolean(displayUrl);
   if (workerProfilePhotoPreview && workerProfilePhotoPlaceholder) {
-    const hasPhoto = Boolean(photoUrl);
     workerProfilePhotoPreview.hidden = !hasPhoto;
     workerProfilePhotoPlaceholder.hidden = hasPhoto;
     workerProfilePhotoPreview.style.display = hasPhoto ? '' : 'none';
     workerProfilePhotoPlaceholder.style.display = hasPhoto ? 'none' : '';
-
     if (hasPhoto) {
-      workerProfilePhotoPreview.src = photoUrl;
+      workerProfilePhotoPreview.src = displayUrl;
     } else {
       workerProfilePhotoPreview.removeAttribute('src');
+    }
+  }
+  // Profile frame click-to-enlarge opens the original (modal) URL.
+  const frame = document.querySelector('.worker-profile-photo-frame');
+  if (frame) {
+    if (hasPhoto) {
+      frame.dataset.openWorkerPhoto = 'true';
+      frame.dataset.photoUrl = modalUrl || displayUrl;
+      frame.dataset.photoName = currentEmployee?.full_name || '';
+      frame.classList.add('worker-photo-clickable');
+      if (!frame.getAttribute('tabindex')) frame.setAttribute('tabindex', '0');
+    } else {
+      delete frame.dataset.openWorkerPhoto;
+      delete frame.dataset.photoUrl;
+      frame.classList.remove('worker-photo-clickable');
+      frame.removeAttribute('tabindex');
     }
   }
   applyWorkerPhotoZoom();
@@ -409,6 +447,7 @@ function showWorkerBoundaryPreview(photoUrl) {
     return;
   }
 
+  workerPhotoBoundaryImage.crossOrigin = 'anonymous';
   workerPhotoBoundaryImage.src = photoUrl;
   workerPhotoBoundaryPanel.hidden = false;
   applyWorkerPhotoZoom();
@@ -439,7 +478,7 @@ async function ensureWorkerProfile() {
   if (storedEmployeeId) {
     let { data: stored, error: storedError } = await workerDb
       .from('employees')
-      .select('id,employee_code,full_name,phone,photo_url,photo_zoom,photo_position_x,photo_position_y,home_location,started_at')
+      .select('id,employee_code,full_name,phone,photo_url,original_photo_url,cropped_photo_url,photo_zoom,photo_position_x,photo_position_y,home_location,started_at')
       .eq('id', storedEmployeeId)
       .limit(1);
 
@@ -468,7 +507,7 @@ async function ensureWorkerProfile() {
 
   let { data, error } = await workerDb
     .from('employees')
-    .select('id,employee_code,full_name,phone,photo_url,photo_zoom,photo_position_x,photo_position_y,home_location,started_at')
+    .select('id,employee_code,full_name,phone,photo_url,original_photo_url,cropped_photo_url,photo_zoom,photo_position_x,photo_position_y,home_location,started_at')
     .eq('full_name', SESSION_WORKER_NAME)
     .limit(1);
 
@@ -504,7 +543,7 @@ async function ensureWorkerProfile() {
       active: true,
       home_location: DEFAULT_WORK_LOCATION,
     })
-    .select('id,employee_code,full_name,phone,photo_url,photo_zoom,photo_position_x,photo_position_y,home_location,started_at')
+    .select('id,employee_code,full_name,phone,photo_url,original_photo_url,cropped_photo_url,photo_zoom,photo_position_x,photo_position_y,home_location,started_at')
     .single();
 
   if (insertError) {
@@ -669,9 +708,8 @@ async function loadWorkerSchedule() {
       endsAt: String(row.ends_at || '22:00').slice(0, 5),
     })));
 
-    const location = rows.find((row) => row.work_location)?.work_location || currentEmployee.home_location || DEFAULT_WORK_LOCATION;
-    if (workerLocation) workerLocation.value = location;
-    if (workerProfileLocation) workerProfileLocation.value = location;
+    const scheduleLocation = rows.find((row) => row.work_location)?.work_location || currentEmployee.home_location || DEFAULT_WORK_LOCATION;
+    if (workerLocation) workerLocation.value = scheduleLocation;
   }
 
   const { data: daysOff, error: daysOffError } = await workerDb
@@ -704,7 +742,11 @@ async function loadWorkerProfile() {
 
     workerProfilePhotoZoom = Number(currentEmployee.photo_zoom || 1);
     workerProfilePhotoPosition = currentWorkerPhotoPositionFromEmployee();
-    showWorkerPhoto(currentEmployee.photo_url || '', workerProfilePhotoZoom, workerProfilePhotoPosition);
+    showWorkerPhoto(
+      currentEmployee.cropped_photo_url || currentEmployee.photo_url || '',
+      currentEmployee.original_photo_url || currentEmployee.photo_url || '',
+      workerProfilePhotoZoom, workerProfilePhotoPosition
+    );
     resetWorkerPhotoCrop();
     setWorkerStatus('');
     await loadWorkerSchedule();
@@ -955,6 +997,24 @@ async function loadWorkerReviews() {
   }).join('');
 }
 
+function workerFormatAddress(request) {
+  if (request.address_street) {
+    return [request.address_street, request.address_apt, request.address_city, request.address_state, request.address_zip].filter(Boolean).join(', ');
+  }
+  return request.hospital || 'Not provided';
+}
+
+function workerFormatService(request) {
+  const parts = [request.service_label || request.service_type];
+  if (request.fuel_type) parts.push(`Fuel: ${request.fuel_type}`);
+  if (request.estimated_fuel_range) parts.push(`Est. range: ${request.estimated_fuel_range}`);
+  if (request.wash_package_label) parts.push(`Wash: ${request.wash_package_label}`);
+  if (request.quick_inspection) parts.push('Quick inspection');
+  if (request.service_date) parts.push(request.service_date);
+  if (request.desired_return_time) parts.push(`Return by: ${request.desired_return_time}`);
+  return parts.filter(Boolean).join(' | ');
+}
+
 function renderWorkerJobCard(request, mode) {
   const receiptTotals = receiptTotalsFromNotes(request);
   const workerReceiptTotal = receiptTotals.fuel + receiptTotals.wash;
@@ -969,13 +1029,15 @@ function renderWorkerJobCard(request, mode) {
         <span class="status-pill">${escapeHtml(request.status || '')}</span>
       </div>
       <div class="request-details">
-        <p><strong>Customer:</strong> ${escapeHtml(request.customer_name || 'Customer')} | ${escapeHtml(request.customer_phone || '')} | ${escapeHtml(request.customer_email || '')}</p>
-        <p><strong>Vehicle:</strong> ${escapeHtml([request.vehicle_year, request.vehicle_make, request.vehicle_model].filter(Boolean).join(' ') || 'Not listed')}${request.vehicle_color ? `, ${escapeHtml(request.vehicle_color)}` : ''} ${request.license_plate ? `| Plate: ${escapeHtml(request.license_plate)}` : ''}</p>
-        <p><strong>Service:</strong> ${escapeHtml(request.service_label || request.service_type || 'Service')} ${request.fuel_type ? `| Fuel: ${escapeHtml(request.fuel_type)}` : ''} ${request.wash_package_label ? `| Wash: ${escapeHtml(request.wash_package_label)}` : ''}</p>
-        <p><strong>Pickup parking:</strong> ${escapeHtml(request.parking_location || '')}, spot ${escapeHtml(request.parking_spot || '')}</p>
-        ${request.return_parking_location ? `<p><strong>Return parking:</strong> ${escapeHtml(request.return_parking_location)}, spot ${escapeHtml(request.return_parking_spot || '')}</p>` : ''}
-        <p><strong>Service date/time:</strong> ${escapeHtml(request.service_date || '')} ${escapeHtml(request.desired_return_time || '')}</p>
-        ${(receiptTotals.fuel || receiptTotals.wash) ? `<p><strong>Receipt totals entered:</strong> Fuel ${money(receiptTotals.fuel)} | Car wash ${money(receiptTotals.wash)} | Total ${money(workerReceiptTotal)}</p>` : ''}
+        <p><strong>Customer:</strong> ${escapeHtml(request.customer_name || 'Customer')}</p>
+        <p><strong>Phone:</strong> ${escapeHtml(request.customer_phone || 'Not provided')}</p>
+        <p><strong>Service address:</strong> ${escapeHtml(workerFormatAddress(request))}</p>
+        <p><strong>Parking:</strong> ${[request.parking_location, request.parking_spot ? `spot ${request.parking_spot}` : ''].filter(Boolean).map(escapeHtml).join(', ') || 'Not provided'}</p>
+        ${request.key_handoff_details ? `<p><strong>Key handoff:</strong> ${escapeHtml(request.key_handoff_details)}</p>` : ''}
+        <p><strong>Service:</strong> ${escapeHtml(workerFormatService(request))}</p>
+        <p><strong>Vehicle:</strong> ${escapeHtml([request.vehicle_year, request.vehicle_make, request.vehicle_model, request.vehicle_color].filter(Boolean).join(' '))}${request.license_plate ? ` | Plate: ${escapeHtml(request.license_plate)}` : ''}</p>
+        ${request.return_parking_location ? `<p><strong>Vehicle return location:</strong> ${escapeHtml(request.return_parking_location)}</p>` : ''}
+        ${(receiptTotals.fuel || receiptTotals.wash) ? `<p><strong>Receipts entered:</strong> Fuel ${money(receiptTotals.fuel)} | Car wash ${money(receiptTotals.wash)} | Total ${money(workerReceiptTotal)}</p>` : ''}
       </div>
       ${mode === 'available' ? `
         <button class="button primary claim-worker-job" data-id="${escapeHtml(request.id)}" type="button">Claim job</button>
@@ -1187,23 +1249,15 @@ function renderWorkerReceiptPanel(request, mode = 'all') {
 }
 
 function renderWorkerReturnLocationPanel(request) {
-  const returnParkingLocation = request.return_parking_location || request.parking_location || '';
-  const returnParkingSpot = request.return_parking_spot || request.parking_spot || '';
-  const returnParkingMapUrl = request.return_parking_map_url || request.parking_map_url || '';
+  const returnLocation = request.return_parking_location || '';
 
   return `
     <div class="return-location-panel" data-return-for="${escapeHtml(request.id)}">
-      <h4>Record return/drop-off location</h4>
-      <p class="field-help">These fields start with the pickup location. Change them only if the vehicle was returned somewhere different.</p>
+      <h4>Vehicle Return Location</h4>
+      <p class="field-help">Record exactly where you left the vehicle after service.</p>
       <div class="field-grid">
-        <label>Return parking lot / garage
-          <input class="return-parking-location" type="text" value="${escapeHtml(returnParkingLocation)}" placeholder="Garage B, Level 3">
-        </label>
-        <label>Return parking spot
-          <input class="return-parking-spot" type="text" value="${escapeHtml(returnParkingSpot)}" placeholder="B3-142">
-        </label>
-        <label>Return Google Maps link
-          <input class="return-parking-map-url" type="url" value="${escapeHtml(returnParkingMapUrl)}" placeholder="Paste map link">
+        <label>Vehicle return location
+          <input class="return-parking-location" type="text" value="${escapeHtml(returnLocation)}" placeholder="Example: Returned to Lot F, space F-19">
         </label>
       </div>
       <button class="button primary save-return-location" data-id="${escapeHtml(request.id)}" type="button">Save return location</button>
@@ -1308,7 +1362,7 @@ async function loadWorkerJobs() {
 
   const { data, error } = await workerDb
     .from('service_requests')
-    .select('id,customer_name,customer_phone,customer_email,vehicle_year,vehicle_make,vehicle_model,vehicle_color,license_plate,service_type,service_label,hospital,parking_location,parking_spot,service_date,desired_return_time,status,assigned_employee_id,fuel_type,wash_package_label,quick_inspection,fuel_convenience_fee,wash_convenience_fee,quick_inspection_fee,final_total,notes,return_parking_location,return_parking_spot,return_parking_map_url')
+    .select('id,customer_name,customer_phone,customer_email,vehicle_year,vehicle_make,vehicle_model,vehicle_color,license_plate,service_type,service_label,hospital,address_street,address_apt,address_city,address_state,address_zip,parking_location,parking_spot,parking_map_url,key_handoff_details,service_date,desired_return_time,status,assigned_employee_id,fuel_type,wash_package_label,estimated_fuel_range,quick_inspection,notes,return_parking_location,return_parking_spot,return_parking_map_url')
     .in('status', workerOpenStatuses)
     .order('service_date', { ascending: true });
 
@@ -1324,8 +1378,7 @@ async function loadWorkerJobs() {
   const workerZone = currentEmployee.home_location || DEFAULT_WORK_LOCATION;
   const availableJobs = jobs.filter((job) => {
     return !job.assigned_employee_id
-      && ['request_received', 'accepted'].includes(job.status)
-      && (!job.hospital || !workerZone || job.hospital === workerZone);
+      && ['request_received', 'accepted'].includes(job.status);
   });
 
   if (!myJobs.length && !availableJobs.length) {
@@ -1351,7 +1404,8 @@ async function claimWorkerJob(requestId) {
       assigned_employee_id: currentEmployee.id,
       assigned_worker_name: currentEmployee.full_name,
       assigned_worker_phone: currentEmployee.phone || null,
-      assigned_worker_photo_url: currentEmployee.photo_url || null,
+      assigned_worker_photo_url: currentEmployee.cropped_photo_url || currentEmployee.photo_url || null,
+      assigned_worker_original_photo_url: currentEmployee.original_photo_url || null,
       status: request?.status === 'request_received' ? 'accepted' : request?.status || 'accepted',
       updated_at: new Date().toISOString(),
     })
@@ -1566,11 +1620,9 @@ async function saveWorkerReturnLocation(button) {
   const id = button.dataset.id;
   const panel = button.closest('.return-location-panel');
   const returnParkingLocation = panel.querySelector('.return-parking-location').value.trim();
-  const returnParkingSpot = panel.querySelector('.return-parking-spot').value.trim();
-  const returnParkingMapUrl = panel.querySelector('.return-parking-map-url').value.trim();
 
-  if (!returnParkingLocation || !returnParkingSpot) {
-    alert('Add the return parking lot/garage and spot before saving.');
+  if (!returnParkingLocation) {
+    alert('Enter the vehicle return location before saving.');
     return;
   }
 
@@ -1578,8 +1630,8 @@ async function saveWorkerReturnLocation(button) {
     .from('service_requests')
     .update({
       return_parking_location: returnParkingLocation,
-      return_parking_spot: returnParkingSpot,
-      return_parking_map_url: returnParkingMapUrl || null,
+      return_parking_spot: null,
+      return_parking_map_url: null,
       status: 'return_location_recorded',
       updated_at: new Date().toISOString(),
     })
@@ -1824,7 +1876,6 @@ workerProfileForm?.addEventListener('submit', async (event) => {
 
   try {
     const file = workerProfilePhoto?.files?.[0];
-    const photoUrl = file ? await uploadWorkerPhoto(file) : currentEmployee.photo_url || null;
     const photoZoom = Number(workerPhotoDisplayZoom?.value || workerProfilePhotoZoom || 1);
     const photoPositionX = Number(workerProfilePhotoPosition.x || 0);
     const photoPositionY = Number(workerProfilePhotoPosition.y || 0);
@@ -1832,18 +1883,61 @@ workerProfileForm?.addEventListener('submit', async (event) => {
     const phone = workerProfilePhone?.value.trim() || null;
     const homeLocation = workerProfileLocation?.value || currentEmployee.home_location || DEFAULT_WORK_LOCATION;
 
+    // Check for phone duplicate before uploading photo.
+    if (phone) {
+      const cleanNew = phone.replace(/\D/g, '');
+      const cleanCurrent = (currentEmployee.phone || '').replace(/\D/g, '');
+      if (cleanNew !== cleanCurrent) {
+        const { data: phoneCheck } = await workerDb
+          .from('employees')
+          .select('id,full_name')
+          .eq('phone', phone)
+          .eq('active', true)
+          .neq('id', currentEmployee.id)
+          .limit(1);
+        if (phoneCheck?.length) {
+          setWorkerStatus('That phone number is already used by another worker. Please use a different number.');
+          return;
+        }
+      }
+    }
+
+    // Resolve photo URLs: upload new original if file selected; use canvas-cropped blob for
+    // cropped_photo_url; for edit-framing with no new file, regenerate crop from boundary editor.
+    let originalPhotoUrl = currentEmployee.original_photo_url || currentEmployee.photo_url || null;
+    let croppedPhotoUrl  = currentEmployee.cropped_photo_url  || currentEmployee.photo_url || null;
+
+    if (file) {
+      originalPhotoUrl = await uploadWorkerPhoto(file);
+      if (workerCroppedPhotoBlob) {
+        croppedPhotoUrl = await uploadWorkerPhoto(workerCroppedPhotoBlob);
+      } else {
+        croppedPhotoUrl = originalPhotoUrl;
+      }
+    } else if (workerPhotoBoundaryImage?.naturalWidth && workerPhotoBoundaryImage.getAttribute('src')) {
+      // Edit framing only — regenerate crop without re-uploading original.
+      const croppedFile = await window.ShiftFuelPhoto?.cropToBlobFromBoundaryEditor(
+        workerPhotoBoundaryImage, workerProfilePhotoZoom, workerProfilePhotoPosition.x, workerProfilePhotoPosition.y
+      );
+      if (croppedFile) croppedPhotoUrl = await uploadWorkerPhoto(croppedFile);
+    }
+
+    const photoUrl = croppedPhotoUrl || originalPhotoUrl; // backward-compat
+
     const employeeUpdates = {
       full_name: fullName,
       phone,
       home_location: homeLocation,
       photo_url: photoUrl,
+      original_photo_url: originalPhotoUrl,
+      cropped_photo_url: croppedPhotoUrl,
       photo_zoom: photoZoom,
       photo_position_x: photoPositionX,
       photo_position_y: photoPositionY,
       profile_updated_at: new Date().toISOString(),
     };
 
-    let profileSelect = 'id,employee_code,full_name,phone,photo_url,photo_zoom,photo_position_x,photo_position_y,home_location,started_at';
+    let profileSelect = 'id,employee_code,full_name,phone,photo_url,original_photo_url,cropped_photo_url,photo_zoom,photo_position_x,photo_position_y,home_location,started_at';
     let { data, error } = await workerDb
       .from('employees')
       .update(employeeUpdates)
@@ -1885,7 +1979,8 @@ workerProfileForm?.addEventListener('submit', async (event) => {
       .update({
         assigned_worker_name: data.full_name,
         assigned_worker_phone: data.phone || null,
-        assigned_worker_photo_url: data.photo_url || null,
+        assigned_worker_photo_url: data.cropped_photo_url || data.photo_url || null,
+        assigned_worker_original_photo_url: data.original_photo_url || null,
         updated_at: new Date().toISOString(),
       })
       .eq('assigned_employee_id', currentEmployee.id);
@@ -1901,7 +1996,11 @@ workerProfileForm?.addEventListener('submit', async (event) => {
     if (workerLocation) workerLocation.value = currentEmployee.home_location || DEFAULT_WORK_LOCATION;
     currentEmployee.photo_position_x = photoPositionX;
     currentEmployee.photo_position_y = photoPositionY;
-    showWorkerPhoto(currentEmployee.photo_url || '', currentEmployee.photo_zoom || 1, currentWorkerPhotoPositionFromEmployee());
+    showWorkerPhoto(
+      currentEmployee.cropped_photo_url || currentEmployee.photo_url || '',
+      currentEmployee.original_photo_url || currentEmployee.photo_url || '',
+      currentEmployee.photo_zoom || 1, currentWorkerPhotoPositionFromEmployee()
+    );
     clearWorkerBoundaryPreview();
     resetWorkerPhotoCrop();
     setWorkerStatus('Worker profile saved.');
@@ -1981,9 +2080,40 @@ workerPhotoBoundaryPreview?.addEventListener('pointerup', endWorkerPhotoDisplayD
 workerPhotoBoundaryPreview?.addEventListener('pointercancel', endWorkerPhotoDisplayDrag);
 
 editWorkerPhoto?.addEventListener('click', () => {
+  const actionsPanel = document.querySelector('#worker-photo-editor-actions');
+  const editFramingBtn = document.querySelector('#edit-worker-framing');
+  if (actionsPanel) {
+    // Toggle the options panel; disable "Edit framing" if no photo exists yet
+    if (editFramingBtn) editFramingBtn.disabled = !currentEmployee?.photo_url;
+    actionsPanel.hidden = !actionsPanel.hidden;
+  } else {
+    // Fallback: open file picker directly
+    if (workerProfilePhoto) workerProfilePhoto.value = '';
+    workerProfilePhoto?.click();
+  }
+});
+
+document.querySelector('#upload-new-worker-photo')?.addEventListener('click', () => {
+  document.querySelector('#worker-photo-editor-actions').hidden = true;
   if (workerProfilePhoto) workerProfilePhoto.value = '';
   workerProfilePhoto?.click();
 });
+
+document.querySelector('#edit-worker-framing')?.addEventListener('click', () => {
+  document.querySelector('#worker-photo-editor-actions').hidden = true;
+  const sourceUrl = currentEmployee?.original_photo_url || currentEmployee?.photo_url;
+  if (!sourceUrl) return;
+  // Load original (uncropped) photo for framing. workerCroppedPhotoBlob stays null so no re-upload of original.
+  workerProfilePhotoZoom = Number(currentEmployee.photo_zoom || 1);
+  workerProfilePhotoPosition = currentWorkerPhotoPositionFromEmployee();
+  if (workerBoundaryPreviewUrl) { URL.revokeObjectURL(workerBoundaryPreviewUrl); workerBoundaryPreviewUrl = ''; }
+  showWorkerBoundaryPreview(sourceUrl);
+  setWorkerStatus('Adjust zoom and position, then save the worker profile.');
+});
+
+// Clicking the profile photo frame opens the large modal view.
+// The frame gets data-open-worker-photo set dynamically by showWorkerPhoto(),
+// so the global delegation in photo-utils.js handles the click automatically.
 
 workerPhotoCropChoose?.addEventListener('click', () => {
   if (workerProfilePhoto) workerProfilePhoto.value = '';
@@ -2180,4 +2310,5 @@ saveDaysOffButton?.addEventListener('click', () => {
 
 renderWorkerDaysGrid([]);
 renderWorkerDaysOffCalendar();
+window.ShiftFuelPhoto?.initPhotoModal();
 loadVehiclePsiGuides().finally(loadWorkerProfile);

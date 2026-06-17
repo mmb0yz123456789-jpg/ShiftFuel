@@ -23,15 +23,12 @@
     <main id="home">
       <section class="hero">
         <div class="hero-content">
-          <p class="eyebrow">Delaware hospital shift vehicle service</p>
+          <p class="eyebrow">Workplace vehicle service</p>
           <h1>Your car handled while you work.</h1>
           <p class="hero-copy">
-            ShiftFuel Concierge lets ChristianaCare employees request fuel
-            fill-ups, tire pressure checks, washer fluid top-offs, and future
-            car wash services without leaving their shift.
-          </p>
-          <p class="location-note">
-            Launch location: ChristianaCare, 4755 Ogletown Stanton Rd, Newark, DE 19718.
+            ShiftFuel Concierge lets workplace employees request fuel fill-ups,
+            tire pressure checks, washer fluid top-offs, and car wash services
+            without leaving their shift.
           </p>
           <div class="actions">
             <a class="button primary" href="#book">Book a fuel service</a>
@@ -52,10 +49,8 @@
           <p class="eyebrow">What we do</p>
           <h2>Basic car care while employees are on shift.</h2>
           <p>
-            The MVP starts in Delaware with ChristianaCare employees: fuel,
-            quick checks, and clear status updates from request to return.
-            Initial service area is ChristianaCare at 4755 Ogletown Stanton Rd,
-            Newark, DE 19718.
+            Fuel, quick checks, and clear status updates from request to return —
+            for employees at any workplace in our service area.
           </p>
         </div>
         <div class="service-grid">
@@ -122,10 +117,15 @@
             <p class="plan">Quick Inspection Add-On</p>
             <h3>$5</h3>
             <p>Add a simple visual inspection after choosing fuel, car wash, or both.</p>
-            <button id="add-inspection-from-pricing" class="button secondary compact-button" type="button" aria-describedby="inspection-pricing-details">
-              Add inspection
-            </button>
-            <div id="inspection-pricing-details" class="inspection-pricing-details" role="tooltip">
+            <div class="price-card-buttons">
+              <button id="inspection-pricing-toggle" class="button secondary compact-button" type="button" aria-expanded="false" aria-controls="inspection-pricing-details">
+                Details
+              </button>
+              <button id="add-inspection-from-pricing" class="button secondary compact-button" type="button">
+                Add inspection
+              </button>
+            </div>
+            <div id="inspection-pricing-details" class="inspection-pricing-details" hidden>
               <h4>Inspection covers</h4>
               <ul>
                 <li>Tire pressure check</li>
@@ -205,20 +205,45 @@
                   <input name="phone" type="tel" placeholder="(555) 123-4567" required>
                 </label>
                 <label>
-                  <span>Email <span class="optional-mark">Optional</span></span>
-                  <input name="email" type="email" placeholder="jordan@example.com">
-                </label>
-                <label>
-                  <span>Workplace / hospital <span class="required-mark">Required</span></span>
-                  <select name="hospital" required>
-                    <option value="">Select workplace</option>
-                    <option>ChristianaCare - 4755 Ogletown Stanton Rd, Newark, DE 19718</option>
-                  </select>
+                  <span>Email <span class="required-mark">Required</span></span>
+                  <input name="email" type="email" placeholder="jordan@example.com" required>
                 </label>
               </div>
             </fieldset>
 
             <fieldset>
+              <legend>Service address</legend>
+              <div class="address-fields">
+                <label>
+                  <span>Street address <span class="required-mark">Required</span></span>
+                  <input id="address-street" name="addressStreet" type="text" autocomplete="address-line1" placeholder="123 Main Street" required>
+                </label>
+                <label>
+                  <span>Apt / Suite / Unit <span class="optional-mark">Optional</span></span>
+                  <input id="address-apt" name="addressApt" type="text" autocomplete="address-line2" placeholder="Suite 200, Unit B">
+                </label>
+                <div class="address-csz">
+                  <label>
+                    <span>City <span class="required-mark">Required</span></span>
+                    <input id="address-city" name="addressCity" type="text" autocomplete="address-level2" placeholder="Newark" required>
+                  </label>
+                  <label>
+                    <span>State</span>
+                    <input id="address-state" name="addressState" type="text" autocomplete="address-level1" placeholder="DE" value="DE">
+                  </label>
+                  <label>
+                    <span>ZIP <span class="required-mark">Required</span></span>
+                    <input id="address-zip" name="addressZip" type="text" autocomplete="postal-code" inputmode="numeric" placeholder="19702" required>
+                  </label>
+                </div>
+              </div>
+              <div class="address-validate-row">
+                <button id="validate-address-btn" type="button" class="button secondary">Validate Address</button>
+              </div>
+              <p id="address-area-status" class="field-help" role="status"></p>
+            </fieldset>
+
+            <fieldset id="vehicle-fieldset" hidden>
               <legend>Vehicle</legend>
               <div class="field-grid">
                 <label>
@@ -268,25 +293,9 @@
                   <span class="field-help">Optional. Paste a map link if you already have one for the pickup location.</span>
                 </label>
                 <label>
-                  <span>Key handoff building / entrance <span class="required-mark">Required</span></span>
-                  <select name="keyMethod" required>
-                    <option value="">Select key handoff location</option>
-                    <option>Main entrance / lobby desk</option>
-                    <option>Emergency Department entrance</option>
-                    <option>Women & Children's entrance</option>
-                    <option>Center for Heart & Vascular Health entrance</option>
-                    <option>Helen F. Graham Cancer Center entrance</option>
-                    <option>Employee entrance</option>
-                    <option>Security desk</option>
-                    <option>Meet at vehicle</option>
-                    <option>Lockbox</option>
-                    <option>Other building / entrance</option>
-                  </select>
-                </label>
-                <label>
-                  <span>Key handoff details <span class="optional-mark">Optional</span></span>
-                  <input name="keyHandoffDetails" type="text" placeholder="Example: unit desk, lockbox code, person to ask for">
-                  <span class="field-help">Add anything that helps us find the key quickly.</span>
+                  <span>Key handoff instructions <span class="required-mark">Required</span></span>
+                  <input name="keyHandoffDetails" type="text" placeholder="Example: front door to Building X, my store, front desk, employee entrance, or meet at vehicle." required>
+                  <span class="field-help">Tell us exactly where and how to pick up your keys.</span>
                 </label>
               </div>
             </fieldset>
@@ -486,7 +495,7 @@
     </main>
 
     <footer class="site-footer">
-      <p>&copy; <span id="year"></span> ShiftFuel Concierge. Built first for ChristianaCare teams in Delaware.</p>
+      <p>&copy; <span id="year"></span> ShiftFuel Concierge. Serving workplaces in Delaware.</p>
     </footer>
 	<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 	<script src="supabase-client.js"></script>

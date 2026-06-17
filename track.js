@@ -12,6 +12,63 @@ let verifiedTrackingContact = { phone: "", email: "" };
 
 const terminalStatuses = ["complete", "denied", "customer_canceled", "unable_to_complete"];
 
+function initPhotoLightbox() {
+  if (document.getElementById('photo-lightbox')) return;
+  const el = document.createElement('div');
+  el.id = 'photo-lightbox';
+  el.hidden = true;
+  el.innerHTML = `
+    <div class="photo-lightbox-backdrop"></div>
+    <div class="photo-lightbox-dialog" role="dialog" aria-modal="true" aria-label="Photo">
+      <button class="photo-lightbox-close" type="button" aria-label="Close">&times;</button>
+      <img class="photo-lightbox-img" src="" alt="">
+      <p class="photo-lightbox-caption"></p>
+    </div>
+  `;
+  document.body.appendChild(el);
+  el.querySelector('.photo-lightbox-backdrop').addEventListener('click', closePhotoLightbox);
+  el.querySelector('.photo-lightbox-close').addEventListener('click', closePhotoLightbox);
+}
+
+function openPhotoLightbox(src, label) {
+  const el = document.getElementById('photo-lightbox');
+  if (!el) return;
+  const img = el.querySelector('.photo-lightbox-img');
+  img.src = src;
+  img.alt = label;
+  el.querySelector('.photo-lightbox-caption').textContent = label;
+  el.hidden = false;
+  document.body.style.overflow = 'hidden';
+}
+
+function closePhotoLightbox() {
+  const el = document.getElementById('photo-lightbox');
+  if (!el) return;
+  el.hidden = true;
+  el.querySelector('.photo-lightbox-img').src = '';
+  document.body.style.overflow = '';
+}
+
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') closePhotoLightbox();
+});
+
+document.addEventListener('click', (e) => {
+  const card = e.target.closest('[data-lightbox-src]');
+  if (!card) return;
+  openPhotoLightbox(card.dataset.lightboxSrc, card.dataset.lightboxLabel || '');
+});
+
+document.addEventListener('keydown', (e) => {
+  if (e.key !== 'Enter' && e.key !== ' ') return;
+  const card = e.target.closest('[data-lightbox-src]');
+  if (!card) return;
+  e.preventDefault();
+  openPhotoLightbox(card.dataset.lightboxSrc, card.dataset.lightboxLabel || '');
+});
+
+initPhotoLightbox();
+
 const statusLabels = {
   request_received: "Request received",
   accepted: "Accepted",
@@ -168,9 +225,23 @@ function renderAssignedWorker(request) {
     return "";
   }
 
+  const photoFrame = window.ShiftFuelPhoto
+    ? window.ShiftFuelPhoto.renderPhotoFrame(
+        {
+          photo_url: request.assigned_worker_photo_url || '',
+          cropped_photo_url: request.assigned_worker_photo_url || '',
+          original_photo_url: request.assigned_worker_original_photo_url || '',
+          name: request.assigned_worker_name || '',
+        },
+        { clickable: true }
+      )
+    : (request.assigned_worker_photo_url
+        ? `<div class="worker-profile-photo-frame"><img class="worker-profile-photo" src="${escapeHtml(request.assigned_worker_photo_url)}" alt="${escapeHtml(request.assigned_worker_name || '')}"></div>`
+        : `<div class="worker-profile-photo-frame"><div class="worker-profile-photo-placeholder">No photo</div></div>`);
+
   return `
     <section class="assigned-worker-card">
-      ${request.assigned_worker_photo_url ? `<img class="worker-avatar" src="${escapeHtml(request.assigned_worker_photo_url)}" alt="${escapeHtml(request.assigned_worker_name)}">` : '<div class="worker-avatar worker-avatar-placeholder">No photo</div>'}
+      ${photoFrame}
       <div>
         <p class="eyebrow">Who is working on your car</p>
         <h3>${escapeHtml(request.assigned_worker_name)}</h3>
@@ -220,11 +291,17 @@ function renderPhotos(request, photos) {
       `;
     }
 
+    const thumbSrc = photo.thumbnail_url || photo.image_url;
+    const fullSrc  = photo.original_url  || photo.image_url;
+
     return `
-      <a class="photo-proof-card" href="${escapeHtml(photo.image_url)}" target="_blank" rel="noopener">
-        <img src="${escapeHtml(photo.image_url)}" alt="${escapeHtml(label)}">
+      <div class="photo-proof-card photo-proof-loaded"
+           role="button" tabindex="0"
+           data-lightbox-src="${escapeHtml(fullSrc)}"
+           data-lightbox-label="${escapeHtml(label)}">
+        <img src="${escapeHtml(thumbSrc)}" alt="${escapeHtml(label)}" loading="lazy">
         <span>${escapeHtml(label)}</span>
-      </a>
+      </div>
     `;
   };
 
@@ -372,7 +449,7 @@ async function loadRequestPhotos(requestId, phone = verifiedTrackingContact.phon
 
   const { data, error } = await shiftFuelDb
     .from("photos")
-    .select("photo_type,image_url,created_at")
+    .select("photo_type,image_url,thumbnail_url,original_url,created_at")
     .eq("service_request_id", requestId)
     .order("created_at", { ascending: true });
 
@@ -515,8 +592,7 @@ function renderRequest(request, photos = [], review = null) {
         <p><strong>Vehicle:</strong> ${escapeHtml(request.vehicle_year)} ${escapeHtml(request.vehicle_make)} ${escapeHtml(request.vehicle_model)}, ${escapeHtml(request.vehicle_color)}</p>
         <p><strong>Service:</strong> ${escapeHtml(request.service_type)}</p>
         <p><strong>Parking:</strong> ${escapeHtml(request.parking_location)}, spot ${escapeHtml(request.parking_spot)}</p>
-        ${request.return_parking_location ? `<p><strong>Drop-off site:</strong> ${escapeHtml(request.return_parking_location)}, spot ${escapeHtml(request.return_parking_spot || "")}</p>` : ""}
-        ${request.return_parking_map_url ? `<p><strong>Drop-off map:</strong> <a href="${escapeHtml(request.return_parking_map_url)}" target="_blank" rel="noopener">Open map</a></p>` : ""}
+        ${request.return_parking_location ? `<p><strong>Vehicle return location:</strong> ${escapeHtml(request.return_parking_location)}</p>` : ""}
         <p><strong>Estimated total:</strong> ${formatCurrency(request.estimated_total)}</p>
         <p><strong>Final total:</strong> ${formatCurrency(request.final_total)}</p>
         ${cancellationReason ? `<p><strong>Reason:</strong> ${escapeHtml(cancellationReason)}</p>` : ""}
