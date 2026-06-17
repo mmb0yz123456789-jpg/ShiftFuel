@@ -10,7 +10,10 @@
   <body>
 
     <script>
-      if (sessionStorage.getItem("shiftfuel_admin") !== "true") {
+      const adminSessionExpires = Number(sessionStorage.getItem("shiftfuel_admin_expires") || 0);
+      if (sessionStorage.getItem("shiftfuel_admin") !== "true" || (adminSessionExpires && adminSessionExpires < Date.now())) {
+        sessionStorage.removeItem("shiftfuel_admin");
+        sessionStorage.removeItem("shiftfuel_admin_expires");
         window.location.href = "admin-login.html";
       }
     </script>

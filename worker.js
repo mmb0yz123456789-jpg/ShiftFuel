@@ -6,6 +6,17 @@ const workerProfileLocation = document.querySelector('#worker-profile-location')
 const workerProfileStarted = document.querySelector('#worker-profile-started');
 const workerProfilePhoto = document.querySelector('#worker-profile-photo');
 const workerProfileStatus = document.querySelector('#worker-profile-status');
+const editWorkerPhoto = document.querySelector('#edit-worker-photo');
+const workerPhotoBoundaryPanel = document.querySelector('#worker-photo-boundary-panel');
+const workerPhotoBoundaryImage = document.querySelector('#worker-photo-boundary-image');
+const workerPhotoCropPanel = document.querySelector('#worker-photo-crop-panel');
+const workerPhotoCropImage = document.querySelector('#worker-photo-crop-image');
+const workerPhotoCropPreview = document.querySelector('#worker-photo-crop-preview');
+const workerPhotoCropZoom = document.querySelector('#worker-photo-crop-zoom');
+const workerPhotoCropUse = document.querySelector('#worker-photo-crop-use');
+const workerPhotoCropChoose = document.querySelector('#worker-photo-crop-choose');
+const workerPhotoCropCancel = document.querySelector('#worker-photo-crop-cancel');
+const workerPhotoCropStatus = document.querySelector('#worker-photo-crop-status');
 const workerPasswordForm = document.querySelector('#worker-password-form');
 const workerNewPassword = document.querySelector('#worker-new-password');
 const workerConfirmPassword = document.querySelector('#worker-confirm-password');
@@ -49,6 +60,12 @@ let selectedWorkerDaysOff = new Set();
 let copiedWorkerDaySchedule = null;
 let allWorkerJobs = [];
 let vehiclePsiGuides = [];
+let workerCropImageUrl = '';
+let workerCroppedPreviewUrl = '';
+let workerBoundaryPreviewUrl = '';
+let workerCroppedPhotoBlob = null;
+let workerCropOffset = { x: 0, y: 0 };
+let workerCropDrag = null;
 
 const workerOpenStatuses = [
   'request_received',
@@ -337,13 +354,39 @@ async function passwordFields(password) {
 
 function showWorkerPhoto(photoUrl) {
   if (workerProfilePhotoPreview && workerProfilePhotoPlaceholder) {
-    workerProfilePhotoPreview.hidden = !photoUrl;
-    workerProfilePhotoPlaceholder.hidden = Boolean(photoUrl);
+    const hasPhoto = Boolean(photoUrl);
+    workerProfilePhotoPreview.hidden = !hasPhoto;
+    workerProfilePhotoPlaceholder.hidden = hasPhoto;
+    workerProfilePhotoPreview.style.display = hasPhoto ? '' : 'none';
+    workerProfilePhotoPlaceholder.style.display = hasPhoto ? 'none' : '';
 
-    if (photoUrl) {
+    if (hasPhoto) {
       workerProfilePhotoPreview.src = photoUrl;
+    } else {
+      workerProfilePhotoPreview.removeAttribute('src');
     }
   }
+}
+
+function showWorkerBoundaryPreview(photoUrl) {
+  if (!workerPhotoBoundaryPanel || !workerPhotoBoundaryImage) return;
+
+  if (!photoUrl) {
+    workerPhotoBoundaryPanel.hidden = true;
+    workerPhotoBoundaryImage.removeAttribute('src');
+    return;
+  }
+
+  workerPhotoBoundaryImage.src = photoUrl;
+  workerPhotoBoundaryPanel.hidden = false;
+}
+
+function clearWorkerBoundaryPreview() {
+  if (workerBoundaryPreviewUrl) {
+    URL.revokeObjectURL(workerBoundaryPreviewUrl);
+  }
+  workerBoundaryPreviewUrl = '';
+  showWorkerBoundaryPreview('');
 }
 
 function localDateValue(date) {
@@ -618,6 +661,7 @@ async function loadWorkerProfile() {
     if (workerLocation) workerLocation.value = currentEmployee.home_location || DEFAULT_WORK_LOCATION;
 
     showWorkerPhoto(currentEmployee.photo_url || '');
+    resetWorkerPhotoCrop();
     setWorkerStatus('');
     await loadWorkerSchedule();
     await loadWorkerJobs();
@@ -629,7 +673,7 @@ async function loadWorkerProfile() {
 }
 
 async function uploadWorkerPhoto(file) {
-  const safeName = file.name.replace(/[^a-z0-9.-]/gi, '-').toLowerCase();
+  const safeName = (file.name || 'profile.jpg').replace(/[^a-z0-9.-]/gi, '-').toLowerCase();
   const path = `workers/${currentEmployee.id}/${Date.now()}-${safeName || 'profile.jpg'}`;
 
   const { error } = await workerDb.storage.from(PHOTO_BUCKET).upload(path, file, { upsert: false });
@@ -637,6 +681,114 @@ async function uploadWorkerPhoto(file) {
 
   const { data } = workerDb.storage.from(PHOTO_BUCKET).getPublicUrl(path);
   return data?.publicUrl || path;
+}
+
+function resetWorkerPhotoCrop() {
+  if (workerCropImageUrl) {
+    URL.revokeObjectURL(workerCropImageUrl);
+  }
+  if (workerCroppedPreviewUrl) {
+    URL.revokeObjectURL(workerCroppedPreviewUrl);
+  }
+
+  workerCropImageUrl = '';
+  workerCroppedPreviewUrl = '';
+  workerCroppedPhotoBlob = null;
+  workerCropOffset = { x: 0, y: 0 };
+  workerCropDrag = null;
+
+  if (workerPhotoCropPanel) workerPhotoCropPanel.hidden = true;
+  if (workerPhotoCropImage) {
+    workerPhotoCropImage.removeAttribute('src');
+    workerPhotoCropImage.style.removeProperty('--crop-zoom');
+    workerPhotoCropImage.style.removeProperty('--crop-x');
+    workerPhotoCropImage.style.removeProperty('--crop-y');
+  }
+  if (workerPhotoCropPreview) {
+    workerPhotoCropPreview.removeAttribute('src');
+    workerPhotoCropPreview.style.removeProperty('--crop-zoom');
+    workerPhotoCropPreview.style.removeProperty('--crop-x');
+    workerPhotoCropPreview.style.removeProperty('--crop-y');
+  }
+  if (workerPhotoCropZoom) workerPhotoCropZoom.value = '1';
+  if (workerPhotoCropStatus) workerPhotoCropStatus.textContent = '';
+}
+
+function updateWorkerCropPreview() {
+  if (!workerPhotoCropImage) return;
+  const zoom = workerPhotoCropZoom?.value || '1';
+  workerPhotoCropImage.style.setProperty('--crop-zoom', zoom);
+  workerPhotoCropImage.style.setProperty('--crop-x', `${workerCropOffset.x}px`);
+  workerPhotoCropImage.style.setProperty('--crop-y', `${workerCropOffset.y}px`);
+
+  if (workerPhotoCropPreview) {
+    const editorSize = workerPhotoCropImage.getBoundingClientRect().width || 280;
+    const previewSize = workerPhotoCropPreview.getBoundingClientRect().width || editorSize;
+    const offsetScale = previewSize / editorSize;
+    workerPhotoCropPreview.style.setProperty('--crop-zoom', zoom);
+    workerPhotoCropPreview.style.setProperty('--crop-x', `${workerCropOffset.x * offsetScale}px`);
+    workerPhotoCropPreview.style.setProperty('--crop-y', `${workerCropOffset.y * offsetScale}px`);
+  }
+}
+
+function openWorkerPhotoCrop(file) {
+  resetWorkerPhotoCrop();
+
+  if (!file || !file.type.startsWith('image/')) {
+    if (workerPhotoCropStatus) workerPhotoCropStatus.textContent = 'Choose an image file for the worker photo.';
+    return;
+  }
+
+  workerCropImageUrl = URL.createObjectURL(file);
+  workerCropOffset = { x: 0, y: 0 };
+  if (workerPhotoCropImage) {
+    workerPhotoCropImage.src = workerCropImageUrl;
+    workerPhotoCropImage.onload = () => updateWorkerCropPreview();
+  }
+  if (workerPhotoCropPreview) {
+    workerPhotoCropPreview.src = workerCropImageUrl;
+  }
+  if (workerPhotoCropPanel) workerPhotoCropPanel.hidden = false;
+  if (workerPhotoCropStatus) workerPhotoCropStatus.textContent = 'Adjust the crop, then use the cropped photo before saving.';
+}
+
+async function makeCroppedWorkerPhoto() {
+  if (!workerPhotoCropImage?.complete || !workerProfilePhoto?.files?.[0]) {
+    return null;
+  }
+
+  const source = workerPhotoCropImage;
+  const size = 600;
+  const zoom = Number(workerPhotoCropZoom?.value || 1);
+  const canvas = document.createElement('canvas');
+  canvas.width = size;
+  canvas.height = size;
+  const context = canvas.getContext('2d');
+  const naturalWidth = source.naturalWidth;
+  const naturalHeight = source.naturalHeight;
+  const frameSize = workerPhotoCropImage.getBoundingClientRect().width || 280;
+  const baseScale = Math.max(frameSize / naturalWidth, frameSize / naturalHeight);
+  const displayScale = baseScale * zoom;
+  const outputScale = size / frameSize;
+  const displayWidth = naturalWidth * displayScale;
+  const displayHeight = naturalHeight * displayScale;
+  const drawnWidth = displayWidth * outputScale;
+  const drawnHeight = displayHeight * outputScale;
+  const dx = ((frameSize - displayWidth) / 2 + workerCropOffset.x) * outputScale;
+  const dy = ((frameSize - displayHeight) / 2 + workerCropOffset.y) * outputScale;
+
+  context.drawImage(source, 0, 0, naturalWidth, naturalHeight, dx, dy, drawnWidth, drawnHeight);
+
+  return new Promise((resolve) => {
+    canvas.toBlob((blob) => {
+      if (!blob) {
+        resolve(null);
+        return;
+      }
+
+      resolve(new File([blob], 'worker-profile-cropped.jpg', { type: 'image/jpeg' }));
+    }, 'image/jpeg', 0.9);
+  });
 }
 
 async function saveWorkerAvailability() {
@@ -1495,11 +1647,6 @@ async function completeWorkerRequest(button) {
   await loadWorkerReviews();
 }
 
-workerProfilePhoto?.addEventListener('change', () => {
-  const file = workerProfilePhoto.files?.[0];
-  showWorkerPhoto(file ? URL.createObjectURL(file) : currentEmployee?.photo_url || '');
-});
-
 workerJobList?.addEventListener('click', async (event) => {
   const button = event.target.closest('button');
   if (!button) return;
@@ -1673,12 +1820,112 @@ workerProfileForm?.addEventListener('submit', async (event) => {
     if (workerProfileStarted) workerProfileStarted.value = currentEmployee.started_at || '';
     if (workerLocation) workerLocation.value = currentEmployee.home_location || DEFAULT_WORK_LOCATION;
     showWorkerPhoto(currentEmployee.photo_url || '');
+    clearWorkerBoundaryPreview();
+    resetWorkerPhotoCrop();
     setWorkerStatus('Worker profile saved.');
   } catch (error) {
     console.error('Worker profile save failed:', error);
     setWorkerStatus(`Could not save worker profile: ${error.message || 'Make sure employee profile columns and storage are set up.'}`);
   }
 });
+
+workerProfilePhoto?.addEventListener('change', () => {
+  const file = workerProfilePhoto.files?.[0];
+  if (file) {
+    if (workerCroppedPreviewUrl) {
+      URL.revokeObjectURL(workerCroppedPreviewUrl);
+    }
+    if (workerBoundaryPreviewUrl) {
+      URL.revokeObjectURL(workerBoundaryPreviewUrl);
+    }
+    workerCroppedPreviewUrl = URL.createObjectURL(file);
+    workerBoundaryPreviewUrl = URL.createObjectURL(file);
+    showWorkerPhoto(workerCroppedPreviewUrl);
+    showWorkerBoundaryPreview(workerBoundaryPreviewUrl);
+    setWorkerStatus('Profile photo selected. Save the worker profile to upload it.');
+  } else {
+    resetWorkerPhotoCrop();
+    clearWorkerBoundaryPreview();
+    showWorkerPhoto(currentEmployee?.photo_url || '');
+  }
+});
+
+editWorkerPhoto?.addEventListener('click', () => {
+  if (workerProfilePhoto) workerProfilePhoto.value = '';
+  workerProfilePhoto?.click();
+});
+
+workerPhotoCropChoose?.addEventListener('click', () => {
+  if (workerProfilePhoto) workerProfilePhoto.value = '';
+  workerProfilePhoto?.click();
+});
+
+workerPhotoCropUse?.addEventListener('click', async () => {
+  if (workerPhotoCropStatus) workerPhotoCropStatus.textContent = 'Preparing cropped photo...';
+  workerCroppedPhotoBlob = await makeCroppedWorkerPhoto();
+
+  if (!workerCroppedPhotoBlob) {
+    if (workerPhotoCropStatus) workerPhotoCropStatus.textContent = 'Could not crop this image. Choose another photo.';
+    return;
+  }
+
+  if (workerCroppedPreviewUrl) {
+    URL.revokeObjectURL(workerCroppedPreviewUrl);
+  }
+  workerCroppedPreviewUrl = URL.createObjectURL(workerCroppedPhotoBlob);
+  showWorkerPhoto(workerCroppedPreviewUrl);
+  if (workerPhotoCropPanel) workerPhotoCropPanel.hidden = true;
+  if (workerPhotoCropStatus) workerPhotoCropStatus.textContent = 'Cropped photo ready. Save the profile to upload it.';
+  setWorkerStatus('Cropped photo ready. Save the worker profile to upload it.');
+});
+
+workerPhotoCropCancel?.addEventListener('click', () => {
+  if (workerProfilePhoto) workerProfilePhoto.value = '';
+  resetWorkerPhotoCrop();
+  showWorkerPhoto(currentEmployee?.photo_url || '');
+});
+
+workerPhotoCropZoom?.addEventListener('input', () => {
+  updateWorkerCropPreview();
+  workerCroppedPhotoBlob = null;
+  if (workerPhotoCropStatus) workerPhotoCropStatus.textContent = 'Crop changed. Use the cropped photo again before saving.';
+});
+
+workerPhotoCropImage?.addEventListener('pointerdown', (event) => {
+  if (!workerCropImageUrl) return;
+  workerCropDrag = {
+    pointerId: event.pointerId,
+    startX: event.clientX,
+    startY: event.clientY,
+    originX: workerCropOffset.x,
+    originY: workerCropOffset.y,
+  };
+  workerPhotoCropImage.setPointerCapture(event.pointerId);
+  workerPhotoCropImage.classList.add('is-dragging');
+});
+
+workerPhotoCropImage?.addEventListener('pointermove', (event) => {
+  if (!workerCropDrag || workerCropDrag.pointerId !== event.pointerId) return;
+
+  workerCropOffset = {
+    x: workerCropDrag.originX + event.clientX - workerCropDrag.startX,
+    y: workerCropDrag.originY + event.clientY - workerCropDrag.startY,
+  };
+
+  updateWorkerCropPreview();
+  workerCroppedPhotoBlob = null;
+  if (workerPhotoCropStatus) workerPhotoCropStatus.textContent = 'Crop moved. Use the cropped photo again before saving.';
+});
+
+function endWorkerCropDrag(event) {
+  if (!workerCropDrag || workerCropDrag.pointerId !== event.pointerId) return;
+  workerPhotoCropImage?.releasePointerCapture(event.pointerId);
+  workerPhotoCropImage?.classList.remove('is-dragging');
+  workerCropDrag = null;
+}
+
+workerPhotoCropImage?.addEventListener('pointerup', endWorkerCropDrag);
+workerPhotoCropImage?.addEventListener('pointercancel', endWorkerCropDrag);
 
 workerPasswordForm?.addEventListener('submit', async (event) => {
   event.preventDefault();
