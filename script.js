@@ -41,6 +41,11 @@ const returningCustomerEmail = document.querySelector("#returning-customer-email
 const returningCustomerButton = document.querySelector("#returning-customer-button");
 const returningCustomerStatus = document.querySelector("#returning-customer-status");
 const returningCustomerResults = document.querySelector("#returning-customer-results");
+const returningParkingConfirmationControl = document.querySelector("#returning-parking-confirmation-control");
+const returningParkingConfirmation = document.querySelector("#returning-parking-confirmation");
+const returningTimeConfirmationControl = document.querySelector("#returning-time-confirmation-control");
+const returningTimeConfirmation = document.querySelector("#returning-time-confirmation");
+const parkingKeyHandoffHeading = document.querySelector("#parking-key-handoff-heading");
 const RESUME_BUCKET = "applicant-resumes";
 
 year.textContent = new Date().getFullYear();
@@ -50,6 +55,7 @@ let bookedReturnSlots = new Set();
 let workerAvailabilitySlots = null;
 let workerAvailabilityLoaded = false;
 let returningCustomerMatches = [];
+let returningCustomerNeedsConfirmation = false;
 
 function formatDateInputValue(date) {
   const yearValue = date.getFullYear();
@@ -444,6 +450,8 @@ function populateReturnTimes(slots, placeholder) {
 
   if (slots.includes(currentValue) && !bookedReturnSlots.has(currentValue)) {
     returnTime.value = currentValue;
+  } else {
+    returnTime.value = "";
   }
 }
 
@@ -458,6 +466,24 @@ function selectedHospital() {
 function minutesFromSlot(value) {
   const [hour, minute] = normalizeTimeSlot(value).split(":").map(Number);
   return hour * 60 + minute;
+}
+
+function isSelectedServiceDateToday() {
+  return serviceDate.value === formatDateInputValue(new Date());
+}
+
+function currentLocalMinutes() {
+  const now = new Date();
+  return now.getHours() * 60 + now.getMinutes();
+}
+
+function futureSlotsForSelectedDate(slots) {
+  if (!isSelectedServiceDateToday()) {
+    return slots;
+  }
+
+  const nowMinutes = currentLocalMinutes();
+  return slots.filter((slot) => minutesFromSlot(slot) > nowMinutes);
 }
 
 function slotsWithinAvailability(slots, availabilityRows) {
@@ -486,6 +512,25 @@ async function loadWorkerAvailabilitySlots() {
   const selectedDate = new Date(`${serviceDate.value}T12:00:00`);
   const dayOfWeek = selectedDate.getDay();
   const hospital = selectedHospital();
+
+  const { data: rpcSlots, error: rpcError } = await window.ShiftFuelSupabase
+    .rpc("public_worker_availability_slots", {
+      p_service_date: serviceDate.value,
+      p_hospital: hospital,
+    });
+
+  if (!rpcError) {
+    workerAvailabilitySlots = (rpcSlots || []).map((row) => normalizeTimeSlot(row.slot)).filter(Boolean);
+    return;
+  }
+
+  if (!isMissingRpcError(rpcError)) {
+    console.warn("Worker availability lookup blocked:", rpcError);
+    workerAvailabilitySlots = [];
+    return;
+  }
+
+  console.warn("Worker availability RPC unavailable, falling back to direct lookup:", rpcError);
 
   const { data: employees, error: employeeError } = await window.ShiftFuelSupabase
     .from("employees")
@@ -552,6 +597,31 @@ async function refreshBookedReturnSlots() {
 
   await loadWorkerAvailabilitySlots();
 
+  const { data: rpcSlots, error: rpcError } = await window.ShiftFuelSupabase
+    .rpc("public_booked_return_slots", {
+      p_service_date: serviceDate.value,
+    });
+
+  if (!rpcError) {
+    bookedReturnSlots = new Set(
+      (rpcSlots || [])
+        .map((request) => normalizeTimeSlot(request.desired_return_time))
+        .filter(Boolean)
+    );
+
+    updateServiceAvailability();
+    return;
+  }
+
+  if (!isMissingRpcError(rpcError)) {
+    console.warn("Booked slot lookup blocked:", rpcError);
+    bookedReturnSlots = new Set();
+    updateServiceAvailability();
+    return;
+  }
+
+  console.warn("Booked slot RPC unavailable, falling back to direct lookup:", rpcError);
+
   const { data, error } = await window.ShiftFuelSupabase
     .from("service_requests")
     .select("desired_return_time,status")
@@ -584,15 +654,21 @@ function updateServiceAvailability() {
     : slots;
 
   if (!serviceType.needsWash) {
-    populateReturnTimes(filterByWorkerAvailability(timeSlots(7, 22)), "Select return time");
+    const slots = futureSlotsForSelectedDate(filterByWorkerAvailability(timeSlots(7, 22)));
+    populateReturnTimes(slots, slots.length ? "Select return time" : "No return times left today");
     returnTime.setCustomValidity("");
-    timeHelp.textContent = `Choose the time you want your vehicle returned.${availabilitySuffix}`;
+    timeHelp.textContent = slots.length
+      ? `Choose the time you want your vehicle returned.${availabilitySuffix}`
+      : `No more return times are available today. Choose tomorrow or another future date.${availabilitySuffix}`;
     return;
   }
 
-  populateReturnTimes(filterByWorkerAvailability(timeSlots(9, 18)), "Select car wash return time");
+  const washSlots = futureSlotsForSelectedDate(filterByWorkerAvailability(timeSlots(9, 18)));
+  populateReturnTimes(washSlots, washSlots.length ? "Select car wash return time" : "No car wash times left today");
   returnTime.setCustomValidity("");
-  timeHelp.textContent = `Car wash service selected. Return times are limited to 9:00 AM through 6:00 PM.${availabilitySuffix}`;
+  timeHelp.textContent = washSlots.length
+    ? `Car wash service selected. Return times are limited to 9:00 AM through 6:00 PM.${availabilitySuffix}`
+    : `No more car wash return times are available today. Choose tomorrow or another future date.${availabilitySuffix}`;
 }
 
 function setControlState(control, shouldEnable) {
@@ -706,6 +782,26 @@ function returningVehicleLabel(request) {
   ].filter(Boolean).join(" ");
 }
 
+function returningServiceLabel(request) {
+  const serviceName = request.service_label || request.service_type || "Service not listed";
+  const details = [
+    request.fuel_type ? `Fuel: ${request.fuel_type}` : "",
+    request.wash_package_label ? `Wash: ${request.wash_package_label}` : "",
+  ].filter(Boolean).join(" | ");
+
+  return details ? `${serviceName} (${details})` : serviceName;
+}
+
+function shortDate(value) {
+  if (!value) return "Date not listed";
+
+  return new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  }).format(new Date(value));
+}
+
 function renderReturningCustomerResults(requests) {
   if (!returningCustomerResults) return;
 
@@ -717,10 +813,15 @@ function renderReturningCustomerResults(requests) {
 
   returningCustomerResults.hidden = false;
   returningCustomerResults.innerHTML = requests.map((request, index) => `
-    <button class="returning-customer-card" type="button" data-returning-index="${index}">
+    <article class="returning-customer-card">
       <span>${escapeHtml(returningVehicleLabel(request) || "Previous vehicle")}</span>
-      <small>${escapeHtml(request.customer_name || "Customer")} | ${escapeHtml(request.hospital || "Workplace not listed")}</small>
-    </button>
+      <small>${escapeHtml(returningServiceLabel(request))}</small>
+      <small>${escapeHtml(request.customer_name || "Customer")} | ${escapeHtml(request.hospital || "Workplace not listed")} | ${escapeHtml(shortDate(request.service_date || request.created_at))}</small>
+      <div class="returning-customer-actions">
+        <button class="button primary" type="button" data-returning-index="${index}" data-returning-mode="same-car">Use this car</button>
+        <button class="button secondary" type="button" data-returning-index="${index}" data-returning-mode="new-car">Add new car but keep same service</button>
+      </div>
+    </article>
   `).join("");
 }
 
@@ -745,6 +846,35 @@ async function lookupReturningCustomer() {
   returningCustomerStatus.textContent = "Searching previous bookings...";
 
   try {
+    const { data: rpcMatches, error: rpcError } = await window.ShiftFuelSupabase
+      .rpc("public_returning_customer_lookup", {
+        p_phone: phone,
+        p_email: lookupEmail,
+      });
+
+    if (!rpcError) {
+      returningCustomerMatches = rpcMatches || [];
+
+      if (!returningCustomerMatches.length) {
+        returningCustomerStatus.textContent = "No previous booking found. You can still complete the form below.";
+        renderReturningCustomerResults([]);
+        return;
+      }
+
+      returningCustomerStatus.textContent = "Choose a previous vehicle to prefill the form.";
+      renderReturningCustomerResults(returningCustomerMatches);
+      return;
+    }
+
+    if (!isMissingRpcError(rpcError)) {
+      console.warn("Returning customer lookup blocked:", rpcError);
+      returningCustomerStatus.textContent = "No previous booking found. You can still complete the form below.";
+      renderReturningCustomerResults([]);
+      return;
+    }
+
+    console.warn("Returning customer RPC unavailable, falling back to direct lookup:", rpcError);
+
     const columns = [
       "id",
       "customer_name",
@@ -761,6 +891,12 @@ async function lookupReturningCustomer() {
       "parking_map_url",
       "key_handoff_method",
       "key_handoff_details",
+      "service_type",
+      "service_label",
+      "fuel_type",
+      "wash_package",
+      "wash_package_label",
+      "service_date",
       "created_at",
     ];
     let data = null;
@@ -813,7 +949,84 @@ async function lookupReturningCustomer() {
   }
 }
 
-async function applyReturningCustomer(index) {
+function showReturningConfirmation() {
+  returningCustomerNeedsConfirmation = true;
+  [
+    [returningParkingConfirmationControl, returningParkingConfirmation],
+    [returningTimeConfirmationControl, returningTimeConfirmation],
+  ].forEach(([control, checkbox]) => {
+    if (control) control.hidden = false;
+    if (checkbox) {
+      checkbox.required = true;
+      checkbox.checked = false;
+    }
+  });
+  updateReturningConfirmationText();
+}
+
+function clearVehicleFields() {
+  if (vehicleYear) vehicleYear.value = "";
+  if (vehicleMake) vehicleMake.value = "";
+  resetModels();
+  form.elements.color.value = "";
+  form.elements.license.value = "";
+}
+
+function applyReturningService(request) {
+  if (request.service_type && serviceTypes[request.service_type]) {
+    service.value = request.service_type;
+  }
+
+  if (request.fuel_type && fuelType) {
+    fuelType.value = request.fuel_type;
+  }
+
+  const normalizedWashLabel = normalizeTextForMatch(request.wash_package_label);
+  const washOption = Array.from(carWashPackage.options).find((option) => {
+    const packageInfo = carWashPackages[option.value];
+    return option.value === request.wash_package
+      || (normalizedWashLabel && normalizeTextForMatch(option.textContent).includes(normalizedWashLabel))
+      || (normalizedWashLabel && normalizeTextForMatch(packageInfo?.label).includes(normalizedWashLabel));
+  });
+
+  if (washOption) {
+    carWashPackage.value = washOption.value;
+  }
+}
+
+function normalizeTextForMatch(value) {
+  return String(value || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+function updateReturningConfirmationText() {
+  const parking = [
+    form.elements.parkingLocation?.value || "parking location not entered",
+    form.elements.parkingSpot?.value ? `spot ${form.elements.parkingSpot.value}` : "spot not entered",
+  ].join(", ");
+  const key = form.elements.keyMethod?.value || "key location not selected";
+  const details = form.elements.keyHandoffDetails?.value ? ` (${form.elements.keyHandoffDetails.value})` : "";
+  const desiredTime = returnTime.value ? formatTimeLabel(returnTime.value) : "return time not selected";
+
+  const parkingLabel = returningParkingConfirmationControl?.querySelector("span");
+  const timeLabel = returningTimeConfirmationControl?.querySelector("span");
+  if (parkingLabel) {
+    parkingLabel.textContent = `Did you confirm your parking and key location: ${parking}; key handoff: ${key}${details}?`;
+  }
+  if (timeLabel) {
+    timeLabel.textContent = `Did you confirm your desired return time: ${desiredTime}?`;
+  }
+}
+
+function scrollToParkingVerification() {
+  const target = parkingKeyHandoffHeading || form.elements.parkingLocation;
+  target?.scrollIntoView({ behavior: "smooth", block: "start" });
+  form.elements.parkingLocation?.focus({ preventScroll: true });
+}
+
+async function applyReturningCustomer(index, mode = "same-car") {
   const request = returningCustomerMatches[index];
   if (!request) return;
 
@@ -828,13 +1041,24 @@ async function applyReturningCustomer(index) {
   form.elements.parkingMapUrl.value = request.parking_map_url || "";
   form.elements.keyMethod.value = request.key_handoff_method || "";
   form.elements.keyHandoffDetails.value = request.key_handoff_details || "";
+  applyReturningService(request);
 
-  await setVehicleFromPrevious(request);
+  if (mode === "new-car") {
+    clearVehicleFields();
+  } else {
+    await setVehicleFromPrevious(request);
+  }
+
   await refreshBookedReturnSlots();
   updateServiceAvailability();
+  updateServiceControls();
   updateEstimate();
+  showReturningConfirmation();
+  scrollToParkingVerification();
 
-  returningCustomerStatus.textContent = "Your previous info has been filled in. Choose today's service, date, and return time.";
+  returningCustomerStatus.textContent = mode === "new-car"
+    ? "Your previous info and service were filled in. Add the new vehicle, then confirm parking and key handoff."
+    : "Your previous info has been filled in. Confirm parking and key handoff, then choose today's date and return time.";
 }
 
 function getBookingPayload() {
@@ -910,6 +1134,13 @@ function getBookingPayload() {
 function missingColumnName(error) {
   const match = String(error?.message || "").match(/'([^']+)' column/);
   return match?.[1] || "";
+}
+
+function isMissingRpcError(error) {
+  const message = String(error?.message || "").toLowerCase();
+  return ["PGRST202", "PGRST204", "42883"].includes(error?.code)
+    || message.includes("could not find the function")
+    || (message.includes("function") && message.includes("does not exist"));
 }
 
 function addScheduleToNotes(row, payload) {
@@ -1024,6 +1255,7 @@ quickInspection.addEventListener("change", () => {
   updateEstimate();
 });
 returnTime.addEventListener("change", updateServiceAvailability);
+returnTime.addEventListener("change", updateReturningConfirmationText);
 serviceDate.addEventListener("change", refreshBookedReturnSlots);
 hospitalSelect?.addEventListener("change", refreshBookedReturnSlots);
 fuelType.addEventListener("change", updateEstimate);
@@ -1044,9 +1276,64 @@ returningCustomerEmail?.addEventListener("keydown", (event) => {
   }
 });
 returningCustomerResults?.addEventListener("click", (event) => {
-  const card = event.target.closest("[data-returning-index]");
-  if (!card) return;
-  applyReturningCustomer(Number(card.dataset.returningIndex));
+  const button = event.target.closest("[data-returning-index]");
+  if (!button) return;
+  applyReturningCustomer(Number(button.dataset.returningIndex), button.dataset.returningMode || "same-car");
+});
+
+[
+  returningParkingConfirmation,
+  returningTimeConfirmation,
+].forEach((checkbox) => {
+  checkbox?.addEventListener("change", () => {
+    if (checkbox.checked) {
+      checkbox.setCustomValidity("");
+    }
+  });
+});
+
+function resetReturningConfirmation() {
+  returningCustomerNeedsConfirmation = false;
+  [
+    [returningParkingConfirmationControl, returningParkingConfirmation],
+    [returningTimeConfirmationControl, returningTimeConfirmation],
+  ].forEach(([control, checkbox]) => {
+    if (control) control.hidden = true;
+    if (checkbox) {
+      checkbox.required = false;
+      checkbox.checked = false;
+      checkbox.setCustomValidity("");
+    }
+  });
+}
+
+function validateReturningConfirmation() {
+  if (!returningCustomerNeedsConfirmation) {
+    return true;
+  }
+
+  if (!returningParkingConfirmation?.checked) {
+    returningParkingConfirmation?.setCustomValidity("Confirm the parking and key location before submitting.");
+    returningParkingConfirmation?.reportValidity();
+    returningParkingConfirmationControl?.scrollIntoView({ behavior: "smooth", block: "center" });
+    return false;
+  }
+
+  if (!returningTimeConfirmation?.checked) {
+    returningTimeConfirmation?.setCustomValidity("Confirm the desired return time before submitting.");
+    returningTimeConfirmation?.reportValidity();
+    returningTimeConfirmationControl?.scrollIntoView({ behavior: "smooth", block: "center" });
+    return false;
+  }
+
+  returningParkingConfirmation?.setCustomValidity("");
+  returningTimeConfirmation?.setCustomValidity("");
+  return true;
+}
+
+["parkingLocation", "parkingSpot", "parkingMapUrl", "keyMethod", "keyHandoffDetails"].forEach((fieldName) => {
+  form.elements[fieldName]?.addEventListener("input", updateReturningConfirmationText);
+  form.elements[fieldName]?.addEventListener("change", updateReturningConfirmationText);
 });
 
 washPricingToggle.addEventListener("click", () => {
@@ -1090,6 +1377,10 @@ form.addEventListener("submit", async (event) => {
 
   returnTime.setCustomValidity("");
 
+  if (!validateReturningConfirmation()) {
+    return;
+  }
+
   statusMessage.textContent = "Saving booking to Supabase...";
 
   const payload = getBookingPayload();
@@ -1116,6 +1407,7 @@ form.addEventListener("submit", async (event) => {
       returningCustomerResults.hidden = true;
       returningCustomerResults.innerHTML = "";
     }
+    resetReturningConfirmation();
     serviceDate.min = todayValue;
     serviceDate.max = maxServiceDateValue;
     serviceDate.value = todayValue;

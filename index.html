@@ -178,13 +178,14 @@
             <p class="form-note"><span class="required-mark">Required</span> fields must be completed before submitting. Optional fields can be skipped.</p>
             <fieldset class="returning-customer-panel">
               <legend>Returning customer</legend>
+              <p class="field-help">Find a previous booking to prefill your contact, service, parking, and key handoff details.</p>
               <div class="returning-customer-lookup">
                 <label>
-                  <span>Phone used before <span class="optional-mark">Optional</span></span>
+                  <span>Phone used before <span class="required-mark">Required</span></span>
                   <input id="returning-customer-search" type="tel" placeholder="(302) 555-0100">
                 </label>
                 <label>
-                  <span>Email used before <span class="optional-mark">Optional</span></span>
+                  <span>Email used before <span class="required-mark">Required</span></span>
                   <input id="returning-customer-email" type="email" placeholder="email@example.com">
                 </label>
                 <button id="returning-customer-button" class="button secondary" type="button">Find my info</button>
@@ -251,7 +252,7 @@
             </fieldset>
 
             <fieldset>
-              <legend>Parking and key handoff</legend>
+              <legend id="parking-key-handoff-heading">Parking and key handoff</legend>
               <div class="field-grid">
                 <label>
                   <span>Parking lot / garage <span class="required-mark">Required</span></span>
@@ -407,6 +408,14 @@
 
             <fieldset>
               <legend>Agreement</legend>
+              <label id="returning-parking-confirmation-control" class="checkbox-label returning-confirmation-control" hidden>
+                <input id="returning-parking-confirmation" name="returningParkingConfirmation" type="checkbox" value="yes">
+                <span>Did you confirm your parking and key location?</span>
+              </label>
+              <label id="returning-time-confirmation-control" class="checkbox-label returning-confirmation-control" hidden>
+                <input id="returning-time-confirmation" name="returningTimeConfirmation" type="checkbox" value="yes">
+                <span>Did you confirm your desired return time?</span>
+              </label>
               <label class="checkbox-label">
                 <input id="terms-agreement" name="termsAgreement" type="checkbox" value="yes" required>
                 <span>I agree that ShiftFuel Concierge may pick up, service, and return my vehicle using the instructions I provided.</span>

@@ -6,6 +6,9 @@ const trackMessage = document.querySelector("#track-message");
 const trackingResult = document.querySelector("#tracking-result");
 
 const shiftFuelDb = window.ShiftFuelSupabase;
+const TRACK_LOCK_KEY = "shiftfuel_track_locked_until";
+const TRACK_ATTEMPT_KEY = "shiftfuel_track_failed_attempts";
+let verifiedTrackingContact = { phone: "", email: "" };
 
 const terminalStatuses = ["complete", "denied", "customer_canceled", "unable_to_complete"];
 
@@ -53,6 +56,36 @@ const statusSteps = [
 
 function cleanPhone(value) {
   return String(value || "").replace(/\D/g, "");
+}
+
+function trackLockedUntil() {
+  return Number(localStorage.getItem(TRACK_LOCK_KEY) || 0);
+}
+
+function clearTrackAttempts() {
+  localStorage.removeItem(TRACK_ATTEMPT_KEY);
+  localStorage.removeItem(TRACK_LOCK_KEY);
+}
+
+function isMissingRpcError(error) {
+  const message = String(error?.message || "").toLowerCase();
+  return ["PGRST202", "PGRST204", "42883"].includes(error?.code)
+    || message.includes("could not find the function")
+    || message.includes("function") && message.includes("does not exist");
+}
+
+function recordTrackFailedAttempt() {
+  const attempts = Number(localStorage.getItem(TRACK_ATTEMPT_KEY) || 0) + 1;
+  localStorage.setItem(TRACK_ATTEMPT_KEY, String(attempts));
+
+  if (attempts >= 8) {
+    localStorage.setItem(TRACK_LOCK_KEY, String(Date.now() + 5 * 60 * 1000));
+    localStorage.setItem(TRACK_ATTEMPT_KEY, "0");
+    trackMessage.textContent = "Too many lookup attempts. Tracking is locked for 5 minutes.";
+    return;
+  }
+
+  trackMessage.textContent = `No request found. ${8 - attempts} lookup attempt${8 - attempts === 1 ? "" : "s"} left before a temporary lock.`;
 }
 
 function escapeHtml(value) {
@@ -318,7 +351,25 @@ function serviceTimingFromNotes(request) {
   `;
 }
 
-async function loadRequestPhotos(requestId) {
+async function loadRequestPhotos(requestId, phone = verifiedTrackingContact.phone, email = verifiedTrackingContact.email) {
+  const { data: rpcPhotos, error: rpcError } = await shiftFuelDb
+    .rpc("public_request_photos", {
+      p_request_id: requestId,
+      p_phone: phone,
+      p_email: email,
+    });
+
+  if (!rpcError) {
+    return rpcPhotos || [];
+  }
+
+  if (!isMissingRpcError(rpcError)) {
+    console.warn("Photo lookup blocked:", rpcError);
+    return [];
+  }
+
+  console.warn("Photo RPC unavailable, falling back to direct lookup:", rpcError);
+
   const { data, error } = await shiftFuelDb
     .from("photos")
     .select("photo_type,image_url,created_at")
@@ -333,7 +384,25 @@ async function loadRequestPhotos(requestId) {
   return data || [];
 }
 
-async function loadRequestReview(requestId) {
+async function loadRequestReview(requestId, phone = verifiedTrackingContact.phone, email = verifiedTrackingContact.email) {
+  const { data: rpcReview, error: rpcError } = await shiftFuelDb
+    .rpc("public_review_for_request", {
+      p_request_id: requestId,
+      p_phone: phone,
+      p_email: email,
+    });
+
+  if (!rpcError) {
+    return rpcReview?.[0] || null;
+  }
+
+  if (!isMissingRpcError(rpcError)) {
+    console.warn("Review lookup blocked:", rpcError);
+    return null;
+  }
+
+  console.warn("Review RPC unavailable, falling back to direct lookup:", rpcError);
+
   const { data, error } = await shiftFuelDb
     .from("service_reviews")
     .select("id,rating,comments,submitted_at")
@@ -479,6 +548,13 @@ function renderRequest(request, photos = [], review = null) {
 trackForm.addEventListener("submit", async (event) => {
   event.preventDefault();
 
+  const lockTime = trackLockedUntil();
+  if (lockTime > Date.now()) {
+    const minutes = Math.ceil((lockTime - Date.now()) / 60000);
+    trackMessage.textContent = `Too many lookup attempts. Try again in ${minutes} minute${minutes === 1 ? "" : "s"}.`;
+    return;
+  }
+
   const id = trackingId.value.trim();
   const phone = cleanPhone(trackingPhone.value);
   const email = trackingEmail.value.trim().toLowerCase();
@@ -499,48 +575,69 @@ trackForm.addEventListener("submit", async (event) => {
 
   trackMessage.textContent = "Looking up request...";
 
-  let query = shiftFuelDb
-    .from("service_requests")
-    .select("*")
-    .order("created_at", { ascending: false });
-
-  if (id) {
-    query = query.eq("id", id);
-  } else if (email) {
-    query = query.ilike("customer_email", email);
-  }
-
-  const { data, error } = await query;
-
-  if (error || !data || data.length === 0) {
-    console.error("Tracking lookup error:", error);
-    trackMessage.textContent = "No request found.";
-    return;
-  }
-
   let matchedRequest = null;
+  const rpcRequestId = id || null;
+  const { data: rpcData, error: rpcError } = await shiftFuelDb
+    .rpc("public_track_request", {
+      p_request_id: rpcRequestId,
+      p_phone: phone,
+      p_email: email,
+    });
 
-  if (id) {
-    matchedRequest = data.find((request) => {
-      const phoneMatches = phone && cleanPhone(request.customer_phone) === phone;
-      const emailMatches = email && String(request.customer_email || "").toLowerCase() === email;
-      return phoneMatches || emailMatches;
-    });
+  if (!rpcError) {
+    matchedRequest = rpcData?.[0] || null;
   } else {
-    matchedRequest = data.find((request) => {
-      return cleanPhone(request.customer_phone) === phone
-        && String(request.customer_email || "").toLowerCase() === email;
-    });
+    if (!isMissingRpcError(rpcError)) {
+      console.warn("Track lookup blocked:", rpcError);
+      recordTrackFailedAttempt();
+      return;
+    }
+
+    console.warn("Track RPC unavailable, falling back to direct lookup:", rpcError);
+
+    let query = shiftFuelDb
+      .from("service_requests")
+      .select("*")
+      .order("created_at", { ascending: false });
+
+    if (id) {
+      query = query.eq("id", id);
+    } else if (email) {
+      query = query.ilike("customer_email", email);
+    }
+
+    const { data, error } = await query;
+
+    if (error || !data || data.length === 0) {
+      console.error("Tracking lookup error:", error);
+      recordTrackFailedAttempt();
+      return;
+    }
+
+    if (id) {
+      matchedRequest = data.find((request) => {
+        const phoneMatches = phone && cleanPhone(request.customer_phone) === phone;
+        const emailMatches = email && String(request.customer_email || "").toLowerCase() === email;
+        return phoneMatches || emailMatches;
+      });
+    } else {
+      matchedRequest = data.find((request) => {
+        return cleanPhone(request.customer_phone) === phone
+          && String(request.customer_email || "").toLowerCase() === email;
+      });
+    }
   }
 
   if (!matchedRequest) {
-    trackMessage.textContent = "No request found.";
+    recordTrackFailedAttempt();
     return;
   }
 
+  clearTrackAttempts();
+  verifiedTrackingContact = { phone, email };
   trackMessage.textContent = "";
-  const photos = await loadRequestPhotos(matchedRequest.id);
-  const review = await loadRequestReview(matchedRequest.id);
+  const photos = await loadRequestPhotos(matchedRequest.id, phone, email);
+  const review = await loadRequestReview(matchedRequest.id, phone, email);
   renderRequest(matchedRequest, photos, review);
 });
 
@@ -570,22 +667,37 @@ trackingResult.addEventListener("click", async (event) => {
     submitReviewButton.textContent = "Submitting...";
     trackMessage.textContent = "";
 
-    const reviewRow = {
-      service_request_id: requestId,
-      rating: Number(rating),
-      comments,
-      customer_name: submitReviewButton.dataset.customerName || null,
-      customer_phone: submitReviewButton.dataset.customerPhone || null,
-      customer_email: submitReviewButton.dataset.customerEmail || null,
-    };
+    let usedDirectReviewInsert = false;
+    let { error } = await shiftFuelDb.rpc("public_submit_service_review", {
+      p_request_id: requestId,
+      p_phone: verifiedTrackingContact.phone || submitReviewButton.dataset.customerPhone || "",
+      p_email: verifiedTrackingContact.email || submitReviewButton.dataset.customerEmail || "",
+      p_rating: Number(rating),
+      p_comments: comments,
+    });
 
-    let { error } = await shiftFuelDb.from("service_reviews").insert(reviewRow);
+    if (error && isMissingRpcError(error)) {
+      console.warn("Review RPC unavailable or rejected, falling back to direct insert:", error);
+      usedDirectReviewInsert = true;
+      const reviewRow = {
+        service_request_id: requestId,
+        rating: Number(rating),
+        comments,
+        customer_name: submitReviewButton.dataset.customerName || null,
+        customer_phone: submitReviewButton.dataset.customerPhone || null,
+        customer_email: submitReviewButton.dataset.customerEmail || null,
+      };
 
-    if (error?.code === "PGRST204") {
-      delete reviewRow.customer_name;
-      delete reviewRow.customer_phone;
-      delete reviewRow.customer_email;
       ({ error } = await shiftFuelDb.from("service_reviews").insert(reviewRow));
+
+      if (error?.code === "PGRST204") {
+        delete reviewRow.customer_name;
+        delete reviewRow.customer_phone;
+        delete reviewRow.customer_email;
+        ({ error } = await shiftFuelDb.from("service_reviews").insert(reviewRow));
+      }
+    } else if (error) {
+      console.warn("Review submit blocked:", error);
     }
 
     if (error?.code === "23505") {
@@ -610,7 +722,9 @@ trackingResult.addEventListener("click", async (event) => {
       return;
     }
 
-    await markReviewComplete(requestId);
+    if (usedDirectReviewInsert) {
+      await markReviewComplete(requestId);
+    }
     panel.remove();
     trackMessage.textContent = "Thank you for reviewing our service.";
     routeHomeAfterReview();
@@ -650,29 +764,54 @@ trackingResult.addEventListener("click", async (event) => {
   confirmCancelButton.disabled = true;
   trackMessage.textContent = "";
 
-  let { data, error } = await shiftFuelDb
-    .from("service_requests")
-    .update({
-      status: "customer_canceled",
-      cancellation_reason: reason,
-    })
-    .eq("id", requestId)
-    .select()
-    .single();
+  let data = null;
+  let { error } = await shiftFuelDb.rpc("public_cancel_request", {
+    p_request_id: requestId,
+    p_phone: verifiedTrackingContact.phone,
+    p_email: verifiedTrackingContact.email,
+    p_reason: reason,
+  });
 
-  if (error?.code === "PGRST204") {
+  if (error && isMissingRpcError(error)) {
+    console.warn("Cancel RPC unavailable, falling back to direct update:", error);
     ({ data, error } = await shiftFuelDb
       .from("service_requests")
       .update({
         status: "customer_canceled",
-        notes: `Customer cancellation reason: ${reason}`,
+        cancellation_reason: reason,
       })
       .eq("id", requestId)
       .select()
       .single());
+
+    if (error?.code === "PGRST204") {
+      ({ data, error } = await shiftFuelDb
+        .from("service_requests")
+        .update({
+          status: "customer_canceled",
+          notes: `Customer cancellation reason: ${reason}`,
+        })
+        .eq("id", requestId)
+        .select()
+        .single());
+    }
+  } else if (!error) {
+    const { data: refreshed, error: refreshError } = await shiftFuelDb.rpc("public_track_request", {
+      p_request_id: requestId,
+      p_phone: verifiedTrackingContact.phone,
+      p_email: verifiedTrackingContact.email,
+    });
+
+    if (refreshError) {
+      error = refreshError;
+    } else {
+      data = refreshed?.[0] || null;
+    }
+  } else {
+    console.warn("Cancel blocked:", error);
   }
 
-  if (error) {
+  if (error || !data) {
     console.error("Customer cancellation error:", error);
     trackMessage.textContent = "Could not cancel this request.";
     confirmCancelButton.textContent = "Confirm cancellation";

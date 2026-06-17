@@ -26,12 +26,23 @@
       <div class="section-heading">
         <p class="eyebrow">Admin Access</p>
         <h1>ShiftFuel Admin Portal</h1>
-        <p>Enter the administrator password to continue.</p>
+        <p>Enter the administrator username and password to continue.</p>
       </div>
 
       <form id="admin-login-form" class="booking-form">
         <fieldset>
           <legend>Admin Login</legend>
+
+          <label>
+            Username
+            <input
+              id="admin-username"
+              type="text"
+              placeholder="Enter admin username"
+              autocomplete="username"
+              required
+            >
+          </label>
 
           <label>
             Password
@@ -55,19 +66,57 @@
 
   <script>
     const form = document.getElementById("admin-login-form");
+    const usernameInput = document.getElementById("admin-username");
     const passwordInput = document.getElementById("admin-password");
     const message = document.getElementById("login-message");
+    const ADMIN_USERNAME_HASH = "bb231df866f8d13d03a2dcd0ae16c5307a3437bb095c3b0ad5c7324f4afe9130";
+    const ADMIN_PASSWORD_HASH = "5dcc42b2c69708ecddfaffac8db472d340a5385e5360c49ba89ab884d507642a";
+    const LOCK_KEY = "shiftfuel_admin_locked_until";
+    const ATTEMPT_KEY = "shiftfuel_admin_failed_attempts";
 
-    form.addEventListener("submit", (event) => {
+    async function sha256Hex(value) {
+      const bytes = new TextEncoder().encode(value);
+      const digest = await crypto.subtle.digest("SHA-256", bytes);
+      return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
+    }
+
+    function lockedUntil() {
+      return Number(localStorage.getItem(LOCK_KEY) || 0);
+    }
+
+    form.addEventListener("submit", async (event) => {
       event.preventDefault();
 
-      const password = passwordInput.value;
+      const lockTime = lockedUntil();
+      if (lockTime > Date.now()) {
+        const minutes = Math.ceil((lockTime - Date.now()) / 60000);
+        message.textContent = `Too many attempts. Try again in ${minutes} minute${minutes === 1 ? "" : "s"}.`;
+        return;
+      }
 
-      if (password === "ShiftFuel2026!") {
+      const password = passwordInput.value;
+      const username = usernameInput.value.trim().toLowerCase();
+      const usernameHash = await sha256Hex(username);
+      const hash = await sha256Hex(password);
+
+      if (usernameHash === ADMIN_USERNAME_HASH && hash === ADMIN_PASSWORD_HASH) {
+        localStorage.removeItem(ATTEMPT_KEY);
+        localStorage.removeItem(LOCK_KEY);
         sessionStorage.setItem("shiftfuel_admin", "true");
+        sessionStorage.setItem("shiftfuel_admin_expires", String(Date.now() + 8 * 60 * 60 * 1000));
         window.location.href = "admin.html";
       } else {
-        message.textContent = "Incorrect password.";
+        const attempts = Number(localStorage.getItem(ATTEMPT_KEY) || 0) + 1;
+        localStorage.setItem(ATTEMPT_KEY, String(attempts));
+
+        if (attempts >= 5) {
+          localStorage.setItem(LOCK_KEY, String(Date.now() + 5 * 60 * 1000));
+          localStorage.setItem(ATTEMPT_KEY, "0");
+          message.textContent = "Too many attempts. Admin login is locked for 5 minutes.";
+          return;
+        }
+
+        message.textContent = `Incorrect password. ${5 - attempts} attempt${5 - attempts === 1 ? "" : "s"} left before a temporary lock.`;
       }
     });
   </script>

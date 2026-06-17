@@ -9,7 +9,11 @@
 
   <body class="worker-portal-page">
     <script>
-      if (!sessionStorage.getItem("shiftfuel_worker")) {
+      const workerSessionExpires = Number(sessionStorage.getItem("shiftfuel_worker_expires") || 0);
+      if (!sessionStorage.getItem("shiftfuel_worker") || (workerSessionExpires && workerSessionExpires < Date.now())) {
+        sessionStorage.removeItem("shiftfuel_worker");
+        sessionStorage.removeItem("shiftfuel_worker_id");
+        sessionStorage.removeItem("shiftfuel_worker_expires");
         window.location.href = "worker-login.html";
       }
     </script>
@@ -141,12 +145,23 @@
               </label>
             </div>
 
-            <label>
-              Profile photo
-              <input id="worker-profile-photo" type="file" accept="image/*">
-            </label>
+            <div class="profile-photo-actions">
+              <span>Profile photo</span>
+              <button id="edit-worker-photo" class="button secondary" type="button">Edit profile photo</button>
+              <input id="worker-profile-photo" class="visually-hidden-file" type="file" accept="image/*">
+            </div>
+            <div id="worker-photo-boundary-panel" class="photo-boundary-panel" hidden>
+              <p class="eyebrow">Profile picture boundary</p>
+              <div class="photo-boundary-preview">
+                <img id="worker-photo-boundary-image" alt="Selected worker profile photo">
+                <span class="photo-boundary-overlay" aria-hidden="true"></span>
+              </div>
+              <p class="field-help">The uploaded photo stays whole. The clear circle shows what customers will see as the profile picture.</p>
+            </div>
 
-            <button class="button primary" type="submit">Save worker profile</button>
+            <div class="form-action-row">
+              <button class="button primary" type="submit">Save worker profile</button>
+            </div>
             <p id="worker-profile-status" class="form-status" role="status"></p>
           </fieldset>
         </form>
@@ -164,7 +179,9 @@
                 <input id="worker-confirm-password" type="password" minlength="8">
               </label>
             </div>
-            <button class="button primary" type="submit">Update password</button>
+            <div class="form-action-row">
+              <button class="button primary" type="submit">Update password</button>
+            </div>
             <p id="worker-password-status" class="form-status" role="status"></p>
           </fieldset>
         </form>

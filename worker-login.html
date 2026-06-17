@@ -33,8 +33,8 @@
           <legend>Worker Login</legend>
 
           <label>
-            Worker name
-            <input id="worker-login-name" type="text" value="Mark Urban" required>
+            Worker name or phone
+            <input id="worker-login-name" type="text" placeholder="Enter worker name or phone" autocomplete="username" required>
           </label>
 
           <label>
@@ -55,11 +55,8 @@
     const workerName = document.getElementById("worker-login-name");
     const passwordInput = document.getElementById("worker-password");
     const message = document.getElementById("worker-login-message");
-
-    const workerAccounts = {
-      "mark urban": { name: "Mark Urban", password: "MarkUrban2026!" },
-      "test worker": { name: "Test Worker", password: "TestWorker2026!" },
-    };
+    const LOCK_KEY = "shiftfuel_worker_locked_until";
+    const ATTEMPT_KEY = "shiftfuel_worker_failed_attempts";
 
     function cleanPhone(value) {
       return String(value || "").replace(/\D/g, "");
@@ -71,8 +68,33 @@
       return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
     }
 
+    function lockedUntil() {
+      return Number(localStorage.getItem(LOCK_KEY) || 0);
+    }
+
+    function recordFailedAttempt() {
+      const attempts = Number(localStorage.getItem(ATTEMPT_KEY) || 0) + 1;
+      localStorage.setItem(ATTEMPT_KEY, String(attempts));
+
+      if (attempts >= 5) {
+        localStorage.setItem(LOCK_KEY, String(Date.now() + 5 * 60 * 1000));
+        localStorage.setItem(ATTEMPT_KEY, "0");
+        message.textContent = "Too many attempts. Worker login is locked for 5 minutes.";
+        return;
+      }
+
+      message.textContent = `Incorrect worker name or password. ${5 - attempts} attempt${5 - attempts === 1 ? "" : "s"} left before a temporary lock.`;
+    }
+
     form.addEventListener("submit", async (event) => {
       event.preventDefault();
+
+      const lockTime = lockedUntil();
+      if (lockTime > Date.now()) {
+        const minutes = Math.ceil((lockTime - Date.now()) / 60000);
+        message.textContent = `Too many attempts. Try again in ${minutes} minute${minutes === 1 ? "" : "s"}.`;
+        return;
+      }
 
       const loginValue = workerName.value.trim();
       const password = passwordInput.value;
@@ -96,25 +118,20 @@
           const hash = await sha256Hex(`${employee.worker_password_salt}:${password}`);
 
           if (hash === employee.worker_password_hash) {
+            localStorage.removeItem(ATTEMPT_KEY);
+            localStorage.removeItem(LOCK_KEY);
             sessionStorage.setItem("shiftfuel_worker", employee.full_name);
             sessionStorage.setItem("shiftfuel_worker_id", employee.id);
+            sessionStorage.setItem("shiftfuel_worker_expires", String(Date.now() + 8 * 60 * 60 * 1000));
             window.location.href = "worker.html";
             return;
           }
         }
       } catch (error) {
-        console.warn("Worker Supabase login failed, trying local fallback:", error);
+        console.warn("Worker Supabase login failed:", error);
       }
 
-      const account = workerAccounts[loginValue.toLowerCase()];
-
-      if (account && password === account.password) {
-        sessionStorage.setItem("shiftfuel_worker", account.name);
-        window.location.href = "worker.html";
-        return;
-      }
-
-      message.textContent = "Incorrect worker name or password.";
+      recordFailedAttempt();
     });
   </script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
