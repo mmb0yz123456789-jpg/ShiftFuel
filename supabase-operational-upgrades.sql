@@ -24,6 +24,9 @@ create table if not exists employees (
   home_location text,
   photo_url text,
   started_at date,
+  worker_password_hash text,
+  worker_password_salt text,
+  password_updated_at timestamptz,
   profile_updated_at timestamptz,
   created_at timestamptz not null default now()
 );
@@ -32,6 +35,9 @@ alter table employees
   add column if not exists employee_code text,
   add column if not exists photo_url text,
   add column if not exists started_at date,
+  add column if not exists worker_password_hash text,
+  add column if not exists worker_password_salt text,
+  add column if not exists password_updated_at timestamptz,
   add column if not exists profile_updated_at timestamptz;
 
 update employees
@@ -41,6 +47,10 @@ where employee_code is null;
 create unique index if not exists employees_employee_code_unique
 on employees (employee_code)
 where employee_code is not null;
+
+create unique index if not exists employees_active_phone_unique
+on employees (phone)
+where active = true and phone is not null and phone <> '';
 
 alter table service_requests
   add column if not exists assigned_employee_id uuid references employees(id),

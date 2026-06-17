@@ -176,6 +176,18 @@
         <div class="booking-layout">
           <form id="booking-form" class="booking-form">
             <p class="form-note"><span class="required-mark">Required</span> fields must be completed before submitting. Optional fields can be skipped.</p>
+            <fieldset class="returning-customer-panel">
+              <legend>Returning customer</legend>
+              <div class="returning-customer-lookup">
+                <label>
+                  <span>Phone or email used before <span class="optional-mark">Optional</span></span>
+                  <input id="returning-customer-search" type="text" placeholder="(302) 555-0100 or email@example.com">
+                </label>
+                <button id="returning-customer-button" class="button secondary" type="button">Find my info</button>
+              </div>
+              <p id="returning-customer-status" class="field-help" role="status"></p>
+              <div id="returning-customer-results" class="returning-customer-results" hidden></div>
+            </fieldset>
             <fieldset>
               <legend>Customer sign-up</legend>
               <div class="field-grid">

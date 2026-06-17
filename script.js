@@ -36,6 +36,10 @@ const washPricingToggle = document.querySelector("#wash-pricing-toggle");
 const washPricingDetails = document.querySelector("#wash-pricing-details");
 const addInspectionFromPricing = document.querySelector("#add-inspection-from-pricing");
 const hospitalSelect = form.querySelector('[name="hospital"]');
+const returningCustomerSearch = document.querySelector("#returning-customer-search");
+const returningCustomerButton = document.querySelector("#returning-customer-button");
+const returningCustomerStatus = document.querySelector("#returning-customer-status");
+const returningCustomerResults = document.querySelector("#returning-customer-results");
 
 year.textContent = new Date().getFullYear();
 
@@ -43,6 +47,7 @@ const slotReleasingStatuses = new Set(["complete", "denied", "customer_canceled"
 let bookedReturnSlots = new Set();
 let workerAvailabilitySlots = null;
 let workerAvailabilityLoaded = false;
+let returningCustomerMatches = [];
 
 function formatDateInputValue(date) {
   const yearValue = date.getFullYear();
@@ -173,6 +178,22 @@ function setModelOptions(models, placeholder) {
 function resetModels(message = "Models load after you choose a year and make.") {
   setModelOptions([], "Select year and make first");
   modelHelp.textContent = message;
+}
+
+async function setVehicleFromPrevious(request) {
+  vehicleYear.value = request.vehicle_year || "";
+  vehicleMake.value = request.vehicle_make || "";
+
+  await loadModelsForSelection();
+
+  if (request.vehicle_model) {
+    const hasModel = Array.from(vehicleModel.options).some((option) => option.value === request.vehicle_model);
+    if (!hasModel) {
+      vehicleModel.append(createOption(request.vehicle_model));
+      vehicleModel.disabled = false;
+    }
+    vehicleModel.value = request.vehicle_model;
+  }
 }
 
 async function loadModelsForSelection() {
@@ -659,6 +680,161 @@ function formatPhoneNumber(value) {
 
   return value;
 }
+
+function cleanLookupPhone(value) {
+  return String(value || "").replace(/\D/g, "");
+}
+
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+}
+
+function returningVehicleLabel(request) {
+  return [
+    request.vehicle_year,
+    request.vehicle_make,
+    request.vehicle_model,
+    request.vehicle_color,
+    request.license_plate ? `Plate ${request.license_plate}` : "",
+  ].filter(Boolean).join(" ");
+}
+
+function renderReturningCustomerResults(requests) {
+  if (!returningCustomerResults) return;
+
+  if (!requests.length) {
+    returningCustomerResults.hidden = true;
+    returningCustomerResults.innerHTML = "";
+    return;
+  }
+
+  returningCustomerResults.hidden = false;
+  returningCustomerResults.innerHTML = requests.map((request, index) => `
+    <button class="returning-customer-card" type="button" data-returning-index="${index}">
+      <span>${escapeHtml(returningVehicleLabel(request) || "Previous vehicle")}</span>
+      <small>${escapeHtml(request.customer_name || "Customer")} | ${escapeHtml(request.hospital || "Workplace not listed")}</small>
+    </button>
+  `).join("");
+}
+
+async function lookupReturningCustomer() {
+  const lookup = returningCustomerSearch?.value.trim() || "";
+  const phone = cleanLookupPhone(lookup);
+  const email = lookup.toLowerCase();
+
+  if (!lookup) {
+    returningCustomerStatus.textContent = "Enter the phone or email used on a previous booking.";
+    returningCustomerSearch?.focus();
+    return;
+  }
+
+  if (!window.ShiftFuelSupabase) {
+    returningCustomerStatus.textContent = "Customer lookup is not available yet.";
+    return;
+  }
+
+  returningCustomerButton.disabled = true;
+  returningCustomerButton.textContent = "Looking...";
+  returningCustomerStatus.textContent = "Searching previous bookings...";
+
+  try {
+    const columns = [
+      "id",
+      "customer_name",
+      "customer_phone",
+      "customer_email",
+      "vehicle_year",
+      "vehicle_make",
+      "vehicle_model",
+      "vehicle_color",
+      "license_plate",
+      "hospital",
+      "parking_location",
+      "parking_spot",
+      "parking_map_url",
+      "key_handoff_method",
+      "key_handoff_details",
+      "created_at",
+    ];
+    let data = null;
+    let error = null;
+
+    for (let attempt = 0; attempt < 6; attempt += 1) {
+      ({ data, error } = await window.ShiftFuelSupabase
+        .from("service_requests")
+        .select(columns.join(","))
+        .order("created_at", { ascending: false })
+        .limit(100));
+
+      const missingColumn = missingColumnName(error);
+
+      if (!error || !missingColumn || !columns.includes(missingColumn)) {
+        break;
+      }
+
+      columns.splice(columns.indexOf(missingColumn), 1);
+    }
+
+    if (error) throw error;
+
+    const seenVehicles = new Set();
+    returningCustomerMatches = (data || []).filter((request) => {
+      const matchesPhone = phone && cleanLookupPhone(request.customer_phone) === phone;
+      const matchesEmail = email && String(request.customer_email || "").toLowerCase() === email;
+      return matchesPhone || matchesEmail;
+    }).filter((request) => {
+      const key = [request.license_plate, request.vehicle_year, request.vehicle_make, request.vehicle_model].join("|").toLowerCase();
+      if (seenVehicles.has(key)) return false;
+      seenVehicles.add(key);
+      return true;
+    }).slice(0, 5);
+
+    if (!returningCustomerMatches.length) {
+      returningCustomerStatus.textContent = "No previous booking found. You can still complete the form below.";
+      renderReturningCustomerResults([]);
+      return;
+    }
+
+    returningCustomerStatus.textContent = "Choose a previous vehicle to prefill the form.";
+    renderReturningCustomerResults(returningCustomerMatches);
+  } catch (error) {
+    console.error("Returning customer lookup failed:", error);
+    returningCustomerStatus.textContent = "Could not look up previous bookings right now.";
+  } finally {
+    returningCustomerButton.disabled = false;
+    returningCustomerButton.textContent = "Find my info";
+  }
+}
+
+async function applyReturningCustomer(index) {
+  const request = returningCustomerMatches[index];
+  if (!request) return;
+
+  form.elements.name.value = request.customer_name || "";
+  form.elements.phone.value = request.customer_phone || "";
+  form.elements.email.value = request.customer_email || "";
+  form.elements.hospital.value = request.hospital || "";
+  form.elements.color.value = request.vehicle_color || "";
+  form.elements.license.value = request.license_plate || "";
+  form.elements.parkingLocation.value = request.parking_location || "";
+  form.elements.parkingSpot.value = request.parking_spot || "";
+  form.elements.parkingMapUrl.value = request.parking_map_url || "";
+  form.elements.keyMethod.value = request.key_handoff_method || "";
+  form.elements.keyHandoffDetails.value = request.key_handoff_details || "";
+
+  await setVehicleFromPrevious(request);
+  await refreshBookedReturnSlots();
+  updateServiceAvailability();
+  updateEstimate();
+
+  returningCustomerStatus.textContent = "Your previous info has been filled in. Choose today's service, date, and return time.";
+}
+
 function getBookingPayload() {
   const data = new FormData(form);
   const selectedService = data.get("service");
@@ -831,6 +1007,18 @@ fuelType.addEventListener("change", updateEstimate);
 fuelEstimate.addEventListener("change", updateEstimate);
 vehicleYear.addEventListener("change", loadModelsForSelection);
 vehicleMake.addEventListener("change", loadModelsForSelection);
+returningCustomerButton?.addEventListener("click", lookupReturningCustomer);
+returningCustomerSearch?.addEventListener("keydown", (event) => {
+  if (event.key === "Enter") {
+    event.preventDefault();
+    lookupReturningCustomer();
+  }
+});
+returningCustomerResults?.addEventListener("click", (event) => {
+  const card = event.target.closest("[data-returning-index]");
+  if (!card) return;
+  applyReturningCustomer(Number(card.dataset.returningIndex));
+});
 
 washPricingToggle.addEventListener("click", () => {
   const shouldShow = washPricingDetails.hidden;
@@ -891,6 +1079,13 @@ form.addEventListener("submit", async (event) => {
     console.log("Saved request:", data);
 
     form.reset();
+    returningCustomerMatches = [];
+    if (returningCustomerSearch) returningCustomerSearch.value = "";
+    if (returningCustomerStatus) returningCustomerStatus.textContent = "";
+    if (returningCustomerResults) {
+      returningCustomerResults.hidden = true;
+      returningCustomerResults.innerHTML = "";
+    }
     serviceDate.min = todayValue;
     serviceDate.max = maxServiceDateValue;
     serviceDate.value = todayValue;
