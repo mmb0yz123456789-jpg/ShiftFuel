@@ -44,7 +44,12 @@ const addressState  = form.querySelector('#address-state');
 const addressZip    = form.querySelector('#address-zip');
 const addressAreaStatus = document.querySelector('#address-area-status');
 const validateAddressBtn = document.querySelector('#validate-address-btn');
-const vehicleFieldset = document.querySelector('#vehicle-fieldset');
+const vehicleFieldset   = document.querySelector('#vehicle-fieldset');
+const parkingFieldset   = document.querySelector('#parking-fieldset');
+const serviceFieldset   = document.querySelector('#service-fieldset');
+const paymentFieldset   = document.querySelector('#payment-fieldset');
+const agreementFieldset = document.querySelector('#agreement-fieldset');
+const bookingSubmitBtn  = document.querySelector('#booking-submit-btn');
 const returningCustomerSearch = document.querySelector("#returning-customer-search");
 const returningCustomerEmail = document.querySelector("#returning-customer-email");
 const returningCustomerButton = document.querySelector("#returning-customer-button");
@@ -75,6 +80,12 @@ function setAddressStatus(type, message) {
   addressAreaStatus.dataset.status = type || '';
 }
 
+function setPostAddressSections(visible) {
+  [vehicleFieldset, parkingFieldset, serviceFieldset, paymentFieldset, agreementFieldset, bookingSubmitBtn]
+    .filter(Boolean)
+    .forEach(el => { el.hidden = !visible; });
+}
+
 function resetAddressValidation() {
   if (!addressValidated) {
     const hasContent = [addressStreet, addressApt, addressCity, addressState, addressZip]
@@ -84,8 +95,8 @@ function resetAddressValidation() {
     return;
   }
   addressValidated = false;
+  setPostAddressSections(false);
   if (!isReturningCustomer) {
-    if (vehicleFieldset) vehicleFieldset.hidden = true;
     setAddressStatus('warning', 'Please validate your service address before continuing.');
   } else {
     setAddressStatus('warning', 'Your vehicle and service selections are still saved. Please validate the updated address before submitting.');
@@ -109,7 +120,7 @@ validateAddressBtn?.addEventListener('click', async () => {
     if (!result.valid) {
       setAddressStatus('error', result.message);
       addressValidated = false;
-      if (!isReturningCustomer && vehicleFieldset) vehicleFieldset.hidden = true;
+      setPostAddressSections(false);
       return;
     }
     if (result.canonicalAddress) {
@@ -122,7 +133,7 @@ validateAddressBtn?.addEventListener('click', async () => {
     }
     addressValidated = true;
     setAddressStatus('success', 'Address verified.');
-    if (vehicleFieldset) vehicleFieldset.hidden = false;
+    setPostAddressSections(true);
   } finally {
     validateAddressBtn.disabled = false;
   }
@@ -1247,7 +1258,7 @@ async function applyReturningCustomer(index, mode = "same-car") {
   if (addressZip)    addressZip.value    = request.address_zip    || "";
   isReturningCustomer = true;
   addressValidated = false;
-  if (vehicleFieldset) vehicleFieldset.hidden = false;
+  setPostAddressSections(false);
   setAddressStatus('warning', 'Please validate your service address before continuing.');
   form.elements.color.value = request.vehicle_color || "";
   form.elements.license.value = request.license_plate || "";
@@ -1638,7 +1649,7 @@ form.addEventListener("submit", async (event) => {
     statusMessage.textContent = "";
     addressValidated = false;
     setAddressStatus('error', areaResult.message);
-    if (!isReturningCustomer && vehicleFieldset) vehicleFieldset.hidden = true;
+    setPostAddressSections(false);
     return;
   }
   setAddressStatus('success', 'Address verified.');
@@ -1662,7 +1673,7 @@ form.addEventListener("submit", async (event) => {
     setAddressStatus('', '');
     addressValidated = false;
     isReturningCustomer = false;
-    if (vehicleFieldset) vehicleFieldset.hidden = true;
+    setPostAddressSections(false);
 
     form.reset();
     returningCustomerMatches = [];

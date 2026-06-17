@@ -32,49 +32,106 @@
     </header>
 
     <main>
-      <section class="section admin-hero">
-        <div class="section-heading">
-          <p class="eyebrow">Admin dashboard</p>
-          <h1>Service requests</h1>
-          <p>
-            This local dashboard shows where booking submissions go right now.
-            The same fields map to Supabase tables when the cloud backend is connected.
-          </p>
+
+      <!-- Page-level tab nav -->
+      <nav class="admin-page-tabs" aria-label="Admin pages">
+        <button class="admin-page-tab active" data-page="dashboard">Dashboard</button>
+        <button class="admin-page-tab" data-page="workers">Workers <span id="worker-count-badge" class="page-tab-badge">0</span></button>
+      </nav>
+
+      <!-- ═══════════════════ DASHBOARD PAGE ═══════════════════ -->
+
+      <section class="section admin-hero" data-page-section="dashboard">
+        <div class="admin-hero-top">
+          <div class="section-heading">
+            <p class="eyebrow">Admin dashboard</p>
+            <h1>Service requests</h1>
+          </div>
+          <div class="admin-hero-stats" id="admin-hero-stats">
+            <div class="hero-stat">
+              <span class="hero-stat-value" id="admin-avg-rating">—</span>
+              <span class="hero-stat-label">Avg rating</span>
+            </div>
+            <div class="hero-stat-divider"></div>
+            <div class="hero-stat">
+              <span class="hero-stat-value" id="admin-completed-count">0</span>
+              <span class="hero-stat-label">Completed</span>
+            </div>
+          </div>
         </div>
-		<div class="admin-summary">
-		  <div class="summary-card">
-			<span id="total-requests">0</span>
-			<p>Open + Completed</p>
-		  </div>
-
-		  <button id="show-open" class="summary-card summary-button">
-			<span id="open-requests">0</span>
-			<p>Open Requests</p>
-		  </button>
-
-		  <button id="show-complete" class="summary-card summary-button">
-			<span id="complete-requests">0</span>
-			<p>Completed Requests</p>
-		  </button>
-
-		  <button id="show-denied" class="summary-card summary-button">
-			<span id="denied-requests">0</span>
-			<p>Closed Requests</p>
-		  </button>
-		</div>
+        <div class="admin-summary">
+          <button id="show-reviews" class="summary-card summary-button">
+            <span id="total-reviews">0</span>
+            <p>Total Reviews</p>
+          </button>
+          <button id="show-open" class="summary-card summary-button active">
+            <span id="open-requests">0</span>
+            <p>Open Requests</p>
+          </button>
+          <button id="show-complete" class="summary-card summary-button">
+            <span id="complete-requests">0</span>
+            <p>Completed Requests</p>
+          </button>
+          <button id="show-denied" class="summary-card summary-button">
+            <span id="denied-requests">0</span>
+            <p>Closed Requests</p>
+          </button>
+          <button id="show-applicants" class="summary-card summary-button">
+            <span id="total-applicants">0</span>
+            <p>Total Applicants</p>
+          </button>
+          <button id="find-tickets-btn" class="summary-card summary-button">
+            <span class="find-tickets-icon">&#x1F50D;</span>
+            <p>Find Tickets</p>
+          </button>
+        </div>
       </section>
 
-      <section class="section admin-section">
+      <section class="section admin-section" data-tab-panel="requests" data-page-section="dashboard">
         <div class="admin-toolbar">
           <div>
-            <p class="eyebrow">Queue</p>
-            <h2>Workplace requests</h2>
+            <p class="eyebrow" id="request-queue-eyebrow">Queue</p>
+            <h2 id="request-queue-heading">Open requests</h2>
           </div>
+          <button id="show-all-time-btn" class="button secondary" style="display:none" type="button">Show all time</button>
         </div>
         <div id="request-list" class="request-list"></div>
       </section>
 
-      <section class="section admin-section">
+      <section class="section admin-section" data-tab-panel="reviews" data-page-section="dashboard" hidden>
+        <div class="admin-toolbar">
+          <div>
+            <p class="eyebrow">Retention</p>
+            <h2>Service reviews</h2>
+          </div>
+          <div class="review-filter-row">
+            <span id="review-average-display" class="review-average"></span>
+            <div class="star-filter-buttons">
+              <button class="star-filter-btn" data-stars="5">&#9733;&#9733;&#9733;&#9733;&#9733;</button>
+              <button class="star-filter-btn" data-stars="4">&#9733;&#9733;&#9733;&#9733;</button>
+              <button class="star-filter-btn" data-stars="3">&#9733;&#9733;&#9733;</button>
+              <button class="star-filter-btn" data-stars="2">&#9733;&#9733;</button>
+              <button class="star-filter-btn" data-stars="1">&#9733;</button>
+              <button class="star-filter-btn star-filter-all active" data-stars="">All</button>
+            </div>
+          </div>
+        </div>
+        <div id="review-list" class="request-list"></div>
+      </section>
+
+      <section class="section admin-section" data-tab-panel="applicants" data-page-section="dashboard" hidden>
+        <div class="admin-toolbar">
+          <div>
+            <p class="eyebrow">Hiring</p>
+            <h2>Applicants</h2>
+          </div>
+        </div>
+        <div id="applicant-list" class="request-list"></div>
+      </section>
+
+      <!-- ═══════════════════ WORKERS PAGE ═══════════════════ -->
+
+      <section class="section admin-section" data-page-section="workers" hidden>
         <div class="admin-toolbar">
           <div>
             <p class="eyebrow">Schedule</p>
@@ -91,7 +148,6 @@
             <label>Work location
               <select id="worker-location" required>
                 <option value="">Select workplace</option>
-                <option selected>ChristianaCare - 4755 Ogletown Stanton Rd, Newark, DE 19718</option>
               </select>
             </label>
           </div>
@@ -123,7 +179,7 @@
         </form>
       </section>
 
-      <section class="section admin-section">
+      <section class="section admin-section" data-page-section="workers" hidden>
         <div class="admin-toolbar">
           <div>
             <p class="eyebrow">Team</p>
@@ -145,26 +201,47 @@
         <div id="worker-profile-list" class="request-list"></div>
       </section>
 
-      <section class="section admin-section">
-        <div class="admin-toolbar">
-          <div>
-            <p class="eyebrow">Retention</p>
-            <h2>Service reviews</h2>
-          </div>
-        </div>
-        <div id="review-list" class="request-list"></div>
-      </section>
-
-      <section class="section admin-section">
-        <div class="admin-toolbar">
-          <div>
-            <p class="eyebrow">Hiring</p>
-            <h2>Applicants</h2>
-          </div>
-        </div>
-        <div id="applicant-list" class="request-list"></div>
-      </section>
     </main>
+
+    <!-- Find Tickets modal -->
+    <div id="find-tickets-modal" class="modal-overlay" hidden aria-modal="true" role="dialog" aria-labelledby="find-tickets-title">
+      <div class="modal-dialog find-tickets-dialog">
+        <div class="modal-header">
+          <h2 id="find-tickets-title">Find Tickets</h2>
+          <button id="close-find-tickets" class="modal-close" aria-label="Close">&times;</button>
+        </div>
+        <div class="modal-body">
+          <div class="find-tickets-search-row">
+            <input id="find-tickets-search" type="search" placeholder="Search by phone number, email, or name" autocomplete="off">
+            <button id="find-tickets-go" class="button primary" type="button">Search</button>
+          </div>
+          <div id="find-tickets-sort-bar" class="find-tickets-sort-bar" hidden>
+            <span class="find-tickets-result-count" id="find-tickets-result-count"></span>
+            <label class="find-tickets-sort-label">
+              Sort
+              <select id="find-tickets-sort">
+                <option value="newest">Newest first</option>
+                <option value="oldest">Oldest first</option>
+              </select>
+            </label>
+          </div>
+          <div id="find-tickets-results" class="find-tickets-results"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Ticket detail modal (opened from Find Tickets results) -->
+    <div id="ticket-detail-modal" class="modal-overlay" hidden aria-modal="true" role="dialog" aria-labelledby="ticket-detail-title">
+      <div class="modal-dialog ticket-detail-dialog">
+        <div class="modal-header">
+          <h2 id="ticket-detail-title">Ticket details</h2>
+          <button id="close-ticket-detail" class="modal-close" aria-label="Close">&times;</button>
+        </div>
+        <div class="modal-body" id="ticket-detail-body">
+          <p>Loading...</p>
+        </div>
+      </div>
+    </div>
 
 	<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 	<script src="supabase-client.js"></script>
