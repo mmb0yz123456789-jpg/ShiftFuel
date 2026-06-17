@@ -1,3 +1,36 @@
+// ── Stripe setup ─────────────────────────────────────────────────────────────
+const STRIPE_PUBLISHABLE_KEY = 'pk_test_51Tinn8H7KLNRhY3F757Dwev2OIk1CWs0ExzSQwvX9gvzo7ubsXnYbZKl9qVLoIWYOpF6OkzVkIA9kAtkx7i1c1HG00sCPnNo59';
+const stripe = window.Stripe ? window.Stripe(STRIPE_PUBLISHABLE_KEY) : null;
+const stripeElements = stripe ? stripe.elements() : null;
+const cardElement = stripeElements ? stripeElements.create('card', {
+  style: {
+    base: {
+      fontSize: '16px',
+      color: '#1a1a1a',
+      fontFamily: 'system-ui, sans-serif',
+      '::placeholder': { color: '#9ca3af' },
+    },
+    invalid: { color: '#c0392b' },
+  },
+}) : null;
+
+let cardMounted = false;
+
+function mountCardElement() {
+  if (cardElement && !cardMounted) {
+    const container = document.querySelector('#card-element');
+    if (container) {
+      cardElement.mount('#card-element');
+      cardMounted = true;
+      cardElement.on('change', (event) => {
+        const display = document.querySelector('#card-errors');
+        if (display) display.textContent = event.error ? event.error.message : '';
+      });
+    }
+  }
+}
+// ─────────────────────────────────────────────────────────────────────────────
+
 const year = document.querySelector("#year");
 const form = document.querySelector("#booking-form");
 const vehicleYear = document.querySelector("#vehicle-year");
@@ -84,6 +117,7 @@ function setPostAddressSections(visible) {
   [vehicleFieldset, parkingFieldset, serviceFieldset, paymentFieldset, agreementFieldset, bookingSubmitBtn]
     .filter(Boolean)
     .forEach(el => { el.hidden = !visible; });
+  if (visible) mountCardElement();
 }
 
 function resetAddressValidation() {
@@ -1352,7 +1386,7 @@ function getBookingPayload() {
     },
     photos: [],
     payment: {
-      stripePaymentId: null,
+      paymentIntentId: null,
       estimatedAmount: estimatedTotalAmount,
       finalAmount: null,
       paymentStatus: "not_started",
@@ -1443,6 +1477,8 @@ function getServiceRequestInsert(payload) {
     estimated_total: payload.request.estimatedTotal,
     status: "request_received",
     notes: payload.request.notes,
+    payment_intent_id: payload.payment.paymentIntentId || null,
+    payment_status: payload.payment.paymentIntentId ? 'authorized' : 'not_started',
   };
 }
 
@@ -1676,10 +1712,47 @@ form.addEventListener("submit", async (event) => {
   }
   setAddressStatus('success', 'Address verified.');
 
-  statusMessage.textContent = "Saving booking to Supabase...";
+  statusMessage.textContent = "Authorizing payment...";
 
   const payload = getBookingPayload();
   const supabase = window.ShiftFuelSupabase;
+
+  // Stripe authorize-and-capture flow
+  if (stripe && cardElement) {
+    const estimatedCents = Math.round((payload.payment.estimatedAmount || 0) * 100);
+    const amountCents = Math.max(estimatedCents, 50);
+
+    let clientSecret, paymentIntentId;
+    try {
+      const piRes = await fetch('/api/create-payment-intent', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ amount_cents: amountCents }),
+      });
+      const piData = await piRes.json();
+      if (!piRes.ok) throw new Error(piData.error || 'Payment setup failed');
+      clientSecret = piData.client_secret;
+      paymentIntentId = piData.payment_intent_id;
+    } catch (err) {
+      statusMessage.textContent = `Payment setup failed: ${err.message}`;
+      return;
+    }
+
+    const { error: stripeError, paymentIntent } = await stripe.confirmCardPayment(clientSecret, {
+      payment_method: { card: cardElement },
+    });
+
+    if (stripeError) {
+      const display = document.querySelector('#card-errors');
+      if (display) display.textContent = stripeError.message;
+      statusMessage.textContent = 'Payment authorization failed. Please check your card details.';
+      return;
+    }
+
+    payload.payment.paymentIntentId = paymentIntent.id;
+  }
+
+  statusMessage.textContent = "Saving booking to Supabase...";
 
   try {
     const { data, error } = await insertServiceRequest(supabase, payload);

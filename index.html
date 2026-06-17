@@ -412,6 +412,12 @@
                     <dd id="estimated-total">$0</dd>
                   </div>
                 </dl>
+                <div id="card-element-wrap">
+                  <label class="card-element-label">Card details
+                    <div id="card-element"></div>
+                  </label>
+                  <p id="card-errors" class="card-errors" role="alert"></p>
+                </div>
               </div>
             </fieldset>
 
@@ -500,6 +506,7 @@
     <footer class="site-footer">
       <p>&copy; <span id="year"></span> ShiftFuel Concierge. Serving workplaces in Delaware.</p>
     </footer>
+	<script src="https://js.stripe.com/v3/"></script>
 	<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 	<script src="supabase-client.js"></script>
 	

@@ -451,6 +451,11 @@ function requestCardDetails(request) {
       ${hasPayment ? `<p><strong>Estimated total:</strong> ${money(request.estimated_total)} | <strong>Final total:</strong> ${request.final_total == null ? 'Not recorded' : money(request.final_total)}</p>` : ''}
       ${(receiptTotals.fuel || receiptTotals.wash) ? `<p><strong>Receipt totals:</strong> Fuel ${money(receiptTotals.fuel)} | Car wash ${money(receiptTotals.wash)}</p>` : ''}
       ${hasPayment ? `<p><strong>Fees:</strong> Fuel convenience ${money(fees.fuel)} | Wash convenience ${money(fees.wash)} | Inspection ${money(fees.inspection)}</p>` : ''}
+      ${request.payment_intent_id ? `<p><strong>Payment authorization:</strong> ${request.payment_status === 'captured' ? `Captured ${money(request.final_total)}` : `Authorized (${request.payment_status || 'authorized'})`}</p>` : ''}
+      ${(request.payment_intent_id && request.payment_status !== 'captured') ? `
+        <button class="button primary charge-customer-btn" data-request-id="${escapeHtml(request.id)}" data-final-total="${escapeHtml(String(request.final_total ?? ''))}">
+          Charge customer${request.final_total != null ? ` ${money(request.final_total)}` : ''}
+        </button>` : ''}
     </div>
   `;
 }
@@ -2667,6 +2672,40 @@ async function uploadPhotoSet(button) {
   await loadRequests();
 }
 
+async function chargeCustomer(button) {
+  const requestId = button.dataset.requestId;
+  const request = allRequests.find(r => r.id === requestId);
+  if (!request) return;
+
+  if (request.final_total == null) {
+    alert('Save the final total before charging the customer.');
+    return;
+  }
+
+  const amountCents = Math.round(request.final_total * 100);
+  const confirmed = confirm(`Charge customer ${money(request.final_total)}? This cannot be undone.`);
+  if (!confirmed) return;
+
+  button.disabled = true;
+  button.textContent = 'Charging…';
+
+  const res = await fetch('/api/capture-payment', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ payment_intent_id: request.payment_intent_id, amount_cents: amountCents }),
+  });
+  const result = await res.json();
+  if (!res.ok) throw new Error(result.error || 'Capture failed');
+
+  await db.rpc('admin_update_request', {
+    p_token: adminToken(),
+    p_request_id: requestId,
+    p_data: { payment_status: 'captured' },
+  });
+
+  await loadRequests();
+}
+
 requestList.addEventListener('click', async (event) => {
   const button = event.target.closest('button');
   if (!button) return;
@@ -2818,6 +2857,12 @@ requestList.addEventListener('click', async (event) => {
 
     if (button.classList.contains('upload-photo-set')) {
       await uploadPhotoSet(button);
+      return;
+    }
+
+    if (button.classList.contains('charge-customer-btn')) {
+      await chargeCustomer(button);
+      return;
     }
   } catch (error) {
     console.error(error);
