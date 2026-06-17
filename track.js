@@ -583,12 +583,15 @@ function renderRequestCard(request, photos = [], review = null) {
     : '';
 
   return `
-    <article class="request-card track-request-card" data-request-id="${escapeHtml(request.id)}">
+    <article class="track-request-card" data-request-id="${escapeHtml(request.id)}">
       <details class="track-request-details">
         <summary class="track-request-summary">
           <div class="track-request-summary-main">
             <span class="track-request-vehicle">${escapeHtml(vehicle)}</span>
-            <span class="track-request-meta">${serviceDate ? escapeHtml(serviceDate) + ' · ' : ''}${escapeHtml(request.service_label || request.service_type || '')}</span>
+            <span class="track-request-meta">
+              ${serviceDate ? `<span>${escapeHtml(serviceDate)}</span>` : ''}
+              ${request.service_label || request.service_type ? `<span>${escapeHtml(request.service_label || request.service_type)}</span>` : ''}
+            </span>
           </div>
           <span class="status-pill">${escapeHtml(statusLabel)}</span>
         </summary>

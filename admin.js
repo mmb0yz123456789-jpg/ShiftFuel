@@ -479,18 +479,13 @@ function requestCardDetails(request) {
       ${request.payment_intent_id ? `<hr class="details-divider">
       <p><strong>Payment status:</strong> ${paymentStatusLabel(request)}</p>
       ${request.auto_reversed_at ? `<p><strong>Auto-reversed:</strong> ${formatTimestamp(request.auto_reversed_at)} — service was not completed on the scheduled date.</p>` : ''}` : ''}
-      ${(request.payment_intent_id && request.payment_status === 'authorized') ? `
-        <div class="admin-button-row">
-          <button class="button primary charge-customer-btn" data-request-id="${escapeHtml(request.id)}">
-            Charge customer${request.final_total != null ? ` ${money(request.final_total)}` : ''}
-          </button>
-        </div>` : ''}
       ${(request.payment_intent_id && request.payment_status === 'captured') ? `
         <div class="admin-button-row">
-          <button class="button refund-customer-btn" data-request-id="${escapeHtml(request.id)}">
-            Refund / Adjust
+          <button class="button edit-total-charge-btn" data-request-id="${escapeHtml(request.id)}">
+            Edit Total Charge
           </button>
-        </div>` : ''}
+        </div>
+        <div class="edit-total-charge-panel" id="edit-total-panel-${escapeHtml(request.id)}" hidden></div>` : ''}
     </div>
   `;
 }
@@ -2730,80 +2725,140 @@ async function uploadPhotoSet(button) {
   await loadRequests();
 }
 
-async function chargeCustomer(button) {
-  const requestId = button.dataset.requestId;
-  const request = allRequests.find(r => r.id === requestId);
-  if (!request) return;
-
-  if (request.final_total == null) {
-    alert('Save the final total before charging the customer.');
-    return;
-  }
-
-  const amountCents = Math.round(request.final_total * 100);
-  const confirmed = confirm(`Charge customer ${money(request.final_total)}? This cannot be undone.`);
-  if (!confirmed) return;
-
-  button.disabled = true;
-  button.textContent = 'Charging…';
-
-  const res = await fetch('/api/capture-payment', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ payment_intent_id: request.payment_intent_id, amount_cents: amountCents }),
-  });
-  const result = await res.json();
-  if (!res.ok) throw new Error(result.error || 'Capture failed');
-
-  await db.rpc('admin_update_request', {
-    p_token: adminToken(),
-    p_request_id: requestId,
-    p_data: { payment_status: 'captured' },
-  });
-
-  await loadRequests();
+function renderEditTotalPanel(request) {
+  const receiptTotals = receiptTotalsFromNotes(request);
+  const fees = feeSummary(request);
+  return `
+    <div class="edit-total-charge-form" data-request-id="${escapeHtml(request.id)}">
+      <h4 class="edit-total-charge-title">Change Charged Amount</h4>
+      <p class="edit-total-charge-desc">Current charged total: <strong>${money(request.final_total)}</strong></p>
+      <div class="admin-money-grid">
+        ${serviceNeedsFuel(request) ? `
+          <label>Fuel receipt total
+            <input class="etc-fuel-receipt" type="number" min="0" step="0.01" value="${receiptTotals.fuel || ''}" placeholder="0.00">
+          </label>
+          <label>Fuel service fee
+            <input class="etc-fuel-fee" type="number" min="0" step="0.01" value="${fees.fuel}" placeholder="${fees.fuel}">
+          </label>` : ''}
+        ${serviceNeedsWash(request) ? `
+          <label>Car wash receipt total
+            <input class="etc-wash-receipt" type="number" min="0" step="0.01" value="${receiptTotals.wash || ''}" placeholder="0.00">
+          </label>
+          <label>Car wash service fee
+            <input class="etc-wash-fee" type="number" min="0" step="0.01" value="${fees.wash}" placeholder="${fees.wash}">
+          </label>` : ''}
+        ${request.quick_inspection ? `
+          <label>Inspection fee
+            <input class="etc-inspection-fee" type="number" min="0" step="0.01" value="${fees.inspection}" placeholder="${fees.inspection}">
+          </label>` : ''}
+      </div>
+      <p class="etc-new-total-preview">New total: <strong class="etc-new-total-amount">${money(request.final_total)}</strong></p>
+      <div class="admin-button-row">
+        <button class="button primary save-edit-total-btn" data-request-id="${escapeHtml(request.id)}" type="button">Save adjustment</button>
+        <button class="button cancel-edit-total-btn" data-request-id="${escapeHtml(request.id)}" type="button">Cancel</button>
+      </div>
+    </div>
+  `;
 }
 
-async function refundCustomer(button) {
+function editTotalChargeOpen(button) {
+  const requestId = button.dataset.requestId;
+  const request = allRequests.find(r => r.id === requestId);
+  if (!request) return;
+  const panel = document.getElementById(`edit-total-panel-${requestId}`);
+  if (!panel) return;
+
+  if (!panel.hidden) {
+    panel.hidden = true;
+    panel.innerHTML = '';
+    return;
+  }
+
+  panel.innerHTML = renderEditTotalPanel(request);
+  panel.hidden = false;
+
+  // Live recalculate as inputs change
+  panel.addEventListener('input', () => recalcEditTotal(panel, request));
+}
+
+function recalcEditTotal(panel, request) {
+  const fuelReceipt  = parseFloat(panel.querySelector('.etc-fuel-receipt')?.value)  || 0;
+  const fuelFee      = parseFloat(panel.querySelector('.etc-fuel-fee')?.value)       || 0;
+  const washReceipt  = parseFloat(panel.querySelector('.etc-wash-receipt')?.value)   || 0;
+  const washFee      = parseFloat(panel.querySelector('.etc-wash-fee')?.value)       || 0;
+  const inspFee      = parseFloat(panel.querySelector('.etc-inspection-fee')?.value) || 0;
+  const newTotal = fuelReceipt + fuelFee + washReceipt + washFee + inspFee;
+  const el = panel.querySelector('.etc-new-total-amount');
+  if (el) el.textContent = money(newTotal);
+}
+
+async function saveEditTotalCharge(button) {
   const requestId = button.dataset.requestId;
   const request = allRequests.find(r => r.id === requestId);
   if (!request) return;
 
-  const input = prompt(
-    `Enter refund amount in dollars (leave blank to refund the full captured amount of ${money(request.final_total)}):`
-  );
-  if (input === null) return; // cancelled
+  const panel = document.getElementById(`edit-total-panel-${requestId}`);
+  if (!panel) return;
 
-  const refundAmount = input.trim() === '' ? null : parseFloat(input.trim());
-  if (refundAmount !== null && (isNaN(refundAmount) || refundAmount <= 0)) {
-    alert('Please enter a valid dollar amount.');
+  const fuelReceipt  = parseFloat(panel.querySelector('.etc-fuel-receipt')?.value)  || 0;
+  const fuelFee      = parseFloat(panel.querySelector('.etc-fuel-fee')?.value)       || 0;
+  const washReceipt  = parseFloat(panel.querySelector('.etc-wash-receipt')?.value)   || 0;
+  const washFee      = parseFloat(panel.querySelector('.etc-wash-fee')?.value)       || 0;
+  const inspFee      = parseFloat(panel.querySelector('.etc-inspection-fee')?.value) || 0;
+  const newTotal = fuelReceipt + fuelFee + washReceipt + washFee + inspFee;
+
+  if (newTotal <= 0) {
+    alert('New total must be greater than zero.');
     return;
   }
 
-  const displayAmount = refundAmount != null ? money(refundAmount) : `full amount (${money(request.final_total)})`;
-  const confirmed = confirm(`Refund ${displayAmount} to the customer? This cannot be undone.`);
+  const oldTotal = request.final_total || 0;
+  const diff = newTotal - oldTotal;
+
+  const diffDisplay = diff === 0
+    ? 'No change in total.'
+    : diff < 0
+      ? `Issue a partial refund of ${money(Math.abs(diff))} (${money(oldTotal)} → ${money(newTotal)}).`
+      : `New total ${money(newTotal)} is higher than original ${money(oldTotal)}. Only a refund or downward adjustment can be processed via this tool — contact your payment provider to collect additional funds separately.`;
+
+  const confirmed = confirm(`${diffDisplay}\n\nSave adjustment?`);
   if (!confirmed) return;
 
   button.disabled = true;
-  button.textContent = 'Refunding…';
+  button.textContent = 'Saving...';
 
-  const body = { payment_intent_id: request.payment_intent_id };
-  if (refundAmount != null) body.amount_cents = Math.round(refundAmount * 100);
+  // If new total is lower, issue partial refund for the difference
+  if (diff < 0 && request.payment_intent_id) {
+    const refundCents = Math.round(Math.abs(diff) * 100);
+    const res = await fetch('/api/refund-payment', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ payment_intent_id: request.payment_intent_id, amount_cents: refundCents }),
+    });
+    const result = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      button.disabled = false;
+      button.textContent = 'Save adjustment';
+      alert(`Refund failed: ${result.error || 'Unknown error'}. No changes saved.`);
+      return;
+    }
+  }
 
-  const res = await fetch('/api/refund-payment', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  });
-  const result = await res.json();
-  if (!res.ok) throw new Error(result.error || 'Refund failed');
+  const timestamp = new Date().toISOString();
+  const adjustNote = `[payment_adjustment ${timestamp}] Total changed from ${money(oldTotal)} to ${money(newTotal)}. Fuel: ${money(fuelReceipt)} + fee ${money(fuelFee)}, Wash: ${money(washReceipt)} + fee ${money(washFee)}, Inspection fee: ${money(inspFee)}.`;
+  const notes = request.notes ? `${request.notes}\n${adjustNote}` : adjustNote;
+  const newPaymentStatus = diff < 0 ? 'refunded' : 'captured';
 
-  await db.rpc('admin_update_request', {
+  const { error } = await db.rpc('admin_update_request', {
     p_token: adminToken(),
     p_request_id: requestId,
-    p_data: { payment_status: 'refunded' },
+    p_data: { final_total: newTotal, payment_status: newPaymentStatus, notes },
   });
 
+  if (error) throw error;
+
+  panel.hidden = true;
+  panel.innerHTML = '';
   await loadRequests();
 }
 
@@ -2961,13 +3016,19 @@ requestList.addEventListener('click', async (event) => {
       return;
     }
 
-    if (button.classList.contains('charge-customer-btn')) {
-      await chargeCustomer(button);
+    if (button.classList.contains('edit-total-charge-btn')) {
+      editTotalChargeOpen(button);
       return;
     }
 
-    if (button.classList.contains('refund-customer-btn')) {
-      await refundCustomer(button);
+    if (button.classList.contains('save-edit-total-btn')) {
+      await saveEditTotalCharge(button);
+      return;
+    }
+
+    if (button.classList.contains('cancel-edit-total-btn')) {
+      const panel = document.getElementById(`edit-total-panel-${button.dataset.requestId}`);
+      if (panel) { panel.hidden = true; panel.innerHTML = ''; }
       return;
     }
   } catch (error) {
