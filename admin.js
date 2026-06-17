@@ -2188,8 +2188,11 @@ workerProfileSelectInactive?.addEventListener('change', () => {
 });
 
 async function updateRequestStatus(id, status) {
-  const updates = { status, updated_at: new Date().toISOString() };
-  const { error } = await db.from('service_requests').update(updates).eq('id', id);
+  const { error } = await db.rpc('admin_update_request', {
+    p_token: adminToken(),
+    p_request_id: id,
+    p_data: { status },
+  });
   if (error) throw error;
   await loadRequests();
 }
@@ -2203,20 +2206,19 @@ async function updateWorkerAssignment(requestId, employeeId) {
         assigned_worker_phone: employee.phone || null,
         assigned_worker_photo_url: employee.cropped_photo_url || employee.photo_url || null,
         assigned_worker_original_photo_url: employee.original_photo_url || null,
-        updated_at: new Date().toISOString(),
       }
     : {
         assigned_employee_id: null,
         assigned_worker_name: null,
         assigned_worker_phone: null,
         assigned_worker_photo_url: null,
-        updated_at: new Date().toISOString(),
       };
 
-  const { error } = await db
-    .from('service_requests')
-    .update(updates)
-    .eq('id', requestId);
+  const { error } = await db.rpc('admin_update_request', {
+    p_token: adminToken(),
+    p_request_id: requestId,
+    p_data: updates,
+  });
 
   if (error) throw error;
 
@@ -2555,10 +2557,13 @@ async function saveEdit(button) {
     estimated_total: numVal('.edit-estimated-total'),
     final_total: numVal('.edit-final-total'),
     notes: val('.edit-notes') || null,
-    updated_at: new Date().toISOString(),
   };
 
-  const { error } = await db.from('service_requests').update(updates).eq('id', id);
+  const { error } = await db.rpc('admin_update_request', {
+    p_token: adminToken(),
+    p_request_id: id,
+    p_data: updates,
+  });
 
   if (error) throw error;
   if (statusEl) { statusEl.textContent = 'Saved.'; setTimeout(() => { statusEl.textContent = ''; }, 2500); }

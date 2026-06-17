@@ -1357,19 +1357,17 @@ async function claimWorkerJob(requestId) {
   if (!currentEmployee) return;
   const request = allWorkerJobs.find((item) => item.id === requestId);
 
-  const { error } = await workerDb
-    .from('service_requests')
-    .update({
-      assigned_employee_id: currentEmployee.id,
+  const { error } = await workerDb.rpc('worker_claim_request', {
+    p_token: SESSION_WORKER_TOKEN,
+    p_request_id: requestId,
+    p_data: {
       assigned_worker_name: currentEmployee.full_name,
       assigned_worker_phone: currentEmployee.phone || null,
       assigned_worker_photo_url: currentEmployee.cropped_photo_url || currentEmployee.photo_url || null,
       assigned_worker_original_photo_url: currentEmployee.original_photo_url || null,
       status: request?.status === 'request_received' ? 'accepted' : request?.status || 'accepted',
-      updated_at: new Date().toISOString(),
-    })
-    .eq('id', requestId)
-    .is('assigned_employee_id', null);
+    },
+  });
 
   if (error) throw error;
 
@@ -1378,11 +1376,11 @@ async function claimWorkerJob(requestId) {
 }
 
 async function updateWorkerJobStatus(id, status) {
-  const { error } = await workerDb
-    .from('service_requests')
-    .update({ status, updated_at: new Date().toISOString() })
-    .eq('id', id)
-    .eq('assigned_employee_id', currentEmployee.id);
+  const { error } = await workerDb.rpc('worker_update_request', {
+    p_token: SESSION_WORKER_TOKEN,
+    p_request_id: id,
+    p_data: { status },
+  });
 
   if (error) throw error;
   await loadWorkerJobs();
@@ -1413,16 +1411,11 @@ async function saveWorkerServiceUnable(button) {
   button.disabled = true;
   button.textContent = 'Saving...';
 
-  const { error } = await workerDb
-    .from('service_requests')
-    .update({
-      status: nextStatus,
-      final_total: finalTotal,
-      notes,
-      updated_at: timestamp,
-    })
-    .eq('id', id)
-    .eq('assigned_employee_id', currentEmployee.id);
+  const { error } = await workerDb.rpc('worker_update_request', {
+    p_token: SESSION_WORKER_TOKEN,
+    p_request_id: id,
+    p_data: { status: nextStatus, final_total: finalTotal, notes },
+  });
 
   if (error) throw error;
   await loadWorkerJobs();
@@ -1501,11 +1494,11 @@ async function uploadWorkerPhotoSet(button) {
   const timestamp = new Date().toISOString();
   const note = photoTimestampNote(panel.dataset.photoStage, timestamp);
   const notes = request.notes ? `${request.notes}\n${note}` : note;
-  const { error } = await workerDb
-    .from('service_requests')
-    .update({ status: panel.dataset.nextStatus, notes, updated_at: timestamp })
-    .eq('id', id)
-    .eq('assigned_employee_id', currentEmployee.id);
+  const { error } = await workerDb.rpc('worker_update_request', {
+    p_token: SESSION_WORKER_TOKEN,
+    p_request_id: id,
+    p_data: { status: panel.dataset.nextStatus, notes },
+  });
 
   if (error) throw error;
   await loadWorkerJobs();
@@ -1560,16 +1553,16 @@ async function saveWorkerFinalTotal(button) {
     await uploadWorkerJobPhotoFile(id, 'wash_receipt', washReceiptFile);
   }
 
-  const updates = { final_total: finalTotal, notes, updated_at: new Date().toISOString() };
+  const updates = { final_total: finalTotal, notes };
   if (button.dataset.nextStatus) {
     updates.status = button.dataset.nextStatus;
   }
 
-  const { error } = await workerDb
-    .from('service_requests')
-    .update(updates)
-    .eq('id', id)
-    .eq('assigned_employee_id', currentEmployee.id);
+  const { error } = await workerDb.rpc('worker_update_request', {
+    p_token: SESSION_WORKER_TOKEN,
+    p_request_id: id,
+    p_data: updates,
+  });
 
   if (error) throw error;
   await loadWorkerJobs();
@@ -1585,17 +1578,16 @@ async function saveWorkerReturnLocation(button) {
     return;
   }
 
-  const { error } = await workerDb
-    .from('service_requests')
-    .update({
+  const { error } = await workerDb.rpc('worker_update_request', {
+    p_token: SESSION_WORKER_TOKEN,
+    p_request_id: id,
+    p_data: {
       return_parking_location: returnParkingLocation,
       return_parking_spot: null,
       return_parking_map_url: null,
       status: 'return_location_recorded',
-      updated_at: new Date().toISOString(),
-    })
-    .eq('id', id)
-    .eq('assigned_employee_id', currentEmployee.id);
+    },
+  });
 
   if (error) throw error;
   await loadWorkerJobs();
@@ -1631,11 +1623,11 @@ async function saveWorkerInspection(button) {
   ].join(' ');
   const notes = request.notes ? `${request.notes}\n${note}` : note;
 
-  const { error } = await workerDb
-    .from('service_requests')
-    .update({ notes, status: 'inspection_recorded', updated_at: new Date().toISOString() })
-    .eq('id', id)
-    .eq('assigned_employee_id', currentEmployee.id);
+  const { error } = await workerDb.rpc('worker_update_request', {
+    p_token: SESSION_WORKER_TOKEN,
+    p_request_id: id,
+    p_data: { notes, status: 'inspection_recorded' },
+  });
 
   if (error) throw error;
   await loadWorkerJobs();
@@ -1665,11 +1657,11 @@ async function saveWorkerTotalEdit(button) {
   const note = `Corrected ${type === 'fuel' ? 'fuel' : 'car wash'} total: ${money(value)}. [receipt_totals fuel=${newReceiptTotals.fuel.toFixed(2)} wash=${newReceiptTotals.wash.toFixed(2)}] Fees: fuel convenience ${money(fees.fuel)}, wash convenience ${money(fees.wash)}, inspection ${money(fees.inspection)}. Final total ${money(finalTotal)}.`;
   const notes = request.notes ? `${request.notes}\n${note}` : note;
 
-  const { error } = await workerDb
-    .from('service_requests')
-    .update({ final_total: finalTotal, notes, updated_at: new Date().toISOString() })
-    .eq('id', id)
-    .eq('assigned_employee_id', currentEmployee.id);
+  const { error } = await workerDb.rpc('worker_update_request', {
+    p_token: SESSION_WORKER_TOKEN,
+    p_request_id: id,
+    p_data: { final_total: finalTotal, notes },
+  });
 
   if (error) throw error;
   await loadWorkerJobs();
@@ -1903,17 +1895,6 @@ workerProfileForm?.addEventListener('submit', async (event) => {
 
     if (error) throw error;
     const data = (rpcRows || [])[0] || { ...currentEmployee, ...employeeUpdates };
-
-    await workerDb
-      .from('service_requests')
-      .update({
-        assigned_worker_name: data.full_name,
-        assigned_worker_phone: data.phone || null,
-        assigned_worker_photo_url: data.cropped_photo_url || data.photo_url || null,
-        assigned_worker_original_photo_url: data.original_photo_url || null,
-        updated_at: new Date().toISOString(),
-      })
-      .eq('assigned_employee_id', currentEmployee.id);
 
     currentEmployee = data;
     sessionStorage.setItem('shiftfuel_worker', currentEmployee.full_name);
