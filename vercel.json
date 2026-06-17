@@ -1,0 +1,8 @@
+{
+  "crons": [
+    {
+      "path": "/api/void-lapsed-payments",
+      "schedule": "*/30 * * * *"
+    }
+  ]
+}

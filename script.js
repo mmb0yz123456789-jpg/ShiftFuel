@@ -29,6 +29,30 @@ function mountCardElement() {
     }
   }
 }
+
+// Payment modal
+const paymentModal = document.querySelector('#payment-modal');
+const paymentModalAmount = document.querySelector('#payment-modal-amount');
+const paymentModalSubmit = document.querySelector('#payment-modal-submit');
+const paymentModalCancel = document.querySelector('#payment-modal-cancel');
+
+function openPaymentModal(amountDisplay) {
+  if (!paymentModal) return;
+  if (paymentModalAmount) paymentModalAmount.textContent = amountDisplay;
+  mountCardElement();
+  paymentModal.showModal();
+}
+
+function closePaymentModal() {
+  if (paymentModal) paymentModal.close();
+  const display = document.querySelector('#card-errors');
+  if (display) display.textContent = '';
+}
+
+paymentModalCancel?.addEventListener('click', closePaymentModal);
+paymentModal?.addEventListener('click', (e) => {
+  if (e.target === paymentModal) closePaymentModal();
+});
 // ─────────────────────────────────────────────────────────────────────────────
 
 const year = document.querySelector("#year");
@@ -117,7 +141,6 @@ function setPostAddressSections(visible) {
   [vehicleFieldset, parkingFieldset, serviceFieldset, paymentFieldset, agreementFieldset, bookingSubmitBtn]
     .filter(Boolean)
     .forEach(el => { el.hidden = !visible; });
-  if (visible) mountCardElement();
 }
 
 function resetAddressValidation() {
@@ -1711,60 +1734,30 @@ form.addEventListener("submit", async (event) => {
     return;
   }
   setAddressStatus('success', 'Address verified.');
+  statusMessage.textContent = '';
 
-  statusMessage.textContent = "Authorizing payment...";
-
+  // Open the payment modal — Stripe flow runs there
   const payload = getBookingPayload();
+  const estimatedDisplay = document.querySelector('#estimated-total')?.textContent || '$0.00';
+  openPaymentModal(estimatedDisplay);
+
+  // Store payload so the modal submit can use it
+  paymentModal._pendingPayload = payload;
+});
+
+async function saveBooking(payload) {
   const supabase = window.ShiftFuelSupabase;
-
-  // Stripe authorize-and-capture flow
-  if (stripe && cardElement) {
-    const estimatedCents = Math.round((payload.payment.estimatedAmount || 0) * 100);
-    const amountCents = Math.max(estimatedCents, 50);
-
-    let clientSecret, paymentIntentId;
-    try {
-      const piRes = await fetch('/api/create-payment-intent', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ amount_cents: amountCents }),
-      });
-      const piData = await piRes.json();
-      if (!piRes.ok) throw new Error(piData.error || 'Payment setup failed');
-      clientSecret = piData.client_secret;
-      paymentIntentId = piData.payment_intent_id;
-    } catch (err) {
-      statusMessage.textContent = `Payment setup failed: ${err.message}`;
-      return;
-    }
-
-    const { error: stripeError, paymentIntent } = await stripe.confirmCardPayment(clientSecret, {
-      payment_method: { card: cardElement },
-    });
-
-    if (stripeError) {
-      const display = document.querySelector('#card-errors');
-      if (display) display.textContent = stripeError.message;
-      statusMessage.textContent = 'Payment authorization failed. Please check your card details.';
-      return;
-    }
-
-    payload.payment.paymentIntentId = paymentIntent.id;
-  }
-
-  statusMessage.textContent = "Saving booking to Supabase...";
+  statusMessage.textContent = "Saving booking…";
 
   try {
     const { data, error } = await insertServiceRequest(supabase, payload);
-
     if (error) throw error;
 
     statusItems.forEach((item, index) => {
       item.classList.toggle("active", index === 0);
     });
 
-    statusMessage.textContent = "Booking saved to Supabase!";
-    console.log("Saved request:", data);
+    statusMessage.textContent = "Booking confirmed!";
     setAddressStatus('', '');
     addressValidated = false;
     isReturningCustomer = false;
@@ -1786,10 +1779,59 @@ form.addEventListener("submit", async (event) => {
     resetModels();
     updateServiceControls();
     await refreshBookedReturnSlots();
-  } catch (error) {
-    console.error("Supabase save error:", error);
-    statusMessage.textContent = "Supabase error. Check Console for details.";
+  } catch (err) {
+    console.error("Supabase save error:", err);
+    statusMessage.textContent = "Could not save booking. Check console for details.";
   }
+}
+
+paymentModalSubmit?.addEventListener('click', async () => {
+  const payload = paymentModal?._pendingPayload;
+  if (!payload) return;
+
+  const cardErrors = document.querySelector('#card-errors');
+  if (cardErrors) cardErrors.textContent = '';
+
+  paymentModalSubmit.disabled = true;
+  paymentModalSubmit.textContent = 'Authorizing…';
+
+  const estimatedCents = Math.max(Math.round((payload.payment.estimatedAmount || 0) * 100), 50);
+
+  let clientSecret;
+  try {
+    const piRes = await fetch('/api/create-payment-intent', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ amount_cents: estimatedCents }),
+    });
+    const piData = await piRes.json();
+    if (!piRes.ok) throw new Error(piData.error || 'Payment setup failed');
+    clientSecret = piData.client_secret;
+    payload.payment.paymentIntentId = piData.payment_intent_id;
+  } catch (err) {
+    if (cardErrors) cardErrors.textContent = err.message;
+    paymentModalSubmit.disabled = false;
+    paymentModalSubmit.textContent = 'Authorize payment';
+    return;
+  }
+
+  const { error: stripeError, paymentIntent } = await stripe.confirmCardPayment(clientSecret, {
+    payment_method: { card: cardElement },
+  });
+
+  if (stripeError) {
+    if (cardErrors) cardErrors.textContent = stripeError.message;
+    paymentModalSubmit.disabled = false;
+    paymentModalSubmit.textContent = 'Authorize payment';
+    return;
+  }
+
+  payload.payment.paymentIntentId = paymentIntent.id;
+  closePaymentModal();
+  paymentModalSubmit.disabled = false;
+  paymentModalSubmit.textContent = 'Authorize payment';
+
+  await saveBooking(payload);
 });
 
 applicantForm?.addEventListener("submit", async (event) => {
