@@ -8,7 +8,9 @@ const workerProfilePhoto = document.querySelector('#worker-profile-photo');
 const workerProfileStatus = document.querySelector('#worker-profile-status');
 const editWorkerPhoto = document.querySelector('#edit-worker-photo');
 const workerPhotoBoundaryPanel = document.querySelector('#worker-photo-boundary-panel');
+const workerPhotoBoundaryPreview = document.querySelector('#worker-photo-boundary-preview');
 const workerPhotoBoundaryImage = document.querySelector('#worker-photo-boundary-image');
+const workerPhotoDisplayZoom = document.querySelector('#worker-photo-display-zoom');
 const workerPhotoCropPanel = document.querySelector('#worker-photo-crop-panel');
 const workerPhotoCropImage = document.querySelector('#worker-photo-crop-image');
 const workerPhotoCropPreview = document.querySelector('#worker-photo-crop-preview');
@@ -66,6 +68,9 @@ let workerBoundaryPreviewUrl = '';
 let workerCroppedPhotoBlob = null;
 let workerCropOffset = { x: 0, y: 0 };
 let workerCropDrag = null;
+let workerProfilePhotoZoom = 1;
+let workerProfilePhotoPosition = { x: 0, y: 0 };
+let workerPhotoDisplayDrag = null;
 
 const workerOpenStatuses = [
   'request_received',
@@ -352,7 +357,26 @@ async function passwordFields(password) {
   };
 }
 
-function showWorkerPhoto(photoUrl) {
+function applyWorkerPhotoZoom() {
+  const zoom = String(workerProfilePhotoZoom || 1);
+  const positionX = `${workerProfilePhotoPosition.x || 0}%`;
+  const positionY = `${workerProfilePhotoPosition.y || 0}%`;
+  [workerProfilePhotoPreview, workerPhotoBoundaryImage].forEach((image) => {
+    if (image) {
+      image.style.setProperty('--profile-photo-zoom', zoom);
+      image.style.setProperty('--profile-photo-x', positionX);
+      image.style.setProperty('--profile-photo-y', positionY);
+    }
+  });
+  if (workerPhotoDisplayZoom) workerPhotoDisplayZoom.value = zoom;
+}
+
+function showWorkerPhoto(photoUrl, zoom = workerProfilePhotoZoom, position = workerProfilePhotoPosition) {
+  workerProfilePhotoZoom = Number(zoom || 1);
+  workerProfilePhotoPosition = {
+    x: Number(position?.x || 0),
+    y: Number(position?.y || 0),
+  };
   if (workerProfilePhotoPreview && workerProfilePhotoPlaceholder) {
     const hasPhoto = Boolean(photoUrl);
     workerProfilePhotoPreview.hidden = !hasPhoto;
@@ -366,6 +390,14 @@ function showWorkerPhoto(photoUrl) {
       workerProfilePhotoPreview.removeAttribute('src');
     }
   }
+  applyWorkerPhotoZoom();
+}
+
+function currentWorkerPhotoPositionFromEmployee(employee = currentEmployee) {
+  return {
+    x: Number(employee?.photo_position_x || 0),
+    y: Number(employee?.photo_position_y || 0),
+  };
 }
 
 function showWorkerBoundaryPreview(photoUrl) {
@@ -379,6 +411,7 @@ function showWorkerBoundaryPreview(photoUrl) {
 
   workerPhotoBoundaryImage.src = photoUrl;
   workerPhotoBoundaryPanel.hidden = false;
+  applyWorkerPhotoZoom();
 }
 
 function clearWorkerBoundaryPreview() {
@@ -406,7 +439,7 @@ async function ensureWorkerProfile() {
   if (storedEmployeeId) {
     let { data: stored, error: storedError } = await workerDb
       .from('employees')
-      .select('id,employee_code,full_name,phone,photo_url,home_location,started_at')
+      .select('id,employee_code,full_name,phone,photo_url,photo_zoom,photo_position_x,photo_position_y,home_location,started_at')
       .eq('id', storedEmployeeId)
       .limit(1);
 
@@ -424,6 +457,9 @@ async function ensureWorkerProfile() {
     if (!storedError && stored?.length) {
       return {
         photo_url: '',
+        photo_zoom: 1,
+        photo_position_x: 0,
+        photo_position_y: 0,
         started_at: '',
         ...stored[0],
       };
@@ -432,7 +468,7 @@ async function ensureWorkerProfile() {
 
   let { data, error } = await workerDb
     .from('employees')
-    .select('id,employee_code,full_name,phone,photo_url,home_location,started_at')
+    .select('id,employee_code,full_name,phone,photo_url,photo_zoom,photo_position_x,photo_position_y,home_location,started_at')
     .eq('full_name', SESSION_WORKER_NAME)
     .limit(1);
 
@@ -452,6 +488,9 @@ async function ensureWorkerProfile() {
   if (data?.length) {
     return {
       photo_url: '',
+      photo_zoom: 1,
+      photo_position_x: 0,
+      photo_position_y: 0,
       started_at: '',
       ...data[0],
     };
@@ -465,7 +504,7 @@ async function ensureWorkerProfile() {
       active: true,
       home_location: DEFAULT_WORK_LOCATION,
     })
-    .select('id,employee_code,full_name,phone,photo_url,home_location,started_at')
+    .select('id,employee_code,full_name,phone,photo_url,photo_zoom,photo_position_x,photo_position_y,home_location,started_at')
     .single();
 
   if (insertError) {
@@ -487,6 +526,9 @@ async function ensureWorkerProfile() {
   if (insertError) throw insertError;
   return {
     photo_url: '',
+    photo_zoom: 1,
+    photo_position_x: 0,
+    photo_position_y: 0,
     started_at: '',
     ...inserted,
   };
@@ -660,7 +702,9 @@ async function loadWorkerProfile() {
     if (workerProfileStarted) workerProfileStarted.value = currentEmployee.started_at || '';
     if (workerLocation) workerLocation.value = currentEmployee.home_location || DEFAULT_WORK_LOCATION;
 
-    showWorkerPhoto(currentEmployee.photo_url || '');
+    workerProfilePhotoZoom = Number(currentEmployee.photo_zoom || 1);
+    workerProfilePhotoPosition = currentWorkerPhotoPositionFromEmployee();
+    showWorkerPhoto(currentEmployee.photo_url || '', workerProfilePhotoZoom, workerProfilePhotoPosition);
     resetWorkerPhotoCrop();
     setWorkerStatus('');
     await loadWorkerSchedule();
@@ -1781,22 +1825,58 @@ workerProfileForm?.addEventListener('submit', async (event) => {
   try {
     const file = workerProfilePhoto?.files?.[0];
     const photoUrl = file ? await uploadWorkerPhoto(file) : currentEmployee.photo_url || null;
+    const photoZoom = Number(workerPhotoDisplayZoom?.value || workerProfilePhotoZoom || 1);
+    const photoPositionX = Number(workerProfilePhotoPosition.x || 0);
+    const photoPositionY = Number(workerProfilePhotoPosition.y || 0);
     const fullName = workerProfileName?.value.trim() || currentEmployee.full_name;
     const phone = workerProfilePhone?.value.trim() || null;
     const homeLocation = workerProfileLocation?.value || currentEmployee.home_location || DEFAULT_WORK_LOCATION;
 
-    const { data, error } = await workerDb
+    const employeeUpdates = {
+      full_name: fullName,
+      phone,
+      home_location: homeLocation,
+      photo_url: photoUrl,
+      photo_zoom: photoZoom,
+      photo_position_x: photoPositionX,
+      photo_position_y: photoPositionY,
+      profile_updated_at: new Date().toISOString(),
+    };
+
+    let profileSelect = 'id,employee_code,full_name,phone,photo_url,photo_zoom,photo_position_x,photo_position_y,home_location,started_at';
+    let { data, error } = await workerDb
       .from('employees')
-      .update({
-        full_name: fullName,
-        phone,
-        home_location: homeLocation,
-        photo_url: photoUrl,
-        profile_updated_at: new Date().toISOString(),
-      })
+      .update(employeeUpdates)
       .eq('id', currentEmployee.id)
-      .select('id,employee_code,full_name,phone,photo_url,home_location,started_at')
+      .select(profileSelect)
       .single();
+
+    if (error?.code === 'PGRST204' && String(error.message || '').includes("'photo_position_")) {
+      delete employeeUpdates.photo_position_x;
+      delete employeeUpdates.photo_position_y;
+      profileSelect = 'id,employee_code,full_name,phone,photo_url,photo_zoom,home_location,started_at';
+      ({ data, error } = await workerDb
+        .from('employees')
+        .update(employeeUpdates)
+        .eq('id', currentEmployee.id)
+        .select(profileSelect)
+        .single());
+      if (data) {
+        data.photo_position_x = photoPositionX;
+        data.photo_position_y = photoPositionY;
+      }
+    }
+
+    if (error?.code === 'PGRST204' && String(error.message || '').includes("'photo_zoom'")) {
+      delete employeeUpdates.photo_zoom;
+      ({ data, error } = await workerDb
+        .from('employees')
+        .update(employeeUpdates)
+        .eq('id', currentEmployee.id)
+        .select('id,employee_code,full_name,phone,photo_url,home_location,started_at')
+        .single());
+      if (data) data.photo_zoom = photoZoom;
+    }
 
     if (error) throw error;
 
@@ -1819,7 +1899,9 @@ workerProfileForm?.addEventListener('submit', async (event) => {
     if (workerProfileLocation) workerProfileLocation.value = currentEmployee.home_location || DEFAULT_WORK_LOCATION;
     if (workerProfileStarted) workerProfileStarted.value = currentEmployee.started_at || '';
     if (workerLocation) workerLocation.value = currentEmployee.home_location || DEFAULT_WORK_LOCATION;
-    showWorkerPhoto(currentEmployee.photo_url || '');
+    currentEmployee.photo_position_x = photoPositionX;
+    currentEmployee.photo_position_y = photoPositionY;
+    showWorkerPhoto(currentEmployee.photo_url || '', currentEmployee.photo_zoom || 1, currentWorkerPhotoPositionFromEmployee());
     clearWorkerBoundaryPreview();
     resetWorkerPhotoCrop();
     setWorkerStatus('Worker profile saved.');
@@ -1840,7 +1922,9 @@ workerProfilePhoto?.addEventListener('change', () => {
     }
     workerCroppedPreviewUrl = URL.createObjectURL(file);
     workerBoundaryPreviewUrl = URL.createObjectURL(file);
-    showWorkerPhoto(workerCroppedPreviewUrl);
+    workerProfilePhotoZoom = 1;
+    workerProfilePhotoPosition = { x: 0, y: 0 };
+    showWorkerPhoto(workerCroppedPreviewUrl, workerProfilePhotoZoom, workerProfilePhotoPosition);
     showWorkerBoundaryPreview(workerBoundaryPreviewUrl);
     setWorkerStatus('Profile photo selected. Save the worker profile to upload it.');
   } else {
@@ -1849,6 +1933,52 @@ workerProfilePhoto?.addEventListener('change', () => {
     showWorkerPhoto(currentEmployee?.photo_url || '');
   }
 });
+
+workerPhotoDisplayZoom?.addEventListener('input', () => {
+  workerProfilePhotoZoom = Number(workerPhotoDisplayZoom.value || 1);
+  applyWorkerPhotoZoom();
+  setWorkerStatus('Profile photo zoom updated. Save the worker profile to keep it.');
+});
+
+workerPhotoBoundaryPreview?.addEventListener('pointerdown', (event) => {
+  if (workerPhotoBoundaryPanel?.hidden || !workerPhotoBoundaryImage?.getAttribute('src')) return;
+
+  workerPhotoDisplayDrag = {
+    pointerId: event.pointerId,
+    startX: event.clientX,
+    startY: event.clientY,
+    originalX: Number(workerProfilePhotoPosition.x || 0),
+    originalY: Number(workerProfilePhotoPosition.y || 0),
+  };
+  workerPhotoBoundaryPreview.setPointerCapture(event.pointerId);
+  workerPhotoBoundaryPreview.classList.add('is-dragging');
+});
+
+workerPhotoBoundaryPreview?.addEventListener('pointermove', (event) => {
+  if (!workerPhotoDisplayDrag || workerPhotoDisplayDrag.pointerId !== event.pointerId) return;
+
+  const size = workerPhotoBoundaryPreview.getBoundingClientRect().width || 320;
+  const deltaX = ((event.clientX - workerPhotoDisplayDrag.startX) / size) * 100;
+  const deltaY = ((event.clientY - workerPhotoDisplayDrag.startY) / size) * 100;
+
+  workerProfilePhotoPosition = {
+    x: Math.max(-50, Math.min(50, workerPhotoDisplayDrag.originalX + deltaX)),
+    y: Math.max(-50, Math.min(50, workerPhotoDisplayDrag.originalY + deltaY)),
+  };
+  applyWorkerPhotoZoom();
+  setWorkerStatus('Profile photo position updated. Save the worker profile to keep it.');
+});
+
+function endWorkerPhotoDisplayDrag(event) {
+  if (!workerPhotoDisplayDrag || workerPhotoDisplayDrag.pointerId !== event.pointerId) return;
+
+  workerPhotoBoundaryPreview?.releasePointerCapture(event.pointerId);
+  workerPhotoBoundaryPreview?.classList.remove('is-dragging');
+  workerPhotoDisplayDrag = null;
+}
+
+workerPhotoBoundaryPreview?.addEventListener('pointerup', endWorkerPhotoDisplayDrag);
+workerPhotoBoundaryPreview?.addEventListener('pointercancel', endWorkerPhotoDisplayDrag);
 
 editWorkerPhoto?.addEventListener('click', () => {
   if (workerProfilePhoto) workerProfilePhoto.value = '';
