@@ -48,6 +48,7 @@ let currentEmployee = null;
 let selectedWorkerDaysOff = new Set();
 let copiedWorkerDaySchedule = null;
 let allWorkerJobs = [];
+let vehiclePsiGuides = [];
 
 const workerOpenStatuses = [
   'request_received',
@@ -112,6 +113,58 @@ function formatWorkerJobTime(request) {
 
 function money(value) {
   return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(Number(value || 0));
+}
+
+const fallbackPsiGuides = [
+  { make: 'Toyota', model: 'Camry', front_psi: 35, rear_psi: 35 },
+  { make: 'Toyota', model: 'Corolla', front_psi: 32, rear_psi: 32 },
+  { make: 'Honda', model: 'Civic', front_psi: 32, rear_psi: 32 },
+  { make: 'Honda', model: 'Accord', front_psi: 32, rear_psi: 32 },
+  { make: 'Nissan', model: 'Altima', front_psi: 33, rear_psi: 33 },
+  { make: 'Hyundai', model: 'Elantra', front_psi: 33, rear_psi: 33 },
+  { make: 'Hyundai', model: 'Sonata', front_psi: 34, rear_psi: 34 },
+  { make: 'Ford', model: 'F-150', front_psi: 35, rear_psi: 35 },
+  { make: 'Chevrolet', model: 'Silverado', front_psi: 35, rear_psi: 35 },
+  { make: 'Subaru', model: 'Outback', front_psi: 35, rear_psi: 33 },
+];
+
+function normalizeVehicleText(value) {
+  return String(value || '').trim().toLowerCase();
+}
+
+function psiGuideForRequest(request) {
+  const guides = vehiclePsiGuides.length ? vehiclePsiGuides : fallbackPsiGuides;
+  const make = normalizeVehicleText(request.vehicle_make);
+  const model = normalizeVehicleText(request.vehicle_model);
+  const exact = guides.find((guide) => normalizeVehicleText(guide.make) === make && normalizeVehicleText(guide.model) === model);
+  const partial = exact || guides.find((guide) => {
+    const guideModel = normalizeVehicleText(guide.model);
+    return normalizeVehicleText(guide.make) === make && (model.includes(guideModel) || guideModel.includes(model));
+  });
+
+  if (!partial) {
+    return null;
+  }
+
+  return {
+    front: Number(partial.front_psi || partial.frontPsi || 0),
+    rear: Number(partial.rear_psi || partial.rearPsi || 0),
+    source: partial.source || 'ShiftFuel PSI guide',
+  };
+}
+
+async function loadVehiclePsiGuides() {
+  const { data, error } = await workerDb
+    .from('vehicle_psi_guides')
+    .select('make,model,front_psi,rear_psi,source');
+
+  if (error) {
+    console.warn('Using built-in PSI guide until vehicle_psi_guides is added:', error);
+    vehiclePsiGuides = fallbackPsiGuides;
+    return;
+  }
+
+  vehiclePsiGuides = data?.length ? data : fallbackPsiGuides;
 }
 
 function numberFromInput(value) {
@@ -963,33 +1016,41 @@ function renderWorkerReturnLocationPanel(request) {
 }
 
 function renderWorkerInspectionPanel(request) {
+  const psiGuide = psiGuideForRequest(request);
+  const frontPsi = psiGuide?.front || '';
+  const rearPsi = psiGuide?.rear || '';
+  const guideText = psiGuide
+    ? `Recommended PSI for ${request.vehicle_year || ''} ${request.vehicle_make || ''} ${request.vehicle_model || ''}: front ${frontPsi}, rear ${rearPsi}. Confirm against the door-jamb sticker if available.`
+    : `No PSI guide found yet for ${request.vehicle_year || ''} ${request.vehicle_make || ''} ${request.vehicle_model || ''}. Enter the door-jamb sticker pressure if available.`;
+
   return `
     <div class="inspection-panel" data-inspection-for="${escapeHtml(request.id)}">
       <h4>Quick vehicle inspection</h4>
+      <p class="field-help psi-guide-note">${escapeHtml(guideText.replace(/\s+/g, ' ').trim())}</p>
       <div class="field-grid">
         <label>Driver front PSI before
           <input class="inspection-df-before" type="number" min="0" step="1" placeholder="32">
         </label>
         <label>Driver front PSI after
-          <input class="inspection-df-after" type="number" min="0" step="1" placeholder="35">
+          <input class="inspection-df-after" type="number" min="0" step="1" value="${escapeHtml(frontPsi)}" placeholder="35">
         </label>
         <label>Driver rear PSI before
           <input class="inspection-dr-before" type="number" min="0" step="1" placeholder="32">
         </label>
         <label>Driver rear PSI after
-          <input class="inspection-dr-after" type="number" min="0" step="1" placeholder="35">
+          <input class="inspection-dr-after" type="number" min="0" step="1" value="${escapeHtml(rearPsi)}" placeholder="35">
         </label>
         <label>Passenger front PSI before
           <input class="inspection-pf-before" type="number" min="0" step="1" placeholder="32">
         </label>
         <label>Passenger front PSI after
-          <input class="inspection-pf-after" type="number" min="0" step="1" placeholder="35">
+          <input class="inspection-pf-after" type="number" min="0" step="1" value="${escapeHtml(frontPsi)}" placeholder="35">
         </label>
         <label>Passenger rear PSI before
           <input class="inspection-pr-before" type="number" min="0" step="1" placeholder="32">
         </label>
         <label>Passenger rear PSI after
-          <input class="inspection-pr-after" type="number" min="0" step="1" placeholder="35">
+          <input class="inspection-pr-after" type="number" min="0" step="1" value="${escapeHtml(rearPsi)}" placeholder="35">
         </label>
         <label>Trouble code
           <input class="inspection-trouble-code" type="text" placeholder="P0304">
@@ -1352,9 +1413,13 @@ async function saveWorkerInspection(button) {
     prBefore: panel.querySelector('.inspection-pr-before').value || 'not recorded',
     prAfter: panel.querySelector('.inspection-pr-after').value || 'not recorded',
   };
+  const psiGuide = psiGuideForRequest(request);
+  const guideNote = psiGuide
+    ? ` Recommended PSI used: front ${psiGuide.front}, rear ${psiGuide.rear}.`
+    : '';
   const note = [
     `Quick inspection recorded for ${request.vehicle_year || ''} ${request.vehicle_make || ''} ${request.vehicle_model || ''}.`.replace(/\s+/g, ' ').trim(),
-    `Tire PSI before/after: driver front ${values.dfBefore}/${values.dfAfter}, driver rear ${values.drBefore}/${values.drAfter}, passenger front ${values.pfBefore}/${values.pfAfter}, passenger rear ${values.prBefore}/${values.prAfter}.`,
+    `Tire PSI before/after: driver front ${values.dfBefore}/${values.dfAfter}, driver rear ${values.drBefore}/${values.drAfter}, passenger front ${values.pfBefore}/${values.pfAfter}, passenger rear ${values.prBefore}/${values.prAfter}.${guideNote}`,
     `Trouble code ${code || 'none'}: ${codeDetails.summary} Possible fixes: ${codeDetails.fixes}`,
   ].join(' ');
   const notes = request.notes ? `${request.notes}\n${note}` : note;
@@ -1738,4 +1803,4 @@ saveDaysOffButton?.addEventListener('click', () => {
 
 renderWorkerDaysGrid([]);
 renderWorkerDaysOffCalendar();
-loadWorkerProfile();
+loadVehiclePsiGuides().finally(loadWorkerProfile);

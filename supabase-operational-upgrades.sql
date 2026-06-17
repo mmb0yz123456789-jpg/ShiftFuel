@@ -155,6 +155,57 @@ create table if not exists quick_inspections (
   created_at timestamptz not null default now()
 );
 
+alter table service_requests
+add column if not exists review_completed_at timestamptz;
+
+create table if not exists vehicle_psi_guides (
+  id uuid primary key default gen_random_uuid(),
+  make text not null,
+  model text not null,
+  front_psi numeric(5, 1) not null,
+  rear_psi numeric(5, 1) not null,
+  source text default 'ShiftFuel PSI guide',
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique (make, model)
+);
+
+alter table vehicle_psi_guides enable row level security;
+
+drop policy if exists "Anyone can read vehicle psi guides" on vehicle_psi_guides;
+create policy "Anyone can read vehicle psi guides"
+on vehicle_psi_guides
+for select
+to anon, authenticated
+using (true);
+
+drop policy if exists "Anyone can save vehicle psi guides" on vehicle_psi_guides;
+create policy "Anyone can save vehicle psi guides"
+on vehicle_psi_guides
+for all
+to anon, authenticated
+using (true)
+with check (true);
+
+insert into vehicle_psi_guides (make, model, front_psi, rear_psi, source)
+values
+  ('Toyota', 'Camry', 35, 35, 'ShiftFuel starter guide'),
+  ('Toyota', 'Corolla', 32, 32, 'ShiftFuel starter guide'),
+  ('Honda', 'Civic', 32, 32, 'ShiftFuel starter guide'),
+  ('Honda', 'Accord', 32, 32, 'ShiftFuel starter guide'),
+  ('Nissan', 'Altima', 33, 33, 'ShiftFuel starter guide'),
+  ('Hyundai', 'Elantra', 33, 33, 'ShiftFuel starter guide'),
+  ('Hyundai', 'Sonata', 34, 34, 'ShiftFuel starter guide'),
+  ('Ford', 'F-150', 35, 35, 'ShiftFuel starter guide'),
+  ('Chevrolet', 'Silverado', 35, 35, 'ShiftFuel starter guide'),
+  ('Subaru', 'Outback', 35, 33, 'ShiftFuel starter guide')
+on conflict (make, model)
+do update set
+  front_psi = excluded.front_psi,
+  rear_psi = excluded.rear_psi,
+  source = excluded.source,
+  updated_at = now();
+
 create table if not exists applicants (
   id uuid primary key default gen_random_uuid(),
   name text not null,
@@ -162,9 +213,17 @@ create table if not exists applicants (
   phone text,
   availability text,
   notes text,
+  resume_url text,
+  resume_storage_path text,
   status text not null default 'new',
   created_at timestamptz not null default now()
 );
+
+alter table applicants
+add column if not exists resume_url text;
+
+alter table applicants
+add column if not exists resume_storage_path text;
 
 alter table applicants enable row level security;
 
@@ -189,6 +248,24 @@ for update
 to anon, authenticated
 using (true)
 with check (true);
+
+insert into storage.buckets (id, name, public)
+values ('applicant-resumes', 'applicant-resumes', true)
+on conflict (id) do update set public = true;
+
+drop policy if exists "Anyone can upload applicant resumes" on storage.objects;
+create policy "Anyone can upload applicant resumes"
+on storage.objects
+for insert
+to anon, authenticated
+with check (bucket_id = 'applicant-resumes');
+
+drop policy if exists "Anyone can read applicant resumes" on storage.objects;
+create policy "Anyone can read applicant resumes"
+on storage.objects
+for select
+to anon, authenticated
+using (bucket_id = 'applicant-resumes');
 
 -- Optional metadata for returning-customer login/autofill when Supabase Auth is enabled.
 create table if not exists customer_vehicle_profiles (

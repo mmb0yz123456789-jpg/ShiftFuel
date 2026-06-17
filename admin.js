@@ -45,6 +45,7 @@ let allRequests = [];
 let allEmployees = [];
 let selectedScheduleEmployeeId = '';
 let currentView = 'open';
+let vehiclePsiGuides = [];
 
 const terminalStatuses = ['complete', 'denied', 'customer_canceled', 'unable_to_complete'];
 const closedStatuses = ['denied', 'customer_canceled', 'unable_to_complete'];
@@ -99,6 +100,64 @@ function escapeHtml(value) {
 
 function money(value) {
   return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(Number(value || 0));
+}
+
+const fallbackPsiGuides = [
+  { make: 'Toyota', model: 'Camry', front_psi: 35, rear_psi: 35 },
+  { make: 'Toyota', model: 'Corolla', front_psi: 32, rear_psi: 32 },
+  { make: 'Honda', model: 'Civic', front_psi: 32, rear_psi: 32 },
+  { make: 'Honda', model: 'Accord', front_psi: 32, rear_psi: 32 },
+  { make: 'Nissan', model: 'Altima', front_psi: 33, rear_psi: 33 },
+  { make: 'Hyundai', model: 'Elantra', front_psi: 33, rear_psi: 33 },
+  { make: 'Hyundai', model: 'Sonata', front_psi: 34, rear_psi: 34 },
+  { make: 'Ford', model: 'F-150', front_psi: 35, rear_psi: 35 },
+  { make: 'Chevrolet', model: 'Silverado', front_psi: 35, rear_psi: 35 },
+  { make: 'Subaru', model: 'Outback', front_psi: 35, rear_psi: 33 },
+];
+
+function normalizeVehicleText(value) {
+  return String(value || '').trim().toLowerCase();
+}
+
+function psiGuideForRequest(request) {
+  const guides = vehiclePsiGuides.length ? vehiclePsiGuides : fallbackPsiGuides;
+  const make = normalizeVehicleText(request.vehicle_make);
+  const model = normalizeVehicleText(request.vehicle_model);
+
+  const exact = guides.find((guide) => {
+    return normalizeVehicleText(guide.make) === make
+      && normalizeVehicleText(guide.model) === model;
+  });
+
+  const partial = exact || guides.find((guide) => {
+    const guideModel = normalizeVehicleText(guide.model);
+    return normalizeVehicleText(guide.make) === make
+      && (model.includes(guideModel) || guideModel.includes(model));
+  });
+
+  if (!partial) {
+    return null;
+  }
+
+  return {
+    front: Number(partial.front_psi || partial.frontPsi || 0),
+    rear: Number(partial.rear_psi || partial.rearPsi || 0),
+    source: partial.source || 'ShiftFuel PSI guide',
+  };
+}
+
+async function loadVehiclePsiGuides() {
+  const { data, error } = await db
+    .from('vehicle_psi_guides')
+    .select('make,model,front_psi,rear_psi,source');
+
+  if (error) {
+    console.warn('Using built-in PSI guide until vehicle_psi_guides is added:', error);
+    vehiclePsiGuides = fallbackPsiGuides;
+    return;
+  }
+
+  vehiclePsiGuides = data?.length ? data : fallbackPsiGuides;
 }
 
 function randomPassword(length = 12) {
@@ -531,34 +590,42 @@ function renderInspectionPanel(request) {
     return '';
   }
 
+  const psiGuide = psiGuideForRequest(request);
+  const frontPsi = psiGuide?.front || '';
+  const rearPsi = psiGuide?.rear || '';
+  const guideText = psiGuide
+    ? `Recommended PSI for ${request.vehicle_year || ''} ${request.vehicle_make || ''} ${request.vehicle_model || ''}: front ${frontPsi}, rear ${rearPsi}. Confirm against the door-jamb sticker if available.`
+    : `No PSI guide found yet for ${request.vehicle_year || ''} ${request.vehicle_make || ''} ${request.vehicle_model || ''}. Enter the door-jamb sticker pressure if available.`;
+
   return `
     <div class="inspection-panel" data-inspection-for="${request.id}">
       <h4>Quick inspection details</h4>
       <p class="field-help">Record tire pressure before and after service. Trouble-code explanations are starter guidance and should be confirmed against the vehicle's year, make, model, and engine.</p>
+      <p class="field-help psi-guide-note">${escapeHtml(guideText.replace(/\s+/g, ' ').trim())}</p>
       <div class="admin-money-grid">
         <label>Driver front PSI before
           <input class="inspection-df-before" type="number" min="0" step="1">
         </label>
         <label>Driver front PSI after
-          <input class="inspection-df-after" type="number" min="0" step="1">
+          <input class="inspection-df-after" type="number" min="0" step="1" value="${escapeHtml(frontPsi)}">
         </label>
         <label>Driver rear PSI before
           <input class="inspection-dr-before" type="number" min="0" step="1">
         </label>
         <label>Driver rear PSI after
-          <input class="inspection-dr-after" type="number" min="0" step="1">
+          <input class="inspection-dr-after" type="number" min="0" step="1" value="${escapeHtml(rearPsi)}">
         </label>
         <label>Passenger front PSI before
           <input class="inspection-pf-before" type="number" min="0" step="1">
         </label>
         <label>Passenger front PSI after
-          <input class="inspection-pf-after" type="number" min="0" step="1">
+          <input class="inspection-pf-after" type="number" min="0" step="1" value="${escapeHtml(frontPsi)}">
         </label>
         <label>Passenger rear PSI before
           <input class="inspection-pr-before" type="number" min="0" step="1">
         </label>
         <label>Passenger rear PSI after
-          <input class="inspection-pr-after" type="number" min="0" step="1">
+          <input class="inspection-pr-after" type="number" min="0" step="1" value="${escapeHtml(rearPsi)}">
         </label>
       </div>
       <label>Trouble code
@@ -1312,6 +1379,7 @@ function renderApplicants(applicants) {
         <p><strong>Email:</strong> ${escapeHtml(applicant.email || 'Not provided')}</p>
         <p><strong>Availability:</strong> ${escapeHtml(applicant.availability || 'Not provided')}</p>
         <p><strong>Notes:</strong> ${escapeHtml(applicant.notes || 'No notes provided.')}</p>
+        <p><strong>Resume:</strong> ${applicant.resume_url ? `<a href="${escapeHtml(applicant.resume_url)}" target="_blank" rel="noopener">Open resume</a>` : 'Not uploaded'}</p>
       </div>
     </article>
   `).join('');
@@ -1324,11 +1392,19 @@ async function loadApplicants() {
 
   applicantList.innerHTML = '<div class="empty-state"><p>Loading applicants...</p></div>';
 
-  const { data, error } = await db
+  let { data, error } = await db
     .from('applicants')
-    .select('id,name,email,phone,availability,notes,status,created_at')
+    .select('id,name,email,phone,availability,notes,resume_url,resume_storage_path,status,created_at')
     .neq('status', 'hired')
     .order('created_at', { ascending: false });
+
+  if (error?.code === 'PGRST204') {
+    ({ data, error } = await db
+      .from('applicants')
+      .select('id,name,email,phone,availability,notes,status,created_at')
+      .neq('status', 'hired')
+      .order('created_at', { ascending: false }));
+  }
 
   if (error) {
     console.warn('Could not load applicants:', error);
@@ -1817,9 +1893,13 @@ async function saveInspection(button) {
     prBefore: panel.querySelector('.inspection-pr-before').value || 'not recorded',
     prAfter: panel.querySelector('.inspection-pr-after').value || 'not recorded',
   };
+  const psiGuide = psiGuideForRequest(request);
+  const guideNote = psiGuide
+    ? ` Recommended PSI used: front ${psiGuide.front}, rear ${psiGuide.rear}.`
+    : '';
   const note = [
     `Quick inspection recorded for ${request.vehicle_year || ''} ${request.vehicle_make || ''} ${request.vehicle_model || ''}.`.replace(/\s+/g, ' ').trim(),
-    `Tire PSI before/after: driver front ${values.dfBefore}/${values.dfAfter}, driver rear ${values.drBefore}/${values.drAfter}, passenger front ${values.pfBefore}/${values.pfAfter}, passenger rear ${values.prBefore}/${values.prAfter}.`,
+    `Tire PSI before/after: driver front ${values.dfBefore}/${values.dfAfter}, driver rear ${values.drBefore}/${values.drAfter}, passenger front ${values.pfBefore}/${values.pfAfter}, passenger rear ${values.prBefore}/${values.prAfter}.${guideNote}`,
     `Trouble code ${code || 'none'}: ${codeDetails.summary} Possible fixes: ${codeDetails.fixes}`,
   ].join(' ');
   const notes = request.notes ? `${request.notes}\n${note}` : note;
@@ -2640,6 +2720,8 @@ renderWorkerDaysGrid(workerDayOptions.map(({ dayOfWeek }) => ({
 })));
 renderWorkerDaysOffCalendar();
 
-loadEmployees().then(loadRequests);
+loadVehiclePsiGuides().finally(() => {
+  loadEmployees().then(loadRequests);
+});
 loadReviews();
 loadApplicants();

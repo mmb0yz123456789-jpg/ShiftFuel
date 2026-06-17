@@ -402,6 +402,31 @@ function routeHomeAfterReview() {
   window.location.href = "index.html";
 }
 
+async function markReviewComplete(requestId) {
+  const updates = {
+    status: "complete",
+    review_completed_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  };
+
+  let { error } = await shiftFuelDb
+    .from("service_requests")
+    .update(updates)
+    .eq("id", requestId);
+
+  if (error?.code === "PGRST204" && String(error.message || "").includes("'review_completed_at'")) {
+    delete updates.review_completed_at;
+    ({ error } = await shiftFuelDb
+      .from("service_requests")
+      .update(updates)
+      .eq("id", requestId));
+  }
+
+  if (error) {
+    console.warn("Could not mark review complete:", error);
+  }
+}
+
 function renderRequest(request, photos = [], review = null) {
   const statusLabel = statusLabels[request.status] || request.status;
   const cancellationReason = cancellationReasonForDisplay(request);
@@ -460,8 +485,14 @@ trackForm.addEventListener("submit", async (event) => {
 
   trackingResult.innerHTML = "";
 
-  if (!id && !phone && !email) {
-    trackMessage.textContent = "Enter a phone number, email address, or request ID to track a request.";
+  if (!id && (!phone || !email)) {
+    trackMessage.textContent = "Enter both phone number and email address, or enter a request ID with one matching contact detail.";
+    trackingPhone.focus();
+    return;
+  }
+
+  if (id && !phone && !email) {
+    trackMessage.textContent = "For security, enter the request ID plus the phone number or email used to book.";
     trackingPhone.focus();
     return;
   }
@@ -489,15 +520,16 @@ trackForm.addEventListener("submit", async (event) => {
 
   let matchedRequest = null;
 
-  if (id || email) {
-    matchedRequest = phone
-      ? data.find((request) => cleanPhone(request.customer_phone) === phone)
-      : data[0];
-  }
-
-  if (phone && !id && !email) {
+  if (id) {
     matchedRequest = data.find((request) => {
-      return cleanPhone(request.customer_phone) === phone;
+      const phoneMatches = phone && cleanPhone(request.customer_phone) === phone;
+      const emailMatches = email && String(request.customer_email || "").toLowerCase() === email;
+      return phoneMatches || emailMatches;
+    });
+  } else {
+    matchedRequest = data.find((request) => {
+      return cleanPhone(request.customer_phone) === phone
+        && String(request.customer_email || "").toLowerCase() === email;
     });
   }
 
@@ -557,6 +589,7 @@ trackingResult.addEventListener("click", async (event) => {
     }
 
     if (error?.code === "23505") {
+      await markReviewComplete(requestId);
       panel.remove();
       trackMessage.textContent = "Thank you for reviewing our service.";
       routeHomeAfterReview();
@@ -577,6 +610,7 @@ trackingResult.addEventListener("click", async (event) => {
       return;
     }
 
+    await markReviewComplete(requestId);
     panel.remove();
     trackMessage.textContent = "Thank you for reviewing our service.";
     routeHomeAfterReview();
@@ -650,18 +684,4 @@ trackingResult.addEventListener("click", async (event) => {
   const photos = await loadRequestPhotos(data.id);
   const review = await loadRequestReview(data.id);
   renderRequest(data, photos, review);
-});
-
-trackingResult.addEventListener("change", (event) => {
-  if (event.target.name !== "service-rating") {
-    return;
-  }
-
-  const rating = Number(event.target.value);
-  const panel = event.target.closest(".review-panel");
-  const submitButton = panel?.querySelector(".submit-service-review");
-
-  if (rating >= 4 && submitButton && !submitButton.disabled) {
-    submitButton.click();
-  }
 });
