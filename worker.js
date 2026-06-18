@@ -1,4 +1,13 @@
 const workerDb = window.ShiftFuelSupabase;
+
+function sendWorkerNotification(event, phone, data) {
+  if (!phone) return;
+  fetch('/api/send-sms', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ event, to: phone, data }),
+  }).catch((err) => console.warn('[notify] SMS fire-and-forget failed:', err.message));
+}
 const workerProfileForm = document.querySelector('#worker-profile-form');
 const workerProfileName = document.querySelector('#worker-profile-name');
 const workerProfilePhone = document.querySelector('#worker-profile-phone');
@@ -1779,6 +1788,12 @@ async function completeWorkerRequest(button) {
       return;
     }
   }
+
+  // SMS: notify customer their service is complete
+  sendWorkerNotification('service_complete', request.customer_phone, {
+    name: request.customer_name,
+    finalTotal: finalTotal,
+  });
 
   await loadWorkerJobs();
   await loadWorkerReviews();

@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Hiring — ShiftFuel Concierge</title>
+    <link rel="stylesheet" href="styles.css">
+  </head>
+  <body class="track-page">
+    <header class="site-header">
+      <a class="logo" href="index.html">ShiftFuel Concierge</a>
+      <nav class="nav" aria-label="Main navigation">
+        <a href="index.html#services">What we do</a>
+        <a href="index.html#how">How it works</a>
+        <a href="index.html#pricing">Pricing</a>
+        <a href="index.html#book">Book now</a>
+        <a href="track.html">Track</a>
+        <a href="hiring.html" aria-current="page">Hiring</a>
+        <a href="worker-login.html">Worker</a>
+        <a href="admin-login.html">Admin</a>
+      </nav>
+    </header>
+
+    <main>
+      <section class="admin-hero">
+        <div class="section-heading">
+          <p class="eyebrow">Hiring</p>
+          <h1>Apply to work with ShiftFuel.</h1>
+          <p>Submit your interest and availability. We will follow up before any customer vehicle work is assigned.</p>
+        </div>
+      </section>
+
+      <section class="section">
+        <form id="applicant-form" class="booking-form compact-form">
+          <div class="field-grid">
+            <label>
+              <span>Name</span>
+              <input type="text" name="applicantName" placeholder="Full name" required>
+            </label>
+            <label>
+              <span>Email</span>
+              <input type="email" name="applicantEmail" placeholder="you@example.com">
+            </label>
+            <label>
+              <span>Phone</span>
+              <input type="tel" name="applicantPhone" placeholder="(302) 555-0100">
+            </label>
+            <label>
+              <span>Availability</span>
+              <input type="text" name="applicantAvailability" placeholder="Weekdays, weekends, evenings">
+            </label>
+          </div>
+          <label>
+            <span>Experience or notes</span>
+            <textarea name="applicantNotes" rows="3" placeholder="Driving, customer service, car wash, or fuel service experience"></textarea>
+          </label>
+          <label class="file-button-control resume-upload-control" id="resume-drop-zone">
+            <span>Resume <span class="optional-mark">Optional</span></span>
+            <input type="file" name="applicantResume" id="applicant-resume-input" accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document">
+            <span class="button primary file-button-text" aria-hidden="true">Upload Resume</span>
+            <span class="selected-file-name" id="resume-file-name">No file chosen</span>
+            <span class="resume-drop-hint" aria-hidden="true">or drag and drop here</span>
+          </label>
+          <button class="button primary" type="submit">Submit application</button>
+          <p id="applicant-status" class="form-status" role="status"></p>
+        </form>
+      </section>
+    </main>
+
+    <footer class="site-footer">
+      <p>&copy; <span id="year"></span> ShiftFuel Concierge. Serving workplaces in Delaware.</p>
+    </footer>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="supabase-client.js"></script>
+    <script src="storage.js"></script>
+    <script src="script.js"></script>
+  </body>
+</html>

@@ -1,4 +1,13 @@
 const db = window.ShiftFuelSupabase;
+
+function sendNotification(event, phone, data) {
+  if (!phone) return;
+  fetch('/api/send-sms', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ event, to: phone, data }),
+  }).catch((err) => console.warn('[notify] SMS fire-and-forget failed:', err.message));
+}
 const requestList = document.querySelector('#request-list');
 const openRequests = document.querySelector('#open-requests');
 const completeRequests = document.querySelector('#complete-requests');
@@ -2223,17 +2232,31 @@ workerProfileSelectInactive?.addEventListener('change', () => {
 });
 
 async function updateRequestStatus(id, status) {
+  const request = allRequests.find(r => r.id === id);
   const { error } = await db.rpc('admin_update_request', {
     p_token: adminToken(),
     p_request_id: id,
     p_data: { status },
   });
   if (error) throw error;
+
+  if (status === 'accepted' && request) {
+    const date = request.service_date
+      ? new Date(request.service_date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+      : '';
+    sendNotification('request_accepted', request.customer_phone, {
+      name: request.customer_name,
+      date,
+      serviceLabel: request.service_label || request.service_type || 'service',
+    });
+  }
+
   await loadRequests();
 }
 
 async function updateWorkerAssignment(requestId, employeeId) {
   const employee = allEmployees.find((item) => item.id === employeeId);
+  const request = allRequests.find(r => r.id === requestId);
   const updates = employee
     ? {
         assigned_employee_id: employee.id,
@@ -2256,6 +2279,22 @@ async function updateWorkerAssignment(requestId, employeeId) {
   });
 
   if (error) throw error;
+
+  // SMS: notify the assigned worker
+  if (employee?.phone && request) {
+    const date = request.service_date
+      ? new Date(request.service_date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+      : '';
+    const address = adminFormatAddress(request);
+    sendNotification('worker_assigned', employee.phone, {
+      workerName: employee.full_name,
+      customerName: request.customer_name,
+      date,
+      serviceLabel: request.service_label || request.service_type || 'service',
+      address,
+      parkingLocation: request.parking_location,
+    });
+  }
 
   await loadRequests();
 }
@@ -2504,6 +2543,12 @@ async function saveDenyReason(button) {
     return;
   }
 
+  // SMS: notify customer their request was denied
+  sendNotification('request_denied', request.customer_phone, {
+    name: request.customer_name,
+    reason,
+  });
+
   await loadRequests();
 }
 
@@ -2632,33 +2677,52 @@ async function saveEdit(button) {
   const statusEl = panel.querySelector('.edit-save-status');
 
   const val = (cls) => panel.querySelector(cls)?.value?.trim() ?? '';
-  const numVal = (cls) => { const v = val(cls); return v === '' ? null : Number(v); };
 
-  const updates = {
-    customer_name: val('.edit-customer-name') || null,
-    customer_phone: val('.edit-customer-phone') || null,
-    customer_email: val('.edit-customer-email') || null,
-    address_street: val('.edit-address-street') || null,
-    address_apt: val('.edit-address-apt') || null,
-    address_city: val('.edit-address-city') || null,
-    address_state: val('.edit-address-state') || null,
-    address_zip: val('.edit-address-zip') || null,
-    parking_location: val('.edit-parking-location') || null,
-    parking_spot: val('.edit-parking-spot') || null,
-    key_handoff_details: val('.edit-key-handoff') || null,
-    vehicle_year: val('.edit-vehicle-year') || null,
-    vehicle_make: val('.edit-vehicle-make') || null,
-    vehicle_model: val('.edit-vehicle-model') || null,
-    vehicle_color: val('.edit-vehicle-color') || null,
-    license_plate: val('.edit-license-plate') || null,
-    service_date: val('.edit-service-date') || null,
-    desired_return_time: val('.edit-return-time') || null,
-    fuel_type: val('.edit-fuel-type') || null,
-    return_parking_location: val('.edit-return-location') || null,
-    estimated_total: numVal('.edit-estimated-total'),
-    final_total: numVal('.edit-final-total'),
-    notes: val('.edit-notes') || null,
-  };
+  // Only add a key to the payload when the field has a non-empty value.
+  // The RPC CASE checks key presence — omitting a key leaves the column unchanged.
+  // Sending an empty string for a typed column (date, time, numeric) causes a 400.
+  const updates = {};
+
+  const setText  = (key, cls) => { const v = val(cls); if (v !== '') updates[key] = v; };
+  const setOrNull = (key, cls) => { updates[key] = val(cls) || null; }; // nullable text — always include
+  const setNum   = (key, cls) => { const v = val(cls); if (v !== '') { const n = Number(v); if (!isNaN(n)) updates[key] = n; } };
+  const setDate  = (key, cls) => { const v = val(cls); if (v !== '') updates[key] = v; };
+  const setTime  = (key, cls) => { const v = val(cls); if (v !== '') updates[key] = v; };
+
+  // Text fields — always include (nullable columns, empty string means clear)
+  setOrNull('customer_name',          '.edit-customer-name');
+  setOrNull('customer_phone',         '.edit-customer-phone');
+  setOrNull('customer_email',         '.edit-customer-email');
+  setOrNull('address_street',         '.edit-address-street');
+  setOrNull('address_apt',            '.edit-address-apt');
+  setOrNull('address_city',           '.edit-address-city');
+  setOrNull('address_state',          '.edit-address-state');
+  setOrNull('address_zip',            '.edit-address-zip');
+  setOrNull('parking_location',       '.edit-parking-location');
+  setOrNull('parking_spot',           '.edit-parking-spot');
+  setOrNull('key_handoff_details',    '.edit-key-handoff');
+  setOrNull('vehicle_year',           '.edit-vehicle-year');
+  setOrNull('vehicle_make',           '.edit-vehicle-make');
+  setOrNull('vehicle_model',          '.edit-vehicle-model');
+  setOrNull('vehicle_color',          '.edit-vehicle-color');
+  setOrNull('license_plate',          '.edit-license-plate');
+  setOrNull('fuel_type',              '.edit-fuel-type');
+  setOrNull('return_parking_location','.edit-return-location');
+  setOrNull('notes',                  '.edit-notes');
+
+  // Typed fields — only include when non-empty to avoid cast errors
+  setDate('service_date',        '.edit-service-date');
+  setTime('desired_return_time', '.edit-return-time');
+  setNum('estimated_total',      '.edit-estimated-total');
+  setNum('final_total',          '.edit-final-total');
+
+  if (Object.keys(updates).length === 0) {
+    if (statusEl) statusEl.textContent = 'No changes to save.';
+    return;
+  }
+
+  button.disabled = true;
+  button.textContent = 'Saving...';
 
   const { error } = await db.rpc('admin_update_request', {
     p_token: adminToken(),
@@ -2666,7 +2730,15 @@ async function saveEdit(button) {
     p_data: updates,
   });
 
-  if (error) throw error;
+  button.disabled = false;
+  button.textContent = 'Save changes';
+
+  if (error) {
+    console.error('[saveEdit] admin_update_request failed:', error.message, '| payload:', JSON.stringify(updates));
+    if (statusEl) statusEl.textContent = `Save failed: ${error.message || 'Unknown error'}`;
+    return;
+  }
+
   if (statusEl) { statusEl.textContent = 'Saved.'; setTimeout(() => { statusEl.textContent = ''; }, 2500); }
   await loadRequests();
 }
