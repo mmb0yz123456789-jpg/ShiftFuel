@@ -2437,30 +2437,73 @@ async function saveDenyReason(button) {
   button.disabled = true;
   button.textContent = 'Denying...';
 
-  const note = `Admin denial reason: ${reason}`;
+  const timestamp = new Date().toISOString();
+  const note = `[denied ${timestamp}] Admin denial reason: ${reason}`;
   const notes = request.notes ? `${request.notes}\n${note}` : note;
-  const updates = {
-    status: 'denied',
-    cancellation_reason: reason,
-    notes,
-    updated_at: new Date().toISOString(),
-  };
 
-  let { error } = await db
-    .from('service_requests')
-    .update(updates)
-    .eq('id', id);
+  // Handle payment reversal before changing status
+  let paymentStatus = request.payment_status;
 
-  if (error?.code === 'PGRST204' && String(error.message || '').includes("'cancellation_reason'")) {
-    delete updates.cancellation_reason;
-    ({ error } = await db
-      .from('service_requests')
-      .update(updates)
-      .eq('id', id));
+  if (request.payment_intent_id) {
+    if (request.payment_status === 'authorized') {
+      // Void the hold
+      try {
+        const res = await fetch('/api/cancel-payment', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ payment_intent_id: request.payment_intent_id }),
+        });
+        if (res.ok) {
+          paymentStatus = 'voided';
+        } else {
+          const data = await res.json().catch(() => ({}));
+          console.error('[deny] Failed to void payment hold:', data.error);
+        }
+      } catch (err) {
+        console.error('[deny] Error voiding payment hold:', err.message);
+      }
+    } else if (request.payment_status === 'captured') {
+      // Issue a full refund
+      try {
+        const res = await fetch('/api/refund-payment', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ payment_intent_id: request.payment_intent_id }),
+        });
+        if (res.ok) {
+          paymentStatus = 'refunded';
+        } else {
+          const data = await res.json().catch(() => ({}));
+          console.error('[deny] Failed to refund captured payment:', data.error);
+          // Continue with denial but flag for admin review
+          const refundNote = `\n[payment_refund_failed ${timestamp}] Refund failed on denial — admin must manually refund via Stripe dashboard. Error: ${data.error || 'unknown'}`;
+          notes += refundNote;
+        }
+      } catch (err) {
+        console.error('[deny] Error refunding captured payment:', err.message);
+      }
+    }
   }
 
-  if (error) throw error;
-  await voidPaymentHold(request);
+  const { error } = await db.rpc('admin_update_request', {
+    p_token: adminToken(),
+    p_request_id: id,
+    p_data: {
+      status: 'denied',
+      cancellation_reason: reason,
+      notes,
+      ...(paymentStatus !== request.payment_status ? { payment_status: paymentStatus } : {}),
+    },
+  });
+
+  if (error) {
+    console.error('[deny] admin_update_request failed:', error);
+    button.disabled = false;
+    button.textContent = 'Deny request';
+    alert(`Could not deny the request: ${error.message || 'Database error'}. Please try again.`);
+    return;
+  }
+
   await loadRequests();
 }
 
