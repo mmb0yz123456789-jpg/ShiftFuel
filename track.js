@@ -607,23 +607,25 @@ function washLabelFromValue(value) {
 
 // Show/hide fuel and wash sub-controls inside a pending-completion-card
 function cbUpdateServiceControls(form) {
-  const svcType = form.querySelector('.cb-service-type')?.value || '';
+  const svcType  = form.querySelector('.cb-service-type')?.value || '';
   const needsFuel = svcType.includes('fuel');
   const needsWash = svcType.includes('wash');
 
+  // Show/hide fuel controls; toggle required without clearing preserved values
   form.querySelectorAll('.cb-fuel-control').forEach((el) => {
     el.hidden = !needsFuel;
     el.querySelectorAll('select,input').forEach((inp) => {
-      if (needsFuel) { inp.setAttribute('required', ''); }
-      else           { inp.removeAttribute('required'); inp.value = inp.value || ''; }
+      if (needsFuel) inp.setAttribute('required', '');
+      else           inp.removeAttribute('required');
     });
   });
 
+  // Show/hide wash controls
   form.querySelectorAll('.cb-wash-control').forEach((el) => {
     el.hidden = !needsWash;
     el.querySelectorAll('select,input').forEach((inp) => {
-      if (needsWash) { inp.setAttribute('required', ''); }
-      else           { inp.removeAttribute('required'); inp.value = inp.value || ''; }
+      if (needsWash) inp.setAttribute('required', '');
+      else           inp.removeAttribute('required');
     });
   });
 }
@@ -663,69 +665,80 @@ function renderPendingCompletionCard(request) {
           <legend>Service</legend>
           <p class="field-help">Review and update your service details. You can add or remove services before confirming.</p>
           <div class="field-grid">
-            <label>Service type <span class="required-mark">*</span>
+            <label>Service type <span class="required-mark">Required</span>
               <select class="cb-service-type" required>
                 <option value="">Select service</option>
                 ${serviceOpts}
               </select>
             </label>
-            <label class="cb-fuel-control"${needsFuel ? '' : ' hidden'}>Fuel type <span class="required-mark">*</span>
+            <label class="cb-fuel-control"${needsFuel ? '' : ' hidden'}>Fuel type <span class="required-mark">Required</span>
               <select class="cb-fuel-type"${needsFuel ? ' required' : ''}>
                 <option value="">Select fuel type</option>
                 ${fuelTypeOpts}
               </select>
             </label>
-            <label class="cb-fuel-control"${needsFuel ? '' : ' hidden'}>Estimated fuel needed <span class="required-mark">*</span>
+            <label class="cb-fuel-control"${needsFuel ? '' : ' hidden'}>Estimated fuel needed <span class="required-mark">Required</span>
               <select class="cb-fuel-estimate"${needsFuel ? ' required' : ''}>
                 <option value="">Select fuel range</option>
                 ${fuelEstimateOpts}
               </select>
             </label>
-            <label class="cb-wash-control"${needsWash ? '' : ' hidden'}>Car wash package <span class="required-mark">*</span>
+            <label class="cb-wash-control"${needsWash ? '' : ' hidden'}>Car wash package <span class="required-mark">Required</span>
               <select class="cb-wash-package"${needsWash ? ' required' : ''}>
                 <option value="">Select package</option>
                 ${washPkgOpts}
               </select>
             </label>
-            <label>Service date <span class="required-mark">*</span>
+            <label>Service date <span class="required-mark">Required</span>
               <input class="cb-service-date" type="date" value="${escapeHtml(request.service_date || '')}" required>
             </label>
-            <label>Desired return time <span class="required-mark">*</span>
+            <label>Desired return time <span class="required-mark">Required</span>
               <input class="cb-return-time" type="time" value="${escapeHtml(request.desired_return_time ? request.desired_return_time.slice(0, 5) : '')}" required>
             </label>
           </div>
-          <label class="checkbox-label cb-inspection-label">
-            <input class="cb-quick-inspection" type="checkbox" value="yes"${request.quick_inspection ? ' checked' : ''}>
-            <span>Add a quick vehicle inspection for $5 <span class="optional-mark">(Optional)</span></span>
-          </label>
-          <div class="inspection-addon-details">
-            <h4>Inspection covers</h4>
-            <ul>
-              <li>Tire pressure check</li>
-              <li>Washer fluid level</li>
-              <li>Dashboard warning light glance</li>
-            </ul>
+          <div class="insp-addon-row">
+            <label class="checkbox-label cb-inspection-label">
+              <input class="cb-quick-inspection" type="checkbox" value="yes"${request.quick_inspection ? ' checked' : ''}>
+              <span>Add a quick vehicle inspection for $5 <span class="optional-mark">Optional</span></span>
+            </label>
+            <span class="insp-tooltip-wrap">
+              <button type="button" class="insp-info-btn" aria-label="What&apos;s included in the quick vehicle inspection?" aria-expanded="false">ⓘ</button>
+              <div class="insp-tooltip" role="tooltip">
+                <button type="button" class="insp-tooltip-close" aria-label="Close">×</button>
+                <strong class="insp-tooltip-title">Quick Vehicle Inspection Includes:</strong>
+                <ul>
+                  <li>Walk-around vehicle condition check</li>
+                  <li>Photos of visible exterior condition</li>
+                  <li>Check for obvious dents, scratches, cracked glass, or damage</li>
+                  <li>Tire visual inspection</li>
+                  <li>Windshield and mirror check</li>
+                  <li>Documentation of vehicle condition before service</li>
+                </ul>
+                <p class="insp-tooltip-note">Visual inspection only — not a mechanical or safety inspection. Documents vehicle condition before service begins.</p>
+              </div>
+            </span>
           </div>
+          <p class="insp-tagline">Protect your vehicle with before-service condition photos and documentation.</p>
         </fieldset>
 
         <fieldset>
           <legend>Service address</legend>
           <p class="field-help">Confirm where your vehicle will be when we arrive.</p>
           <div class="address-fields">
-            <label>Street address <span class="required-mark">*</span>
+            <label>Street address <span class="required-mark">Required</span>
               <input class="cb-address-street" type="text" placeholder="123 Main Street" value="${escapeHtml(request.address_street || '')}" required>
             </label>
-            <label>Apt / Suite / Unit <span class="optional-mark">(Optional)</span>
+            <label>Apt / Suite / Unit <span class="optional-mark">Optional</span>
               <input class="cb-address-apt" type="text" placeholder="Suite 200" value="${escapeHtml(request.address_apt || '')}">
             </label>
             <div class="address-csz">
-              <label>City <span class="required-mark">*</span>
+              <label>City <span class="required-mark">Required</span>
                 <input class="cb-address-city" type="text" placeholder="Newark" value="${escapeHtml(request.address_city || '')}" required>
               </label>
               <label>State
                 <input class="cb-address-state" type="text" placeholder="DE" value="${escapeHtml(request.address_state || 'DE')}">
               </label>
-              <label>ZIP <span class="required-mark">*</span>
+              <label>ZIP <span class="required-mark">Required</span>
                 <input class="cb-address-zip" type="text" inputmode="numeric" placeholder="19702" value="${escapeHtml(request.address_zip || '')}" required>
               </label>
             </div>
@@ -735,19 +748,19 @@ function renderPendingCompletionCard(request) {
         <fieldset>
           <legend>Parking and key handoff</legend>
           <div class="field-grid">
-            <label>Car location <span class="required-mark">*</span>
+            <label>Car location <span class="required-mark">Required</span>
               <input class="cb-parking-location" type="text"
                 placeholder="Example: Garage B Level 3 spot 142, surface lot near main entrance"
                 value="${escapeHtml(request.parking_location || '')}" required>
               <span class="field-help">Tell us exactly where your vehicle will be parked.</span>
             </label>
-            <label>Key handoff instructions <span class="required-mark">*</span>
+            <label>Key handoff instructions <span class="required-mark">Required</span>
               <input class="cb-key-handoff" type="text"
                 placeholder="Example: front desk, employee entrance, or meet at vehicle"
                 value="${escapeHtml(request.key_handoff_details || '')}" required>
               <span class="field-help">Tell us exactly where and how to pick up your keys.</span>
             </label>
-            <label>Google Maps / Apple Maps link <span class="optional-mark">(Optional)</span>
+            <label>Google Maps / Apple Maps link <span class="optional-mark">Optional</span>
               <input class="cb-parking-map-url" type="url"
                 placeholder="Paste a map link to the parking location"
                 value="${escapeHtml(request.parking_map_url || '')}">
@@ -759,26 +772,26 @@ function renderPendingCompletionCard(request) {
         <fieldset>
           <legend>Your vehicle</legend>
           <div class="field-grid">
-            <label>Year <span class="required-mark">*</span>
+            <label>Year <span class="required-mark">Required</span>
               <input class="cb-vehicle-year" type="text" placeholder="2020" value="${escapeHtml(request.vehicle_year || '')}" required>
             </label>
-            <label>Make <span class="required-mark">*</span>
+            <label>Make <span class="required-mark">Required</span>
               <input class="cb-vehicle-make" type="text" placeholder="Toyota" value="${escapeHtml(request.vehicle_make || '')}" required>
             </label>
-            <label>Model <span class="required-mark">*</span>
+            <label>Model <span class="required-mark">Required</span>
               <input class="cb-vehicle-model" type="text" placeholder="Camry" value="${escapeHtml(request.vehicle_model || '')}" required>
             </label>
-            <label>Color <span class="required-mark">*</span>
+            <label>Color <span class="required-mark">Required</span>
               <input class="cb-vehicle-color" type="text" placeholder="Silver" value="${escapeHtml(request.vehicle_color || '')}" required>
             </label>
-            <label>License plate <span class="required-mark">*</span>
+            <label>License plate <span class="required-mark">Required</span>
               <input class="cb-license-plate" type="text" placeholder="ABC 1234" value="${escapeHtml(request.license_plate || '')}" required>
             </label>
           </div>
         </fieldset>
 
         <fieldset>
-          <legend>Notes <span class="optional-mark">(Optional)</span></legend>
+          <legend>Notes <span class="optional-mark">Optional</span></legend>
           <label>
             <textarea class="cb-notes" rows="3" placeholder="Anything else we should know? Gate codes, special instructions, etc."></textarea>
           </label>
@@ -1027,6 +1040,41 @@ trackingResult.addEventListener('change', (event) => {
   if (!svcSelect) return;
   const form = svcSelect.closest('.complete-booking-form');
   if (form) cbUpdateServiceControls(form);
+});
+
+// ── Inspection tooltip: tap to open, close button or tap-away to dismiss ─────
+trackingResult.addEventListener('click', (event) => {
+  const infoBtn = event.target.closest('.insp-info-btn');
+  const closeBtn = event.target.closest('.insp-tooltip-close');
+  const wrap = event.target.closest('.insp-tooltip-wrap');
+
+  if (infoBtn) {
+    const isOpen = infoBtn.getAttribute('aria-expanded') === 'true';
+    // Close any other open tooltips first
+    trackingResult.querySelectorAll('.insp-info-btn[aria-expanded="true"]').forEach((b) => {
+      b.setAttribute('aria-expanded', 'false');
+      b.closest('.insp-tooltip-wrap')?.classList.remove('insp-open');
+    });
+    if (!isOpen) {
+      infoBtn.setAttribute('aria-expanded', 'true');
+      infoBtn.closest('.insp-tooltip-wrap')?.classList.add('insp-open');
+    }
+    event.stopPropagation();
+    return;
+  }
+  if (closeBtn) {
+    const w = closeBtn.closest('.insp-tooltip-wrap');
+    w?.classList.remove('insp-open');
+    w?.querySelector('.insp-info-btn')?.setAttribute('aria-expanded', 'false');
+    return;
+  }
+  // Tap outside any open tooltip → close it
+  if (!wrap) {
+    trackingResult.querySelectorAll('.insp-info-btn[aria-expanded="true"]').forEach((b) => {
+      b.setAttribute('aria-expanded', 'false');
+      b.closest('.insp-tooltip-wrap')?.classList.remove('insp-open');
+    });
+  }
 });
 
 trackingResult.addEventListener("click", async (event) => {
@@ -1536,11 +1584,11 @@ trackingResult.addEventListener('submit', async (event) => {
       p_service_label:        serviceLabelFromType(serviceType),
       p_service_date:         serviceDate   || null,
       p_desired_return_time:  returnTime    || null,
-      p_fuel_type:            fuelType      || null,
-      p_wash_package:         washPackage   || null,
-      p_wash_package_label:   washPkg?.label || null,
+      p_fuel_type:            needsFuel ? (fuelType || null) : null,
+      p_wash_package:         needsWash ? (washPackage || null) : null,
+      p_wash_package_label:   needsWash ? (washPkg?.label || null) : null,
       p_wash_fee:             needsWash && washPkg ? washPkg.price : null,
-      p_estimated_gallons:    fuelEstimateRange ? fuelEstimateRange.gallons : null,
+      p_estimated_gallons:    needsFuel && fuelEstimateRange ? fuelEstimateRange.gallons : null,
       p_quick_inspection:     quickInspection,
       p_quick_inspection_fee: quickInspection ? 5 : 0,
       p_address_street:       addrStreet    || null,
@@ -1594,3 +1642,15 @@ trackingResult.addEventListener('submit', async (event) => {
     submitBtn,
   );
 });
+
+// After any render that inserts a .complete-booking-form, sync the service
+// controls immediately so the initial state matches the selected service type.
+const _svcControlsObserver = new MutationObserver(() => {
+  document.querySelectorAll('.complete-booking-form').forEach((form) => {
+    if (!form.dataset.svcControlsReady) {
+      form.dataset.svcControlsReady = '1';
+      cbUpdateServiceControls(form);
+    }
+  });
+});
+_svcControlsObserver.observe(trackingResult, { childList: true, subtree: true });
