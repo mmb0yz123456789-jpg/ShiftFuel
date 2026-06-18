@@ -126,6 +126,15 @@ const RESUME_BUCKET = "applicant-resumes";
 
 year.textContent = new Date().getFullYear();
 
+function sendNotification(event, phone, data) {
+  if (!phone) return;
+  fetch('/api/send-sms', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ event, to: phone, data }),
+  }).catch((err) => console.warn('[notify] SMS fire-and-forget failed:', err.message));
+}
+
 const slotReleasingStatuses = new Set(["complete", "denied", "customer_canceled", "unable_to_complete"]);
 let bookedReturnSlots = new Set();
 let workerAvailabilitySlots = null;
@@ -1768,6 +1777,28 @@ async function saveBooking(payload) {
     });
 
     statusMessage.textContent = "Booking confirmed!";
+
+    // SMS: notify customer their booking was received
+    sendNotification('booking_submitted', payload.customer.phone, {
+      name: payload.customer.name,
+      date: payload.service.date,
+      serviceLabel: payload.service.label || payload.service.type || 'fuel service',
+    });
+
+    // SMS: broadcast to all workers in the matching service area
+    fetch('/api/notify-area-workers', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        serviceDate: payload.service.date,
+        serviceLabel: payload.service.label || payload.service.type || 'fuel service',
+        addressCity: payload.request.addressCity || '',
+        addressState: payload.request.addressState || '',
+        hospital: payload.request.hospital || '',
+        parkingLocation: payload.request.parkingLocation || '',
+      }),
+    }).catch((err) => console.warn('[notify] Area worker broadcast failed:', err.message));
+
     setAddressStatus('', '');
     addressValidated = false;
     isReturningCustomer = false;
