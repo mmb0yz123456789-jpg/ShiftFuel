@@ -582,10 +582,22 @@ const SERVICE_OPTIONS = [
 ];
 
 const WASH_PACKAGES = [
-  { value: 'buff-shine',    label: 'Buff & Shine',    price: 27 },
-  { value: 'shine-protect', label: 'Shine & Protect', price: 20 },
-  { value: 'shine',         label: 'Shine',            price: 16 },
-  { value: 'double-wash',   label: 'Double Wash',      price: 12 },
+  {
+    value: ‘buff-shine’, label: ‘Buff & Shine’, price: 27,
+    includes: [‘Fire Bath’, ‘Super Hard Shell Ceramic Finish’, "Dry N’ Shine", ‘ICE Instant Shine’, ‘Salt Shield’, ‘Tire Shine’, ‘Triple Wheel Cleaning’, ‘Tri-Foam Conditioner’, "Blazin’ Glaze Clear Coat", ‘High pH and Low pH Presoak’, ‘Drying Agent’, ‘Spot Free Rinse’],
+  },
+  {
+    value: ‘shine-protect’, label: ‘Shine & Protect’, price: 20,
+    includes: [‘ICE Instant Shine’, ‘Salt Shield’, ‘Tire Shine’, ‘Triple Wheel Cleaning’, ‘Tri-Foam Conditioner’, "Blazin’ Glaze Clear Coat", ‘High pH and Low pH Presoak’, ‘Drying Agent’, ‘Spot Free Rinse’],
+  },
+  {
+    value: ‘shine’, label: ‘Shine’, price: 16,
+    includes: [‘Tri-Foam Conditioner’, "Blazin’ Glaze Clear Coat", ‘High pH and Low pH Presoak’, ‘Double Tire & Wheel Cleaning’, ‘Drying Agent’, ‘Spot Free Rinse’],
+  },
+  {
+    value: ‘double-wash’, label: ‘Double Wash’, price: 12,
+    includes: [‘High pH and Low pH Presoak’, ‘Double Tire & Wheel Cleaning’, ‘Drying Agent’, ‘Spot Free Rinse’],
+  },
 ];
 
 const FUEL_ESTIMATE_RANGES = [
@@ -597,6 +609,298 @@ const FUEL_ESTIMATE_RANGES = [
   { value: '30', label: '25+ gallons',         gallons: 30 },
 ];
 
+// ── Vehicle data (mirrors script.js for completion form dropdowns) ────────────
+const CB_POPULAR_MAKES = ['Chevrolet','Ford','Honda','Hyundai','Jeep','Kia','Nissan','Subaru','Tesla','Toyota'];
+const CB_OTHER_MAKES   = ['Acura','Alfa Romeo','Audi','BMW','Buick','Cadillac','Chrysler','Dodge','Fiat','Genesis','GMC','Infiniti','Jaguar','Land Rover','Lexus','Lincoln','Mazda','Mercedes-Benz','Mini','Mitsubishi','Porsche','Ram','Volkswagen','Volvo'];
+const CB_FALLBACK_MODELS = {
+  Acura: ['ILX','Integra','MDX','RDX','TLX'],
+  Audi: ['A3','A4','A5','A6','Q3','Q5','Q7'],
+  BMW: ['3 Series','4 Series','5 Series','X1','X3','X5'],
+  Buick: ['Encore','Encore GX','Enclave','Envision'],
+  Cadillac: ['CT4','CT5','Escalade','XT4','XT5','XT6'],
+  Chevrolet: ['Blazer','Colorado','Equinox','Malibu','Silverado','Suburban','Tahoe','Trailblazer','Traverse'],
+  Chrysler: ['300','Pacifica','Voyager'],
+  Dodge: ['Challenger','Charger','Durango','Hornet'],
+  Ford: ['Bronco','Escape','Explorer','F-150','Fusion','Maverick','Mustang','Ranger'],
+  Genesis: ['G70','G80','GV70','GV80'],
+  GMC: ['Acadia','Canyon','Sierra','Terrain','Yukon'],
+  Honda: ['Accord','Civic','CR-V','HR-V','Odyssey','Passport','Pilot','Ridgeline'],
+  Hyundai: ['Elantra','Kona','Palisade','Santa Fe','Sonata','Tucson'],
+  Infiniti: ['Q50','QX50','QX55','QX60','QX80'],
+  Jeep: ['Cherokee','Compass','Gladiator','Grand Cherokee','Renegade','Wrangler'],
+  Kia: ['Carnival','Forte','K5','Seltos','Sorento','Soul','Sportage','Telluride'],
+  Lexus: ['ES','GX','IS','NX','RX','TX'],
+  Lincoln: ['Aviator','Corsair','Nautilus','Navigator'],
+  Mazda: ['CX-30','CX-5','CX-50','CX-9','Mazda3','Mazda6','MX-5 Miata'],
+  'Mercedes-Benz': ['C-Class','E-Class','GLA','GLC','GLE','S-Class'],
+  Mini: ['Clubman','Convertible','Cooper','Countryman'],
+  Mitsubishi: ['Eclipse Cross','Mirage','Outlander','Outlander Sport'],
+  Nissan: ['Altima','Frontier','Kicks','Maxima','Murano','Pathfinder','Rogue','Sentra','Versa'],
+  Ram: ['1500','2500','3500','ProMaster'],
+  Subaru: ['Ascent','Crosstrek','Forester','Impreza','Legacy','Outback'],
+  Tesla: ['Model 3','Model S','Model X','Model Y'],
+  Toyota: ['4Runner','Camry','Corolla','Highlander','Prius','RAV4','Sienna','Tacoma','Tundra'],
+  Volkswagen: ['Atlas','Golf','ID.4','Jetta','Passat','Taos','Tiguan'],
+  Volvo: ['S60','S90','V60','XC40','XC60','XC90'],
+};
+const CB_AVG_FUEL_PRICES = { Regular: 3.792, 'Mid-grade': 4.411, Premium: 4.701, Diesel: 4.967 };
+const CB_FEES = { fuelConvenience: 15, washConvenience: 15, quickInspection: 5 };
+
+// ── Completion-form utility functions ─────────────────────────────────────────
+function cbFormatCurrency(v) {
+  return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(v);
+}
+function cbFormatPricePerGallon(v) { return `$${v.toFixed(3)}/gal`; }
+
+function cbTimeSlots(startHour, endHour) {
+  const slots = [];
+  for (let h = startHour; h <= endHour; h++) {
+    for (const m of ['00', '30']) {
+      if (h === endHour && m === '30') continue;
+      slots.push(`${String(h).padStart(2, '0')}:${m}`);
+    }
+  }
+  return slots;
+}
+function cbMinutesFromSlot(v) {
+  const [h, m] = String(v || '').slice(0, 5).split(':').map(Number);
+  return h * 60 + (m || 0);
+}
+function cbFutureSlotsForDate(slots, dateValue) {
+  const today = new Date();
+  const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+  if (dateValue !== todayStr) return slots;
+  const nowMin = today.getHours() * 60 + today.getMinutes();
+  return slots.filter((s) => cbMinutesFromSlot(s) > nowMin);
+}
+function cbFormatTimeLabel(v) {
+  const [hStr, m] = v.split(':');
+  const h = Number(hStr);
+  return `${h % 12 || 12}:${m} ${h >= 12 ? 'PM' : 'AM'}`;
+}
+
+// ── Vehicle dropdown functions ─────────────────────────────────────────────────
+function cbPopulateYears(select, selectedValue) {
+  const maxYear = new Date().getFullYear() + 1;
+  for (let y = maxYear; y >= 1980; y--) {
+    const opt = document.createElement('option');
+    opt.value = y; opt.textContent = y;
+    if (String(y) === String(selectedValue)) opt.selected = true;
+    select.append(opt);
+  }
+}
+
+function cbPopulateMakes(select, selectedValue) {
+  const popularGroup = document.createElement('optgroup');
+  popularGroup.label = 'Most common makes';
+  CB_POPULAR_MAKES.forEach((make) => {
+    const opt = document.createElement('option');
+    opt.value = make; opt.textContent = make;
+    if (make === selectedValue) opt.selected = true;
+    popularGroup.append(opt);
+  });
+  const otherGroup = document.createElement('optgroup');
+  otherGroup.label = 'Other makes';
+  CB_OTHER_MAKES.filter((m) => !CB_POPULAR_MAKES.includes(m))
+    .sort((a, b) => a.localeCompare(b))
+    .forEach((make) => {
+      const opt = document.createElement('option');
+      opt.value = make; opt.textContent = make;
+      if (make === selectedValue) opt.selected = true;
+      otherGroup.append(opt);
+    });
+  select.append(popularGroup, otherGroup);
+}
+
+async function cbLoadModels(form) {
+  const yearSel  = form.querySelector('.cb-vehicle-year');
+  const makeSel  = form.querySelector('.cb-vehicle-make');
+  const modelSel = form.querySelector('.cb-vehicle-model');
+  const helpEl   = form.querySelector('.cb-model-help');
+  if (!modelSel) return;
+  const selYear = yearSel?.value;
+  const selMake = makeSel?.value;
+  if (!selYear || !selMake) {
+    modelSel.innerHTML = '<option value="">Select year and make first</option>';
+    modelSel.disabled = true;
+    if (helpEl) helpEl.textContent = 'Models load after you choose a year and make.';
+    return;
+  }
+  const prevModel = modelSel.dataset.pendingValue || '';
+  modelSel.innerHTML = '<option value="">Loading models…</option>';
+  modelSel.disabled = true;
+  if (helpEl) helpEl.textContent = 'Loading models for that year and make.';
+  try {
+    const url = `https://vpic.nhtsa.dot.gov/api/vehicles/GetModelsForMakeYear/make/${encodeURIComponent(selMake)}/modelyear/${selYear}/vehicletype/car?format=json`;
+    const res = await fetch(url);
+    if (res.ok) {
+      const data = await res.json();
+      const models = [...new Set(data.Results.map((r) => r.Model_Name).filter(Boolean))].sort((a, b) => a.localeCompare(b));
+      if (models.length > 0) {
+        modelSel.innerHTML = '<option value="">Select model</option>';
+        models.forEach((m) => { const o = document.createElement('option'); o.value = m; o.textContent = m; modelSel.append(o); });
+        modelSel.disabled = false;
+        if (prevModel) { if (!Array.from(modelSel.options).some((o) => o.value === prevModel)) { const o = document.createElement('option'); o.value = prevModel; o.textContent = prevModel; modelSel.append(o); } modelSel.value = prevModel; }
+        if (helpEl) helpEl.textContent = 'Models are filtered by the selected year and make.';
+        return;
+      }
+    }
+  } catch (e) { console.warn('cbLoadModels NHTSA error:', e); }
+  const fallback = CB_FALLBACK_MODELS[selMake] || [];
+  modelSel.innerHTML = `<option value="">${fallback.length ? 'Select model' : 'No models found'}</option>`;
+  fallback.forEach((m) => { const o = document.createElement('option'); o.value = m; o.textContent = m; modelSel.append(o); });
+  modelSel.disabled = fallback.length === 0;
+  if (prevModel && fallback.length) { if (!Array.from(modelSel.options).some((o) => o.value === prevModel)) { const o = document.createElement('option'); o.value = prevModel; o.textContent = prevModel; modelSel.append(o); } modelSel.value = prevModel; }
+  if (helpEl) helpEl.textContent = fallback.length ? 'Showing common models while the official vehicle lookup is unavailable.' : 'No models found for that year and make.';
+}
+
+// ── Return time dropdown ───────────────────────────────────────────────────────
+function cbFillReturnSelect(select, slots, bookedSlots, placeholder) {
+  const prev = select.value;
+  select.innerHTML = '';
+  const blank = document.createElement('option'); blank.value = ''; blank.textContent = placeholder; select.append(blank);
+  slots.forEach((slot) => {
+    const opt = document.createElement('option'); opt.value = slot; opt.textContent = cbFormatTimeLabel(slot);
+    if (bookedSlots.has(slot)) { opt.disabled = true; opt.textContent += ' — booked'; }
+    select.append(opt);
+  });
+  if (slots.includes(prev) && !bookedSlots.has(prev)) select.value = prev;
+}
+
+async function cbRefreshReturnTimes(form) {
+  const timeSel   = form.querySelector('.cb-return-time');
+  const timeHelp  = form.querySelector('.cb-time-help');
+  const dateValue = (form.querySelector('.cb-service-date')?.value || '').trim();
+  const svcType   = form.querySelector('.cb-service-type')?.value || '';
+  const needsWash = svcType === 'car-wash' || svcType === 'car-wash-fuel';
+  if (!timeSel) return;
+  if (!dateValue) { timeSel.innerHTML = '<option value="">Select a date first</option>'; return; }
+
+  let bookedSlots = new Set();
+  try {
+    const { data } = await shiftFuelDb.rpc('public_booked_return_slots', { p_service_date: dateValue });
+    if (data) bookedSlots = new Set((data).map((r) => String(r.desired_return_time || '').slice(0, 5)).filter(Boolean));
+  } catch (e) { console.warn('cbRefreshReturnTimes:', e); }
+
+  const rawSlots = needsWash ? cbTimeSlots(9, 18) : cbTimeSlots(7, 22);
+  const slots    = cbFutureSlotsForDate(rawSlots, dateValue);
+  const placeholder = needsWash
+    ? (slots.length ? 'Select car wash return time' : 'No car wash times left today')
+    : (slots.length ? 'Select return time' : 'No return times left today');
+  cbFillReturnSelect(timeSel, slots, bookedSlots, placeholder);
+  if (timeHelp) {
+    timeHelp.textContent = needsWash
+      ? (slots.length ? 'Car wash service selected. Return times are limited to 9:00 AM through 6:00 PM.' : 'No more car wash return times are available today. Choose tomorrow or another future date.')
+      : (slots.length ? 'Choose the time you want your vehicle returned.' : 'No more return times are available today. Choose tomorrow or another future date.');
+  }
+}
+
+// ── Live price estimate ────────────────────────────────────────────────────────
+function cbUpdateEstimate(form) {
+  const svcType    = form.querySelector('.cb-service-type')?.value || '';
+  const needsFuel  = svcType === 'fuel' || svcType === 'car-wash-fuel';
+  const needsWash  = svcType === 'car-wash' || svcType === 'car-wash-fuel';
+  const washPkgVal = form.querySelector('.cb-wash-package')?.value || '';
+  const fuelTypeVal = form.querySelector('.cb-fuel-type')?.value || 'Regular';
+  const fuelEstVal  = form.querySelector('.cb-fuel-estimate')?.value || '';
+  const insp        = form.querySelector('.cb-quick-inspection')?.checked || false;
+
+  const washPkg   = WASH_PACKAGES.find((p) => p.value === washPkgVal) || null;
+  const fuelRange = FUEL_ESTIMATE_RANGES.find((r) => r.value === fuelEstVal) || null;
+  const gallons   = needsFuel && fuelRange ? fuelRange.gallons : 0;
+  const ppg       = CB_AVG_FUEL_PRICES[fuelTypeVal] || CB_AVG_FUEL_PRICES.Regular;
+  const fuelAmt   = gallons * ppg;
+  const washFee   = needsWash && washPkg ? washPkg.price : 0;
+  const washConv  = needsWash && washPkg ? CB_FEES.washConvenience : 0;
+  const fuelConv  = needsFuel ? CB_FEES.fuelConvenience : 0;
+  const inspFee   = insp ? CB_FEES.quickInspection : 0;
+  const total     = fuelAmt + washFee + washConv + fuelConv + inspFee;
+
+  const qHide = (cls, h) => { const el = form.querySelector(`.${cls}`); if (el) el.hidden = h; };
+  const qText = (cls, t) => { const el = form.querySelector(`.${cls}`); if (el) el.textContent = t; };
+
+  qHide('cb-payment-wash-row',       !(needsWash && washPkg));
+  qHide('cb-payment-wash-conv-row',  !(needsWash && washPkg));
+  qHide('cb-payment-price-row',      !needsFuel);
+  qHide('cb-payment-fuel-row',       !needsFuel);
+  qHide('cb-payment-fuel-conv-row',  !needsFuel);
+  qHide('cb-payment-inspection-row', !insp);
+
+  qText('cb-estimated-wash',  washPkg ? `${washPkg.label} — ${cbFormatCurrency(washFee)}` : '$0.00');
+  qText('cb-wash-conv-fee',   cbFormatCurrency(washConv));
+  qText('cb-average-price',   cbFormatPricePerGallon(ppg));
+  qText('cb-estimated-fuel',  needsFuel
+    ? `${fuelRange?.label || '0 gallons'} estimated at ${gallons} gallons × ${cbFormatPricePerGallon(ppg)} = ${cbFormatCurrency(fuelAmt)}`
+    : cbFormatCurrency(fuelAmt));
+  qText('cb-fuel-conv-fee',   cbFormatCurrency(fuelConv));
+  qText('cb-inspection-fee',  cbFormatCurrency(inspFee));
+  qText('cb-estimated-total', cbFormatCurrency(total));
+}
+
+// ── Service details panel ──────────────────────────────────────────────────────
+function cbUpdateServiceDetails(form) {
+  const panel   = form.querySelector('.cb-service-details');
+  if (!panel) return;
+  const svcType  = form.querySelector('.cb-service-type')?.value || '';
+  const needsFuel = svcType === 'fuel' || svcType === 'car-wash-fuel';
+  const needsWash = svcType === 'car-wash' || svcType === 'car-wash-fuel';
+  const washPkg   = WASH_PACKAGES.find((p) => p.value === (form.querySelector('.cb-wash-package')?.value || '')) || null;
+  const svcLabel  = SERVICE_OPTIONS.find((o) => o.value === svcType)?.label || '';
+
+  if (!svcType) {
+    panel.innerHTML = `<p class="eyebrow">Service details</p><h3>Select a service</h3><p>Choose Car Wash, Fuel, or Car Wash + Fuel to see what is included.</p>`;
+    return;
+  }
+
+  const details = [];
+  if (needsFuel) {
+    details.push('Fuel filled using the selected fuel type and estimated gallons.');
+    details.push(`Regular: ${cbFormatPricePerGallon(CB_AVG_FUEL_PRICES.Regular)}`);
+    details.push(`Mid-grade: ${cbFormatPricePerGallon(CB_AVG_FUEL_PRICES['Mid-grade'])}`);
+    details.push(`Premium: ${cbFormatPricePerGallon(CB_AVG_FUEL_PRICES.Premium)}`);
+    details.push(`Diesel: ${cbFormatPricePerGallon(CB_AVG_FUEL_PRICES.Diesel)}`);
+  }
+  if (needsWash && washPkg) details.push(...washPkg.includes);
+  else if (needsWash)       details.push('Select a wash package to see what is included.');
+  if (needsFuel && needsWash) details.push('$30 car wash + fuel convenience fee added.');
+  else if (needsFuel)         details.push('$15 fuel convenience fee added.');
+  else if (needsWash)         details.push('$15 car wash convenience fee added.');
+  if (form.querySelector('.cb-quick-inspection')?.checked) details.push('Quick vehicle inspection add-on.');
+
+  panel.innerHTML = `
+    <p class="eyebrow">Service details</p>
+    <h3>${escapeHtml(svcLabel)}${washPkg ? `: ${escapeHtml(washPkg.label)}` : ''}</h3>
+    <p>${needsWash ? 'Car wash services are available from 9:00 AM to 6:00 PM every day.' : 'Fuel service can be requested during your selected return window.'}</p>
+    <ul>${details.map((d) => `<li>${escapeHtml(d)}</li>`).join('')}</ul>
+  `;
+}
+
+// ── Initialise a newly-rendered completion form ────────────────────────────────
+async function cbInitForm(form, request) {
+  // Vehicle dropdowns
+  const yearSel  = form.querySelector('.cb-vehicle-year');
+  const makeSel  = form.querySelector('.cb-vehicle-make');
+  const modelSel = form.querySelector('.cb-vehicle-model');
+  if (yearSel && !yearSel.options.length) cbPopulateYears(yearSel, request?.vehicle_year || '');
+  if (makeSel && makeSel.options.length <= 1) cbPopulateMakes(makeSel, request?.vehicle_make || '');
+  if (modelSel && request?.vehicle_model) modelSel.dataset.pendingValue = request.vehicle_model;
+  await cbLoadModels(form);
+
+  // Return time dropdown
+  await cbRefreshReturnTimes(form);
+  // Restore pre-selected return time if it survived the refresh
+  const timeSel = form.querySelector('.cb-return-time');
+  if (timeSel && request?.desired_return_time) {
+    const slot = String(request.desired_return_time).slice(0, 5);
+    const opt = Array.from(timeSel.options).find((o) => o.value === slot && !o.disabled);
+    if (opt) timeSel.value = slot;
+  }
+
+  // Initial state for service-dependent panels
+  cbUpdateServiceDetails(form);
+  cbUpdateEstimate(form);
+}
+
 function serviceLabelFromType(type) {
   return SERVICE_OPTIONS.find((o) => o.value === type)?.label || type || '';
 }
@@ -607,9 +911,9 @@ function washLabelFromValue(value) {
 
 // Show/hide fuel and wash sub-controls inside a pending-completion-card
 function cbUpdateServiceControls(form) {
-  const svcType  = form.querySelector('.cb-service-type')?.value || '';
-  const needsFuel = svcType.includes('fuel');
-  const needsWash = svcType.includes('wash');
+  const svcType   = form.querySelector('.cb-service-type')?.value || '';
+  const needsFuel = svcType === 'fuel' || svcType === 'car-wash-fuel';
+  const needsWash = svcType === 'car-wash' || svcType === 'car-wash-fuel';
 
   // Show/hide fuel controls; toggle required without clearing preserved values
   form.querySelectorAll('.cb-fuel-control').forEach((el) => {
@@ -631,8 +935,8 @@ function cbUpdateServiceControls(form) {
 }
 
 function renderPendingCompletionCard(request) {
-  const needsFuel = String(request.service_type || '').includes('fuel');
-  const needsWash = String(request.service_type || '').includes('wash');
+  const needsFuel = request.service_type === 'fuel' || request.service_type === 'car-wash-fuel';
+  const needsWash = request.service_type === 'car-wash' || request.service_type === 'car-wash-fuel';
 
   const serviceOpts = SERVICE_OPTIONS.map((o) =>
     `<option value="${escapeHtml(o.value)}"${request.service_type === o.value ? ' selected' : ''}>${escapeHtml(o.label)}</option>`
@@ -650,6 +954,9 @@ function renderPendingCompletionCard(request) {
     `<option value="${escapeHtml(p.value)}"${request.wash_package === p.value ? ' selected' : ''}>${escapeHtml(p.label)} — $${p.price}</option>`
   ).join('');
 
+  // Year/make/model dropdowns are populated by cbInitForm after DOM insertion.
+  // Return time dropdown is also populated by cbInitForm.
+
   const rid = escapeHtml(request.id);
 
   return `
@@ -660,141 +967,233 @@ function renderPendingCompletionCard(request) {
       </div>
 
       <form class="booking-form complete-booking-form" data-request-id="${rid}">
+        <p class="form-note"><span class="required-mark">Required</span> fields must be completed before submitting. Optional fields can be skipped.</p>
 
         <fieldset>
-          <legend>Service</legend>
-          <p class="field-help">Review and update your service details. You can add or remove services before confirming.</p>
+          <legend>Contact information</legend>
           <div class="field-grid">
-            <label>Service type <span class="required-mark">Required</span>
-              <select class="cb-service-type" required>
-                <option value="">Select service</option>
-                ${serviceOpts}
-              </select>
+            <label>
+              <span>Name <span class="required-mark">Required</span></span>
+              <input class="cb-customer-name" type="text" placeholder="Jordan Smith"
+                value="${escapeHtml(request.customer_name || '')}" required>
             </label>
-            <label class="cb-fuel-control"${needsFuel ? '' : ' hidden'}>Fuel type <span class="required-mark">Required</span>
-              <select class="cb-fuel-type"${needsFuel ? ' required' : ''}>
-                <option value="">Select fuel type</option>
-                ${fuelTypeOpts}
-              </select>
+            <label>
+              <span>Phone number <span class="required-mark">Required</span></span>
+              <input class="cb-customer-phone" type="tel"
+                value="${escapeHtml(verifiedTrackingContact.phone || request.customer_phone || '')}" readonly>
             </label>
-            <label class="cb-fuel-control"${needsFuel ? '' : ' hidden'}>Estimated fuel needed <span class="required-mark">Required</span>
-              <select class="cb-fuel-estimate"${needsFuel ? ' required' : ''}>
-                <option value="">Select fuel range</option>
-                ${fuelEstimateOpts}
-              </select>
-            </label>
-            <label class="cb-wash-control"${needsWash ? '' : ' hidden'}>Car wash package <span class="required-mark">Required</span>
-              <select class="cb-wash-package"${needsWash ? ' required' : ''}>
-                <option value="">Select package</option>
-                ${washPkgOpts}
-              </select>
-            </label>
-            <label>Service date <span class="required-mark">Required</span>
-              <input class="cb-service-date" type="date" value="${escapeHtml(request.service_date || '')}" required>
-            </label>
-            <label>Desired return time <span class="required-mark">Required</span>
-              <input class="cb-return-time" type="time" value="${escapeHtml(request.desired_return_time ? request.desired_return_time.slice(0, 5) : '')}" required>
+            <label>
+              <span>Email <span class="required-mark">Required</span></span>
+              <input class="cb-customer-email" type="email"
+                value="${escapeHtml(verifiedTrackingContact.email || request.customer_email || '')}" readonly>
             </label>
           </div>
-          <div class="insp-addon-row">
-            <label class="checkbox-label cb-inspection-label">
-              <input class="cb-quick-inspection" type="checkbox" value="yes"${request.quick_inspection ? ' checked' : ''}>
-              <span>Add a quick vehicle inspection for $5 <span class="optional-mark">Optional</span></span>
-            </label>
-            <span class="insp-tooltip-wrap">
-              <button type="button" class="insp-info-btn" aria-label="What&apos;s included in the quick vehicle inspection?" aria-expanded="false">ⓘ</button>
-              <div class="insp-tooltip" role="tooltip">
-                <button type="button" class="insp-tooltip-close" aria-label="Close">×</button>
-                <strong class="insp-tooltip-title">Quick Vehicle Inspection Includes:</strong>
-                <ul>
-                  <li>Walk-around vehicle condition check</li>
-                  <li>Photos of visible exterior condition</li>
-                  <li>Check for obvious dents, scratches, cracked glass, or damage</li>
-                  <li>Tire visual inspection</li>
-                  <li>Windshield and mirror check</li>
-                  <li>Documentation of vehicle condition before service</li>
-                </ul>
-                <p class="insp-tooltip-note">Visual inspection only — not a mechanical or safety inspection. Documents vehicle condition before service begins.</p>
-              </div>
-            </span>
-          </div>
-          <p class="insp-tagline">Protect your vehicle with before-service condition photos and documentation.</p>
         </fieldset>
 
         <fieldset>
           <legend>Service address</legend>
-          <p class="field-help">Confirm where your vehicle will be when we arrive.</p>
           <div class="address-fields">
-            <label>Street address <span class="required-mark">Required</span>
-              <input class="cb-address-street" type="text" placeholder="123 Main Street" value="${escapeHtml(request.address_street || '')}" required>
+            <label>
+              <span>Street address <span class="required-mark">Required</span></span>
+              <input class="cb-address-street" type="text" autocomplete="address-line1"
+                placeholder="123 Main Street" value="${escapeHtml(request.address_street || '')}" required>
             </label>
-            <label>Apt / Suite / Unit <span class="optional-mark">Optional</span>
-              <input class="cb-address-apt" type="text" placeholder="Suite 200" value="${escapeHtml(request.address_apt || '')}">
+            <label>
+              <span>Apt / Suite / Unit <span class="optional-mark">Optional</span></span>
+              <input class="cb-address-apt" type="text" autocomplete="address-line2"
+                placeholder="Suite 200, Unit B" value="${escapeHtml(request.address_apt || '')}">
             </label>
             <div class="address-csz">
-              <label>City <span class="required-mark">Required</span>
-                <input class="cb-address-city" type="text" placeholder="Newark" value="${escapeHtml(request.address_city || '')}" required>
+              <label>
+                <span>City <span class="required-mark">Required</span></span>
+                <input class="cb-address-city" type="text" autocomplete="address-level2"
+                  placeholder="Newark" value="${escapeHtml(request.address_city || '')}" required>
               </label>
-              <label>State
-                <input class="cb-address-state" type="text" placeholder="DE" value="${escapeHtml(request.address_state || 'DE')}">
+              <label>
+                <span>State</span>
+                <input class="cb-address-state" type="text" autocomplete="address-level1"
+                  placeholder="DE" value="${escapeHtml(request.address_state || 'DE')}">
               </label>
-              <label>ZIP <span class="required-mark">Required</span>
-                <input class="cb-address-zip" type="text" inputmode="numeric" placeholder="19702" value="${escapeHtml(request.address_zip || '')}" required>
+              <label>
+                <span>ZIP <span class="required-mark">Required</span></span>
+                <input class="cb-address-zip" type="text" autocomplete="postal-code"
+                  inputmode="numeric" placeholder="19702" value="${escapeHtml(request.address_zip || '')}" required>
               </label>
             </div>
           </div>
         </fieldset>
 
         <fieldset>
+          <legend>Vehicle</legend>
+          <div class="field-grid">
+            <label>
+              <span>Year <span class="required-mark">Required</span></span>
+              <select class="cb-vehicle-year" required>
+                <option value="">Select year</option>
+              </select>
+            </label>
+            <label>
+              <span>Make <span class="required-mark">Required</span></span>
+              <select class="cb-vehicle-make" required>
+                <option value="">Select make</option>
+              </select>
+            </label>
+            <label>
+              <span>Model <span class="required-mark">Required</span></span>
+              <select class="cb-vehicle-model" required disabled>
+                <option value="">Select year and make first</option>
+              </select>
+              <span class="cb-model-help field-help">Models load after you choose a year and make.</span>
+            </label>
+            <label>
+              <span>Color <span class="required-mark">Required</span></span>
+              <input class="cb-vehicle-color" type="text" placeholder="Silver"
+                value="${escapeHtml(request.vehicle_color || '')}" required>
+            </label>
+            <label>
+              <span>License plate <span class="required-mark">Required</span></span>
+              <input class="cb-license-plate" type="text" placeholder="ABC-1234"
+                value="${escapeHtml(request.license_plate || '')}" required>
+            </label>
+          </div>
+        </fieldset>
+
+        <fieldset>
           <legend>Parking and key handoff</legend>
           <div class="field-grid">
-            <label>Car location <span class="required-mark">Required</span>
+            <label>
+              <span>Car location <span class="required-mark">Required</span></span>
               <input class="cb-parking-location" type="text"
-                placeholder="Example: Garage B Level 3 spot 142, surface lot near main entrance"
+                placeholder="Example: on the street, Garage B Level 3 spot 142, surface lot near main entrance"
                 value="${escapeHtml(request.parking_location || '')}" required>
               <span class="field-help">Tell us exactly where your vehicle will be parked.</span>
             </label>
-            <label>Key handoff instructions <span class="required-mark">Required</span>
+            <label>
+              <span>Key handoff instructions <span class="required-mark">Required</span></span>
               <input class="cb-key-handoff" type="text"
-                placeholder="Example: front desk, employee entrance, or meet at vehicle"
+                placeholder="Example: front door to Building X, front desk, employee entrance, or meet at vehicle."
                 value="${escapeHtml(request.key_handoff_details || '')}" required>
               <span class="field-help">Tell us exactly where and how to pick up your keys.</span>
             </label>
-            <label>Google Maps / Apple Maps link <span class="optional-mark">Optional</span>
+            <label>
+              <span>Google Maps / Apple Maps link <span class="optional-mark">Optional</span></span>
               <input class="cb-parking-map-url" type="url"
                 placeholder="Paste a map link to the parking location"
                 value="${escapeHtml(request.parking_map_url || '')}">
-              <span class="field-help">Helps the worker find your vehicle faster.</span>
+              <span class="field-help">Optional. Helps the worker find your vehicle faster.</span>
             </label>
           </div>
         </fieldset>
 
         <fieldset>
-          <legend>Your vehicle</legend>
-          <div class="field-grid">
-            <label>Year <span class="required-mark">Required</span>
-              <input class="cb-vehicle-year" type="text" placeholder="2020" value="${escapeHtml(request.vehicle_year || '')}" required>
-            </label>
-            <label>Make <span class="required-mark">Required</span>
-              <input class="cb-vehicle-make" type="text" placeholder="Toyota" value="${escapeHtml(request.vehicle_make || '')}" required>
-            </label>
-            <label>Model <span class="required-mark">Required</span>
-              <input class="cb-vehicle-model" type="text" placeholder="Camry" value="${escapeHtml(request.vehicle_model || '')}" required>
-            </label>
-            <label>Color <span class="required-mark">Required</span>
-              <input class="cb-vehicle-color" type="text" placeholder="Silver" value="${escapeHtml(request.vehicle_color || '')}" required>
-            </label>
-            <label>License plate <span class="required-mark">Required</span>
-              <input class="cb-license-plate" type="text" placeholder="ABC 1234" value="${escapeHtml(request.license_plate || '')}" required>
-            </label>
+          <legend>Service request</legend>
+          <div class="service-choice-grid">
+            <div class="service-controls">
+              <label>
+                <span>Service needed <span class="required-mark">Required</span></span>
+                <select class="cb-service-type" required>
+                  <option value="">Select service</option>
+                  ${serviceOpts}
+                </select>
+              </label>
+              <label class="cb-wash-control conditional-control"${needsWash ? '' : ' hidden'}>
+                <span>Car wash package <span class="required-mark">Required when visible</span></span>
+                <select class="cb-wash-package"${needsWash ? ' required' : ''}>
+                  <option value="">Select wash package</option>
+                  ${washPkgOpts}
+                </select>
+              </label>
+              <label class="cb-fuel-control conditional-control"${needsFuel ? '' : ' hidden'}>
+                <span>Fuel type <span class="required-mark">Required when visible</span></span>
+                <select class="cb-fuel-type"${needsFuel ? ' required' : ''}>
+                  <option value="">Select fuel type</option>
+                  ${fuelTypeOpts}
+                </select>
+              </label>
+              <label class="cb-fuel-control conditional-control"${needsFuel ? '' : ' hidden'}>
+                <span>Estimated fuel needed, in gallons <span class="required-mark">Required when visible</span></span>
+                <select class="cb-fuel-estimate"${needsFuel ? ' required' : ''}>
+                  <option value="">Select fuel range</option>
+                  ${fuelEstimateOpts}
+                </select>
+              </label>
+              <label>
+                <span>Service date <span class="required-mark">Required</span></span>
+                <input class="cb-service-date" type="date" value="${escapeHtml(request.service_date || '')}" required>
+                <span class="field-help">Choose a service date within the next 3 months. Past dates are not available.</span>
+              </label>
+              <label>
+                <span>Desired return time <span class="required-mark">Required</span></span>
+                <select class="cb-return-time" required>
+                  <option value="">Loading available times…</option>
+                </select>
+                <span class="cb-time-help field-help">Car wash services are available from 9:00 AM to 6:00 PM every day.</span>
+              </label>
+              <div class="inspection-addon-control">
+                <label class="checkbox-label cb-inspection-label" aria-describedby="cb-inspection-details-${rid}">
+                  <input class="cb-quick-inspection" type="checkbox" value="yes"${request.quick_inspection ? ' checked' : ''}>
+                  <span>Add a quick vehicle inspection for $5 <span class="optional-mark">Optional</span></span>
+                </label>
+                <div id="cb-inspection-details-${rid}" class="inspection-addon-details" role="tooltip">
+                  <h4>Inspection covers</h4>
+                  <ul>
+                    <li>Walk-around vehicle condition check</li>
+                    <li>Photos of visible exterior condition</li>
+                    <li>Check for obvious dents, scratches, cracked glass, or damage</li>
+                    <li>Tire visual inspection</li>
+                    <li>Windshield and mirror check</li>
+                    <li>Documentation of vehicle condition before service</li>
+                  </ul>
+                </div>
+              </div>
+            </div>
+            <aside class="cb-service-details service-details-panel" aria-live="polite">
+              <p class="eyebrow">Service details</p>
+              <h3>Select a service</h3>
+              <p>Choose Car Wash, Fuel, or Car Wash + Fuel to see what is included.</p>
+            </aside>
           </div>
-        </fieldset>
-
-        <fieldset>
-          <legend>Notes <span class="optional-mark">Optional</span></legend>
           <label>
-            <textarea class="cb-notes" rows="3" placeholder="Anything else we should know? Gate codes, special instructions, etc."></textarea>
+            <span>Notes <span class="optional-mark">Optional</span></span>
+            <textarea class="cb-notes" rows="4" placeholder="Anything we should know?"></textarea>
           </label>
+        </fieldset>
+
+        <fieldset>
+          <legend>Payment authorization</legend>
+          <div class="payment-box">
+            <p>Your card will be authorized for the estimated service total. No charge is collected until service is complete. The final amount may vary based on actual fuel cost.</p>
+            <dl>
+              <div class="cb-payment-wash-row" hidden>
+                <dt>Car wash package</dt>
+                <dd class="cb-estimated-wash">$0.00</dd>
+              </div>
+              <div class="cb-payment-wash-conv-row" hidden>
+                <dt>Car wash convenience fee</dt>
+                <dd class="cb-wash-conv-fee">$0.00</dd>
+              </div>
+              <div class="cb-payment-price-row" hidden>
+                <dt>Average price used</dt>
+                <dd class="cb-average-price">$0.000/gal</dd>
+              </div>
+              <div class="cb-payment-fuel-row" hidden>
+                <dt>Estimated fuel</dt>
+                <dd class="cb-estimated-fuel">$0.00</dd>
+              </div>
+              <div class="cb-payment-fuel-conv-row" hidden>
+                <dt>Fuel convenience fee</dt>
+                <dd class="cb-fuel-conv-fee">$0.00</dd>
+              </div>
+              <div class="cb-payment-inspection-row" hidden>
+                <dt>Quick inspection</dt>
+                <dd class="cb-inspection-fee">$0.00</dd>
+              </div>
+              <div>
+                <dt>Estimated authorization</dt>
+                <dd class="cb-estimated-total">$0.00</dd>
+              </div>
+            </dl>
+          </div>
         </fieldset>
 
         <fieldset>
@@ -803,12 +1202,8 @@ function renderPendingCompletionCard(request) {
             <input class="cb-agreed" type="checkbox" value="yes" required>
             <span>I agree that ShiftFuel Concierge may pick up, service, and return my vehicle using the instructions I provided.</span>
           </label>
-          <p class="field-help">By confirming, you agree to provide accurate vehicle, key, parking, and service instructions. ShiftFuel documents pickup and return condition with photos and will contact you if a requested service cannot be completed.</p>
+          <p class="field-help">By booking, you agree to provide accurate vehicle, key, parking, fuel, and service instructions. ShiftFuel documents pickup and return condition with photos and will contact you if a requested service cannot be completed.</p>
         </fieldset>
-
-        <div class="cb-payment-note">
-          <p>Your card will be authorized but not charged until service is complete. The final amount may vary based on actual fuel cost.</p>
-        </div>
 
         <div class="pending-form-actions">
           <button class="button primary cb-submit-btn cb-pay-confirm-btn" type="submit">Authorize Payment &amp; Confirm Booking</button>
@@ -991,6 +1386,7 @@ trackForm.addEventListener("submit", async (event) => {
     if (!isMissingRpcError(rpcError)) {
       console.warn("Track lookup blocked:", rpcError);
       recordTrackFailedAttempt();
+      trackMessage.textContent = "Unable to look up your request. Please try again.";
       return;
     }
 
@@ -1012,6 +1408,7 @@ trackForm.addEventListener("submit", async (event) => {
     if (error) {
       console.error("Tracking lookup error:", error);
       recordTrackFailedAttempt();
+      trackMessage.textContent = "Unable to look up your request. Please try again.";
       return;
     }
 
@@ -1024,6 +1421,7 @@ trackForm.addEventListener("submit", async (event) => {
 
   if (matchedRequests.length === 0) {
     recordTrackFailedAttempt();
+    trackMessage.textContent = "No requests found matching that information. Please check your phone number and email, then try again.";
     return;
   }
 
@@ -1034,46 +1432,39 @@ trackForm.addEventListener("submit", async (event) => {
   await renderAllRequests(matchedRequests, phone, email);
 });
 
-// ── Service-type change → show/hide fuel/wash sub-controls ───────────────────
+// ── Completion-form change delegation ────────────────────────────────────────
 trackingResult.addEventListener('change', (event) => {
-  const svcSelect = event.target.closest('.cb-service-type');
-  if (!svcSelect) return;
-  const form = svcSelect.closest('.complete-booking-form');
-  if (form) cbUpdateServiceControls(form);
-});
+  const form = event.target.closest('.complete-booking-form');
+  if (!form) return;
 
-// ── Inspection tooltip: tap to open, close button or tap-away to dismiss ─────
-trackingResult.addEventListener('click', (event) => {
-  const infoBtn = event.target.closest('.insp-info-btn');
-  const closeBtn = event.target.closest('.insp-tooltip-close');
-  const wrap = event.target.closest('.insp-tooltip-wrap');
+  const t = event.target;
 
-  if (infoBtn) {
-    const isOpen = infoBtn.getAttribute('aria-expanded') === 'true';
-    // Close any other open tooltips first
-    trackingResult.querySelectorAll('.insp-info-btn[aria-expanded="true"]').forEach((b) => {
-      b.setAttribute('aria-expanded', 'false');
-      b.closest('.insp-tooltip-wrap')?.classList.remove('insp-open');
-    });
-    if (!isOpen) {
-      infoBtn.setAttribute('aria-expanded', 'true');
-      infoBtn.closest('.insp-tooltip-wrap')?.classList.add('insp-open');
-    }
-    event.stopPropagation();
+  // Service type: update visibility, details panel, estimate, and return times
+  if (t.matches('.cb-service-type')) {
+    cbUpdateServiceControls(form);
+    cbUpdateServiceDetails(form);
+    cbUpdateEstimate(form);
+    cbRefreshReturnTimes(form);
     return;
   }
-  if (closeBtn) {
-    const w = closeBtn.closest('.insp-tooltip-wrap');
-    w?.classList.remove('insp-open');
-    w?.querySelector('.insp-info-btn')?.setAttribute('aria-expanded', 'false');
+
+  // Service date: repopulate return time dropdown
+  if (t.matches('.cb-service-date')) {
+    cbRefreshReturnTimes(form);
     return;
   }
-  // Tap outside any open tooltip → close it
-  if (!wrap) {
-    trackingResult.querySelectorAll('.insp-info-btn[aria-expanded="true"]').forEach((b) => {
-      b.setAttribute('aria-expanded', 'false');
-      b.closest('.insp-tooltip-wrap')?.classList.remove('insp-open');
-    });
+
+  // Vehicle year or make: reload model dropdown
+  if (t.matches('.cb-vehicle-year') || t.matches('.cb-vehicle-make')) {
+    cbLoadModels(form);
+    return;
+  }
+
+  // Wash package, fuel type, fuel estimate, inspection: update estimate + details
+  if (t.matches('.cb-wash-package') || t.matches('.cb-fuel-type') ||
+      t.matches('.cb-fuel-estimate') || t.matches('.cb-quick-inspection')) {
+    cbUpdateEstimate(form);
+    cbUpdateServiceDetails(form);
   }
 });
 
@@ -1514,62 +1905,68 @@ trackingResult.addEventListener('submit', async (event) => {
   const val     = (cls) => (form.querySelector(`.${cls}`)?.value || '').trim();
   const checked = (cls) => form.querySelector(`.${cls}`)?.checked === true;
 
-  const serviceType     = val('cb-service-type');
-  const needsFuel       = serviceType.includes('fuel');
-  const needsWash       = serviceType.includes('wash');
-  const fuelType        = val('cb-fuel-type');
-  const fuelEstimate    = val('cb-fuel-estimate');
-  const washPackage     = val('cb-wash-package');
-  const serviceDate     = val('cb-service-date');
-  const returnTime      = val('cb-return-time');
+  const customerName    = val('cb-customer-name');
   const addrStreet      = val('cb-address-street');
   const addrApt         = val('cb-address-apt');
   const addrCity        = val('cb-address-city');
   const addrState       = val('cb-address-state');
   const addrZip         = val('cb-address-zip');
-  const parkingLoc      = val('cb-parking-location');
-  const keyHandoff      = val('cb-key-handoff');
-  const parkingMapUrl   = val('cb-parking-map-url');
   const year            = val('cb-vehicle-year');
   const make            = val('cb-vehicle-make');
   const model           = val('cb-vehicle-model');
   const color           = val('cb-vehicle-color');
   const plate           = val('cb-license-plate');
+  const parkingLoc      = val('cb-parking-location');
+  const keyHandoff      = val('cb-key-handoff');
+  const parkingMapUrl   = val('cb-parking-map-url');
+  const serviceType     = val('cb-service-type');
+  const needsFuel       = serviceType === 'fuel' || serviceType === 'car-wash-fuel';
+  const needsWash       = serviceType === 'car-wash' || serviceType === 'car-wash-fuel';
+  const fuelType        = val('cb-fuel-type');
+  const fuelEstimate    = val('cb-fuel-estimate');
+  const washPackage     = val('cb-wash-package');
+  const serviceDate     = val('cb-service-date');
+  const returnTime      = val('cb-return-time');
+  const quickInspection = checked('cb-quick-inspection');
   const notes           = val('cb-notes');
   const agreed          = checked('cb-agreed');
-  const quickInspection = checked('cb-quick-inspection');
 
-  // ── Validate ──────────────────────────────────────────────────────────────
+  // ── Validate (matches Book Now field order) ───────────────────────────────
   const fail = (msg, selector) => {
     if (statusEl) statusEl.textContent = msg;
     if (selector) form.querySelector(selector)?.focus();
     return true;
   };
 
+  if (!customerName && fail('Please enter your name.', '.cb-customer-name')) return;
+  if (!addrStreet  && fail('Please enter the street address.', '.cb-address-street')) return;
+  if (!addrCity    && fail('Please enter the city.', '.cb-address-city')) return;
+  if (!addrZip     && fail('Please enter the ZIP code.', '.cb-address-zip')) return;
+  if ((!year || !make || !model || !color || !plate) && fail('Please fill in all vehicle fields.', '.cb-vehicle-year')) return;
+  if (!parkingLoc  && fail('Please describe where your vehicle will be parked.', '.cb-parking-location')) return;
+  if (!keyHandoff  && fail('Please describe how to pick up your keys.', '.cb-key-handoff')) return;
   if (!serviceType && fail('Please select a service type.', '.cb-service-type')) return;
-  if (needsFuel && !fuelType    && fail('Please select a fuel type.', '.cb-fuel-type')) return;
+  if (needsFuel && !fuelType     && fail('Please select a fuel type.', '.cb-fuel-type')) return;
   if (needsFuel && !fuelEstimate && fail('Please select the estimated fuel amount.', '.cb-fuel-estimate')) return;
   if (needsWash && !washPackage  && fail('Please select a car wash package.', '.cb-wash-package')) return;
   if (!serviceDate && fail('Please enter a service date.', '.cb-service-date')) return;
   if (!returnTime  && fail('Please enter a desired return time.', '.cb-return-time')) return;
-  if (!addrStreet  && fail('Please enter the street address.', '.cb-address-street')) return;
-  if (!addrCity    && fail('Please enter the city.', '.cb-address-city')) return;
-  if (!addrZip     && fail('Please enter the ZIP code.', '.cb-address-zip')) return;
-  if (!parkingLoc  && fail('Please describe where your vehicle will be parked.', '.cb-parking-location')) return;
-  if (!keyHandoff  && fail('Please describe how to pick up your keys.', '.cb-key-handoff')) return;
-  if ((!year || !make || !model || !color || !plate) && fail('Please fill in all vehicle fields.', '.cb-vehicle-year')) return;
   if (!agreed && fail('Please check the agreement box to confirm your booking.', '.cb-agreed')) return;
 
   if (statusEl) statusEl.textContent = '';
   submitBtn.disabled = true;
 
-  // ── Compute auth amount ───────────────────────────────────────────────────
-  const washPkg        = WASH_PACKAGES.find((p) => p.value === washPackage);
-  const fuelEstimateRange = FUEL_ESTIMATE_RANGES.find((r) => r.value === fuelEstimate);
-  const washTotal      = needsWash && washPkg ? washPkg.price + 15 : 0;
-  const fuelTotal      = needsFuel ? 60 : 0;
-  const inspTotal      = quickInspection ? 5 : 0;
-  const estimatedTotal = (washTotal + fuelTotal + inspTotal) || null;
+  // ── Compute auth amount (matches cbUpdateEstimate display) ───────────────────
+  const washPkg        = WASH_PACKAGES.find((p) => p.value === washPackage) || null;
+  const fuelEstimateRange = FUEL_ESTIMATE_RANGES.find((r) => r.value === fuelEstimate) || null;
+  const gallons        = needsFuel && fuelEstimateRange ? fuelEstimateRange.gallons : 0;
+  const ppg            = CB_AVG_FUEL_PRICES[fuelType] || CB_AVG_FUEL_PRICES.Regular;
+  const fuelAmt        = gallons * ppg;
+  const washFee        = needsWash && washPkg ? washPkg.price : 0;
+  const washConvFee    = needsWash && washPkg ? CB_FEES.washConvenience : 0;
+  const fuelConvFee    = needsFuel ? CB_FEES.fuelConvenience : 0;
+  const inspFee        = quickInspection ? CB_FEES.quickInspection : 0;
+  const estimatedTotal = (fuelAmt + washFee + washConvFee + fuelConvFee + inspFee) || null;
   const authAmountCents = Math.max(Math.round((estimatedTotal || 1) * 100), 50);
 
   const requestData = (window._trackingRequests || []).find((r) => r.id === requestId);
@@ -1643,13 +2040,16 @@ trackingResult.addEventListener('submit', async (event) => {
   );
 });
 
-// After any render that inserts a .complete-booking-form, sync the service
-// controls immediately so the initial state matches the selected service type.
+// After any render that inserts a .complete-booking-form, initialise dropdowns
+// and controls. Uses a stored request reference keyed to the form's request ID.
 const _svcControlsObserver = new MutationObserver(() => {
   document.querySelectorAll('.complete-booking-form').forEach((form) => {
     if (!form.dataset.svcControlsReady) {
       form.dataset.svcControlsReady = '1';
+      const requestId = form.dataset.requestId;
+      const request = (window._trackingRequests || []).find((r) => r.id === requestId) || null;
       cbUpdateServiceControls(form);
+      cbInitForm(form, request);
     }
   });
 });
