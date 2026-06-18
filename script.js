@@ -1817,8 +1817,9 @@ async function saveBooking(payload) {
     updateServiceControls();
     await refreshBookedReturnSlots();
   } catch (err) {
-    console.error("Supabase save error:", err);
-    statusMessage.textContent = "Could not save booking. Check console for details.";
+    console.error("Supabase save error:", JSON.stringify(err, null, 2), err);
+    const msg = err?.message || err?.details || err?.hint || JSON.stringify(err);
+    statusMessage.textContent = `Could not save booking: ${msg}`;
   }
 }
 
@@ -1827,6 +1828,7 @@ async function handlePaymentModalSubmit() {
   const submitBtn = getPaymentModalSubmit();
   const payload = modal?._pendingPayload;
   if (!payload) return;
+  if (submitBtn?.disabled) return;
 
   const cardErrors = document.querySelector('#card-errors');
   if (cardErrors) cardErrors.textContent = '';
