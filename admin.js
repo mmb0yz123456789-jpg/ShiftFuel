@@ -1,13 +1,5 @@
 const db = window.ShiftFuelSupabase;
 
-function sendNotification(event, phone, data) {
-  if (!phone) return;
-  fetch('/api/send-sms', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ event, to: phone, data, caller_token: adminToken() }),
-  }).catch((err) => console.warn('[notify] SMS fire-and-forget failed:', err.message));
-}
 const requestList = document.querySelector('#request-list');
 const openRequests = document.querySelector('#open-requests');
 const completeRequests = document.querySelector('#complete-requests');
@@ -1132,7 +1124,7 @@ async function ensureEmployee(fullName) {
   const codePrefix = fullName.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6) || 'WORKER';
   const employeeCode = `EMP-${codePrefix}`;
   const { data, error } = await db
-    .from('employees')
+    .from('employees_public')
     .select('id,active')
     .eq('full_name', fullName)
     .limit(1);
@@ -1192,14 +1184,14 @@ async function loadEmployees() {
     await ensureEmployee(DEFAULT_WORKER_NAME);
 
     let { data, error } = await db
-      .from('employees')
+      .from('employees_public')
       .select('id,employee_code,full_name,phone,email,photo_url,original_photo_url,cropped_photo_url,photo_zoom,photo_position_x,photo_position_y,home_location,started_at,active')
       .order('full_name', { ascending: true });
 
     if (error) {
       console.warn('Full employee profile load failed, trying basic employee fields:', error);
       const fallback = await db
-        .from('employees')
+        .from('employees_public')
         .select('id,employee_code,full_name,phone,email,home_location,active')
         .order('full_name', { ascending: true });
 
@@ -1660,7 +1652,7 @@ async function validateUniqueWorkerPhone(employeeId, phone) {
   if (!phone) return;
 
   const { data, error } = await db
-    .from('employees')
+    .from('employees_public')
     .select('id,full_name,employee_code')
     .eq('phone', phone)
     .eq('active', true)
@@ -2319,11 +2311,6 @@ async function updateRequestStatus(id, status) {
     const date = request.service_date
       ? new Date(request.service_date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
       : '';
-    sendNotification('request_accepted', request.customer_phone, {
-      name: request.customer_name,
-      date,
-      serviceLabel: request.service_label || request.service_type || 'service',
-    });
   }
 
   await loadRequests();
@@ -2354,22 +2341,6 @@ async function updateWorkerAssignment(requestId, employeeId) {
   });
 
   if (error) throw error;
-
-  // SMS: notify the assigned worker
-  if (employee?.phone && request) {
-    const date = request.service_date
-      ? new Date(request.service_date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
-      : '';
-    const address = adminFormatAddress(request);
-    sendNotification('worker_assigned', employee.phone, {
-      workerName: employee.full_name,
-      customerName: request.customer_name,
-      date,
-      serviceLabel: request.service_label || request.service_type || 'service',
-      address,
-      parkingLocation: request.parking_location,
-    });
-  }
 
   await loadRequests();
 }
@@ -2630,12 +2601,6 @@ async function saveDenyReason(button) {
     return;
   }
 
-  // SMS: notify customer their request was denied
-  sendNotification('request_denied', request.customer_phone, {
-    name: request.customer_name,
-    reason,
-  });
-
   await loadRequests();
 }
 
@@ -2765,10 +2730,6 @@ async function completeRequest(button) {
   button.textContent = 'Completing...';
   try {
     await updateRequestStatus(id, 'complete');
-    sendNotification('service_complete', request.customer_phone, {
-      name: request.customer_name,
-      finalTotal: request.final_total,
-    });
   } catch (err) {
     console.error('[complete] Failed:', err.message);
     button.disabled = false;
@@ -2808,11 +2769,6 @@ async function sendToCustomerPayment(button) {
       p_data: { status: 'pending_customer_payment' },
     });
     if (error) throw error;
-
-    // Notify customer that payment is ready
-    sendNotification('payment_needed', request.customer_phone, {
-      name: request.customer_name,
-    });
 
     await loadRequests();
   } catch (err) {
@@ -3979,7 +3935,7 @@ function validateWorkerBase(schedule) {
 
 async function upsertWorker(schedule) {
   const { data: existing, error: existingError } = await db
-    .from('employees')
+    .from('employees_public')
     .select('id')
     .eq('full_name', schedule.workerName)
     .limit(1);

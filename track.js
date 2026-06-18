@@ -2095,17 +2095,11 @@ async function handleConfirmAndPay(button) {
         return;
       }
 
-      // Create a PaymentIntent for immediate capture.
-      const piRes = await fetch('/api/create-payment-intent', {
+      // Create a PaymentIntent server-side — amount comes from DB, not frontend.
+      const piRes = await fetch('/api/create-customer-final-payment', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          amount_cents: amountCents,
-          customer_name: request.customer_name || '',
-          customer_email: request.customer_email || '',
-          service_label: request.service_label || 'ShiftFuel service',
-          capture_method: 'automatic',
-        }),
+        body: JSON.stringify({ request_id: requestId, phone, email }),
       });
       const piData = await piRes.json().catch(() => ({}));
       if (!piRes.ok) {
