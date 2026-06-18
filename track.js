@@ -1294,6 +1294,7 @@ async function renderAllRequests(requests, phone, email) {
   const inProgress = requests.filter(r => !terminalStatuses.includes(r.status));
   const completed  = requests.filter(r => r.status === 'complete'
     && (now - new Date(r.updated_at || r.created_at).getTime()) <= TWENTY_FOUR_HOURS);
+  const denied     = requests.filter(r => r.status === 'denied');
 
   let html = `<div class="track-sections">`;
 
@@ -1337,8 +1338,63 @@ async function renderAllRequests(requests, phone, email) {
   }
   html += `</div></details>`;
 
+  // Denied section
+  html += `
+    <details class="track-section">
+      <summary class="track-section-header">
+        Denied requests
+        <span class="track-section-count">${denied.length}</span>
+      </summary>
+      <div class="track-section-body">
+  `;
+  if (denied.length === 0) {
+    html += `<p class="track-empty-msg">No denied requests found.</p>`;
+  } else {
+    for (const request of denied) {
+      html += renderDeniedCard(request);
+    }
+  }
+  html += `</div></details>`;
+
   html += `</div>`;
   trackingResult.innerHTML = html;
+}
+
+function renderDeniedCard(request) {
+  const vehicle = [request.vehicle_year, request.vehicle_make, request.vehicle_model].filter(Boolean).join(' ');
+  const serviceDate = request.service_date
+    ? new Date(request.service_date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+    : '';
+  const deniedAt = request.updated_at
+    ? new Date(request.updated_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+    : '';
+  const reason = cancellationReasonForDisplay(request);
+
+  return `
+    <article class="track-request-card track-denied-card" data-request-id="${escapeHtml(request.id)}">
+      <details class="track-request-details">
+        <summary class="track-request-summary">
+          <div class="track-request-summary-main">
+            <span class="track-request-vehicle">${escapeHtml(vehicle || 'Unknown vehicle')}</span>
+            <span class="track-request-meta">
+              ${serviceDate ? `<span>${escapeHtml(serviceDate)}</span>` : ''}
+              ${request.service_label || request.service_type ? `<span>${escapeHtml(request.service_label || request.service_type)}</span>` : ''}
+            </span>
+          </div>
+          <span class="status-pill status-pill-denied">Denied</span>
+        </summary>
+        <div class="track-request-body">
+          <div class="request-details">
+            <p><strong>Request ID:</strong> <span class="track-request-id-text">${escapeHtml(request.id)}</span></p>
+            ${serviceDate ? `<p><strong>Service date:</strong> ${escapeHtml(serviceDate)}</p>` : ''}
+            ${vehicle ? `<p><strong>Vehicle:</strong> ${escapeHtml(vehicle)}${request.vehicle_color ? ', ' + escapeHtml(request.vehicle_color) : ''}</p>` : ''}
+            ${request.service_label || request.service_type ? `<p><strong>Service:</strong> ${escapeHtml(request.service_label || request.service_type)}</p>` : ''}
+            ${deniedAt ? `<p><strong>Denied on:</strong> ${escapeHtml(deniedAt)}</p>` : ''}
+            ${reason ? `<p><strong>Reason:</strong> ${escapeHtml(reason)}</p>` : ''}
+          </div>
+        </div>
+      </details>
+    </article>`;
 }
 
 trackForm.addEventListener("submit", async (event) => {

@@ -1231,7 +1231,7 @@ function renderWorkerReturnLocationPanel(request) {
       <h4>Car Location</h4>
       <p class="field-help">Record exactly where you left the vehicle after service.</p>
       <div class="field-grid">
-        <label>Car location
+        <label>
           <input class="return-parking-location" type="text" value="${escapeHtml(returnLocation)}" placeholder="Example: Lot F, space F-19">
         </label>
       </div>
@@ -1608,24 +1608,7 @@ async function saveWorkerReturnLocation(button) {
 
   if (error) throw error;
 
-  // Capture the Stripe hold at the final total now that the car is parked
-  if (request?.payment_intent_id && request?.payment_status === 'authorized' && request?.final_total != null) {
-    try {
-      const amountCents = Math.round(request.final_total * 100);
-      const res = await fetch('/api/capture-payment', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ payment_intent_id: request.payment_intent_id, amount_cents: amountCents }),
-      });
-      if (!res.ok) {
-        const data = await res.json();
-        console.error('Stripe capture failed:', data.error);
-      }
-    } catch (err) {
-      console.error('Stripe capture error:', err.message);
-    }
-  }
-
+  console.log('Vehicle Returned clicked — location saved, advancing workflow only. No payment capture here.');
   await loadWorkerJobs();
 }
 
@@ -1732,6 +1715,7 @@ async function completeWorkerRequest(button) {
 
   button.disabled = true;
   button.textContent = 'Processing payment...';
+  console.log('Payment capture initiated — worker confirmed totals and clicked Complete request.');
 
   const finalTotal = finalTotalFromSavedReceipts(request, receiptTotals);
 
@@ -1777,6 +1761,7 @@ async function completeWorkerRequest(button) {
         alert('Payment was charged but the request could not be marked complete. Please contact admin — do not charge again.');
         return;
       }
+      console.log('Request marked completed — payment captured and status updated.');
     }
   } else {
     // No Stripe hold (cash/no payment) — just mark complete with final total
@@ -1793,6 +1778,7 @@ async function completeWorkerRequest(button) {
       alert('Could not mark the request as complete. Please try again.');
       return;
     }
+    console.log('Request marked completed — no payment hold to capture.');
   }
 
   // SMS: notify customer their service is complete

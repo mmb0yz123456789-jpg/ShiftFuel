@@ -1426,6 +1426,22 @@ textarea:focus {
   font-weight: 800;
 }
 
+.status-pill-denied {
+  color: #7a1f1f;
+  background: #fdf2f2;
+  border-color: #f5c6c6;
+}
+
+.track-denied-card {
+  border-left: 3px solid #e07070;
+}
+
+.track-request-id-text {
+  font-size: 0.8rem;
+  word-break: break-all;
+  color: var(--text-secondary, #555);
+}
+
 .request-details {
   display: grid;
   gap: 8px;

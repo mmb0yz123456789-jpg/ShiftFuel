@@ -850,7 +850,7 @@ function renderReturnLocationPanel(request) {
       <h4>Car Location</h4>
       <p class="field-help">Record exactly where the vehicle was left after service.</p>
       <div class="field-grid">
-        <label>Car location
+        <label>
           <input class="return-parking-location" type="text" value="${escapeHtml(returnLocation)}" placeholder="Example: Lot F, space F-19">
         </label>
       </div>

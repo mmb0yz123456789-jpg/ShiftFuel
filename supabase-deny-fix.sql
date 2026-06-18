@@ -39,7 +39,7 @@ BEGIN
     vehicle_color                      = CASE WHEN p_data ? 'vehicle_color'                      THEN (p_data->>'vehicle_color')                           ELSE vehicle_color                      END,
     license_plate                      = CASE WHEN p_data ? 'license_plate'                      THEN (p_data->>'license_plate')                           ELSE license_plate                      END,
     service_date                       = CASE WHEN p_data ? 'service_date'                       THEN (p_data->>'service_date')::date                      ELSE service_date                       END,
-    desired_return_time                = CASE WHEN p_data ? 'desired_return_time'                THEN (p_data->>'desired_return_time')                     ELSE desired_return_time                END,
+    desired_return_time                = CASE WHEN p_data ? 'desired_return_time'                THEN (p_data->>'desired_return_time')::time               ELSE desired_return_time                END,
     fuel_type                          = CASE WHEN p_data ? 'fuel_type'                          THEN (p_data->>'fuel_type')                               ELSE fuel_type                          END,
     return_parking_location            = CASE WHEN p_data ? 'return_parking_location'            THEN (p_data->>'return_parking_location')                 ELSE return_parking_location            END,
     estimated_total                    = CASE WHEN p_data ? 'estimated_total'                    THEN (p_data->'estimated_total')::numeric                 ELSE estimated_total                    END,
