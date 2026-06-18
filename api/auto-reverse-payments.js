@@ -47,7 +47,7 @@ module.exports = async (req, res) => {
 
   if (error) {
     console.error('[auto-reverse] Supabase query error:', error.message);
-    return res.status(500).json({ error: error.message });
+    return res.status(500).json({ error: 'Database query failed' });
   }
 
   const results = { reversed: [], skipped: [], failed: [] };

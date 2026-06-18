@@ -1,5 +1,6 @@
 const { createClient } = require('@supabase/supabase-js');
 const twilio = require('twilio');
+const { setCorsHeaders, getSupabaseAdmin, verifyAdminToken } = require('./_auth');
 
 function formatPhone(raw) {
   if (!raw) return null;
@@ -9,46 +10,51 @@ function formatPhone(raw) {
   return null;
 }
 
-// Check if the request location matches a worker's home_location.
-// Matching is loose: we check if the city or a key location keyword appears
-// in both strings (case-insensitive), or if both are blank (catch-all).
 function locationMatches(requestLocation, workerLocation) {
-  if (!workerLocation) return true; // worker has no location restriction — gets all jobs
+  if (!workerLocation) return true;
   if (!requestLocation) return false;
 
   const req = String(requestLocation).toLowerCase();
   const wrk = String(workerLocation).toLowerCase();
 
-  // Direct substring match either way
   if (req.includes(wrk) || wrk.includes(req)) return true;
 
-  // City-level match: extract first city-like token from each and compare
   const cityToken = (s) => s.replace(/[^a-z\s]/g, ' ').trim().split(/\s+/)[0];
   return cityToken(req) === cityToken(wrk) && cityToken(req).length > 2;
 }
 
 module.exports = async (req, res) => {
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  setCorsHeaders(req, res);
 
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
-  const {
-    serviceDate,
-    serviceLabel,
-    addressCity,
-    addressState,
-    hospital,
-    parkingLocation,
-  } = req.body || {};
+  const { caller_token, request_id, serviceDate, serviceLabel, addressCity, addressState, hospital, parkingLocation } = req.body || {};
 
-  const supabaseUrl = process.env.SUPABASE_URL;
-  const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  // Must be either an admin session OR a valid recently-created request_id (booking flow).
+  let authorized = false;
 
-  if (!supabaseUrl || !supabaseKey) {
-    return res.status(500).json({ error: 'Supabase env vars missing' });
+  if (caller_token) {
+    authorized = await verifyAdminToken(caller_token);
+  } else if (request_id) {
+    // Booking flow: verify the request_id exists and was created in the last 10 minutes.
+    try {
+      const db = getSupabaseAdmin();
+      const cutoff = new Date(Date.now() - 10 * 60 * 1000).toISOString();
+      const { data } = await db
+        .from('service_requests')
+        .select('id')
+        .eq('id', request_id)
+        .gte('created_at', cutoff)
+        .maybeSingle();
+      authorized = !!data;
+    } catch {
+      authorized = false;
+    }
+  }
+
+  if (!authorized) {
+    return res.status(403).json({ error: 'Unauthorized' });
   }
 
   const accountSid = process.env.TWILIO_ACCOUNT_SID;
@@ -56,12 +62,16 @@ module.exports = async (req, res) => {
   const fromNumber = process.env.TWILIO_PHONE_NUMBER;
 
   if (!accountSid || !authToken || !fromNumber) {
-    return res.status(500).json({ error: 'Twilio env vars missing' });
+    return res.status(500).json({ error: 'SMS service not configured' });
   }
 
-  const db = createClient(supabaseUrl, supabaseKey);
+  let db;
+  try {
+    db = getSupabaseAdmin();
+  } catch {
+    return res.status(500).json({ error: 'Service configuration error' });
+  }
 
-  // Fetch all active workers who have a phone number
   const { data: workers, error } = await db
     .from('employees')
     .select('id, full_name, phone, home_location')
@@ -70,10 +80,9 @@ module.exports = async (req, res) => {
 
   if (error) {
     console.error('[notify-area-workers] Employee query error:', error.message);
-    return res.status(500).json({ error: error.message });
+    return res.status(500).json({ error: 'Could not retrieve worker list' });
   }
 
-  // The "request location" for matching — use city+state or the hospital/location name
   const requestLocation = addressCity
     ? `${addressCity} ${addressState || ''}`.trim()
     : hospital || '';
@@ -100,13 +109,13 @@ module.exports = async (req, res) => {
 
     try {
       const message = await client.messages.create({ body, from: fromNumber, to });
-      console.log(`[notify-area-workers] Notified ${worker.full_name} (${to}) sid=${message.sid}`);
+      console.log(`[notify-area-workers] Notified ${worker.full_name} sid=${message.sid}`);
       results.push({ worker: worker.full_name, status: 'sent' });
     } catch (err) {
       console.error(`[notify-area-workers] Failed for ${worker.full_name}:`, err.message);
-      results.push({ worker: worker.full_name, status: 'failed', error: err.message });
+      results.push({ worker: worker.full_name, status: 'failed' });
     }
   }
 
-  res.status(200).json({ notified: results.length, results });
+  return res.status(200).json({ notified: results.filter(r => r.status === 'sent').length, results });
 };

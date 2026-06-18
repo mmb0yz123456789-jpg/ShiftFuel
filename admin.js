@@ -5,7 +5,7 @@ function sendNotification(event, phone, data) {
   fetch('/api/send-sms', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ event, to: phone, data }),
+    body: JSON.stringify({ event, to: phone, data, caller_token: adminToken() }),
   }).catch((err) => console.warn('[notify] SMS fire-and-forget failed:', err.message));
 }
 const requestList = document.querySelector('#request-list');
@@ -687,14 +687,42 @@ function renderActions(request) {
   `;
 }
 
+const DENY_REASON_OPTIONS = [
+  'Car wash unavailable',
+  'Customer requested cancellation',
+  'Duplicate request',
+  'Fuel door locked',
+  'Fuel station unavailable',
+  'Keys unavailable',
+  'Other',
+  'Outside service area',
+  'Payment authorization issue',
+  'Safety concern',
+  'Service location issue',
+  'Vehicle inaccessible',
+  'Vehicle not located',
+  'Weather conditions',
+];
+
+function denyReasonOptionsHtml() {
+  return `<option value="">— Select a reason —</option>` +
+    DENY_REASON_OPTIONS.map(r => `<option value="${escapeHtml(r)}">${escapeHtml(r)}</option>`).join('');
+}
+
 function renderDenyReasonPanel(request) {
   return `
     <div class="deny-reason-panel" data-deny-for="${escapeHtml(request.id)}" hidden>
       <h4>Reason for denial</h4>
-      <p class="field-help">Add why this request is being denied. This keeps the record clear for admin and tracking.</p>
+      <p class="field-help">Select why this request is being denied. This keeps the record clear for admin and tracking.</p>
       <label>
         Reason
-        <textarea class="deny-reason" rows="3" placeholder="Example: Outside service area, duplicate test request, unavailable time slot."></textarea>
+        <select class="deny-reason-select">
+          ${denyReasonOptionsHtml()}
+        </select>
+      </label>
+      <label class="deny-reason-other-wrap" hidden>
+        Describe the reason
+        <textarea class="deny-reason-other" rows="2" placeholder="Describe the reason for denial."></textarea>
       </label>
       <div class="admin-button-row">
         <button class="button danger save-deny-reason" data-id="${escapeHtml(request.id)}" type="button">Deny request</button>
@@ -716,7 +744,13 @@ function renderServiceUnablePanel(request) {
       <p class="field-help service-unable-label"></p>
       <label>
         Reason
-        <textarea class="service-unable-reason" rows="3" placeholder="Example: Car wash closed at this location, fuel pump unavailable, customer vehicle issue."></textarea>
+        <select class="service-unable-reason">
+          ${denyReasonOptionsHtml()}
+        </select>
+      </label>
+      <label class="service-unable-other-wrap" hidden>
+        Describe the reason
+        <textarea class="service-unable-other" rows="2" placeholder="Describe the service issue."></textarea>
       </label>
       <div class="admin-button-row">
         <button class="button danger save-service-unable" data-id="${escapeHtml(request.id)}" type="button">Save reason</button>
@@ -1589,6 +1623,24 @@ async function uploadAdminWorkerPhoto(employeeId, blob) {
   return data?.publicUrl || path;
 }
 
+function adminStoragePathFromUrl(url) {
+  if (!url) return null;
+  const marker = `/object/public/${PHOTO_BUCKET}/`;
+  const idx = url.indexOf(marker);
+  if (idx === -1) return null;
+  return decodeURIComponent(url.slice(idx + marker.length).split('?')[0]);
+}
+
+async function deleteOldAdminWorkerPhotos(oldOriginalUrl, oldCroppedUrl) {
+  const paths = [...new Set([
+    adminStoragePathFromUrl(oldOriginalUrl),
+    adminStoragePathFromUrl(oldCroppedUrl),
+  ])].filter(Boolean);
+  if (!paths.length) return;
+  const { error } = await db.storage.from(PHOTO_BUCKET).remove(paths);
+  if (error) console.warn('Could not delete old worker profile photos:', error.message);
+}
+
 async function validateUniqueWorkerPhone(employeeId, phone) {
   if (!phone) return;
 
@@ -1627,12 +1679,15 @@ async function saveAdminWorkerProfile(button) {
   const boundaryImage  = document.querySelector('#admin-photo-boundary-image');
 
   if (adminPhotoDeleted) {
+    // Delete both old files from storage
+    await deleteOldAdminWorkerPhotos(existingEmployee?.original_photo_url, existingEmployee?.cropped_photo_url || existingEmployee?.photo_url);
     originalPhotoUrl = null;
     croppedPhotoUrl  = null;
     adminPhotoZoom   = 1;
     adminPhotoPosition = { x: 0, y: 0 };
   } else if (adminCroppedPhotoBlob) {
-    // New photo uploaded — upload original then generate cropped version.
+    // New photo uploaded — delete old files then upload original + cropped.
+    await deleteOldAdminWorkerPhotos(existingEmployee?.original_photo_url, existingEmployee?.cropped_photo_url || existingEmployee?.photo_url);
     originalPhotoUrl = await uploadAdminWorkerPhoto(employeeId, adminCroppedPhotoBlob);
     const croppedFile = boundaryImage?.naturalWidth
       ? await window.ShiftFuelPhoto?.cropToBlobFromBoundaryEditor(boundaryImage, adminPhotoZoom, adminPhotoPosition.x, adminPhotoPosition.y)
@@ -1641,7 +1696,8 @@ async function saveAdminWorkerProfile(button) {
       ? await uploadAdminWorkerPhoto(employeeId, croppedFile)
       : originalPhotoUrl;
   } else if (boundaryImage?.naturalWidth && boundaryImage.getAttribute('src')) {
-    // Edit framing — regenerate crop from boundary editor without re-uploading original.
+    // Edit framing only — delete old cropped file, regenerate crop, keep original.
+    await deleteOldAdminWorkerPhotos(null, existingEmployee?.cropped_photo_url);
     const croppedFile = await window.ShiftFuelPhoto?.cropToBlobFromBoundaryEditor(boundaryImage, adminPhotoZoom, adminPhotoPosition.x, adminPhotoPosition.y);
     if (croppedFile) croppedPhotoUrl = await uploadAdminWorkerPhoto(employeeId, croppedFile);
   }
@@ -2407,12 +2463,18 @@ async function saveServiceUnable(button) {
   const panel = button.closest('.service-unable-panel');
   const request = allRequests.find((item) => item.id === id);
   const type = panel?.dataset.serviceType;
-  const reason = panel?.querySelector('.service-unable-reason')?.value.trim();
+  const selected = panel?.querySelector('.service-unable-reason')?.value.trim();
+  const custom   = panel?.querySelector('.service-unable-other')?.value.trim();
+  const reason   = selected === 'Other' ? (custom || '') : selected;
 
   if (!request || !type) return;
 
-  if (!reason) {
-    alert('Add a reason before saving.');
+  if (!selected) {
+    alert('Select a reason before saving.');
+    return;
+  }
+  if (selected === 'Other' && !custom) {
+    alert('Describe the reason when "Other" is selected.');
     return;
   }
 
@@ -2449,7 +2511,7 @@ async function voidPaymentHold(request) {
     await fetch('/api/cancel-payment', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ payment_intent_id: request.payment_intent_id }),
+      body: JSON.stringify({ payment_intent_id: request.payment_intent_id, request_id: request.id, caller_token: adminToken() }),
     });
     await db.rpc('admin_update_request', {
       p_token: adminToken(),
@@ -2465,12 +2527,18 @@ async function saveDenyReason(button) {
   const id = button.dataset.id;
   const panel = button.closest('.deny-reason-panel');
   const request = allRequests.find((item) => item.id === id);
-  const reason = panel?.querySelector('.deny-reason')?.value.trim();
+  const selected = panel?.querySelector('.deny-reason-select')?.value.trim();
+  const custom   = panel?.querySelector('.deny-reason-other')?.value.trim();
+  const reason   = selected === 'Other' ? (custom || '') : selected;
 
   if (!request) return;
 
-  if (!reason) {
-    alert('Add a reason before denying this request.');
+  if (!selected) {
+    alert('Select a denial reason before denying this request.');
+    return;
+  }
+  if (selected === 'Other' && !custom) {
+    alert('Describe the reason when "Other" is selected.');
     return;
   }
 
@@ -2491,7 +2559,7 @@ async function saveDenyReason(button) {
         const res = await fetch('/api/cancel-payment', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ payment_intent_id: request.payment_intent_id }),
+          body: JSON.stringify({ payment_intent_id: request.payment_intent_id, request_id: request.id, caller_token: adminToken() }),
         });
         if (res.ok) {
           paymentStatus = 'voided';
@@ -2508,7 +2576,7 @@ async function saveDenyReason(button) {
         const res = await fetch('/api/refund-payment', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ payment_intent_id: request.payment_intent_id }),
+          body: JSON.stringify({ payment_intent_id: request.payment_intent_id, request_id: request.id, caller_token: adminToken() }),
         });
         if (res.ok) {
           paymentStatus = 'refunded';
@@ -2949,7 +3017,7 @@ async function saveEditTotalCharge(button) {
     const res = await fetch('/api/refund-payment', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ payment_intent_id: request.payment_intent_id, amount_cents: refundCents }),
+      body: JSON.stringify({ payment_intent_id: request.payment_intent_id, request_id: request.id, amount_cents: refundCents, caller_token: adminToken() }),
     });
     const result = await res.json().catch(() => ({}));
     if (!res.ok) {
@@ -3064,7 +3132,7 @@ requestList.addEventListener('click', async (event) => {
       const panel = requestList.querySelector(`[data-deny-for="${button.dataset.id}"]`);
       if (panel) {
         panel.hidden = false;
-        panel.querySelector('.deny-reason')?.focus();
+        panel.querySelector('.deny-reason-select')?.focus();
       }
       return;
     }
@@ -3073,7 +3141,10 @@ requestList.addEventListener('click', async (event) => {
       const panel = button.closest('.deny-reason-panel');
       if (panel) {
         panel.hidden = true;
-        panel.querySelector('.deny-reason').value = '';
+        const sel = panel.querySelector('.deny-reason-select');
+        if (sel) sel.value = '';
+        const otherWrap = panel.querySelector('.deny-reason-other-wrap');
+        if (otherWrap) otherWrap.hidden = true;
       }
       return;
     }
@@ -3155,6 +3226,18 @@ requestList.addEventListener('click', async (event) => {
 });
 
 requestList.addEventListener('change', (event) => {
+  if (event.target.classList.contains('deny-reason-select')) {
+    const panel = event.target.closest('.deny-reason-panel');
+    const otherWrap = panel?.querySelector('.deny-reason-other-wrap');
+    if (otherWrap) otherWrap.hidden = event.target.value !== 'Other';
+    return;
+  }
+  if (event.target.classList.contains('service-unable-reason')) {
+    const panel = event.target.closest('.service-unable-panel');
+    const otherWrap = panel?.querySelector('.service-unable-other-wrap');
+    if (otherWrap) otherWrap.hidden = event.target.value !== 'Other';
+    return;
+  }
   if (event.target.classList.contains('assign-worker-select')) {
     updateWorkerAssignment(event.target.dataset.id, event.target.value).catch((error) => {
       console.error('Worker assignment failed:', error);

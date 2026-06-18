@@ -59,16 +59,6 @@
     const LOCK_KEY = "shiftfuel_worker_locked_until";
     const ATTEMPT_KEY = "shiftfuel_worker_failed_attempts";
 
-    function cleanPhone(value) {
-      return String(value || "").replace(/\D/g, "");
-    }
-
-    async function sha256Hex(value) {
-      const bytes = new TextEncoder().encode(value);
-      const digest = await crypto.subtle.digest("SHA-256", bytes);
-      return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
-    }
-
     function lockedUntil() {
       return Number(localStorage.getItem(LOCK_KEY) || 0);
     }
@@ -102,44 +92,30 @@
       message.textContent = "Signing in...";
 
       try {
+        // Password verification happens server-side via the worker_login RPC.
+        // The browser never receives password hashes or salts.
         const { data, error } = await window.ShiftFuelSupabase
-          .from("employees")
-          .select("id,full_name,phone,active,worker_password_hash,worker_password_salt")
-          .eq("active", true);
+          .rpc("worker_login", {
+            p_identifier: loginValue,
+            p_password: password,
+          });
 
         if (error) throw error;
 
-        const cleanedLoginPhone = cleanPhone(loginValue);
-        const employee = (data || []).find((item) => {
-          return item.full_name?.toLowerCase() === loginValue.toLowerCase()
-            || (cleanedLoginPhone && cleanPhone(item.phone) === cleanedLoginPhone);
-        });
-
-        if (employee?.worker_password_hash && employee?.worker_password_salt) {
-          const hash = await sha256Hex(`${employee.worker_password_salt}:${password}`);
-
-          if (hash === employee.worker_password_hash) {
-            // Create a server-side session token so write RPCs can verify identity.
-            let workerToken = null;
-            try {
-              const { data: token, error: tokenError } = await window.ShiftFuelSupabase
-                .rpc("worker_create_session", { p_employee_id: employee.id });
-              if (!tokenError) workerToken = token;
-            } catch {
-              // Non-fatal — worker can still log in; write RPCs will reject without token.
-            }
-            localStorage.removeItem(ATTEMPT_KEY);
-            localStorage.removeItem(LOCK_KEY);
-            sessionStorage.setItem("shiftfuel_worker", employee.full_name);
-            sessionStorage.setItem("shiftfuel_worker_id", employee.id);
-            if (workerToken) sessionStorage.setItem("shiftfuel_worker_token", workerToken);
-            sessionStorage.setItem("shiftfuel_worker_expires", String(Date.now() + 8 * 60 * 60 * 1000));
-            window.location.href = "worker.html";
-            return;
-          }
+        if (data?.token && data?.employee_id) {
+          localStorage.removeItem(ATTEMPT_KEY);
+          localStorage.removeItem(LOCK_KEY);
+          sessionStorage.setItem("shiftfuel_worker", data.full_name || loginValue);
+          sessionStorage.setItem("shiftfuel_worker_id", data.employee_id);
+          sessionStorage.setItem("shiftfuel_worker_token", data.token);
+          sessionStorage.setItem("shiftfuel_worker_expires", String(Date.now() + 8 * 60 * 60 * 1000));
+          window.location.href = "worker.html";
+          return;
         }
       } catch (error) {
-        console.warn("Worker Supabase login failed:", error);
+        // RPC raises an exception for invalid credentials — do not log the message
+        // to avoid leaking which field was wrong.
+        console.warn("Worker login failed");
       }
 
       recordFailedAttempt();
