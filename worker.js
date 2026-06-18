@@ -1,13 +1,5 @@
 const workerDb = window.ShiftFuelSupabase;
 
-function sendWorkerNotification(event, phone, data) {
-  if (!phone) return;
-  fetch('/api/send-sms', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ event, to: phone, data, caller_token: SESSION_WORKER_TOKEN }),
-  }).catch((err) => console.warn('[notify] SMS fire-and-forget failed:', err.message));
-}
 const workerProfileForm = document.querySelector('#worker-profile-form');
 const workerProfileName = document.querySelector('#worker-profile-name');
 const workerProfilePhone = document.querySelector('#worker-profile-phone');
@@ -1339,6 +1331,9 @@ function renderWorkerInspectionPanel(request) {
 function renderWorkerCompletePanel(request) {
   const receiptTotals = receiptTotalsFromNotes(request);
   const workerReceiptTotal = receiptTotals.fuel + receiptTotals.wash;
+  const needsCustomerPayment = request.payment_intent_id && request.payment_status !== 'captured';
+  const primaryClass = needsCustomerPayment ? 'send-to-customer-payment' : 'complete-request';
+  const primaryLabel = needsCustomerPayment ? 'Send to Customer for Payment' : 'Complete request';
 
   return `
     <div class="complete-panel" data-complete-for="${escapeHtml(request.id)}">
@@ -1353,7 +1348,7 @@ function renderWorkerCompletePanel(request) {
         <span>I confirm the saved receipt totals are correct.</span>
       </label>
       <div class="admin-button-row">
-        <button class="button primary complete-request" data-id="${escapeHtml(request.id)}" type="button">Complete request</button>
+        <button class="button primary ${primaryClass}" data-id="${escapeHtml(request.id)}" type="button">${primaryLabel}</button>
         ${serviceNeedsFuel(request) ? `<button class="button secondary show-total-edit" data-id="${escapeHtml(request.id)}" data-edit-total="fuel" type="button">Fuel Incorrect</button>` : ''}
         ${serviceNeedsWash(request) ? `<button class="button secondary show-total-edit" data-id="${escapeHtml(request.id)}" data-edit-total="wash" type="button">Car Wash Incorrect</button>` : ''}
       </div>
@@ -1739,13 +1734,13 @@ async function saveWorkerTotalEdit(button) {
   await loadWorkerJobs();
 }
 
-async function completeWorkerRequest(button) {
+function workerCompleteValidation(button) {
   const id = button.dataset.id;
   const request = allWorkerJobs.find((item) => item.id === id);
   const panel = button.closest('.complete-panel');
-  const confirmed = panel.querySelector('.confirm-complete-totals')?.checked;
+  const confirmed = panel?.querySelector('.confirm-complete-totals')?.checked;
 
-  if (!request) return;
+  if (!request) return null;
 
   const receiptTotals = receiptTotalsFromNotes(request);
   const hasReceipts = (serviceNeedsFuel(request) ? receiptTotals.fuel > 0 : true)
@@ -1753,97 +1748,77 @@ async function completeWorkerRequest(button) {
 
   if (!hasReceipts) {
     alert('Save the receipt total before completing this request.');
-    return;
+    return null;
   }
-
   if (!confirmed) {
     alert('Check the confirmation box after verifying the saved totals.');
-    return;
+    return null;
   }
-
   if (request.quick_inspection && request.status !== 'inspection_recorded') {
     alert('Complete the quick inspection before completing this request.');
-    return;
+    return null;
   }
 
+  return { id, request, receiptTotals };
+}
+
+// Worker sends the request to the customer for payment — does NOT capture payment.
+async function sendWorkerToCustomerPayment(button) {
+  const validated = workerCompleteValidation(button);
+  if (!validated) return;
+  const { id, request, receiptTotals } = validated;
+
   button.disabled = true;
-  button.textContent = 'Processing payment...';
-  console.log('Payment capture initiated — worker confirmed totals and clicked Complete request.');
+  button.textContent = 'Sending to customer...';
 
   const finalTotal = finalTotalFromSavedReceipts(request, receiptTotals);
 
-  // Capture Stripe hold if still authorized — block completion on failure
-  if (request.payment_intent_id && request.payment_status === 'authorized') {
-    let captureOk = false;
-    try {
-      const amountCents = Math.round(finalTotal * 100);
-      const res = await fetch('/api/capture-payment', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          payment_intent_id: request.payment_intent_id,
-          request_id: id,
-          amount_cents: amountCents,
-          caller_token: SESSION_WORKER_TOKEN,
-        }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (res.ok) {
-        captureOk = true;
-      } else {
-        console.error('[complete] Stripe capture failed:', data.error);
-        button.disabled = false;
-        button.textContent = 'Complete request';
-        alert(`Payment capture failed: ${data.error || 'Unknown error'}. The request has not been marked complete. Please try again or contact support.`);
-        return;
-      }
-    } catch (err) {
-      console.error('[complete] Stripe capture error:', err.message);
-      button.disabled = false;
-      button.textContent = 'Complete request';
-      alert('Could not reach the payment service. Check your connection and try again.');
-      return;
-    }
+  const { error: updateErr } = await workerDb.rpc('worker_update_request', {
+    p_token: SESSION_WORKER_TOKEN,
+    p_request_id: id,
+    p_data: { status: 'pending_customer_payment', final_total: finalTotal },
+  });
 
-    if (captureOk) {
-      button.textContent = 'Saving...';
-      const { error: updateErr } = await workerDb.rpc('worker_update_request', {
-        p_token: SESSION_WORKER_TOKEN,
-        p_request_id: id,
-        p_data: { status: 'complete', final_total: finalTotal, payment_status: 'captured' },
-      });
-      if (updateErr) {
-        console.error('[complete] Failed to save completion:', updateErr);
-        button.disabled = false;
-        button.textContent = 'Complete request';
-        alert('Payment was charged but the request could not be marked complete. Please contact admin — do not charge again.');
-        return;
-      }
-      console.log('Request marked completed — payment captured and status updated.');
-    }
-  } else {
-    // No Stripe hold (cash/no payment) — just mark complete with final total
-    button.textContent = 'Saving...';
-    const { error: updateErr } = await workerDb.rpc('worker_update_request', {
-      p_token: SESSION_WORKER_TOKEN,
-      p_request_id: id,
-      p_data: { status: 'complete', final_total: finalTotal },
-    });
-    if (updateErr) {
-      console.error('[complete] Failed to save completion:', updateErr);
-      button.disabled = false;
-      button.textContent = 'Complete request';
-      alert('Could not mark the request as complete. Please try again.');
-      return;
-    }
-    console.log('Request marked completed — no payment hold to capture.');
+  if (updateErr) {
+    console.error('[complete] Failed to send to customer payment:', updateErr);
+    button.disabled = false;
+    button.textContent = 'Send to Customer for Payment';
+    alert('Could not send the request to the customer. Please try again.');
+    return;
   }
 
-  // SMS: notify customer their service is complete
-  sendWorkerNotification('service_complete', request.customer_phone, {
-    name: request.customer_name,
-    finalTotal: finalTotal,
+  console.log('Request sent to customer for payment — final total saved:', finalTotal);
+
+  await loadWorkerJobs();
+  await loadWorkerReviews();
+}
+
+// Worker completes a no-payment/cash request directly (no Stripe capture).
+async function completeWorkerRequest(button) {
+  const validated = workerCompleteValidation(button);
+  if (!validated) return;
+  const { id, request, receiptTotals } = validated;
+
+  button.disabled = true;
+  button.textContent = 'Saving...';
+
+  const finalTotal = finalTotalFromSavedReceipts(request, receiptTotals);
+
+  const { error: updateErr } = await workerDb.rpc('worker_update_request', {
+    p_token: SESSION_WORKER_TOKEN,
+    p_request_id: id,
+    p_data: { status: 'complete', final_total: finalTotal },
   });
+
+  if (updateErr) {
+    console.error('[complete] Failed to save completion:', updateErr);
+    button.disabled = false;
+    button.textContent = 'Complete request';
+    alert('Could not mark the request as complete. Please try again.');
+    return;
+  }
+
+  console.log('Request marked completed — no payment hold to capture.');
 
   await loadWorkerJobs();
   await loadWorkerReviews();
@@ -1939,6 +1914,10 @@ workerJobList?.addEventListener('click', async (event) => {
     if (button.classList.contains('save-service-unable')) {
       await saveWorkerServiceUnable(button);
       return;
+    }
+
+    if (button.classList.contains('send-to-customer-payment')) {
+      await sendWorkerToCustomerPayment(button);
     }
 
     if (button.classList.contains('complete-request')) {

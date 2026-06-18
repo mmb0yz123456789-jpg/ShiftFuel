@@ -953,6 +953,29 @@ textarea:focus {
   margin: 0;
 }
 
+.footer-internal-links {
+  margin-top: 10px;
+  font-size: 0.78rem;
+  opacity: 0.65;
+}
+
+.footer-internal-links a {
+  color: var(--muted);
+  text-decoration: none;
+  margin-right: 16px;
+}
+
+.footer-internal-links a:hover {
+  text-decoration: underline;
+}
+
+.inspection-disclaimer {
+  margin-top: 8px;
+  font-size: 0.8rem;
+  color: var(--muted);
+  font-style: italic;
+}
+
 .admin-hero {
   background: var(--surface);
   border-bottom: 1px solid var(--line);
