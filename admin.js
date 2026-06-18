@@ -138,6 +138,7 @@ const statusLabels = {
   customer_canceled: 'Canceled by customer',
   unable_to_complete: 'Unable to complete',
   auto_reversed: 'Missed — auto-reversed',
+  pending_customer_info: 'Awaiting customer info',
 };
 
 const applicantStatusLabels = {
@@ -1139,7 +1140,6 @@ function normalizeEmployee(employee) {
 async function loadEmployees() {
   try {
     await ensureEmployee(DEFAULT_WORKER_NAME);
-    await ensureEmployee('Test Worker');
 
     let { data, error } = await db
       .from('employees')
@@ -3960,3 +3960,66 @@ loadVehiclePsiGuides().finally(() => {
 });
 loadReviews();
 loadApplicants();
+
+// ── Create Request tab ────────────────────────────────────────────────────────
+
+document.querySelector('#admin-create-request-form')?.addEventListener('submit', async (event) => {
+  event.preventDefault();
+
+  const form = event.target;
+  const statusEl = document.querySelector('#cr-status');
+  const submitBtn = form.querySelector('[type="submit"]');
+
+  const val = (id) => (document.getElementById(id)?.value || '').trim();
+
+  const data = {
+    customer_name:       val('cr-customer-name'),
+    customer_phone:      val('cr-customer-phone'),
+    customer_email:      val('cr-customer-email'),
+    address_street:      val('cr-address-street'),
+    address_apt:         val('cr-address-apt'),
+    address_city:        val('cr-address-city'),
+    address_state:       val('cr-address-state'),
+    address_zip:         val('cr-address-zip'),
+    parking_location:    val('cr-parking-location'),
+    key_handoff_details: val('cr-key-handoff'),
+    service_type:        val('cr-service-type'),
+    service_date:        val('cr-service-date'),
+    desired_return_time: val('cr-return-time'),
+    vehicle_year:        val('cr-vehicle-year'),
+    vehicle_make:        val('cr-vehicle-make'),
+    vehicle_model:       val('cr-vehicle-model'),
+    vehicle_color:       val('cr-vehicle-color'),
+    license_plate:       val('cr-license-plate'),
+    notes:               val('cr-notes'),
+  };
+
+  if (!data.customer_name || !data.customer_phone || !data.customer_email) {
+    if (statusEl) statusEl.textContent = 'Customer name, phone, and email are required.';
+    return;
+  }
+
+  if (statusEl) statusEl.textContent = 'Creating request…';
+  submitBtn.disabled = true;
+
+  try {
+    const { data: result, error } = await db.rpc('admin_create_request', {
+      p_token: adminToken(),
+      p_data: data,
+    });
+
+    if (error) throw error;
+
+    form.reset();
+    if (statusEl) {
+      const id = result?.id ? ` (ID: ${result.id})` : '';
+      statusEl.textContent = `Request created${id}. The customer will see it on the Track page.`;
+    }
+    loadRequests();
+  } catch (err) {
+    console.error('admin_create_request error:', err);
+    if (statusEl) statusEl.textContent = `Could not create request: ${err.message || err}`;
+  } finally {
+    submitBtn.disabled = false;
+  }
+});

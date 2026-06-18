@@ -1777,8 +1777,8 @@ async function saveBooking(payload) {
     // SMS: notify customer their booking was received
     sendNotification('booking_submitted', payload.customer.phone, {
       name: payload.customer.name,
-      date: payload.service.date,
-      serviceLabel: payload.service.label || payload.service.type || 'fuel service',
+      date: payload.request.serviceDate,
+      serviceLabel: payload.request.serviceLabel || payload.request.serviceType || 'fuel service',
     });
 
     // SMS: broadcast to all workers in the matching service area
@@ -1786,8 +1786,8 @@ async function saveBooking(payload) {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        serviceDate: payload.service.date,
-        serviceLabel: payload.service.label || payload.service.type || 'fuel service',
+        serviceDate: payload.request.serviceDate,
+        serviceLabel: payload.request.serviceLabel || payload.request.serviceType || 'fuel service',
         addressCity: payload.request.addressCity || '',
         addressState: payload.request.addressState || '',
         hospital: payload.request.hospital || '',

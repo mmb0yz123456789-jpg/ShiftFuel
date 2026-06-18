@@ -38,6 +38,7 @@
       <nav class="admin-page-tabs" aria-label="Admin pages">
         <button class="admin-page-tab active" data-page="dashboard">Dashboard</button>
         <button class="admin-page-tab" data-page="workers">Workers <span id="worker-count-badge" class="page-tab-badge">0</span></button>
+        <button class="admin-page-tab" data-page="create-request">Create Request</button>
       </nav>
 
       <!-- ═══════════════════ DASHBOARD PAGE ═══════════════════ -->
@@ -199,6 +200,110 @@
             <button id="save-days-off" class="button primary" type="button">Save days off</button>
           </div>
           <p id="worker-schedule-status" class="field-help"></p>
+        </form>
+      </section>
+
+      <!-- ═══════════════════ CREATE REQUEST PAGE ═══════════════════ -->
+
+      <section class="section admin-hero" data-page-section="create-request" hidden>
+        <div class="section-heading">
+          <p class="eyebrow">Create Request</p>
+          <h1>Start a request for a customer</h1>
+          <p>The customer will complete vehicle details and payment on the Track page before the request enters the worker queue.</p>
+        </div>
+
+        <form id="admin-create-request-form" class="booking-form">
+          <fieldset>
+            <legend>Customer</legend>
+            <div class="field-grid">
+              <label>Customer name <span class="required-mark">*</span>
+                <input id="cr-customer-name" type="text" placeholder="Full name" required>
+              </label>
+              <label>Phone number <span class="required-mark">*</span>
+                <input id="cr-customer-phone" type="tel" placeholder="(302) 555-0100" required>
+              </label>
+              <label>Email <span class="required-mark">*</span>
+                <input id="cr-customer-email" type="email" placeholder="customer@email.com" required>
+              </label>
+            </div>
+          </fieldset>
+
+          <fieldset>
+            <legend>Service address</legend>
+            <p class="field-help">No address validation is required for admin-created requests.</p>
+            <div class="field-grid">
+              <label>Street address
+                <input id="cr-address-street" type="text" placeholder="123 Main St">
+              </label>
+              <label>Apt / suite
+                <input id="cr-address-apt" type="text" placeholder="Suite 100">
+              </label>
+              <label>City
+                <input id="cr-address-city" type="text" placeholder="Newark">
+              </label>
+              <label>State
+                <input id="cr-address-state" type="text" placeholder="DE">
+              </label>
+              <label>ZIP
+                <input id="cr-address-zip" type="text" placeholder="19702">
+              </label>
+              <label>Parking location
+                <input id="cr-parking-location" type="text" placeholder="Lot C, row 3">
+              </label>
+              <label>Key handoff instructions
+                <input id="cr-key-handoff" type="text" placeholder="Keys in center console">
+              </label>
+            </div>
+          </fieldset>
+
+          <fieldset>
+            <legend>Service</legend>
+            <div class="field-grid">
+              <label>Service type
+                <select id="cr-service-type">
+                  <option value="">Select service</option>
+                  <option value="fuel">Fuel</option>
+                  <option value="car-wash">Car Wash</option>
+                  <option value="car-wash-fuel">Car Wash + Fuel</option>
+                </select>
+              </label>
+              <label>Service date
+                <input id="cr-service-date" type="date">
+              </label>
+              <label>Desired return time
+                <input id="cr-return-time" type="time">
+              </label>
+            </div>
+          </fieldset>
+
+          <fieldset>
+            <legend>Vehicle <span class="optional-mark">Optional — if known</span></legend>
+            <div class="field-grid">
+              <label>Year
+                <input id="cr-vehicle-year" type="text" placeholder="2020">
+              </label>
+              <label>Make
+                <input id="cr-vehicle-make" type="text" placeholder="Toyota">
+              </label>
+              <label>Model
+                <input id="cr-vehicle-model" type="text" placeholder="Camry">
+              </label>
+              <label>Color
+                <input id="cr-vehicle-color" type="text" placeholder="Silver">
+              </label>
+              <label>License plate
+                <input id="cr-license-plate" type="text" placeholder="ABC 1234">
+              </label>
+            </div>
+          </fieldset>
+
+          <fieldset>
+            <legend>Admin notes <span class="optional-mark">Optional</span></legend>
+            <textarea id="cr-notes" rows="3" placeholder="Internal notes, special instructions, or context for this request."></textarea>
+          </fieldset>
+
+          <button class="button primary" type="submit">Create request</button>
+          <p id="cr-status" class="form-status" role="status"></p>
         </form>
       </section>
 
