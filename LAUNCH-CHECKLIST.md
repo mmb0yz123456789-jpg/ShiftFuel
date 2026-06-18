@@ -75,11 +75,18 @@ Run these files in order. Each is safe to re-run.
 
 ## Still needed before launch (requires further work)
 
-### Priority 5 — Admin "Send to Customer for Payment" flow
-- Add `pending_customer_payment` status handling in admin.js (replace "Complete request" button with "Send to Customer for Payment" for unpaid requests)
-- Add customer-side payment card in track.js for `pending_customer_payment` status
-- Create `api/customer-capture.js` endpoint that verifies via phone+email instead of session token
-- Add `payment_needed` SMS event trigger when admin sends to customer
+### Priority 5 — Admin "Send to Customer for Payment" flow — DONE
+- `admin.js`: "Complete request" replaced with "Send to Customer for Payment" for unpaid requests; sets status → `pending_customer_payment` + sends SMS
+- `admin.js`: `pending_customer_payment` handled in `renderActions` — shows waiting message; if payment captured, shows "Mark complete" button
+- `track.js`: `renderPendingPaymentCard` renders action-required card with final total, return location, and "Confirm and Pay" button
+- `track.js`: `handleConfirmAndPay` handles both case A (capture existing pre-auth) and case B (new card entry)
+- `track.js`: `mountCustomerPayCard` mounts Stripe card element for case B after render
+- `api/customer-capture.js`: new endpoint — verifies phone+email identity, captures pre-auth PI or records new succeeded PI, marks request complete
+- `api/create-payment-intent.js`: now accepts `capture_method` param for immediate-capture case B payments
+- `styles.css`: payment card styles added
+
+### SQL needed for `pending_customer_payment` status
+The `admin_update_request` RPC must accept `pending_customer_payment` as a valid status. Check your CASE expression for `status` in that RPC — if it lists allowed statuses, add `pending_customer_payment`. The `customer-capture` API endpoint updates `service_requests` directly via the service role key (bypasses RPC), so no new SQL is needed for the completion step.
 
 ### Priority 3 — Tracker timeline verification
 - Service-aware timeline was implemented in the previous session; verify on live data

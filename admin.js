@@ -139,6 +139,7 @@ const statusLabels = {
   unable_to_complete: 'Unable to complete',
   auto_reversed: 'Missed — auto-reversed',
   pending_customer_info: 'Awaiting customer info',
+  pending_customer_payment: 'Awaiting customer payment',
 };
 
 const applicantStatusLabels = {
@@ -665,6 +666,11 @@ function renderActions(request) {
   } else if (request.status === 'inspection_recorded') {
     actions.push(stepInstruction('Confirm the saved totals before completing.'));
     activePanel = renderCompletePanel(request);
+  } else if (request.status === 'pending_customer_payment') {
+    actions.push(stepInstruction('Waiting for the customer to confirm and pay from the Request Tracker.'));
+    if (request.payment_status === 'captured') {
+      actions.push(`<button class="button primary complete-request" data-id="${request.id}" type="button">Mark complete (payment received)</button>`);
+    }
   }
 
   const back = backButton(request);
@@ -897,28 +903,37 @@ function renderCompletePanel(request) {
   const fees = feeSummary(request);
   const receiptTotals = receiptTotalsFromNotes(request);
   const expectedFinalTotal = finalTotalFromSavedReceipts(request, receiptTotals);
+  const alreadyCaptured = request.payment_status === 'captured';
+
+  // If payment already captured, admin can directly mark complete.
+  // Otherwise, admin sends to customer for payment.
+  const primaryBtn = alreadyCaptured
+    ? `<button class="button primary complete-request" data-id="${request.id}" type="button">Complete request</button>`
+    : `<button class="button primary send-to-customer-payment" data-id="${request.id}" type="button">Send to Customer for Payment</button>`;
 
   return `
     <div class="complete-panel" data-complete-for="${request.id}">
-      <h4>Confirm before completing</h4>
-      <p class="field-help">Please confirm these saved totals are correct before completing.</p>
+      <h4>Confirm before sending to customer</h4>
+      <p class="field-help">Confirm these totals are correct. The customer will review and pay from the Request Tracker.</p>
       <div class="request-details">
         ${serviceNeedsFuel(request) ? `<p><strong>Fuel:</strong> ${money(receiptTotals.fuel)} receipt + ${money(fees.fuel)} convenience fee.</p>` : ''}
         ${serviceNeedsWash(request) ? `<p><strong>Car wash:</strong> ${money(receiptTotals.wash)} receipt + ${money(fees.wash)} convenience fee.</p>` : ''}
         ${request.quick_inspection ? `<p><strong>Quick inspection:</strong> ${money(fees.inspection)}</p>` : ''}
         <p><strong>Final total currently saved:</strong> ${request.final_total == null ? 'Not recorded' : money(request.final_total)}</p>
         <p><strong>Expected total from saved receipts:</strong> ${money(expectedFinalTotal)}</p>
+        ${request.return_parking_location ? `<p><strong>Return location:</strong> ${escapeHtml(request.return_parking_location)}</p>` : ''}
+        ${alreadyCaptured ? `<p class="field-help" style="color:#1a7a3a">✓ Payment already captured — you can mark complete directly.</p>` : ''}
       </div>
       <label class="checkbox-label">
         <input class="confirm-complete-totals" type="checkbox">
         <span>I confirm the saved receipt totals and convenience fees are correct.</span>
       </label>
       <div class="admin-button-row">
-        <button class="button primary complete-request" data-id="${request.id}" type="button">Complete request</button>
+        ${primaryBtn}
         ${serviceNeedsFuel(request) ? `<button class="button secondary show-total-edit" data-id="${request.id}" data-edit-total="fuel" type="button">Fuel Incorrect</button>` : ''}
         ${serviceNeedsWash(request) ? `<button class="button secondary show-total-edit" data-id="${request.id}" data-edit-total="wash" type="button">Car Wash Incorrect</button>` : ''}
       </div>
-      <p class="field-help">Editing a total requires you to confirm the totals again before completing.</p>
+      <p class="field-help">Editing a total requires you to confirm the totals again before sending.</p>
       <div class="total-edit-panel" data-total-edit-for="${request.id}" hidden></div>
     </div>
   `;
@@ -2737,7 +2752,72 @@ async function completeRequest(button) {
     return;
   }
 
-  await updateRequestStatus(id, 'complete');
+  // Only allow direct completion when payment is already captured (or no payment).
+  if (request.payment_intent_id && request.payment_status !== 'captured') {
+    alert('Payment has not been captured yet. Use "Send to Customer for Payment" instead.');
+    return;
+  }
+
+  button.disabled = true;
+  button.textContent = 'Completing...';
+  try {
+    await updateRequestStatus(id, 'complete');
+    sendNotification('service_complete', request.customer_phone, {
+      name: request.customer_name,
+      finalTotal: request.final_total,
+    });
+  } catch (err) {
+    console.error('[complete] Failed:', err.message);
+    button.disabled = false;
+    button.textContent = 'Complete request';
+    alert('Could not complete the request. Please try again.');
+  }
+}
+
+async function sendToCustomerPayment(button) {
+  const id = button.dataset.id;
+  const request = allRequests.find((item) => item.id === id);
+  const panel = button.closest('.complete-panel');
+  const confirmed = panel.querySelector('.confirm-complete-totals')?.checked;
+
+  if (request.final_total == null) {
+    alert('Save the final total before sending to the customer.');
+    return;
+  }
+
+  if (!confirmed) {
+    alert('Check the confirmation box after verifying the saved totals.');
+    return;
+  }
+
+  if (request.quick_inspection && request.status !== 'inspection_recorded') {
+    alert('Complete the quick inspection before sending to the customer.');
+    return;
+  }
+
+  button.disabled = true;
+  button.textContent = 'Sending...';
+
+  try {
+    const { error } = await db.rpc('admin_update_request', {
+      p_token: adminToken(),
+      p_request_id: id,
+      p_data: { status: 'pending_customer_payment' },
+    });
+    if (error) throw error;
+
+    // Notify customer that payment is ready
+    sendNotification('payment_needed', request.customer_phone, {
+      name: request.customer_name,
+    });
+
+    await loadRequests();
+  } catch (err) {
+    console.error('[sendToCustomerPayment] Failed:', err.message);
+    button.disabled = false;
+    button.textContent = 'Send to Customer for Payment';
+    alert('Could not update the request. Please try again.');
+  }
 }
 
 async function saveEdit(button) {
@@ -3171,6 +3251,11 @@ requestList.addEventListener('click', async (event) => {
 
     if (button.classList.contains('complete-request')) {
       await completeRequest(button);
+      return;
+    }
+
+    if (button.classList.contains('send-to-customer-payment')) {
+      await sendToCustomerPayment(button);
       return;
     }
 

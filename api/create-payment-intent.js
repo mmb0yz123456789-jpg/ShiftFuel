@@ -7,7 +7,7 @@ module.exports = async (req, res) => {
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
-  const { amount_cents, customer_name, customer_email, service_label } = req.body || {};
+  const { amount_cents, customer_name, customer_email, service_label, capture_method } = req.body || {};
 
   if (!amount_cents || amount_cents < 50) {
     return res.status(400).json({ error: 'Amount must be at least $0.50' });
@@ -23,7 +23,7 @@ module.exports = async (req, res) => {
     const paymentIntent = await stripe.paymentIntents.create({
       amount: Math.round(amount_cents),
       currency: 'usd',
-      capture_method: 'manual',
+      capture_method: capture_method === 'automatic' ? 'automatic' : 'manual',
       description: service_label || 'ShiftFuel service',
       receipt_email: customer_email || undefined,
       metadata: {
