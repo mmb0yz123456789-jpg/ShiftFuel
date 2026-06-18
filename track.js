@@ -1,4 +1,4 @@
-const trackForm = document.querySelector("#track-form");
+﻿const trackForm = document.querySelector("#track-form");
 const trackingId = document.querySelector("#tracking-id");
 const trackingPhone = document.querySelector("#tracking-phone");
 const trackingEmail = document.querySelector("#tracking-email");
@@ -583,20 +583,20 @@ const SERVICE_OPTIONS = [
 
 const WASH_PACKAGES = [
   {
-    value: ‘buff-shine’, label: ‘Buff & Shine’, price: 27,
-    includes: [‘Fire Bath’, ‘Super Hard Shell Ceramic Finish’, "Dry N’ Shine", ‘ICE Instant Shine’, ‘Salt Shield’, ‘Tire Shine’, ‘Triple Wheel Cleaning’, ‘Tri-Foam Conditioner’, "Blazin’ Glaze Clear Coat", ‘High pH and Low pH Presoak’, ‘Drying Agent’, ‘Spot Free Rinse’],
+    value: 'buff-shine', label: 'Buff & Shine', price: 27,
+    includes: ['Fire Bath', 'Super Hard Shell Ceramic Finish', "Dry N' Shine", 'ICE Instant Shine', 'Salt Shield', 'Tire Shine', 'Triple Wheel Cleaning', 'Tri-Foam Conditioner', "Blazin' Glaze Clear Coat", 'High pH and Low pH Presoak', 'Drying Agent', 'Spot Free Rinse'],
   },
   {
-    value: ‘shine-protect’, label: ‘Shine & Protect’, price: 20,
-    includes: [‘ICE Instant Shine’, ‘Salt Shield’, ‘Tire Shine’, ‘Triple Wheel Cleaning’, ‘Tri-Foam Conditioner’, "Blazin’ Glaze Clear Coat", ‘High pH and Low pH Presoak’, ‘Drying Agent’, ‘Spot Free Rinse’],
+    value: 'shine-protect', label: 'Shine & Protect', price: 20,
+    includes: ['ICE Instant Shine', 'Salt Shield', 'Tire Shine', 'Triple Wheel Cleaning', 'Tri-Foam Conditioner', "Blazin' Glaze Clear Coat", 'High pH and Low pH Presoak', 'Drying Agent', 'Spot Free Rinse'],
   },
   {
-    value: ‘shine’, label: ‘Shine’, price: 16,
-    includes: [‘Tri-Foam Conditioner’, "Blazin’ Glaze Clear Coat", ‘High pH and Low pH Presoak’, ‘Double Tire & Wheel Cleaning’, ‘Drying Agent’, ‘Spot Free Rinse’],
+    value: 'shine', label: 'Shine', price: 16,
+    includes: ['Tri-Foam Conditioner', "Blazin' Glaze Clear Coat", 'High pH and Low pH Presoak', 'Double Tire & Wheel Cleaning', 'Drying Agent', 'Spot Free Rinse'],
   },
   {
-    value: ‘double-wash’, label: ‘Double Wash’, price: 12,
-    includes: [‘High pH and Low pH Presoak’, ‘Double Tire & Wheel Cleaning’, ‘Drying Agent’, ‘Spot Free Rinse’],
+    value: 'double-wash', label: 'Double Wash', price: 12,
+    includes: ['High pH and Low pH Presoak', 'Double Tire & Wheel Cleaning', 'Drying Agent', 'Spot Free Rinse'],
   },
 ];
 
