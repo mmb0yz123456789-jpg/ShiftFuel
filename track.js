@@ -103,14 +103,23 @@ const statusLabels = {
   pending_customer_info: "Complete your booking",
 };
 
-const statusSteps = [
-  { key: "request_received", label: "Request received" },
-  { key: "accepted", label: "Accepted" },
-  { key: "key_received", label: "Key received" },
-  { key: "vehicle_picked_up", label: "Vehicle picked up" },
-  { key: "fueling_in_progress", label: "Fueling in progress" },
-  { key: "vehicle_returned", label: "Vehicle returned" },
-  { key: "complete", label: "Complete" },
+// statusSteps is now dynamic — see buildStatusSteps(request)
+
+const DENY_REASONS = [
+  'Car wash unavailable',
+  'Customer requested cancellation',
+  'Duplicate request',
+  'Fuel door locked',
+  'Fuel station unavailable',
+  'Keys unavailable',
+  'Other',
+  'Outside service area',
+  'Payment authorization issue',
+  'Safety concern',
+  'Service location issue',
+  'Vehicle inaccessible',
+  'Vehicle not located',
+  'Weather conditions',
 ];
 
 function cleanPhone(value) {
@@ -222,19 +231,39 @@ function serviceUnableReasonsFromNotes(request) {
   return reasons;
 }
 
+function formatPhone(raw) {
+  const d = String(raw || '').replace(/\D/g, '');
+  if (d.length === 10) return `(${d.slice(0,3)}) ${d.slice(3,6)}-${d.slice(6)}`;
+  if (d.length === 11 && d[0] === '1') return `(${d.slice(1,4)}) ${d.slice(4,7)}-${d.slice(7)}`;
+  return raw || '';
+}
+
+function formatTimeShort(isoOrTime) {
+  if (!isoOrTime) return '';
+  try {
+    const d = new Date(isoOrTime);
+    if (isNaN(d)) return '';
+    return d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+  } catch { return ''; }
+}
+
+function formatReturnTime(t) {
+  if (!t) return '';
+  // t may be "17:00:00" or "17:00"
+  const parts = String(t).split(':');
+  if (parts.length < 2) return t;
+  const h = Number(parts[0]), m = Number(parts[1]);
+  const ampm = h >= 12 ? 'PM' : 'AM';
+  const h12 = h % 12 || 12;
+  return `${h12}:${String(m).padStart(2,'0')} ${ampm}`;
+}
+
 function renderAssignedWorker(request) {
-  if (!request.assigned_worker_name) {
-    return "";
-  }
+  if (!request.assigned_worker_name) return '';
 
   const photoFrame = window.ShiftFuelPhoto
     ? window.ShiftFuelPhoto.renderPhotoFrame(
-        {
-          photo_url: request.assigned_worker_photo_url || '',
-          cropped_photo_url: request.assigned_worker_photo_url || '',
-          original_photo_url: request.assigned_worker_original_photo_url || '',
-          name: request.assigned_worker_name || '',
-        },
+        { photo_url: request.assigned_worker_photo_url || '', cropped_photo_url: request.assigned_worker_photo_url || '', original_photo_url: request.assigned_worker_original_photo_url || '', name: request.assigned_worker_name || '' },
         { clickable: true }
       )
     : (request.assigned_worker_photo_url
@@ -244,32 +273,169 @@ function renderAssignedWorker(request) {
   return `
     <section class="assigned-worker-card">
       ${photoFrame}
-      <div>
-        <p class="eyebrow">Who is working on your car</p>
+      <div class="assigned-worker-info">
+        <p class="eyebrow">Your ShiftFuel worker</p>
         <h3>${escapeHtml(request.assigned_worker_name)}</h3>
-        ${request.assigned_worker_phone ? `<p><strong>Phone:</strong> ${escapeHtml(request.assigned_worker_phone)}</p>` : '<p class="field-help">Contact information will be added soon.</p>'}
+        ${request.assigned_worker_phone ? `<p class="worker-phone">${escapeHtml(formatPhone(request.assigned_worker_phone))}</p>` : ''}
+        <span class="worker-verified-badge">✓ Verified ShiftFuel Employee</span>
       </div>
     </section>
   `;
 }
 
-function renderTimeline(currentStatus) {
-  const currentIndex = statusSteps.findIndex((step) => step.key === currentStatus);
+function buildStatusSteps(request) {
+  const needsFuel = requestNeedsFuel(request);
+  const needsWash = requestNeedsWash(request);
+  const steps = [
+    { key: 'request_received', label: 'Request received' },
+    { key: 'accepted',         label: 'Accepted' },
+    { key: 'key_received',     label: 'Key received' },
+    { key: 'vehicle_picked_up', label: 'Vehicle picked up' },
+  ];
+  if (needsFuel && needsWash) {
+    steps.push({ key: 'fueling_in_progress',        label: 'Fueling in progress',   group: 'fuel' });
+    steps.push({ key: 'fueling_complete',            label: 'Fuel service completed', group: 'fuel' });
+    steps.push({ key: 'car_wash_in_progress',        label: 'Car wash in progress',  group: 'wash' });
+    steps.push({ key: 'car_wash_complete',           label: 'Car wash completed',    group: 'wash' });
+  } else if (needsFuel) {
+    steps.push({ key: 'fueling_in_progress', label: 'Fueling in progress' });
+    steps.push({ key: 'fueling_complete',    label: 'Fueling complete' });
+  } else if (needsWash) {
+    steps.push({ key: 'car_wash_in_progress', label: 'Car wash in progress' });
+    steps.push({ key: 'car_wash_complete',    label: 'Car wash completed' });
+  }
+  steps.push({ key: 'vehicle_returned', label: 'Vehicle returned' });
+  steps.push({ key: 'complete',         label: 'Complete' });
+  return steps;
+}
 
+// Map every real workflow status to the nearest step key for progress tracking
+const STATUS_STEP_MAP = {
+  request_received: 'request_received',
+  accepted: 'accepted',
+  key_received: 'key_received',
+  pickup_vehicle_photo_uploaded: 'vehicle_picked_up',
+  pickup_odometer_photo_uploaded: 'vehicle_picked_up',
+  vehicle_picked_up: 'vehicle_picked_up',
+  fueling_in_progress: 'fueling_in_progress',
+  fueling_complete: 'fueling_complete',
+  fuel_receipt_uploaded: 'fueling_complete',
+  car_wash_in_progress: 'car_wash_in_progress',
+  car_wash_complete: 'car_wash_complete',
+  car_wash_after_fuel_in_progress: 'car_wash_in_progress',
+  wash_receipt_uploaded: 'car_wash_complete',
+  wash_receipt_after_fuel_uploaded: 'car_wash_complete',
+  fueling_after_wash_in_progress: 'fueling_in_progress',
+  fuel_receipt_after_wash_uploaded: 'fueling_complete',
+  receipts_recorded: 'car_wash_complete',
+  returned_location_pending: 'vehicle_returned',
+  return_location_recorded: 'vehicle_returned',
+  return_photos_needed: 'vehicle_returned',
+  dropoff_vehicle_photo_uploaded: 'vehicle_returned',
+  dropoff_odometer_photo_uploaded: 'vehicle_returned',
+  vehicle_returned: 'vehicle_returned',
+  inspection_needed: 'vehicle_returned',
+  inspection_recorded: 'vehicle_returned',
+  complete: 'complete',
+};
+
+function renderTimeline(request) {
+  const steps = buildStatusSteps(request);
+  const mappedKey = STATUS_STEP_MAP[request.status] || request.status;
+  const currentIndex = steps.findIndex(s => s.key === mappedKey);
+  const total = steps.length;
+
+  const isIssue = request.status === 'unable_to_complete';
+  const isDenied = request.status === 'denied' || request.status === 'customer_canceled';
+
+  let html = `<div class="timeline-progress-label">Step ${Math.max(currentIndex + 1, 1)} of ${total}</div>`;
+  html += `<ol class="customer-timeline">`;
+
+  steps.forEach((step, index) => {
+    let cls = 'future';
+    let icon = '○';
+    if (isDenied || isIssue) {
+      cls = index < currentIndex ? 'done' : 'future';
+      icon = index < currentIndex ? '✓' : '○';
+    } else if (index < currentIndex) {
+      cls = 'done'; icon = '✓';
+    } else if (index === currentIndex) {
+      cls = 'active'; icon = '➜';
+    }
+
+    html += `<li class="timeline-step ${cls}"><span class="timeline-icon">${icon}</span><p>${escapeHtml(step.label)}</p></li>`;
+  });
+
+  html += `</ol>`;
+  return html;
+}
+
+function renderServiceIssueBanner(request) {
+  const unableReasons = serviceUnableReasonsFromNotes(request);
+  const parts = [];
+  if (unableReasons.fuel) parts.push({ service: 'Fuel Service', reason: unableReasons.fuel });
+  if (unableReasons.wash) parts.push({ service: 'Car Wash Service', reason: unableReasons.wash });
+  if (!parts.length && request.status === 'unable_to_complete') {
+    parts.push({ service: 'Service', reason: request.cancellation_reason || 'A service issue was reported.' });
+  }
+  if (!parts.length) return '';
+
+  return parts.map(p => `
+    <div class="service-issue-banner">
+      <strong>⚠ Service Issue — ${escapeHtml(p.service)}</strong>
+      <p>${escapeHtml(p.reason)}</p>
+    </div>
+  `).join('');
+}
+
+function renderServicePackageDetails(request) {
+  const needsFuel = requestNeedsFuel(request);
+  const needsWash = requestNeedsWash(request);
+  const washPkg = WASH_PACKAGES.find(p => p.value === request.wash_package);
+  const parts = [];
+
+  if (needsFuel) {
+    parts.push(`<div class="service-package-block">
+      <p class="service-package-title">⛽ Fuel Service</p>
+      ${request.fuel_type ? `<p>Fuel type: <strong>${escapeHtml(request.fuel_type)}</strong></p>` : ''}
+    </div>`);
+  }
+
+  if (needsWash && washPkg) {
+    parts.push(`<div class="service-package-block">
+      <p class="service-package-title">🚿 Car Wash: ${escapeHtml(washPkg.label)} Package</p>
+      <ul class="service-package-list">
+        ${washPkg.includes.map(i => `<li>${escapeHtml(i)}</li>`).join('')}
+      </ul>
+    </div>`);
+  } else if (needsWash) {
+    parts.push(`<div class="service-package-block"><p class="service-package-title">🚿 Car Wash Service</p></div>`);
+  }
+
+  if (!parts.length) return '';
+  return `<section class="service-package-details">${parts.join('')}</section>`;
+}
+
+function renderEstimatedTotalCard(request) {
+  if (request.estimated_total == null && request.final_total == null) return '';
+  const amount = request.final_total != null ? request.final_total : request.estimated_total;
+  const label  = request.final_total != null ? 'Final Total' : 'Estimated Total';
   return `
-    <ol class="customer-timeline">
-      ${statusSteps
-        .map((step, index) => {
-          const isDone = index <= currentIndex;
-          return `
-            <li class="${isDone ? "done" : ""}">
-              <span>${isDone ? "✓" : index + 1}</span>
-              <p>${step.label}</p>
-            </li>
-          `;
-        })
-        .join("")}
-    </ol>
+    <div class="estimated-total-card">
+      <span class="estimated-total-label">${escapeHtml(label)}</span>
+      <span class="estimated-total-amount">${formatCurrency(amount)}</span>
+    </div>
+  `;
+}
+
+function renderReturnDetails(request) {
+  if (!request.return_parking_location) return '';
+  return `
+    <section class="return-confirmation">
+      <h4>Vehicle returned successfully</h4>
+      <p><strong>Returned to:</strong> ${escapeHtml(request.return_parking_location)}</p>
+      ${request.key_handoff_details ? `<p><strong>Keys:</strong> ${escapeHtml(request.key_handoff_details)}</p>` : ''}
+    </section>
   `;
 }
 
@@ -1234,37 +1400,45 @@ function renderRequestCard(request, photos = [], review = null) {
   const serviceDate = request.service_date
     ? new Date(request.service_date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
     : '';
+  const returnTime = formatReturnTime(request.desired_return_time);
+  const isReturned = ['vehicle_returned','returned_location_pending','return_location_recorded',
+    'return_photos_needed','dropoff_vehicle_photo_uploaded','dropoff_odometer_photo_uploaded',
+    'inspection_needed','inspection_recorded','complete'].includes(request.status);
 
   return `
     <article class="track-request-card" data-request-id="${escapeHtml(request.id)}">
-      <details class="track-request-details">
+      <details class="track-request-details" open>
         <summary class="track-request-summary">
           <div class="track-request-summary-main">
             <span class="track-request-vehicle">${escapeHtml(vehicle)}</span>
             <span class="track-request-meta">
               ${serviceDate ? `<span>${escapeHtml(serviceDate)}</span>` : ''}
               ${request.service_label || request.service_type ? `<span>${escapeHtml(request.service_label || request.service_type)}</span>` : ''}
+              ${returnTime ? `<span>Return by: ${escapeHtml(returnTime)}</span>` : ''}
             </span>
           </div>
           <span class="status-pill">${escapeHtml(statusLabel)}</span>
         </summary>
 
         <div class="track-request-body">
+          ${renderEstimatedTotalCard(request)}
+          ${renderServiceIssueBanner(request)}
           <div class="request-details">
             <p><strong>Date:</strong> ${escapeHtml(serviceDate)}</p>
+            ${returnTime ? `<p><strong>Return by:</strong> ${escapeHtml(returnTime)}</p>` : ''}
             <p><strong>Vehicle:</strong> ${escapeHtml(vehicle)}${request.vehicle_color ? ', ' + escapeHtml(request.vehicle_color) : ''}</p>
             <p><strong>Service:</strong> ${escapeHtml(request.service_label || request.service_type || '')}</p>
             <p><strong>Parking:</strong> ${[request.parking_location, request.parking_spot ? 'spot ' + request.parking_spot : ''].filter(Boolean).map(escapeHtml).join(', ')}</p>
-            ${request.return_parking_location ? `<p><strong>Vehicle returned to:</strong> ${escapeHtml(request.return_parking_location)}</p>` : ''}
-            ${request.estimated_total != null ? `<p><strong>Estimated total:</strong> ${formatCurrency(request.estimated_total)}</p>` : ''}
-            ${request.final_total != null ? `<p><strong>Final total:</strong> ${formatCurrency(request.final_total)}</p>` : ''}
             ${cancellationReason ? `<p><strong>Reason:</strong> ${escapeHtml(cancellationReason)}</p>` : ''}
             ${request.status === 'auto_reversed' ? `<p class="track-auto-reversed-note">Your service was not completed on the scheduled date, so your payment has been reversed.</p>` : ''}
           </div>
+          ${renderServicePackageDetails(request)}
+          ${isReturned ? renderReturnDetails(request) : ''}
           ${renderAssignedWorker(request)}
-          ${renderTimeline(request.status)}
+          ${renderTimeline(request)}
           ${serviceTimingFromNotes(request)}
           ${inspectionSummaryFromNotes(request)}
+          ${request.status === 'complete' ? serviceSummaryFromRequest(request) : ''}
           ${renderPhotos(request, photos)}
           ${renderReviewPrompt(request, review)}
           ${canCustomerCancel(request) ? `

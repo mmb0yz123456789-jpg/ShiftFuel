@@ -5,7 +5,7 @@ function sendWorkerNotification(event, phone, data) {
   fetch('/api/send-sms', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ event, to: phone, data }),
+    body: JSON.stringify({ event, to: phone, data, caller_token: SESSION_WORKER_TOKEN }),
   }).catch((err) => console.warn('[notify] SMS fire-and-forget failed:', err.message));
 }
 const workerProfileForm = document.querySelector('#worker-profile-form');
@@ -759,6 +759,25 @@ async function uploadWorkerPhoto(file) {
   return data?.publicUrl || path;
 }
 
+function storagePathFromUrl(url) {
+  if (!url) return null;
+  // Extract the path after "/object/public/<bucket>/"
+  const marker = `/object/public/${PHOTO_BUCKET}/`;
+  const idx = url.indexOf(marker);
+  if (idx === -1) return null;
+  return decodeURIComponent(url.slice(idx + marker.length).split('?')[0]);
+}
+
+async function deleteOldWorkerPhotos(oldOriginalUrl, oldCroppedUrl) {
+  const paths = [...new Set([
+    storagePathFromUrl(oldOriginalUrl),
+    storagePathFromUrl(oldCroppedUrl),
+  ])].filter(Boolean);
+  if (!paths.length) return;
+  const { error } = await workerDb.storage.from(PHOTO_BUCKET).remove(paths);
+  if (error) console.warn('Could not delete old profile photos:', error.message);
+}
+
 function resetWorkerPhotoCrop() {
   if (workerCropImageUrl) {
     URL.revokeObjectURL(workerCropImageUrl);
@@ -1149,6 +1168,28 @@ function workerServiceUnableButton(request, type) {
   return `<button class="button danger show-service-unable" data-id="${escapeHtml(request.id)}" data-service-type="${escapeHtml(type)}" type="button">${label}</button>`;
 }
 
+const WORKER_DENY_REASON_OPTIONS = [
+  'Car wash unavailable',
+  'Customer requested cancellation',
+  'Duplicate request',
+  'Fuel door locked',
+  'Fuel station unavailable',
+  'Keys unavailable',
+  'Other',
+  'Outside service area',
+  'Payment authorization issue',
+  'Safety concern',
+  'Service location issue',
+  'Vehicle inaccessible',
+  'Vehicle not located',
+  'Weather conditions',
+];
+
+function workerDenyReasonOptionsHtml() {
+  return `<option value="">— Select a reason —</option>` +
+    WORKER_DENY_REASON_OPTIONS.map(r => `<option value="${escapeHtml(r)}">${escapeHtml(r)}</option>`).join('');
+}
+
 function renderWorkerServiceUnablePanel(request) {
   return `
     <div class="service-unable-panel" data-service-unable-for="${escapeHtml(request.id)}" hidden>
@@ -1156,7 +1197,13 @@ function renderWorkerServiceUnablePanel(request) {
       <p class="field-help service-unable-label"></p>
       <label>
         Reason
-        <textarea class="service-unable-reason" rows="3" placeholder="Example: Car wash closed at this location, fuel pump unavailable, customer vehicle issue."></textarea>
+        <select class="service-unable-reason">
+          ${workerDenyReasonOptionsHtml()}
+        </select>
+      </label>
+      <label class="service-unable-other-wrap" style="display:none">
+        Describe the reason
+        <textarea class="service-unable-other" rows="2" placeholder="Describe the service issue."></textarea>
       </label>
       <div class="admin-button-row">
         <button class="button danger save-service-unable" data-id="${escapeHtml(request.id)}" type="button">Save reason</button>
@@ -1407,12 +1454,18 @@ async function saveWorkerServiceUnable(button) {
   const panel = button.closest('.service-unable-panel');
   const request = allWorkerJobs.find((item) => item.id === id);
   const type = panel?.dataset.serviceType;
-  const reason = panel?.querySelector('.service-unable-reason')?.value.trim();
+  const selected = panel?.querySelector('.service-unable-reason')?.value.trim();
+  const custom   = panel?.querySelector('.service-unable-other')?.value.trim();
+  const reason   = selected === 'Other' ? (custom || '') : selected;
 
   if (!request || !type) return;
 
-  if (!reason) {
-    alert('Add a reason before saving.');
+  if (!selected) {
+    alert('Select a reason before saving.');
+    return;
+  }
+  if (selected === 'Other' && !custom) {
+    alert('Describe the reason when "Other" is selected.');
     return;
   }
 
@@ -1727,7 +1780,12 @@ async function completeWorkerRequest(button) {
       const res = await fetch('/api/capture-payment', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ payment_intent_id: request.payment_intent_id, amount_cents: amountCents }),
+        body: JSON.stringify({
+          payment_intent_id: request.payment_intent_id,
+          request_id: id,
+          amount_cents: amountCents,
+          caller_token: SESSION_WORKER_TOKEN,
+        }),
       });
       const data = await res.json().catch(() => ({}));
       if (res.ok) {
@@ -1868,7 +1926,12 @@ workerJobList?.addEventListener('click', async (event) => {
       const panel = button.closest('.service-unable-panel');
       if (panel) {
         panel.hidden = true;
-        panel.querySelector('.service-unable-reason').value = '';
+        const sel = panel.querySelector('.service-unable-reason');
+        if (sel) sel.value = '';
+        const otherWrap = panel.querySelector('.service-unable-other-wrap');
+        if (otherWrap) otherWrap.style.display = 'none';
+        const otherTa = panel.querySelector('.service-unable-other');
+        if (otherTa) otherTa.value = '';
       }
       return;
     }
@@ -1894,6 +1957,14 @@ workerJobList?.addEventListener('change', (event) => {
     const label = control?.querySelector('.selected-file-name');
     if (label) {
       label.textContent = event.target.files?.[0]?.name || 'No file chosen';
+    }
+  }
+
+  if (event.target.matches('.service-unable-reason')) {
+    const panel = event.target.closest('.service-unable-panel');
+    const otherWrap = panel?.querySelector('.service-unable-other-wrap');
+    if (otherWrap) {
+      otherWrap.style.display = event.target.value === 'Other' ? 'block' : 'none';
     }
   }
 });
@@ -1956,6 +2027,11 @@ workerProfileForm?.addEventListener('submit', async (event) => {
     let croppedPhotoUrl  = currentEmployee.cropped_photo_url  || currentEmployee.photo_url || null;
 
     if (file) {
+      // Delete old storage files before uploading new ones
+      await deleteOldWorkerPhotos(
+        currentEmployee.original_photo_url || currentEmployee.photo_url,
+        currentEmployee.cropped_photo_url  || currentEmployee.photo_url,
+      );
       originalPhotoUrl = await uploadWorkerPhoto(file);
       if (workerCroppedPhotoBlob) {
         croppedPhotoUrl = await uploadWorkerPhoto(workerCroppedPhotoBlob);
@@ -1964,6 +2040,8 @@ workerProfileForm?.addEventListener('submit', async (event) => {
       }
     } else if (workerPhotoBoundaryImage?.naturalWidth && workerPhotoBoundaryImage.getAttribute('src')) {
       // Edit framing only — regenerate crop without re-uploading original.
+      // Delete old cropped file only (original stays the same)
+      await deleteOldWorkerPhotos(null, currentEmployee.cropped_photo_url);
       const croppedFile = await window.ShiftFuelPhoto?.cropToBlobFromBoundaryEditor(
         workerPhotoBoundaryImage, workerProfilePhotoZoom, workerProfilePhotoPosition.x, workerProfilePhotoPosition.y
       );

@@ -692,7 +692,7 @@ async function validateServiceArea(workplaceText) {
     ].filter(Boolean);
     return { valid: true, canonicalAddress: canonicalParts.join(', ') };
   } catch {
-    return { valid: true }; // fail open if geocoding service is unreachable
+    return { valid: false, message: 'We could not verify this address. Please try again or contact ShiftFuel.' };
   }
 }
 
@@ -1786,6 +1786,7 @@ async function saveBooking(payload) {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
+        request_id: data?.id || '',
         serviceDate: payload.request.serviceDate,
         serviceLabel: payload.request.serviceLabel || payload.request.serviceType || 'fuel service',
         addressCity: payload.request.addressCity || '',
