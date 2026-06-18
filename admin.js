@@ -2108,8 +2108,10 @@ async function hireApplicant(applicantId) {
   }
 
   if (phone) {
+    // Use employees_public view so this works whether or not the anon
+    // SELECT policy on the base employees table has been restricted.
     const { data: existingByPhone, error: phoneError } = await db
-      .from('employees')
+      .from('employees_public')
       .select('id')
       .eq('phone', phone)
       .limit(1);
@@ -2176,7 +2178,8 @@ applicantList?.addEventListener('change', async (event) => {
       await hireApplicant(select.dataset.id);
     } catch (error) {
       console.error('Applicant hire failed:', error);
-      alert('Could not hire applicant. Make sure phone numbers are unique and worker password columns exist.');
+      const detail = error?.message || error?.details || String(error);
+      alert(`Could not hire applicant: ${detail}`);
     }
     return;
   }
