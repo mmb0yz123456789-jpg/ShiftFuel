@@ -1486,7 +1486,7 @@ function getServiceRequestInsert(payload) {
     address_state:  payload.request.addressState  || null,
     address_zip:    payload.request.addressZip    || null,
     parking_location: payload.request.parkingLocation,
-    parking_spot: payload.request.parkingSpot,
+    parking_spot: payload.request.parkingSpot || '',
     key_handoff_details: payload.request.keyHandoffDetails,
     service_type: payload.request.serviceType,
     service_date: payload.request.serviceDate,
