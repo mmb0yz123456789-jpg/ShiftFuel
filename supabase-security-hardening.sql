@@ -27,7 +27,7 @@ as $$
   select sr.desired_return_time, sr.status
   from service_requests sr
   where sr.service_date = p_service_date
-    and sr.status not in ('denied', 'customer_canceled', 'unable_to_complete', 'complete');
+    and sr.status not in ('denied', 'customer_canceled', 'unable_to_complete', 'complete', 'auto_reversed');
 $$;
 
 grant execute on function public.public_booked_return_slots(date) to anon, authenticated;
