@@ -100,6 +100,7 @@ const statusLabels = {
   denied: "Denied",
   customer_canceled: "Canceled by customer",
   unable_to_complete: "Unable to complete",
+  pending_customer_info: "Complete your booking",
 };
 
 const statusSteps = [
@@ -574,7 +575,106 @@ async function markReviewComplete(requestId) {
   }
 }
 
+const SERVICE_OPTIONS = [
+  { value: 'fuel',          label: 'Fuel only' },
+  { value: 'car-wash',      label: 'Car wash only' },
+  { value: 'car-wash-fuel', label: 'Car wash + Fuel' },
+];
+
+function serviceLabelFromType(type) {
+  return SERVICE_OPTIONS.find((o) => o.value === type)?.label || type || '';
+}
+
+function renderPendingCompletionCard(request) {
+  const serviceDate = request.service_date
+    ? new Date(request.service_date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+    : '';
+  const address = [request.address_street, request.address_apt, request.address_city, request.address_state, request.address_zip]
+    .filter(Boolean).join(', ') || request.hospital || '';
+  const serviceOpts = SERVICE_OPTIONS.map((o) =>
+    `<option value="${escapeHtml(o.value)}"${request.service_type === o.value ? ' selected' : ''}>${escapeHtml(o.label)}</option>`
+  ).join('');
+
+  return `
+    <article class="track-request-card pending-completion-card" data-request-id="${escapeHtml(request.id)}">
+      <div class="pending-action-banner">
+        <span class="pending-action-icon">&#9888;</span>
+        Action required — Review and confirm your service
+      </div>
+
+      <form class="booking-form complete-booking-form" data-request-id="${escapeHtml(request.id)}">
+        <fieldset>
+          <legend>Service details</legend>
+          <p class="field-help">Review what was requested. You can update the service type before confirming. Once confirmed, your request enters the worker queue.</p>
+          <div class="field-grid">
+            <label>Service type <span class="required-mark">*</span>
+              <select class="cb-service-type" required>
+                <option value="">Select service</option>
+                ${serviceOpts}
+              </select>
+            </label>
+            <label>Service date
+              <input class="cb-service-date" type="date" value="${escapeHtml(request.service_date || '')}">
+            </label>
+            <label>Desired return time
+              <input class="cb-return-time" type="time" value="${escapeHtml(request.desired_return_time ? request.desired_return_time.slice(0, 5) : '')}">
+            </label>
+          </div>
+          ${address ? `<p class="field-help"><strong>Service address:</strong> ${escapeHtml(address)}</p>` : ''}
+          ${request.parking_location ? `<p class="field-help"><strong>Parking:</strong> ${escapeHtml(request.parking_location)}</p>` : ''}
+        </fieldset>
+
+        <fieldset>
+          <legend>Your vehicle</legend>
+          <div class="field-grid">
+            <label>Year <span class="required-mark">*</span>
+              <input class="cb-vehicle-year" type="text" placeholder="2020" value="${escapeHtml(request.vehicle_year || '')}" required>
+            </label>
+            <label>Make <span class="required-mark">*</span>
+              <input class="cb-vehicle-make" type="text" placeholder="Toyota" value="${escapeHtml(request.vehicle_make || '')}" required>
+            </label>
+            <label>Model <span class="required-mark">*</span>
+              <input class="cb-vehicle-model" type="text" placeholder="Camry" value="${escapeHtml(request.vehicle_model || '')}" required>
+            </label>
+            <label>Color <span class="required-mark">*</span>
+              <input class="cb-vehicle-color" type="text" placeholder="Silver" value="${escapeHtml(request.vehicle_color || '')}" required>
+            </label>
+            <label>License plate <span class="required-mark">*</span>
+              <input class="cb-license-plate" type="text" placeholder="ABC 1234" value="${escapeHtml(request.license_plate || '')}" required>
+            </label>
+          </div>
+        </fieldset>
+
+        <fieldset>
+          <legend>Payment authorization</legend>
+          <p class="field-help">Your card will be authorized but not charged until service is complete. The final amount may vary based on actual fuel cost.</p>
+          <div id="cb-card-element-${escapeHtml(request.id)}" class="stripe-card-element"></div>
+          <p class="cb-card-error"></p>
+        </fieldset>
+
+        <div class="pending-form-actions">
+          <button class="button primary cb-submit-btn" type="submit">Confirm booking</button>
+          <button class="button danger cb-cancel-btn" type="button">Cancel this request</button>
+        </div>
+        <p class="cb-status form-status" role="status"></p>
+      </form>
+
+      <div class="cancel-panel" hidden>
+        <p><strong>Cancel this service request?</strong></p>
+        <p class="field-help">Your request will be marked canceled. No payment will be collected and no worker will be assigned.</p>
+        <div class="pending-form-actions">
+          <button class="button danger cb-confirm-cancel-btn" data-request-id="${escapeHtml(request.id)}" type="button">Yes, cancel request</button>
+          <button class="button cb-back-btn" type="button">Keep request</button>
+        </div>
+      </div>
+    </article>
+  `;
+}
+
 function renderRequestCard(request, photos = [], review = null) {
+  if (request.status === 'pending_customer_info') {
+    return renderPendingCompletionCard(request);
+  }
   const statusLabel = statusLabels[request.status] || request.status;
   const cancellationReason = cancellationReasonForDisplay(request);
   const vehicle = [request.vehicle_year, request.vehicle_make, request.vehicle_model].filter(Boolean).join(' ');
@@ -772,10 +872,75 @@ trackForm.addEventListener("submit", async (event) => {
   clearTrackAttempts();
   verifiedTrackingContact = { phone, email };
   trackMessage.textContent = "";
+  window._trackingRequests = matchedRequests;
   await renderAllRequests(matchedRequests, phone, email);
 });
 
 trackingResult.addEventListener("click", async (event) => {
+  // ── Pending-booking cancel flow ──────────────────────────────────────────
+  const cbCancelBtn = event.target.closest('.cb-cancel-btn');
+  const cbBackBtn = event.target.closest('.cb-back-btn');
+  const cbConfirmCancelBtn = event.target.closest('.cb-confirm-cancel-btn');
+
+  if (cbCancelBtn) {
+    const card = cbCancelBtn.closest('.pending-completion-card');
+    if (card) {
+      card.querySelector('.complete-booking-form').hidden = true;
+      card.querySelector('.cancel-panel').hidden = false;
+    }
+    return;
+  }
+
+  if (cbBackBtn) {
+    const card = cbBackBtn.closest('.pending-completion-card');
+    if (card) {
+      card.querySelector('.complete-booking-form').hidden = false;
+      card.querySelector('.cancel-panel').hidden = true;
+    }
+    return;
+  }
+
+  if (cbConfirmCancelBtn) {
+    const requestId = cbConfirmCancelBtn.dataset.requestId;
+    cbConfirmCancelBtn.disabled = true;
+    cbConfirmCancelBtn.textContent = 'Canceling…';
+    trackMessage.textContent = '';
+
+    const { error } = await shiftFuelDb.rpc('public_cancel_request', {
+      p_request_id: requestId,
+      p_phone: verifiedTrackingContact.phone,
+      p_email: verifiedTrackingContact.email,
+      p_reason: 'Customer declined service',
+    });
+
+    if (error && !isMissingRpcError(error)) {
+      // Fallback direct update
+      await shiftFuelDb.from('service_requests').update({
+        status: 'customer_canceled',
+        cancellation_reason: 'Customer declined service',
+      }).eq('id', requestId);
+    } else if (error && isMissingRpcError(error)) {
+      await shiftFuelDb.from('service_requests').update({
+        status: 'customer_canceled',
+        notes: 'Customer declined service via Track page',
+      }).eq('id', requestId);
+    }
+
+    trackMessage.textContent = 'Request canceled.';
+    // Re-render the card as a regular canceled card
+    const { data: refreshed } = await shiftFuelDb.rpc('public_track_request', {
+      p_request_id: requestId,
+      p_phone: verifiedTrackingContact.phone,
+      p_email: verifiedTrackingContact.email,
+    });
+    if (refreshed?.[0]) {
+      const photos = await loadRequestPhotos(refreshed[0].id);
+      const review = await loadRequestReview(refreshed[0].id);
+      renderRequest(refreshed[0], photos, review);
+    }
+    return;
+  }
+
   const showCancelButton = event.target.closest(".show-cancel-request");
   const confirmCancelButton = event.target.closest(".confirm-cancel-request");
   const submitReviewButton = event.target.closest(".submit-service-review");
@@ -960,3 +1125,168 @@ trackingResult.addEventListener("click", async (event) => {
   const review = await loadRequestReview(data.id);
   renderRequest(data, photos, review);
 });
+
+// ── Complete booking (pending_customer_info) ──────────────────────────────────
+
+let stripeInstance = null;
+const mountedStripeCards = new Map(); // requestId → { elements, cardElement }
+
+function getStripe() {
+  if (!stripeInstance && window.Stripe) {
+    const pk = window.SHIFTFUEL_STRIPE_PUBLISHABLE_KEY;
+    if (pk) stripeInstance = window.Stripe(pk);
+  }
+  return stripeInstance;
+}
+
+function mountStripeCardForRequest(requestId) {
+  const stripe = getStripe();
+  if (!stripe) return;
+  if (mountedStripeCards.has(requestId)) return;
+
+  const mountEl = document.getElementById(`cb-card-element-${requestId}`);
+  if (!mountEl) return;
+
+  const elements = stripe.elements();
+  const cardElement = elements.create('card', {
+    style: {
+      base: { fontSize: '16px', color: '#1a1a1a', fontFamily: 'inherit' },
+    },
+  });
+  cardElement.mount(mountEl);
+  cardElement.on('change', (event) => {
+    const errEl = mountEl.closest('form')?.querySelector('.cb-card-error');
+    if (errEl) errEl.textContent = event.error ? event.error.message : '';
+  });
+  mountedStripeCards.set(requestId, { elements, cardElement });
+}
+
+// Mount cards for any pending-completion requests after rendering
+function mountPendingCards() {
+  document.querySelectorAll('.complete-booking-form').forEach((form) => {
+    mountStripeCardForRequest(form.dataset.requestId);
+  });
+}
+
+// Patch renderAllRequests to call mountPendingCards after setting innerHTML
+const _origRenderAllRequests = renderAllRequests;
+
+trackingResult.addEventListener('submit', async (event) => {
+  const form = event.target.closest('.complete-booking-form');
+  if (!form) return;
+  event.preventDefault();
+
+  const requestId = form.dataset.requestId;
+  const statusEl = form.querySelector('.cb-status');
+  const submitBtn = form.querySelector('.cb-submit-btn');
+  const cardErrorEl = form.querySelector('.cb-card-error');
+
+  const val = (cls) => (form.querySelector(`.${cls}`)?.value || '').trim();
+  const serviceType = val('cb-service-type');
+  const serviceDate = val('cb-service-date');
+  const returnTime  = val('cb-return-time');
+  const year  = val('cb-vehicle-year');
+  const make  = val('cb-vehicle-make');
+  const model = val('cb-vehicle-model');
+  const color = val('cb-vehicle-color');
+  const plate = val('cb-license-plate');
+
+  if (!serviceType) {
+    if (statusEl) statusEl.textContent = 'Please select a service type.';
+    form.querySelector('.cb-service-type')?.focus();
+    return;
+  }
+  if (!year || !make || !model || !color || !plate) {
+    if (statusEl) statusEl.textContent = 'Please fill in all vehicle fields.';
+    return;
+  }
+
+  if (statusEl) statusEl.textContent = 'Authorizing payment…';
+  submitBtn.disabled = true;
+
+  try {
+    const stripe = getStripe();
+    const stripeCard = mountedStripeCards.get(requestId);
+
+    let paymentIntentId = null;
+
+    if (stripe && stripeCard) {
+      // Look up estimated total from the rendered request data
+      const requestData = (window._trackingRequests || []).find((r) => r.id === requestId);
+      const amountCents = requestData?.estimated_total
+        ? Math.round(Number(requestData.estimated_total) * 100)
+        : 100; // $1.00 placeholder authorization if no estimate
+
+      const piRes = await fetch('/api/create-payment-intent', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          amount_cents: Math.max(amountCents, 50),
+          customer_name: requestData?.customer_name || '',
+          customer_email: requestData?.customer_email || '',
+          service_label: serviceLabelFromType(serviceType) || requestData?.service_label || 'ShiftFuel service',
+        }),
+      });
+
+      const piData = await piRes.json();
+      if (!piRes.ok) throw new Error(piData.error || 'Could not create payment authorization.');
+
+      const { error: confirmError, paymentIntent } = await stripe.confirmCardPayment(piData.client_secret, {
+        payment_method: { card: stripeCard.cardElement },
+      });
+
+      if (confirmError) {
+        if (cardErrorEl) cardErrorEl.textContent = confirmError.message;
+        if (statusEl) statusEl.textContent = '';
+        submitBtn.disabled = false;
+        return;
+      }
+
+      paymentIntentId = paymentIntent.id;
+    }
+
+    // Call customer_complete_booking RPC
+    const { error } = await shiftFuelDb.rpc('customer_complete_booking', {
+      p_request_id: requestId,
+      p_phone: verifiedTrackingContact.phone || '',
+      p_email: verifiedTrackingContact.email || '',
+      p_service_type: serviceType,
+      p_service_label: serviceLabelFromType(serviceType),
+      p_service_date: serviceDate || null,
+      p_desired_return_time: returnTime || null,
+      p_vehicle_year: year,
+      p_vehicle_make: make,
+      p_vehicle_model: model,
+      p_vehicle_color: color,
+      p_license_plate: plate,
+      p_payment_intent_id: paymentIntentId || null,
+    });
+
+    if (error) throw error;
+
+    if (statusEl) statusEl.textContent = 'Booking confirmed! Your request has entered the queue.';
+    mountedStripeCards.delete(requestId);
+
+    // Refresh the display
+    setTimeout(async () => {
+      const { data: refreshed } = await shiftFuelDb.rpc('public_track_request', {
+        p_request_id: requestId,
+        p_phone: verifiedTrackingContact.phone,
+        p_email: verifiedTrackingContact.email,
+      });
+      if (refreshed?.[0]) {
+        const photos = await loadRequestPhotos(refreshed[0].id);
+        const review = await loadRequestReview(refreshed[0].id);
+        renderRequest(refreshed[0], photos, review);
+      }
+    }, 1200);
+  } catch (err) {
+    console.error('complete-booking error:', err);
+    if (statusEl) statusEl.textContent = `Could not complete booking: ${err.message || err}`;
+    submitBtn.disabled = false;
+  }
+});
+
+// After any render that places .complete-booking-form elements, mount Stripe cards
+const _trackResultObserver = new MutationObserver(() => mountPendingCards());
+_trackResultObserver.observe(trackingResult, { childList: true, subtree: true });

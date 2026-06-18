@@ -988,7 +988,13 @@ function renderWorkerJobCard(request, mode) {
   const workerReceiptTotal = receiptTotals.fuel + receiptTotals.wash;
 
   return `
-    <article class="request-card worker-job-card">
+    <article class="request-card worker-job-card${mode === 'available' ? ' worker-job-available' : ''}">
+      ${mode === 'available' ? `
+        <div class="worker-open-badge">
+          <span class="worker-open-badge-dot"></span>
+          Open &mdash; available for any worker to claim
+        </div>
+      ` : ''}
       <div class="request-card-header">
         <div>
           <p class="eyebrow">${escapeHtml(formatWorkerJobTime(request))}</p>
@@ -999,7 +1005,7 @@ function renderWorkerJobCard(request, mode) {
       <div class="request-details">
         <p><strong>Customer:</strong> ${escapeHtml(request.customer_name || 'Customer')}</p>
         <p><strong>Phone:</strong> ${escapeHtml(request.customer_phone || 'Not provided')}</p>
-        <p><strong>Service address:</strong> ${escapeHtml(workerFormatAddress(request))}</p>
+        <p class="worker-job-address-line"><strong>Service address:</strong> <span class="worker-job-address-value">${escapeHtml(workerFormatAddress(request))}</span></p>
         <p><strong>Parking:</strong> ${[request.parking_location, request.parking_spot ? `spot ${request.parking_spot}` : ''].filter(Boolean).map(escapeHtml).join(', ') || 'Not provided'}</p>
         ${request.key_handoff_details ? `<p><strong>Key handoff:</strong> ${escapeHtml(request.key_handoff_details)}</p>` : ''}
         <p><strong>Service:</strong> ${escapeHtml(workerFormatService(request))}</p>

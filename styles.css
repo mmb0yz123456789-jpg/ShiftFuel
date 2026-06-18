@@ -437,6 +437,7 @@ h3 {
   display: grid;
   gap: 18px;
 }
+.booking-form[hidden] { display: none; }
 
 .form-note {
   margin: 0;
@@ -861,7 +862,8 @@ textarea:focus {
   color: var(--text);
 }
 
-#card-element {
+#card-element,
+.stripe-card-element {
   padding: 11px 14px;
   border: 1.5px solid var(--line);
   border-radius: 8px;
@@ -869,12 +871,14 @@ textarea:focus {
   transition: border-color 0.15s;
 }
 
-#card-element.StripeElement--focus {
+#card-element.StripeElement--focus,
+.stripe-card-element.StripeElement--focus {
   border-color: var(--brand);
   outline: none;
 }
 
-#card-element.StripeElement--invalid {
+#card-element.StripeElement--invalid,
+.stripe-card-element.StripeElement--invalid {
   border-color: #c0392b;
 }
 
@@ -1038,6 +1042,46 @@ textarea:focus {
   background: var(--surface);
   box-shadow: 0 2px 8px rgba(8, 113, 95, 0.07);
   transition: box-shadow 0.15s, border-color 0.15s;
+}
+
+/* ── Pending-completion card ──────────────────────────────────── */
+.pending-completion-card {
+  border-color: var(--accent, #e9b949);
+  box-shadow: 0 2px 12px rgba(233, 185, 73, 0.15);
+}
+.pending-completion-card:hover {
+  border-color: #c99a30;
+}
+
+.pending-action-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 18px;
+  background: #fffbeb;
+  border-bottom: 1.5px solid var(--accent, #e9b949);
+  font-weight: 600;
+  font-size: .875rem;
+  color: #7a5a00;
+}
+.pending-action-icon {
+  font-size: 1.1rem;
+  flex-shrink: 0;
+}
+
+.pending-form-actions {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  align-items: center;
+  margin-top: 4px;
+}
+
+.cb-card-error {
+  color: var(--danger, #c0392b);
+  font-size: .875rem;
+  min-height: 1.2em;
+  margin-top: .25rem;
 }
 
 .track-request-card:hover {
@@ -2358,6 +2402,45 @@ textarea:focus {
 .worker-job-card + h3,
 #worker-job-list h3 {
   margin: 14px 0 0;
+}
+
+/* ── Worker open / available badge ───────────────────────────── */
+.worker-job-available {
+  border-color: var(--brand);
+}
+
+.worker-open-badge {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  background: var(--surface-soft, #edf3ef);
+  border-bottom: 1px solid var(--brand);
+  font-size: .8125rem;
+  font-weight: 600;
+  color: var(--brand-dark, #064f43);
+  letter-spacing: .01em;
+}
+
+.worker-open-badge-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--brand);
+  animation: badge-pulse 1.8s ease-in-out infinite;
+  flex-shrink: 0;
+}
+
+@keyframes badge-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50%       { opacity: .55; transform: scale(.8); }
+}
+
+/* ── Worker address highlight ─────────────────────────────────── */
+.worker-job-address-value {
+  color: var(--brand, #08715f);
+  font-weight: 600;
 }
 
 @media (max-width: 900px) {
