@@ -581,31 +581,87 @@ const SERVICE_OPTIONS = [
   { value: 'car-wash-fuel', label: 'Car wash + Fuel' },
 ];
 
+const WASH_PACKAGES = [
+  { value: 'buff-shine',    label: 'Buff & Shine',    price: 27 },
+  { value: 'shine-protect', label: 'Shine & Protect', price: 20 },
+  { value: 'shine',         label: 'Shine',            price: 16 },
+  { value: 'double-wash',   label: 'Double Wash',      price: 12 },
+];
+
+const FUEL_ESTIMATE_RANGES = [
+  { value: '5',  label: '5 gallons or less',  gallons: 5 },
+  { value: '10', label: '5–10 gallons',        gallons: 10 },
+  { value: '15', label: '10–15 gallons',       gallons: 15 },
+  { value: '20', label: '15–20 gallons',       gallons: 20 },
+  { value: '25', label: '20–25 gallons',       gallons: 25 },
+  { value: '30', label: '25+ gallons',         gallons: 30 },
+];
+
 function serviceLabelFromType(type) {
   return SERVICE_OPTIONS.find((o) => o.value === type)?.label || type || '';
 }
 
+function washLabelFromValue(value) {
+  return WASH_PACKAGES.find((p) => p.value === value)?.label || value || '';
+}
+
+// Show/hide fuel and wash sub-controls inside a pending-completion-card
+function cbUpdateServiceControls(form) {
+  const svcType = form.querySelector('.cb-service-type')?.value || '';
+  const needsFuel = svcType.includes('fuel');
+  const needsWash = svcType.includes('wash');
+
+  form.querySelectorAll('.cb-fuel-control').forEach((el) => {
+    el.hidden = !needsFuel;
+    el.querySelectorAll('select,input').forEach((inp) => {
+      if (needsFuel) { inp.setAttribute('required', ''); }
+      else           { inp.removeAttribute('required'); inp.value = inp.value || ''; }
+    });
+  });
+
+  form.querySelectorAll('.cb-wash-control').forEach((el) => {
+    el.hidden = !needsWash;
+    el.querySelectorAll('select,input').forEach((inp) => {
+      if (needsWash) { inp.setAttribute('required', ''); }
+      else           { inp.removeAttribute('required'); inp.value = inp.value || ''; }
+    });
+  });
+}
+
 function renderPendingCompletionCard(request) {
-  const serviceDate = request.service_date
-    ? new Date(request.service_date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
-    : '';
-  const address = [request.address_street, request.address_apt, request.address_city, request.address_state, request.address_zip]
-    .filter(Boolean).join(', ') || request.hospital || '';
+  const needsFuel = String(request.service_type || '').includes('fuel');
+  const needsWash = String(request.service_type || '').includes('wash');
+
   const serviceOpts = SERVICE_OPTIONS.map((o) =>
     `<option value="${escapeHtml(o.value)}"${request.service_type === o.value ? ' selected' : ''}>${escapeHtml(o.label)}</option>`
   ).join('');
 
+  const fuelTypeOpts = ['Regular', 'Mid-grade', 'Premium', 'Diesel'].map((t) =>
+    `<option value="${escapeHtml(t)}"${request.fuel_type === t ? ' selected' : ''}>${escapeHtml(t)}</option>`
+  ).join('');
+
+  const fuelEstimateOpts = FUEL_ESTIMATE_RANGES.map((r) =>
+    `<option value="${escapeHtml(r.value)}"${String(request.estimated_gallons || '') === r.value ? ' selected' : ''}>${escapeHtml(r.label)}</option>`
+  ).join('');
+
+  const washPkgOpts = WASH_PACKAGES.map((p) =>
+    `<option value="${escapeHtml(p.value)}"${request.wash_package === p.value ? ' selected' : ''}>${escapeHtml(p.label)} — $${p.price}</option>`
+  ).join('');
+
+  const rid = escapeHtml(request.id);
+
   return `
-    <article class="track-request-card pending-completion-card" data-request-id="${escapeHtml(request.id)}">
+    <article class="track-request-card pending-completion-card" data-request-id="${rid}">
       <div class="pending-action-banner">
         <span class="pending-action-icon">&#9888;</span>
-        Action required — Review and confirm your service
+        Action required — Complete your booking to enter the service queue
       </div>
 
-      <form class="booking-form complete-booking-form" data-request-id="${escapeHtml(request.id)}">
+      <form class="booking-form complete-booking-form" data-request-id="${rid}">
+
         <fieldset>
-          <legend>Service details</legend>
-          <p class="field-help">Review what was requested. You can update the service type before confirming. Once confirmed, your request enters the worker queue.</p>
+          <legend>Service</legend>
+          <p class="field-help">Review and update your service details. You can add or remove services before confirming.</p>
           <div class="field-grid">
             <label>Service type <span class="required-mark">*</span>
               <select class="cb-service-type" required>
@@ -613,15 +669,91 @@ function renderPendingCompletionCard(request) {
                 ${serviceOpts}
               </select>
             </label>
-            <label>Service date
-              <input class="cb-service-date" type="date" value="${escapeHtml(request.service_date || '')}">
+            <label class="cb-fuel-control"${needsFuel ? '' : ' hidden'}>Fuel type <span class="required-mark">*</span>
+              <select class="cb-fuel-type"${needsFuel ? ' required' : ''}>
+                <option value="">Select fuel type</option>
+                ${fuelTypeOpts}
+              </select>
             </label>
-            <label>Desired return time
-              <input class="cb-return-time" type="time" value="${escapeHtml(request.desired_return_time ? request.desired_return_time.slice(0, 5) : '')}">
+            <label class="cb-fuel-control"${needsFuel ? '' : ' hidden'}>Estimated fuel needed <span class="required-mark">*</span>
+              <select class="cb-fuel-estimate"${needsFuel ? ' required' : ''}>
+                <option value="">Select fuel range</option>
+                ${fuelEstimateOpts}
+              </select>
+            </label>
+            <label class="cb-wash-control"${needsWash ? '' : ' hidden'}>Car wash package <span class="required-mark">*</span>
+              <select class="cb-wash-package"${needsWash ? ' required' : ''}>
+                <option value="">Select package</option>
+                ${washPkgOpts}
+              </select>
+            </label>
+            <label>Service date <span class="required-mark">*</span>
+              <input class="cb-service-date" type="date" value="${escapeHtml(request.service_date || '')}" required>
+            </label>
+            <label>Desired return time <span class="required-mark">*</span>
+              <input class="cb-return-time" type="time" value="${escapeHtml(request.desired_return_time ? request.desired_return_time.slice(0, 5) : '')}" required>
             </label>
           </div>
-          ${address ? `<p class="field-help"><strong>Service address:</strong> ${escapeHtml(address)}</p>` : ''}
-          ${request.parking_location ? `<p class="field-help"><strong>Parking:</strong> ${escapeHtml(request.parking_location)}</p>` : ''}
+          <label class="checkbox-label cb-inspection-label">
+            <input class="cb-quick-inspection" type="checkbox" value="yes"${request.quick_inspection ? ' checked' : ''}>
+            <span>Add a quick vehicle inspection for $5 <span class="optional-mark">(Optional)</span></span>
+          </label>
+          <div class="inspection-addon-details">
+            <h4>Inspection covers</h4>
+            <ul>
+              <li>Tire pressure check</li>
+              <li>Washer fluid level</li>
+              <li>Dashboard warning light glance</li>
+            </ul>
+          </div>
+        </fieldset>
+
+        <fieldset>
+          <legend>Service address</legend>
+          <p class="field-help">Confirm where your vehicle will be when we arrive.</p>
+          <div class="address-fields">
+            <label>Street address <span class="required-mark">*</span>
+              <input class="cb-address-street" type="text" placeholder="123 Main Street" value="${escapeHtml(request.address_street || '')}" required>
+            </label>
+            <label>Apt / Suite / Unit <span class="optional-mark">(Optional)</span>
+              <input class="cb-address-apt" type="text" placeholder="Suite 200" value="${escapeHtml(request.address_apt || '')}">
+            </label>
+            <div class="address-csz">
+              <label>City <span class="required-mark">*</span>
+                <input class="cb-address-city" type="text" placeholder="Newark" value="${escapeHtml(request.address_city || '')}" required>
+              </label>
+              <label>State
+                <input class="cb-address-state" type="text" placeholder="DE" value="${escapeHtml(request.address_state || 'DE')}">
+              </label>
+              <label>ZIP <span class="required-mark">*</span>
+                <input class="cb-address-zip" type="text" inputmode="numeric" placeholder="19702" value="${escapeHtml(request.address_zip || '')}" required>
+              </label>
+            </div>
+          </div>
+        </fieldset>
+
+        <fieldset>
+          <legend>Parking and key handoff</legend>
+          <div class="field-grid">
+            <label>Car location <span class="required-mark">*</span>
+              <input class="cb-parking-location" type="text"
+                placeholder="Example: Garage B Level 3 spot 142, surface lot near main entrance"
+                value="${escapeHtml(request.parking_location || '')}" required>
+              <span class="field-help">Tell us exactly where your vehicle will be parked.</span>
+            </label>
+            <label>Key handoff instructions <span class="required-mark">*</span>
+              <input class="cb-key-handoff" type="text"
+                placeholder="Example: front desk, employee entrance, or meet at vehicle"
+                value="${escapeHtml(request.key_handoff_details || '')}" required>
+              <span class="field-help">Tell us exactly where and how to pick up your keys.</span>
+            </label>
+            <label>Google Maps / Apple Maps link <span class="optional-mark">(Optional)</span>
+              <input class="cb-parking-map-url" type="url"
+                placeholder="Paste a map link to the parking location"
+                value="${escapeHtml(request.parking_map_url || '')}">
+              <span class="field-help">Helps the worker find your vehicle faster.</span>
+            </label>
+          </div>
         </fieldset>
 
         <fieldset>
@@ -646,14 +778,27 @@ function renderPendingCompletionCard(request) {
         </fieldset>
 
         <fieldset>
-          <legend>Payment authorization</legend>
-          <p class="field-help">Your card will be authorized but not charged until service is complete. The final amount may vary based on actual fuel cost.</p>
-          <div id="cb-card-element-${escapeHtml(request.id)}" class="stripe-card-element"></div>
-          <p class="cb-card-error"></p>
+          <legend>Notes <span class="optional-mark">(Optional)</span></legend>
+          <label>
+            <textarea class="cb-notes" rows="3" placeholder="Anything else we should know? Gate codes, special instructions, etc."></textarea>
+          </label>
         </fieldset>
 
+        <fieldset>
+          <legend>Agreement</legend>
+          <label class="checkbox-label">
+            <input class="cb-agreed" type="checkbox" value="yes" required>
+            <span>I agree that ShiftFuel Concierge may pick up, service, and return my vehicle using the instructions I provided.</span>
+          </label>
+          <p class="field-help">By confirming, you agree to provide accurate vehicle, key, parking, and service instructions. ShiftFuel documents pickup and return condition with photos and will contact you if a requested service cannot be completed.</p>
+        </fieldset>
+
+        <div class="cb-payment-note">
+          <p>Your card will be authorized but not charged until service is complete. The final amount may vary based on actual fuel cost.</p>
+        </div>
+
         <div class="pending-form-actions">
-          <button class="button primary cb-submit-btn" type="submit">Confirm booking</button>
+          <button class="button primary cb-submit-btn cb-pay-confirm-btn" type="submit">Authorize Payment &amp; Confirm Booking</button>
           <button class="button danger cb-cancel-btn" type="button">Cancel this request</button>
         </div>
         <p class="cb-status form-status" role="status"></p>
@@ -663,7 +808,7 @@ function renderPendingCompletionCard(request) {
         <p><strong>Cancel this service request?</strong></p>
         <p class="field-help">Your request will be marked canceled. No payment will be collected and no worker will be assigned.</p>
         <div class="pending-form-actions">
-          <button class="button danger cb-confirm-cancel-btn" data-request-id="${escapeHtml(request.id)}" type="button">Yes, cancel request</button>
+          <button class="button danger cb-confirm-cancel-btn" data-request-id="${rid}" type="button">Yes, cancel request</button>
           <button class="button cb-back-btn" type="button">Keep request</button>
         </div>
       </div>
@@ -874,6 +1019,14 @@ trackForm.addEventListener("submit", async (event) => {
   trackMessage.textContent = "";
   window._trackingRequests = matchedRequests;
   await renderAllRequests(matchedRequests, phone, email);
+});
+
+// ── Service-type change → show/hide fuel/wash sub-controls ───────────────────
+trackingResult.addEventListener('change', (event) => {
+  const svcSelect = event.target.closest('.cb-service-type');
+  if (!svcSelect) return;
+  const form = svcSelect.closest('.complete-booking-form');
+  if (form) cbUpdateServiceControls(form);
 });
 
 trackingResult.addEventListener("click", async (event) => {
@@ -1129,7 +1282,6 @@ trackingResult.addEventListener("click", async (event) => {
 // ── Complete booking (pending_customer_info) ──────────────────────────────────
 
 let stripeInstance = null;
-const mountedStripeCards = new Map(); // requestId → { elements, cardElement }
 
 function getStripe() {
   if (!stripeInstance && window.Stripe) {
@@ -1139,37 +1291,168 @@ function getStripe() {
   return stripeInstance;
 }
 
-function mountStripeCardForRequest(requestId) {
+// ── Payment modal ─────────────────────────────────────────────────────────────
+
+let _cbModal = null;
+let _cbModalCard = null;       // { elements, cardElement }
+let _cbModalRpcFn = null;      // async (paymentIntentId) → error | null
+let _cbModalMeta  = null;      // { authAmountCents, serviceLabel, customerName, customerEmail }
+let _cbModalFormStatusEl = null;
+let _cbModalSubmitBtn    = null;
+
+function initCbPaymentModal() {
+  if (_cbModal) return;
+  const el = document.createElement('div');
+  el.className = 'cb-payment-modal-backdrop';
+  el.hidden = true;
+  el.setAttribute('role', 'dialog');
+  el.setAttribute('aria-modal', 'true');
+  el.setAttribute('aria-label', 'Payment authorization');
+  el.innerHTML = `
+    <div class="cb-payment-modal-dialog">
+      <button class="cb-payment-modal-close" type="button" aria-label="Close">&times;</button>
+      <div class="cb-payment-modal-lock-icon" aria-hidden="true">&#128274;</div>
+      <h3 class="cb-payment-modal-title">Secure payment authorization</h3>
+      <p class="cb-payment-modal-desc">
+        Enter your card details to authorize payment.
+        Your card will not be charged until your service is complete.
+      </p>
+      <div class="cb-payment-modal-card-wrap">
+        <div id="cb-modal-card-element" class="stripe-card-element"></div>
+      </div>
+      <p class="cb-payment-modal-error"></p>
+      <button class="button primary cb-payment-modal-authorize" type="button">
+        Authorize Payment &amp; Confirm Booking
+      </button>
+      <p class="cb-payment-modal-status form-status" role="status"></p>
+    </div>
+  `;
+  document.body.appendChild(el);
+  _cbModal = el;
+
+  el.addEventListener('click', (e) => { if (e.target === el) _closeCbModal(false); });
+  el.querySelector('.cb-payment-modal-close').addEventListener('click', () => _closeCbModal(false));
+  el.querySelector('.cb-payment-modal-authorize').addEventListener('click', _handleCbModalAuthorize);
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && _cbModal && !_cbModal.hidden) _closeCbModal(false);
+  });
+}
+
+function _openCbModal(meta, rpcFn, formStatusEl, submitBtn) {
+  initCbPaymentModal();
+  _cbModalMeta         = meta;
+  _cbModalRpcFn        = rpcFn;
+  _cbModalFormStatusEl = formStatusEl;
+  _cbModalSubmitBtn    = submitBtn;
+
+  // Reset modal state
+  _cbModal.querySelector('.cb-payment-modal-error').textContent  = '';
+  _cbModal.querySelector('.cb-payment-modal-status').textContent = '';
+  const authorizeBtn = _cbModal.querySelector('.cb-payment-modal-authorize');
+  authorizeBtn.disabled    = false;
+  authorizeBtn.textContent = 'Authorize Payment & Confirm Booking';
+
+  // Mount a fresh Stripe card element
   const stripe = getStripe();
-  if (!stripe) return;
-  if (mountedStripeCards.has(requestId)) return;
+  if (stripe) {
+    const elements = stripe.elements();
+    const cardEl = elements.create('card', {
+      style: { base: { fontSize: '16px', color: '#1a1a1a', fontFamily: 'inherit' } },
+    });
+    const mountEl = document.getElementById('cb-modal-card-element');
+    mountEl.innerHTML = '';
+    cardEl.mount(mountEl);
+    cardEl.on('change', (ev) => {
+      _cbModal.querySelector('.cb-payment-modal-error').textContent = ev.error?.message || '';
+    });
+    _cbModalCard = { elements, cardElement: cardEl };
+  } else {
+    _cbModalCard = null;
+  }
 
-  const mountEl = document.getElementById(`cb-card-element-${requestId}`);
-  if (!mountEl) return;
-
-  const elements = stripe.elements();
-  const cardElement = elements.create('card', {
-    style: {
-      base: { fontSize: '16px', color: '#1a1a1a', fontFamily: 'inherit' },
-    },
-  });
-  cardElement.mount(mountEl);
-  cardElement.on('change', (event) => {
-    const errEl = mountEl.closest('form')?.querySelector('.cb-card-error');
-    if (errEl) errEl.textContent = event.error ? event.error.message : '';
-  });
-  mountedStripeCards.set(requestId, { elements, cardElement });
+  _cbModal.hidden = false;
+  document.body.style.overflow = 'hidden';
+  _cbModal.querySelector('.cb-payment-modal-authorize').focus();
 }
 
-// Mount cards for any pending-completion requests after rendering
-function mountPendingCards() {
-  document.querySelectorAll('.complete-booking-form').forEach((form) => {
-    mountStripeCardForRequest(form.dataset.requestId);
-  });
+function _closeCbModal(succeeded) {
+  if (!_cbModal) return;
+  _cbModal.hidden = true;
+  document.body.style.overflow = '';
+
+  if (_cbModalCard?.cardElement) {
+    _cbModalCard.cardElement.unmount();
+    _cbModalCard = null;
+  }
+
+  if (!succeeded && _cbModalFormStatusEl) {
+    _cbModalFormStatusEl.textContent = 'Payment authorization was not completed. Please try again.';
+  }
+  if (_cbModalSubmitBtn) {
+    _cbModalSubmitBtn.disabled = false;
+  }
+
+  _cbModalRpcFn  = null;
+  _cbModalMeta   = null;
+  _cbModalFormStatusEl = null;
+  _cbModalSubmitBtn    = null;
 }
 
-// Patch renderAllRequests to call mountPendingCards after setting innerHTML
-const _origRenderAllRequests = renderAllRequests;
+async function _handleCbModalAuthorize() {
+  const errorEl   = _cbModal.querySelector('.cb-payment-modal-error');
+  const statusEl  = _cbModal.querySelector('.cb-payment-modal-status');
+  const authorizeBtn = _cbModal.querySelector('.cb-payment-modal-authorize');
+
+  errorEl.textContent  = '';
+  statusEl.textContent = 'Authorizing…';
+  authorizeBtn.disabled = true;
+
+  try {
+    const stripe = getStripe();
+    let paymentIntentId = null;
+
+    if (stripe && _cbModalCard?.cardElement) {
+      const { authAmountCents, serviceLabel, customerName, customerEmail } = _cbModalMeta;
+      const piRes = await fetch('/api/create-payment-intent', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ amount_cents: authAmountCents, customer_name: customerName, customer_email: customerEmail, service_label: serviceLabel }),
+      });
+      const piData = await piRes.json();
+      if (!piRes.ok) throw new Error(piData.error || 'Could not create payment authorization.');
+
+      const { error: confirmError, paymentIntent } = await stripe.confirmCardPayment(piData.client_secret, {
+        payment_method: { card: _cbModalCard.cardElement },
+      });
+
+      if (confirmError) {
+        errorEl.textContent  = confirmError.message;
+        statusEl.textContent = '';
+        authorizeBtn.disabled = false;
+        return;
+      }
+
+      paymentIntentId = paymentIntent.id;
+    }
+
+    // Save booking details + move to worker queue
+    const rpcError = await _cbModalRpcFn(paymentIntentId);
+    if (rpcError) throw rpcError;
+
+    statusEl.textContent = 'Your booking has been confirmed.';
+    authorizeBtn.textContent = '✓ Confirmed';
+
+    setTimeout(() => _closeCbModal(true), 900);
+
+  } catch (err) {
+    console.error('Payment modal error:', err);
+    errorEl.textContent  = err.message || 'Payment authorization failed. Please try again.';
+    statusEl.textContent = '';
+    authorizeBtn.disabled = false;
+  }
+}
+
+// ── Form submit → validate → open payment modal ───────────────────────────────
 
 trackingResult.addEventListener('submit', async (event) => {
   const form = event.target.closest('.complete-booking-form');
@@ -1177,116 +1460,137 @@ trackingResult.addEventListener('submit', async (event) => {
   event.preventDefault();
 
   const requestId = form.dataset.requestId;
-  const statusEl = form.querySelector('.cb-status');
+  const statusEl  = form.querySelector('.cb-status');
   const submitBtn = form.querySelector('.cb-submit-btn');
-  const cardErrorEl = form.querySelector('.cb-card-error');
 
-  const val = (cls) => (form.querySelector(`.${cls}`)?.value || '').trim();
-  const serviceType = val('cb-service-type');
-  const serviceDate = val('cb-service-date');
-  const returnTime  = val('cb-return-time');
-  const year  = val('cb-vehicle-year');
-  const make  = val('cb-vehicle-make');
-  const model = val('cb-vehicle-model');
-  const color = val('cb-vehicle-color');
-  const plate = val('cb-license-plate');
+  const val     = (cls) => (form.querySelector(`.${cls}`)?.value || '').trim();
+  const checked = (cls) => form.querySelector(`.${cls}`)?.checked === true;
 
-  if (!serviceType) {
-    if (statusEl) statusEl.textContent = 'Please select a service type.';
-    form.querySelector('.cb-service-type')?.focus();
-    return;
-  }
-  if (!year || !make || !model || !color || !plate) {
-    if (statusEl) statusEl.textContent = 'Please fill in all vehicle fields.';
-    return;
-  }
+  const serviceType     = val('cb-service-type');
+  const needsFuel       = serviceType.includes('fuel');
+  const needsWash       = serviceType.includes('wash');
+  const fuelType        = val('cb-fuel-type');
+  const fuelEstimate    = val('cb-fuel-estimate');
+  const washPackage     = val('cb-wash-package');
+  const serviceDate     = val('cb-service-date');
+  const returnTime      = val('cb-return-time');
+  const addrStreet      = val('cb-address-street');
+  const addrApt         = val('cb-address-apt');
+  const addrCity        = val('cb-address-city');
+  const addrState       = val('cb-address-state');
+  const addrZip         = val('cb-address-zip');
+  const parkingLoc      = val('cb-parking-location');
+  const keyHandoff      = val('cb-key-handoff');
+  const parkingMapUrl   = val('cb-parking-map-url');
+  const year            = val('cb-vehicle-year');
+  const make            = val('cb-vehicle-make');
+  const model           = val('cb-vehicle-model');
+  const color           = val('cb-vehicle-color');
+  const plate           = val('cb-license-plate');
+  const notes           = val('cb-notes');
+  const agreed          = checked('cb-agreed');
+  const quickInspection = checked('cb-quick-inspection');
 
-  if (statusEl) statusEl.textContent = 'Authorizing payment…';
+  // ── Validate ──────────────────────────────────────────────────────────────
+  const fail = (msg, selector) => {
+    if (statusEl) statusEl.textContent = msg;
+    if (selector) form.querySelector(selector)?.focus();
+    return true;
+  };
+
+  if (!serviceType && fail('Please select a service type.', '.cb-service-type')) return;
+  if (needsFuel && !fuelType    && fail('Please select a fuel type.', '.cb-fuel-type')) return;
+  if (needsFuel && !fuelEstimate && fail('Please select the estimated fuel amount.', '.cb-fuel-estimate')) return;
+  if (needsWash && !washPackage  && fail('Please select a car wash package.', '.cb-wash-package')) return;
+  if (!serviceDate && fail('Please enter a service date.', '.cb-service-date')) return;
+  if (!returnTime  && fail('Please enter a desired return time.', '.cb-return-time')) return;
+  if (!addrStreet  && fail('Please enter the street address.', '.cb-address-street')) return;
+  if (!addrCity    && fail('Please enter the city.', '.cb-address-city')) return;
+  if (!addrZip     && fail('Please enter the ZIP code.', '.cb-address-zip')) return;
+  if (!parkingLoc  && fail('Please describe where your vehicle will be parked.', '.cb-parking-location')) return;
+  if (!keyHandoff  && fail('Please describe how to pick up your keys.', '.cb-key-handoff')) return;
+  if ((!year || !make || !model || !color || !plate) && fail('Please fill in all vehicle fields.', '.cb-vehicle-year')) return;
+  if (!agreed && fail('Please check the agreement box to confirm your booking.', '.cb-agreed')) return;
+
+  if (statusEl) statusEl.textContent = '';
   submitBtn.disabled = true;
 
-  try {
-    const stripe = getStripe();
-    const stripeCard = mountedStripeCards.get(requestId);
+  // ── Compute auth amount ───────────────────────────────────────────────────
+  const washPkg        = WASH_PACKAGES.find((p) => p.value === washPackage);
+  const fuelEstimateRange = FUEL_ESTIMATE_RANGES.find((r) => r.value === fuelEstimate);
+  const washTotal      = needsWash && washPkg ? washPkg.price + 15 : 0;
+  const fuelTotal      = needsFuel ? 60 : 0;
+  const inspTotal      = quickInspection ? 5 : 0;
+  const estimatedTotal = (washTotal + fuelTotal + inspTotal) || null;
+  const authAmountCents = Math.max(Math.round((estimatedTotal || 1) * 100), 50);
 
-    let paymentIntentId = null;
+  const requestData = (window._trackingRequests || []).find((r) => r.id === requestId);
 
-    if (stripe && stripeCard) {
-      // Look up estimated total from the rendered request data
-      const requestData = (window._trackingRequests || []).find((r) => r.id === requestId);
-      const amountCents = requestData?.estimated_total
-        ? Math.round(Number(requestData.estimated_total) * 100)
-        : 100; // $1.00 placeholder authorization if no estimate
-
-      const piRes = await fetch('/api/create-payment-intent', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          amount_cents: Math.max(amountCents, 50),
-          customer_name: requestData?.customer_name || '',
-          customer_email: requestData?.customer_email || '',
-          service_label: serviceLabelFromType(serviceType) || requestData?.service_label || 'ShiftFuel service',
-        }),
-      });
-
-      const piData = await piRes.json();
-      if (!piRes.ok) throw new Error(piData.error || 'Could not create payment authorization.');
-
-      const { error: confirmError, paymentIntent } = await stripe.confirmCardPayment(piData.client_secret, {
-        payment_method: { card: stripeCard.cardElement },
-      });
-
-      if (confirmError) {
-        if (cardErrorEl) cardErrorEl.textContent = confirmError.message;
-        if (statusEl) statusEl.textContent = '';
-        submitBtn.disabled = false;
-        return;
-      }
-
-      paymentIntentId = paymentIntent.id;
-    }
-
-    // Call customer_complete_booking RPC
+  // ── Build the RPC call to run after payment succeeds ─────────────────────
+  const rpcFn = async (paymentIntentId) => {
     const { error } = await shiftFuelDb.rpc('customer_complete_booking', {
-      p_request_id: requestId,
-      p_phone: verifiedTrackingContact.phone || '',
-      p_email: verifiedTrackingContact.email || '',
-      p_service_type: serviceType,
-      p_service_label: serviceLabelFromType(serviceType),
-      p_service_date: serviceDate || null,
-      p_desired_return_time: returnTime || null,
-      p_vehicle_year: year,
-      p_vehicle_make: make,
-      p_vehicle_model: model,
-      p_vehicle_color: color,
-      p_license_plate: plate,
-      p_payment_intent_id: paymentIntentId || null,
+      p_request_id:           requestId,
+      p_phone:                verifiedTrackingContact.phone || '',
+      p_email:                verifiedTrackingContact.email || '',
+      p_service_type:         serviceType,
+      p_service_label:        serviceLabelFromType(serviceType),
+      p_service_date:         serviceDate   || null,
+      p_desired_return_time:  returnTime    || null,
+      p_fuel_type:            fuelType      || null,
+      p_wash_package:         washPackage   || null,
+      p_wash_package_label:   washPkg?.label || null,
+      p_wash_fee:             needsWash && washPkg ? washPkg.price : null,
+      p_estimated_gallons:    fuelEstimateRange ? fuelEstimateRange.gallons : null,
+      p_quick_inspection:     quickInspection,
+      p_quick_inspection_fee: quickInspection ? 5 : 0,
+      p_address_street:       addrStreet    || null,
+      p_address_apt:          addrApt       || null,
+      p_address_city:         addrCity      || null,
+      p_address_state:        addrState     || null,
+      p_address_zip:          addrZip       || null,
+      p_parking_location:     parkingLoc    || null,
+      p_key_handoff_details:  keyHandoff    || null,
+      p_parking_map_url:      parkingMapUrl || null,
+      p_vehicle_year:         year,
+      p_vehicle_make:         make,
+      p_vehicle_model:        model,
+      p_vehicle_color:        color,
+      p_license_plate:        plate,
+      p_estimated_total:      estimatedTotal,
+      p_payment_intent_id:    paymentIntentId || null,
+      p_customer_notes:       notes || null,
     });
 
-    if (error) throw error;
+    if (!error) {
+      // Re-render the card as a normal in-progress request
+      setTimeout(async () => {
+        const { data: refreshed } = await shiftFuelDb.rpc('public_track_request', {
+          p_request_id: requestId,
+          p_phone: verifiedTrackingContact.phone,
+          p_email: verifiedTrackingContact.email,
+        });
+        if (refreshed?.[0]) {
+          const photos = await loadRequestPhotos(refreshed[0].id);
+          const review = await loadRequestReview(refreshed[0].id);
+          renderRequest(refreshed[0], photos, review);
+        }
+        if (statusEl) statusEl.textContent = 'Your booking has been confirmed.';
+      }, 1000);
+    }
 
-    if (statusEl) statusEl.textContent = 'Booking confirmed! Your request has entered the queue.';
-    mountedStripeCards.delete(requestId);
+    return error || null;
+  };
 
-    // Refresh the display
-    setTimeout(async () => {
-      const { data: refreshed } = await shiftFuelDb.rpc('public_track_request', {
-        p_request_id: requestId,
-        p_phone: verifiedTrackingContact.phone,
-        p_email: verifiedTrackingContact.email,
-      });
-      if (refreshed?.[0]) {
-        const photos = await loadRequestPhotos(refreshed[0].id);
-        const review = await loadRequestReview(refreshed[0].id);
-        renderRequest(refreshed[0], photos, review);
-      }
-    }, 1200);
-  } catch (err) {
-    console.error('complete-booking error:', err);
-    if (statusEl) statusEl.textContent = `Could not complete booking: ${err.message || err}`;
-    submitBtn.disabled = false;
-  }
+  // ── Open the payment modal ────────────────────────────────────────────────
+  _openCbModal(
+    {
+      authAmountCents,
+      serviceLabel:  serviceLabelFromType(serviceType) || requestData?.service_label || 'ShiftFuel service',
+      customerName:  requestData?.customer_name  || '',
+      customerEmail: requestData?.customer_email || '',
+    },
+    rpcFn,
+    statusEl,
+    submitBtn,
+  );
 });
-
-// After any render that places .complete-booking-form elements, mount Stripe cards
-const _trackResultObserver = new MutationObserver(() => mountPendingCards());
-_trackResultObserver.observe(trackingResult, { childList: true, subtree: true });

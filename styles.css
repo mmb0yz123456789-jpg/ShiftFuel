@@ -1084,6 +1084,143 @@ textarea:focus {
   margin-top: .25rem;
 }
 
+/* Combined "Authorize Payment & Confirm Booking" button */
+.cb-pay-confirm-btn {
+  font-size: 1rem;
+  padding: 14px 28px;
+  letter-spacing: .01em;
+}
+
+/* Payment note above the confirm button */
+.cb-payment-note {
+  background: var(--surface-soft, #f5f5f5);
+  border: 1px solid var(--border, #ddd);
+  border-radius: 8px;
+  padding: 12px 16px;
+  font-size: .875rem;
+  color: var(--text-secondary, #555);
+  margin-bottom: 4px;
+}
+.cb-payment-note p { margin: 0; }
+
+/* ── Payment modal ─────────────────────────────────── */
+.cb-payment-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1200;
+  padding: 20px;
+}
+
+.cb-payment-modal-dialog {
+  background: var(--surface, #fff);
+  border-radius: 12px;
+  box-shadow: 0 8px 40px rgba(0,0,0,.22);
+  padding: 32px 28px 28px;
+  width: 100%;
+  max-width: 440px;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.cb-payment-modal-close {
+  position: absolute;
+  top: 12px;
+  right: 14px;
+  background: none;
+  border: none;
+  font-size: 1.5rem;
+  line-height: 1;
+  color: var(--text-secondary, #666);
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 4px;
+}
+.cb-payment-modal-close:hover { background: var(--surface-soft, #f0f0f0); }
+
+.cb-payment-modal-lock-icon {
+  font-size: 1.6rem;
+  text-align: center;
+}
+
+.cb-payment-modal-title {
+  font-size: 1.15rem;
+  font-weight: 700;
+  margin: 0;
+  text-align: center;
+}
+
+.cb-payment-modal-desc {
+  font-size: .875rem;
+  color: var(--text-secondary, #555);
+  margin: 0;
+  text-align: center;
+}
+
+.cb-payment-modal-card-wrap {
+  border: 1.5px solid var(--border, #ddd);
+  border-radius: 8px;
+  padding: 14px 16px;
+  background: var(--surface, #fff);
+}
+
+.cb-payment-modal-error {
+  color: var(--danger, #c0392b);
+  font-size: .875rem;
+  min-height: 1.1em;
+  margin: 0;
+}
+
+.cb-payment-modal-backdrop .button.primary {
+  width: 100%;
+  font-size: 1rem;
+  padding: 14px;
+  text-align: center;
+  justify-content: center;
+}
+
+.cb-payment-modal-status {
+  font-size: .875rem;
+  text-align: center;
+  margin: 0;
+  min-height: 1.2em;
+}
+
+/* Inspection addon inside the completion card — static visible block, not a hover tooltip */
+.pending-completion-card .inspection-addon-details {
+  position: static;
+  display: block;
+  opacity: 1;
+  transform: none;
+  pointer-events: auto;
+  box-shadow: none;
+  background: var(--surface-soft, #f5f5f5);
+  border: 1px solid var(--border, #ddd);
+  border-radius: 6px;
+  padding: 10px 14px;
+  margin-top: 8px;
+  font-size: .825rem;
+  color: var(--text-secondary, #555);
+  max-width: 380px;
+}
+.pending-completion-card .inspection-addon-details h4 {
+  margin: 0 0 6px;
+  font-size: .825rem;
+  font-weight: 600;
+}
+.pending-completion-card .inspection-addon-details ul {
+  margin: 0;
+  padding-left: 18px;
+}
+.pending-completion-card .inspection-addon-details li {
+  margin-bottom: 2px;
+}
+
 .track-request-card:hover {
   border-color: var(--brand-dark);
   box-shadow: 0 4px 16px rgba(8, 113, 95, 0.14);
