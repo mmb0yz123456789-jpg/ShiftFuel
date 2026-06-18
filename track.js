@@ -101,6 +101,7 @@ const statusLabels = {
   customer_canceled: "Canceled by customer",
   unable_to_complete: "Unable to complete",
   pending_customer_info: "Complete your booking",
+  pending_customer_payment: "Awaiting customer payment",
 };
 
 // statusSteps is now dynamic — see buildStatusSteps(request)
@@ -304,8 +305,9 @@ function buildStatusSteps(request) {
     steps.push({ key: 'car_wash_in_progress', label: 'Car wash in progress' });
     steps.push({ key: 'car_wash_complete',    label: 'Car wash completed' });
   }
-  steps.push({ key: 'vehicle_returned', label: 'Vehicle returned' });
-  steps.push({ key: 'complete',         label: 'Complete' });
+  steps.push({ key: 'vehicle_returned',  label: 'Vehicle returned' });
+  steps.push({ key: 'awaiting_payment',  label: 'Awaiting your payment' });
+  steps.push({ key: 'complete',          label: 'Complete' });
   return steps;
 }
 
@@ -336,6 +338,7 @@ const STATUS_STEP_MAP = {
   vehicle_returned: 'vehicle_returned',
   inspection_needed: 'vehicle_returned',
   inspection_recorded: 'vehicle_returned',
+  pending_customer_payment: 'awaiting_payment',
   complete: 'complete',
 };
 
@@ -1390,9 +1393,58 @@ function renderPendingCompletionCard(request) {
   `;
 }
 
+function renderPendingPaymentCard(request) {
+  const vehicle = [request.vehicle_year, request.vehicle_make, request.vehicle_model].filter(Boolean).join(' ');
+  const serviceDate = request.service_date
+    ? new Date(request.service_date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+    : '';
+  const finalTotal = request.final_total != null ? formatCurrency(request.final_total) : null;
+
+  return `
+    <article class="track-request-card track-payment-card" data-request-id="${escapeHtml(request.id)}">
+      <div class="action-required-banner">
+        <strong>⚡ Action required — Final payment needed</strong>
+      </div>
+      <div class="track-card-meta">
+        <span class="status-pill status-pill-payment">Awaiting your payment</span>
+        ${vehicle ? `<span class="track-vehicle">${escapeHtml(vehicle)}</span>` : ''}
+        ${serviceDate ? `<span class="track-date">${escapeHtml(serviceDate)}</span>` : ''}
+      </div>
+
+      <p class="track-payment-intro">Your ShiftFuel service is complete! Please review the details below and confirm your final payment.</p>
+
+      <div class="track-payment-summary">
+        ${request.service_label ? `<p><strong>Service:</strong> ${escapeHtml(request.service_label)}</p>` : ''}
+        ${request.return_parking_location ? `<p><strong>Vehicle returned to:</strong> ${escapeHtml(request.return_parking_location)}</p>` : ''}
+        ${finalTotal ? `<div class="estimated-total-card"><span class="estimated-total-label">Final Total</span><span class="estimated-total-amount">${finalTotal}</span></div>` : ''}
+        ${request.notes ? `<p class="track-payment-notes"><strong>Notes:</strong> ${escapeHtml(request.notes)}</p>` : ''}
+      </div>
+
+      <div id="customer-payment-section-${escapeHtml(request.id)}" class="customer-payment-section">
+        ${request.payment_intent_id
+          ? `<p class="field-help">Your card was pre-authorized when you booked. Clicking below will capture the final total from that card.</p>`
+          : `<p class="field-help">Please enter your card details to pay the final total.</p>
+             <div class="stripe-card-element-wrap">
+               <div id="customer-pay-card-${escapeHtml(request.id)}" class="stripe-card-element"></div>
+             </div>`
+        }
+        <p class="customer-payment-error" id="customer-payment-error-${escapeHtml(request.id)}"></p>
+        <button class="button primary confirm-and-pay" data-id="${escapeHtml(request.id)}" type="button">
+          Confirm and Pay ${finalTotal ? finalTotal : ''}
+        </button>
+      </div>
+
+      ${renderTimeline(request)}
+    </article>
+  `;
+}
+
 function renderRequestCard(request, photos = [], review = null) {
   if (request.status === 'pending_customer_info') {
     return renderPendingCompletionCard(request);
+  }
+  if (request.status === 'pending_customer_payment') {
+    return renderPendingPaymentCard(request);
   }
   const statusLabel = statusLabels[request.status] || request.status;
   const cancellationReason = cancellationReasonForDisplay(request);
@@ -1532,6 +1584,11 @@ async function renderAllRequests(requests, phone, email) {
 
   html += `</div>`;
   trackingResult.innerHTML = html;
+
+  // Mount Stripe card elements for any pending-payment requests with no pre-auth PI.
+  requests
+    .filter(r => r.status === 'pending_customer_payment' && !r.payment_intent_id)
+    .forEach(r => mountCustomerPayCard(r.id));
 }
 
 function renderDeniedCard(request) {
@@ -1868,6 +1925,13 @@ trackingResult.addEventListener("click", async (event) => {
     return;
   }
 
+  // ── Confirm and Pay (pending_customer_payment) ───────────────────────────
+  const confirmPayBtn = event.target.closest('.confirm-and-pay');
+  if (confirmPayBtn && !confirmPayBtn.disabled) {
+    await handleConfirmAndPay(confirmPayBtn);
+    return;
+  }
+
   if (!confirmCancelButton) {
     return;
   }
@@ -1948,7 +2012,7 @@ trackingResult.addEventListener("click", async (event) => {
   renderRequest(data, photos, review);
 });
 
-// ── Complete booking (pending_customer_info) ──────────────────────────────────
+// ── Confirm and Pay (pending_customer_payment) ────────────────────────────────
 
 let stripeInstance = null;
 
@@ -1958,6 +2022,152 @@ function getStripe() {
     if (pk) stripeInstance = window.Stripe(pk);
   }
   return stripeInstance;
+}
+
+// Mounted card elements for new-card payment (case B), keyed by request id.
+const _customerCardElements = {};
+
+// Called when the payment section is inserted into the DOM — mounts the Stripe
+// card element for requests that have no pre-authorized payment intent.
+function mountCustomerPayCard(requestId) {
+  const container = document.getElementById(`customer-pay-card-${requestId}`);
+  if (!container || container.dataset.mounted) return;
+  const stripe = getStripe();
+  if (!stripe) return;
+  const elements = stripe.elements();
+  const card = elements.create('card', {
+    style: { base: { fontSize: '16px', color: '#1a1a1a', fontFamily: 'inherit' } },
+  });
+  card.mount(container);
+  container.dataset.mounted = '1';
+  _customerCardElements[requestId] = card;
+}
+
+async function handleConfirmAndPay(button) {
+  const requestId = button.dataset.id;
+  const request = (window._trackingRequests || []).find(r => r.id === requestId);
+  if (!request) return;
+
+  const errorEl = document.getElementById(`customer-payment-error-${requestId}`);
+  const setError = (msg) => { if (errorEl) errorEl.textContent = msg; };
+
+  button.disabled = true;
+  button.textContent = 'Processing…';
+  setError('');
+
+  const { phone, email } = verifiedTrackingContact;
+  const amountCents = request.final_total != null ? Math.round(request.final_total * 100) : null;
+
+  try {
+    // ── Case A: pre-authorized PaymentIntent exists ──────────────────────────
+    if (request.payment_intent_id) {
+      const res = await fetch('/api/customer-capture', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          request_id: requestId,
+          phone,
+          email,
+          amount_cents: amountCents,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setError(data.error || 'Payment failed. Please try again.');
+        button.disabled = false;
+        button.textContent = 'Confirm and Pay';
+        return;
+      }
+    } else {
+      // ── Case B: no pre-auth — charge a new card ────────────────────────────
+      if (!amountCents || amountCents < 50) {
+        setError('Final total is not set. Please contact ShiftFuel.');
+        button.disabled = false;
+        button.textContent = 'Confirm and Pay';
+        return;
+      }
+      const stripe = getStripe();
+      const cardElement = _customerCardElements[requestId];
+      if (!stripe || !cardElement) {
+        setError('Card entry is not ready. Please refresh and try again.');
+        button.disabled = false;
+        button.textContent = 'Confirm and Pay';
+        return;
+      }
+
+      // Create a PaymentIntent for immediate capture.
+      const piRes = await fetch('/api/create-payment-intent', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          amount_cents: amountCents,
+          customer_name: request.customer_name || '',
+          customer_email: request.customer_email || '',
+          service_label: request.service_label || 'ShiftFuel service',
+          capture_method: 'automatic',
+        }),
+      });
+      const piData = await piRes.json().catch(() => ({}));
+      if (!piRes.ok) {
+        setError(piData.error || 'Could not initialize payment. Please try again.');
+        button.disabled = false;
+        button.textContent = 'Confirm and Pay';
+        return;
+      }
+
+      const { error: confirmError, paymentIntent } = await stripe.confirmCardPayment(piData.client_secret, {
+        payment_method: { card: cardElement },
+      });
+
+      if (confirmError) {
+        setError(confirmError.message || 'Payment failed. Please check your card and try again.');
+        button.disabled = false;
+        button.textContent = 'Confirm and Pay';
+        return;
+      }
+
+      // Notify server: record the new PI and mark complete.
+      const captureRes = await fetch('/api/customer-capture', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          request_id: requestId,
+          phone,
+          email,
+          new_payment_intent_id: paymentIntent.id,
+        }),
+      });
+      const captureData = await captureRes.json().catch(() => ({}));
+      if (!captureRes.ok) {
+        // Payment was charged but server failed to mark complete — log for support.
+        console.error('[confirm-and-pay] Capture recorded but mark-complete failed:', captureData.error);
+        setError('Payment was processed but we could not update your request. Please contact ShiftFuel and reference request ' + requestId);
+        button.disabled = false;
+        button.textContent = 'Confirm and Pay';
+        return;
+      }
+    }
+
+    // ── Success ──────────────────────────────────────────────────────────────
+    button.textContent = '✓ Payment confirmed!';
+    setError('');
+
+    setTimeout(async () => {
+      const { data: refreshed } = await shiftFuelDb.rpc('public_track_request', {
+        p_phone: phone,
+        p_email: email,
+      });
+      if (refreshed?.length) {
+        window._trackingRequests = refreshed;
+        await renderAllRequests(refreshed, phone, email);
+      }
+    }, 1200);
+  } catch (err) {
+    console.error('[confirm-and-pay] Unexpected error:', err.message);
+    setError('An unexpected error occurred. Please try again or contact ShiftFuel.');
+    button.disabled = false;
+    button.textContent = 'Confirm and Pay';
+  }
 }
 
 // ── Payment modal ─────────────────────────────────────────────────────────────

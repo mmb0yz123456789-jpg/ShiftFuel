@@ -1442,6 +1442,71 @@ textarea:focus {
   color: var(--text-secondary, #555);
 }
 
+/* ── Pending customer payment card ─────────────────────────────────── */
+
+.track-payment-card {
+  border-left: 4px solid #f0a000;
+}
+
+.action-required-banner {
+  background: #fff3cd;
+  border: 1px solid #f0c040;
+  border-radius: 6px;
+  padding: 10px 14px;
+  margin-bottom: 12px;
+  color: #7a4800;
+  font-size: 0.95rem;
+}
+
+.status-pill-payment {
+  color: #7a4800;
+  background: #fff3cd;
+  border-color: #f0c040;
+}
+
+.track-payment-intro {
+  margin: 0 0 12px;
+  font-size: 0.95rem;
+}
+
+.track-payment-summary {
+  background: var(--surface-soft, #f5f5f5);
+  border: 1px solid var(--line, #e0e0e0);
+  border-radius: 8px;
+  padding: 14px 16px;
+  margin-bottom: 16px;
+}
+
+.track-payment-summary p {
+  margin: 4px 0;
+  font-size: 0.9rem;
+}
+
+.track-payment-notes {
+  color: var(--text-secondary, #555);
+  font-size: 0.85rem !important;
+  margin-top: 8px !important;
+}
+
+.customer-payment-section {
+  margin-top: 16px;
+}
+
+.stripe-card-element-wrap {
+  border: 1px solid var(--line, #ccc);
+  border-radius: 6px;
+  padding: 12px 14px;
+  background: #fff;
+  margin: 10px 0;
+}
+
+.customer-payment-error {
+  color: #c0392b;
+  font-size: 0.875rem;
+  min-height: 1.2em;
+  margin: 8px 0 0;
+}
+
 .request-details {
   display: grid;
   gap: 8px;
