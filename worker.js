@@ -1716,46 +1716,71 @@ async function completeWorkerRequest(button) {
   }
 
   button.disabled = true;
-  button.textContent = 'Completing...';
+  button.textContent = 'Processing payment...';
 
-  // Compute the correct final total from saved receipts
   const finalTotal = finalTotalFromSavedReceipts(request, receiptTotals);
 
-  // If final_total not yet saved (e.g. receipts saved but return location skipped capture),
-  // write it now and attempt Stripe capture before marking complete
-  if (request.final_total == null || request.final_total !== finalTotal) {
-    const { error: updateErr } = await workerDb.rpc('worker_update_request', {
-      p_token: SESSION_WORKER_TOKEN,
-      p_request_id: id,
-      p_data: { final_total: finalTotal },
-    });
-    if (updateErr) {
-      console.error('Failed to save final total:', updateErr);
+  // Capture Stripe hold if still authorized — block completion on failure
+  if (request.payment_intent_id && request.payment_status === 'authorized') {
+    let captureOk = false;
+    try {
+      const amountCents = Math.round(finalTotal * 100);
+      const res = await fetch('/api/capture-payment', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ payment_intent_id: request.payment_intent_id, amount_cents: amountCents }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) {
+        captureOk = true;
+      } else {
+        console.error('[complete] Stripe capture failed:', data.error);
+        button.disabled = false;
+        button.textContent = 'Complete request';
+        alert(`Payment capture failed: ${data.error || 'Unknown error'}. The request has not been marked complete. Please try again or contact support.`);
+        return;
+      }
+    } catch (err) {
+      console.error('[complete] Stripe capture error:', err.message);
       button.disabled = false;
       button.textContent = 'Complete request';
-      alert('Could not save the final total. Please try again.');
+      alert('Could not reach the payment service. Check your connection and try again.');
       return;
     }
 
-    if (request.payment_intent_id && request.payment_status === 'authorized') {
-      try {
-        const amountCents = Math.round(finalTotal * 100);
-        const res = await fetch('/api/capture-payment', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ payment_intent_id: request.payment_intent_id, amount_cents: amountCents }),
-        });
-        if (!res.ok) {
-          const data = await res.json().catch(() => ({}));
-          console.error('Stripe capture failed:', data.error);
-        }
-      } catch (err) {
-        console.error('Stripe capture error:', err.message);
+    if (captureOk) {
+      button.textContent = 'Saving...';
+      const { error: updateErr } = await workerDb.rpc('worker_update_request', {
+        p_token: SESSION_WORKER_TOKEN,
+        p_request_id: id,
+        p_data: { status: 'complete', final_total: finalTotal, payment_status: 'captured' },
+      });
+      if (updateErr) {
+        console.error('[complete] Failed to save completion:', updateErr);
+        button.disabled = false;
+        button.textContent = 'Complete request';
+        alert('Payment was charged but the request could not be marked complete. Please contact admin — do not charge again.');
+        return;
       }
+    }
+  } else {
+    // No Stripe hold (cash/no payment) — just mark complete with final total
+    button.textContent = 'Saving...';
+    const { error: updateErr } = await workerDb.rpc('worker_update_request', {
+      p_token: SESSION_WORKER_TOKEN,
+      p_request_id: id,
+      p_data: { status: 'complete', final_total: finalTotal },
+    });
+    if (updateErr) {
+      console.error('[complete] Failed to save completion:', updateErr);
+      button.disabled = false;
+      button.textContent = 'Complete request';
+      alert('Could not mark the request as complete. Please try again.');
+      return;
     }
   }
 
-  await updateWorkerJobStatus(id, 'complete');
+  await loadWorkerJobs();
   await loadWorkerReviews();
 }
 
