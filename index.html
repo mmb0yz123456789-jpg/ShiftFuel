@@ -110,20 +110,13 @@
             <p class="plan">Fuel Concierge</p>
             <h3>Fuel cost + $15 service fee</h3>
             <p>We pick up your vehicle, fill it with the selected fuel type, document the receipt, and return it to your workplace.</p>
+            <div id="fuel-pricing-summary" class="fuel-pricing-summary"></div>
           </article>
           <article class="price-card quick-inspection-card">
             <p class="plan">Quick Inspection Add-On</p>
             <h3>$5</h3>
-            <p>Add a quick visual check to any service request.</p>
-            <div class="price-card-buttons">
-              <button id="inspection-pricing-toggle" class="button secondary compact-button" type="button" aria-expanded="false" aria-controls="inspection-pricing-details">
-                Details
-              </button>
-              <button id="add-inspection-from-pricing" class="button secondary compact-button" type="button">
-                Add inspection
-              </button>
-            </div>
-            <div id="inspection-pricing-details" class="inspection-pricing-details" hidden>
+            <p>Add this during booking after your service address is verified.</p>
+            <div class="inspection-pricing-details">
               <h4>Inspection covers</h4>
               <ul>
                 <li>Tire pressure check</li>
@@ -137,26 +130,24 @@
             <p class="plan">Car Wash</p>
             <h3>Wash package + $15 service fee</h3>
             <p>Choose a wash package and ShiftFuel handles pickup, wash service, receipt documentation, and return. Available 9 AM to 6 PM.</p>
-            <button id="wash-pricing-toggle" class="button secondary compact-button" type="button" aria-expanded="false" aria-controls="wash-pricing-details">
-              Details
-            </button>
-            <div id="wash-pricing-details" class="wash-pricing-details" hidden>
-              <div>
-                <h4>Buff & Shine — $27</h4>
+            <div class="wash-pricing-details">
+              <div class="wash-package-item">
+                <h4>Buff &amp; Shine — $27</h4>
                 <p>Fire Bath, ceramic finish, Dry N' Shine, ICE Instant Shine, Salt Shield, Tire Shine, wheel cleaning, conditioners, clear coat, presoak, drying agent, and spot-free rinse.</p>
               </div>
-              <div>
-                <h4>Shine & Protect — $20</h4>
+              <div class="wash-package-item">
+                <h4>Shine &amp; Protect — $20</h4>
                 <p>ICE Instant Shine, Salt Shield, Tire Shine, triple wheel cleaning, conditioners, clear coat, presoak, drying agent, and spot-free rinse.</p>
               </div>
-              <div>
+              <div class="wash-package-item">
                 <h4>Shine — $16</h4>
                 <p>Tri-Foam Conditioner, clear coat, presoak, double tire and wheel cleaning, drying agent, and spot-free rinse.</p>
               </div>
-              <div>
+              <div class="wash-package-item">
                 <h4>Double Wash — $12</h4>
                 <p>High pH and Low pH presoak, double tire and wheel cleaning, drying agent, and spot-free rinse.</p>
               </div>
+              <p class="wash-provider-note">Car wash services are provided by <a href="https://www.thecarspade.com/" target="_blank" rel="noopener noreferrer">The Car Spade</a>. Package pricing and inclusions are set by the provider and may change.</p>
             </div>
           </article>
         </div>

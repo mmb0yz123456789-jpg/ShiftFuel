@@ -95,11 +95,6 @@ const statusMessage = document.querySelector("#form-status");
 const applicantForm = document.querySelector("#applicant-form");
 const applicantStatus = document.querySelector("#applicant-status");
 const statusItems = Array.from(document.querySelectorAll("#status-list li"));
-const washPricingToggle = document.querySelector("#wash-pricing-toggle");
-const washPricingDetails = document.querySelector("#wash-pricing-details");
-const inspectionPricingToggle = document.querySelector("#inspection-pricing-toggle");
-const inspectionPricingDetails = document.querySelector("#inspection-pricing-details");
-const addInspectionFromPricing = document.querySelector("#add-inspection-from-pricing");
 const addressStreet = form.querySelector('#address-street');
 const addressApt    = form.querySelector('#address-apt');
 const addressCity   = form.querySelector('#address-city');
@@ -1669,27 +1664,20 @@ function validateReturningConfirmation() {
   form.elements[fieldName]?.addEventListener("change", updateReturningConfirmationText);
 });
 
-washPricingToggle.addEventListener("click", () => {
-  const shouldShow = washPricingDetails.hidden;
-  washPricingDetails.hidden = !shouldShow;
-  washPricingToggle.setAttribute("aria-expanded", String(shouldShow));
-  washPricingToggle.textContent = shouldShow ? "Hide details" : "Details";
-});
-
-inspectionPricingToggle?.addEventListener("click", () => {
-  const shouldShow = inspectionPricingDetails.hidden;
-  inspectionPricingDetails.hidden = !shouldShow;
-  inspectionPricingToggle.setAttribute("aria-expanded", String(shouldShow));
-  inspectionPricingToggle.textContent = shouldShow ? "Hide details" : "Details";
-});
-
-addInspectionFromPricing.addEventListener("click", () => {
-  quickInspection.checked = true;
-  updateServiceDetails();
-  updateEstimate();
-  quickInspection.scrollIntoView({ behavior: "smooth", block: "center" });
-  quickInspection.focus({ preventScroll: true });
-});
+// Populate fuel price summary in the pricing card using the shared averageFuelPrices object.
+// Update averageFuelPrices monthly — that single change reflects here and in the booking estimate.
+(function renderFuelPricingSummary() {
+  const container = document.querySelector('#fuel-pricing-summary');
+  if (!container) return;
+  const rows = Object.entries(averageFuelPrices)
+    .map(([type, price]) => `<div class="fuel-price-row"><span>${type}</span><span>${formatPricePerGallon(price)}</span></div>`)
+    .join('');
+  container.innerHTML = `
+    <p class="fuel-pricing-label">Current average fuel estimate</p>
+    <div class="fuel-price-list">${rows}</div>
+    <p class="fuel-pricing-note">Updated monthly for estimating only. Final fuel cost is based on the receipt.</p>
+  `;
+})();
 
 form.addEventListener("submit", async (event) => {
   event.preventDefault();
