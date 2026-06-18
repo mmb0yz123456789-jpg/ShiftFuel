@@ -281,22 +281,19 @@
               <legend id="parking-key-handoff-heading">Parking and key handoff</legend>
               <div class="field-grid">
                 <label>
-                  <span>Parking lot / garage <span class="required-mark">Required</span></span>
-                  <input id="parking-location" name="parkingLocation" type="text" placeholder="Garage B, Level 3" required>
-                </label>
-                <label>
-                  <span>Parking spot <span class="required-mark">Required</span></span>
-                  <input name="parkingSpot" type="text" placeholder="B3-142" required>
-                </label>
-                <label>
-                  <span>Google Maps parking link <span class="optional-mark">Optional</span></span>
-                  <input id="parking-map-url" name="parkingMapUrl" type="url" placeholder="Paste a Google Maps link">
-                  <span class="field-help">Optional. Paste a map link if you already have one for the pickup location.</span>
+                  <span>Car location <span class="required-mark">Required</span></span>
+                  <input id="parking-location" name="parkingLocation" type="text" placeholder="Example: on the street, Garage B Level 3 spot 142, surface lot near main entrance" required>
+                  <span class="field-help">Tell us exactly where your vehicle will be parked.</span>
                 </label>
                 <label>
                   <span>Key handoff instructions <span class="required-mark">Required</span></span>
-                  <input name="keyHandoffDetails" type="text" placeholder="Example: front door to Building X, my store, front desk, employee entrance, or meet at vehicle." required>
+                  <input name="keyHandoffDetails" type="text" placeholder="Example: front door to Building X, front desk, employee entrance, or meet at vehicle." required>
                   <span class="field-help">Tell us exactly where and how to pick up your keys.</span>
+                </label>
+                <label>
+                  <span>Google Maps / Apple Maps link <span class="optional-mark">Optional</span></span>
+                  <input id="parking-map-url" name="parkingMapUrl" type="url" placeholder="Paste a map link to the parking location">
+                  <span class="field-help">Optional. Helps the worker find your vehicle faster.</span>
                 </label>
               </div>
             </fieldset>
@@ -442,18 +439,8 @@
 
       <section class="section roadmap">
         <div>
-          <p class="eyebrow">Next build order</p>
-          <h2>From website to web app.</h2>
-        </div>
-        <div class="roadmap-list">
-          <span>1. Landing page</span>
-          <span>2. Booking form</span>
-          <span>3. Supabase database</span>
-          <span>4. Admin dashboard</span>
-          <span>5. Photo upload</span>
-          <span>6. Stripe authorization</span>
-          <span>7. Status tracker</span>
-          <span>8. Text and email notifications</span>
+          <p class="eyebrow">Coming soon</p>
+          <h2>Automated text and email notifications coming soon.</h2>
         </div>
       </section>
     </main>

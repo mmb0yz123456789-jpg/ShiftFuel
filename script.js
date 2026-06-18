@@ -1290,10 +1290,7 @@ function normalizeTextForMatch(value) {
 }
 
 function updateReturningConfirmationText() {
-  const parking = [
-    form.elements.parkingLocation?.value || "parking location not entered",
-    form.elements.parkingSpot?.value ? `spot ${form.elements.parkingSpot.value}` : "spot not entered",
-  ].join(", ");
+  const parking = form.elements.parkingLocation?.value || "parking location not entered";
   const keyInstructions = form.elements.keyHandoffDetails?.value || "key handoff instructions not entered";
   const desiredTime = returnTime.value ? formatTimeLabel(returnTime.value) : "return time not selected";
 
@@ -1333,8 +1330,7 @@ async function applyReturningCustomer(index, mode = "same-car") {
   setAddressStatus('warning', 'Please validate your service address before continuing.');
   form.elements.color.value = request.vehicle_color || "";
   form.elements.license.value = request.license_plate || "";
-  form.elements.parkingLocation.value = request.parking_location || "";
-  form.elements.parkingSpot.value = request.parking_spot || "";
+  form.elements.parkingLocation.value = [request.parking_location, request.parking_spot ? `spot ${request.parking_spot}` : ''].filter(Boolean).join(', ');
   form.elements.parkingMapUrl.value = request.parking_map_url || "";
   form.elements.keyHandoffDetails.value = request.key_handoff_details || "";
   applyReturningService(request);
@@ -1395,7 +1391,7 @@ function getBookingPayload() {
       addressState:  addressState?.value?.trim()  || "",
       addressZip:    addressZip?.value?.trim()    || "",
       parkingLocation: data.get("parkingLocation"),
-      parkingSpot: data.get("parkingSpot"),
+      parkingSpot: null,
       parkingMapUrl: data.get("parkingMapUrl"),
       keyHandoffDetails: data.get("keyHandoffDetails"),
       serviceType: selectedService,

@@ -6,7 +6,7 @@
     <title>Hiring — ShiftFuel Concierge</title>
     <link rel="stylesheet" href="styles.css">
   </head>
-  <body class="track-page">
+  <body class="portal-login-page">
     <header class="site-header">
       <a class="logo" href="index.html">ShiftFuel Concierge</a>
       <nav class="nav" aria-label="Main navigation">
@@ -22,47 +22,48 @@
     </header>
 
     <main>
-      <section class="admin-hero">
+      <section class="section admin-hero">
         <div class="section-heading">
           <p class="eyebrow">Hiring</p>
           <h1>Apply to work with ShiftFuel.</h1>
           <p>Submit your interest and availability. We will follow up before any customer vehicle work is assigned.</p>
         </div>
-      </section>
 
-      <section class="section">
-        <form id="applicant-form" class="booking-form compact-form">
-          <div class="field-grid">
+        <form id="applicant-form" class="booking-form">
+          <fieldset>
+            <legend>Application</legend>
+            <div class="field-grid">
+              <label>
+                Name
+                <input type="text" name="applicantName" placeholder="Full name" required>
+              </label>
+              <label>
+                Email
+                <input type="email" name="applicantEmail" placeholder="you@example.com">
+              </label>
+              <label>
+                Phone
+                <input type="tel" name="applicantPhone" placeholder="(302) 555-0100">
+              </label>
+              <label>
+                Availability
+                <input type="text" name="applicantAvailability" placeholder="Weekdays, weekends, evenings">
+              </label>
+            </div>
             <label>
-              <span>Name</span>
-              <input type="text" name="applicantName" placeholder="Full name" required>
+              Experience or notes
+              <textarea name="applicantNotes" rows="3" placeholder="Driving, customer service, car wash, or fuel service experience"></textarea>
             </label>
-            <label>
-              <span>Email</span>
-              <input type="email" name="applicantEmail" placeholder="you@example.com">
+            <label class="file-button-control resume-upload-control" id="resume-drop-zone">
+              Resume <span class="optional-mark">Optional</span>
+              <input type="file" name="applicantResume" id="applicant-resume-input" accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document">
+              <span class="button primary file-button-text" aria-hidden="true">Upload Resume</span>
+              <span class="selected-file-name" id="resume-file-name">No file chosen</span>
+              <span class="resume-drop-hint" aria-hidden="true">or drag and drop here</span>
             </label>
-            <label>
-              <span>Phone</span>
-              <input type="tel" name="applicantPhone" placeholder="(302) 555-0100">
-            </label>
-            <label>
-              <span>Availability</span>
-              <input type="text" name="applicantAvailability" placeholder="Weekdays, weekends, evenings">
-            </label>
-          </div>
-          <label>
-            <span>Experience or notes</span>
-            <textarea name="applicantNotes" rows="3" placeholder="Driving, customer service, car wash, or fuel service experience"></textarea>
-          </label>
-          <label class="file-button-control resume-upload-control" id="resume-drop-zone">
-            <span>Resume <span class="optional-mark">Optional</span></span>
-            <input type="file" name="applicantResume" id="applicant-resume-input" accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document">
-            <span class="button primary file-button-text" aria-hidden="true">Upload Resume</span>
-            <span class="selected-file-name" id="resume-file-name">No file chosen</span>
-            <span class="resume-drop-hint" aria-hidden="true">or drag and drop here</span>
-          </label>
-          <button class="button primary" type="submit">Submit application</button>
-          <p id="applicant-status" class="form-status" role="status"></p>
+            <button class="button primary" type="submit">Submit application</button>
+            <p id="applicant-status" class="form-status" role="status"></p>
+          </fieldset>
         </form>
       </section>
     </main>
