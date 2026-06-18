@@ -1010,7 +1010,7 @@ function renderWorkerJobCard(request, mode) {
         ${request.key_handoff_details ? `<p><strong>Key handoff:</strong> ${escapeHtml(request.key_handoff_details)}</p>` : ''}
         <p><strong>Service:</strong> ${escapeHtml(workerFormatService(request))}</p>
         <p><strong>Vehicle:</strong> ${escapeHtml([request.vehicle_year, request.vehicle_make, request.vehicle_model, request.vehicle_color].filter(Boolean).join(' '))}${request.license_plate ? ` | Plate: ${escapeHtml(request.license_plate)}` : ''}</p>
-        ${request.return_parking_location ? `<p><strong>Vehicle return location:</strong> ${escapeHtml(request.return_parking_location)}</p>` : ''}
+        ${request.return_parking_location ? `<p><strong>Car location:</strong> ${escapeHtml(request.return_parking_location)}</p>` : ''}
         ${(receiptTotals.fuel || receiptTotals.wash) ? `<p><strong>Receipts entered:</strong> Fuel ${money(receiptTotals.fuel)} | Car wash ${money(receiptTotals.wash)} | Total ${money(workerReceiptTotal)}</p>` : ''}
       </div>
       ${mode === 'available' ? `
@@ -1228,11 +1228,11 @@ function renderWorkerReturnLocationPanel(request) {
 
   return `
     <div class="return-location-panel" data-return-for="${escapeHtml(request.id)}">
-      <h4>Vehicle Return Location</h4>
+      <h4>Car Location</h4>
       <p class="field-help">Record exactly where you left the vehicle after service.</p>
       <div class="field-grid">
-        <label>Vehicle return location
-          <input class="return-parking-location" type="text" value="${escapeHtml(returnLocation)}" placeholder="Example: Returned to Lot F, space F-19">
+        <label>Car location
+          <input class="return-parking-location" type="text" value="${escapeHtml(returnLocation)}" placeholder="Example: Lot F, space F-19">
         </label>
       </div>
       <button class="button primary save-return-location" data-id="${escapeHtml(request.id)}" type="button">Save return location</button>

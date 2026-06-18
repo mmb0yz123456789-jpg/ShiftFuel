@@ -479,7 +479,7 @@ function requestCardDetails(request) {
       ${request.key_handoff_details ? `<p><strong>Key handoff:</strong> ${escapeHtml(request.key_handoff_details)}</p>` : ''}
       <p><strong>Service:</strong> ${escapeHtml(adminFormatService(request))}</p>
       <p><strong>Vehicle:</strong> ${escapeHtml([request.vehicle_year, request.vehicle_make, request.vehicle_model, request.vehicle_color].filter(Boolean).join(' '))}${request.license_plate ? ` | Plate: ${escapeHtml(request.license_plate)}` : ''}</p>
-      ${request.return_parking_location ? `<p><strong>Vehicle return location:</strong> ${escapeHtml(request.return_parking_location)}</p>` : ''}
+      ${request.return_parking_location ? `<p><strong>Car location:</strong> ${escapeHtml(request.return_parking_location)}</p>` : ''}
       ${request.cancellation_reason ? `<p><strong>Cancellation reason:</strong> ${escapeHtml(request.cancellation_reason)}</p>` : ''}
       ${(request.notes && isOpen(request)) ? `<p><strong>Notes:</strong> ${escapeHtml(request.notes)}</p>` : ''}
       ${hasPayment ? `<hr class="details-divider">` : ''}
@@ -842,15 +842,16 @@ function renderReceiptPanel(request, mode = 'all') {
 }
 
 function renderReturnLocationPanel(request) {
-  const returnLocation = request.return_parking_location || '';
+  const customerParking = [request.parking_location, request.parking_spot ? `spot ${request.parking_spot}` : ''].filter(Boolean).join(', ');
+  const returnLocation = request.return_parking_location || customerParking;
 
   return `
     <div class="return-location-panel" data-return-for="${request.id}">
-      <h4>Vehicle Return Location</h4>
+      <h4>Car Location</h4>
       <p class="field-help">Record exactly where the vehicle was left after service.</p>
       <div class="field-grid">
-        <label>Vehicle return location
-          <input class="return-parking-location" type="text" value="${escapeHtml(returnLocation)}" placeholder="Example: Returned to Lot F, space F-19">
+        <label>Car location
+          <input class="return-parking-location" type="text" value="${escapeHtml(returnLocation)}" placeholder="Example: Lot F, space F-19">
         </label>
       </div>
       <button class="button primary save-return-location" data-id="${request.id}" type="button">Save return location</button>
@@ -981,7 +982,7 @@ function renderEditPanel(request) {
         <label>Fuel type
           <input class="edit-fuel-type" type="text" value="${escapeHtml(request.fuel_type || '')}">
         </label>
-        <label>Vehicle return location
+        <label>Car location
           <input class="edit-return-location" type="text" value="${escapeHtml(request.return_parking_location || '')}">
         </label>
       </div>

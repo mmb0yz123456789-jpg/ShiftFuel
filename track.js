@@ -1881,7 +1881,22 @@ async function _handleCbModalAuthorize() {
     statusEl.textContent = 'Your booking has been confirmed.';
     authorizeBtn.textContent = '✓ Confirmed';
 
-    setTimeout(() => _closeCbModal(true), 900);
+    setTimeout(() => {
+      _closeCbModal(true);
+      // Re-run the tracking lookup to replace the completion form with the confirmed status card
+      const phone = verifiedTrackingContact?.phone || '';
+      const email = verifiedTrackingContact?.email || '';
+      if (phone || email) {
+        shiftFuelDb.rpc('public_track_request', { p_request_id: null, p_phone: phone, p_email: email })
+          .then(({ data }) => {
+            if (data?.length) {
+              window._trackingRequests = data;
+              renderAllRequests(data, phone, email);
+            }
+          })
+          .catch(() => {});
+      }
+    }, 1500);
 
   } catch (err) {
     console.error('Payment modal error:', err);
