@@ -2,7 +2,11 @@
   "crons": [
     {
       "path": "/api/auto-reverse-payments",
-      "schedule": "0 8 * * *"
+      "schedule": "0 2 * * *"
+    },
+    {
+      "path": "/api/worker-reminders",
+      "schedule": "0 3-23 * * *"
     }
   ]
 }
