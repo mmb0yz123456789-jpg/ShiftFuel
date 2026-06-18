@@ -146,22 +146,29 @@ window.ShiftFuelPhoto = (() => {
 
   document.addEventListener('click', (event) => {
     const frame = event.target.closest('[data-open-worker-photo]');
-    if (!frame) return;
-    openPhotoModal({
-      photo_url: frame.dataset.photoUrl || '',
-      name: frame.dataset.photoName || '',
-    });
+    if (frame) {
+      openPhotoModal({ photo_url: frame.dataset.photoUrl || '', name: frame.dataset.photoName || '' });
+      return;
+    }
+    const card = event.target.closest('[data-lightbox-src]');
+    if (card) {
+      openPhotoModal({ photo_url: card.dataset.lightboxSrc || '', name: card.dataset.lightboxLabel || '' });
+    }
   });
 
   document.addEventListener('keydown', (event) => {
     if (event.key !== 'Enter' && event.key !== ' ') return;
     const frame = event.target.closest('[data-open-worker-photo]');
-    if (!frame) return;
-    event.preventDefault();
-    openPhotoModal({
-      photo_url: frame.dataset.photoUrl || '',
-      name: frame.dataset.photoName || '',
-    });
+    if (frame) {
+      event.preventDefault();
+      openPhotoModal({ photo_url: frame.dataset.photoUrl || '', name: frame.dataset.photoName || '' });
+      return;
+    }
+    const card = event.target.closest('[data-lightbox-src]');
+    if (card) {
+      event.preventDefault();
+      openPhotoModal({ photo_url: card.dataset.lightboxSrc || '', name: card.dataset.lightboxLabel || '' });
+    }
   });
 
   return { initPhotoModal, openPhotoModal, closePhotoModal, renderPhotoFrame, cropToBlobFromBoundaryEditor };

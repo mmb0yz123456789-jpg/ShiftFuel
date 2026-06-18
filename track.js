@@ -881,7 +881,7 @@ async function cbInitForm(form, request) {
   const yearSel  = form.querySelector('.cb-vehicle-year');
   const makeSel  = form.querySelector('.cb-vehicle-make');
   const modelSel = form.querySelector('.cb-vehicle-model');
-  if (yearSel && !yearSel.options.length) cbPopulateYears(yearSel, request?.vehicle_year || '');
+  if (yearSel && yearSel.options.length <= 1) cbPopulateYears(yearSel, request?.vehicle_year || '');
   if (makeSel && makeSel.options.length <= 1) cbPopulateMakes(makeSel, request?.vehicle_make || '');
   if (modelSel && request?.vehicle_model) modelSel.dataset.pendingValue = request.vehicle_model;
   await cbLoadModels(form);
