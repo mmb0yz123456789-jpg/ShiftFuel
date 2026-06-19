@@ -276,7 +276,7 @@ function renderAssignedWorker(request) {
     <section class="assigned-worker-card">
       ${photoFrame}
       <div class="assigned-worker-info">
-        <p class="eyebrow">Your ShiftFuel worker</p>
+        <p class="eyebrow">Assigned ShiftFuel employee</p>
         <h3>${escapeHtml(request.assigned_worker_name)}</h3>
         ${request.assigned_worker_phone ? `<p class="worker-phone">${escapeHtml(formatPhone(request.assigned_worker_phone))}</p>` : ''}
         <span class="worker-verified-badge">✓ Verified ShiftFuel Employee</span>
@@ -331,7 +331,7 @@ const STATUS_STEP_MAP = {
   wash_receipt_after_fuel_uploaded: 'car_wash_complete',
   fueling_after_wash_in_progress: 'fueling_in_progress',
   fuel_receipt_after_wash_uploaded: 'fueling_complete',
-  receipts_recorded: 'car_wash_complete',
+  receipts_recorded: 'vehicle_returned',
   returned_location_pending: 'vehicle_returned',
   return_location_recorded: 'vehicle_returned',
   return_photos_needed: 'vehicle_returned',
@@ -421,8 +421,37 @@ function renderServicePackageDetails(request) {
   return `<section class="service-package-details">${parts.join('')}</section>`;
 }
 
+const PAYMENT_RELEASED_STATUSES = ['voided', 'authorization_released', 'refunded', 'auto_reversed'];
+
 function renderEstimatedTotalCard(request) {
   if (request.estimated_total == null && request.final_total == null) return '';
+
+  const isClosed = closedStatuses.includes(request.status);
+  const holdReleased = isClosed && PAYMENT_RELEASED_STATUSES.includes(request.payment_status);
+  const releaseFailed = isClosed && request.payment_status === 'payment_release_failed';
+
+  if (holdReleased) {
+    const amount = request.final_total != null ? request.final_total : request.estimated_total;
+    return `
+      <div class="estimated-total-card estimated-total-released">
+        <span class="estimated-total-label">Authorization released</span>
+        <span class="estimated-total-amount">${formatCurrency(amount)}</span>
+        <p class="estimated-total-note">Your card was not charged.</p>
+      </div>
+    `;
+  }
+
+  if (releaseFailed) {
+    const amount = request.estimated_total != null ? request.estimated_total : 0;
+    return `
+      <div class="estimated-total-card estimated-total-release-failed">
+        <span class="estimated-total-label">Estimated hold</span>
+        <span class="estimated-total-amount">${formatCurrency(amount)}</span>
+        <p class="estimated-total-note">Your authorization hold is being released. This may take 1–3 business days depending on your bank.</p>
+      </div>
+    `;
+  }
+
   const amount = request.final_total != null ? request.final_total : request.estimated_total;
   const label  = request.final_total != null ? 'Final Total' : 'Estimated Total';
   return `
@@ -1403,39 +1432,75 @@ function renderPendingPaymentCard(request) {
     : '';
   const finalTotal = request.final_total != null ? formatCurrency(request.final_total) : null;
 
-  return `
-    <article class="track-request-card track-payment-card" data-request-id="${escapeHtml(request.id)}">
-      <div class="action-required-banner">
-        <strong>⚡ Action required — Final payment needed</strong>
-      </div>
-      <div class="track-card-meta">
-        <span class="status-pill status-pill-payment">Awaiting your payment</span>
-        ${vehicle ? `<span class="track-vehicle">${escapeHtml(vehicle)}</span>` : ''}
-        ${serviceDate ? `<span class="track-date">${escapeHtml(serviceDate)}</span>` : ''}
-      </div>
+  const hasPreAuth = !!request.payment_intent_id;
+  const captureFailed = request.payment_status === 'capture_failed';
 
-      <p class="track-payment-intro">Your ShiftFuel service is complete! Please review the details below and confirm your final payment.</p>
-
-      <div class="track-payment-summary">
-        ${request.service_label ? `<p><strong>Service:</strong> ${escapeHtml(request.service_label)}</p>` : ''}
-        ${request.return_parking_location ? `<p><strong>Vehicle returned to:</strong> ${escapeHtml(request.return_parking_location)}</p>` : ''}
+  // Pre-authorized and capture succeeded or is pending — no action needed from customer.
+  // Only show the payment button if capture explicitly failed or there was never a pre-auth.
+  let paymentSection;
+  if (hasPreAuth && !captureFailed) {
+    paymentSection = `
+      <div class="payment-authorized-notice">
+        <strong>Payment method authorized</strong>
+        <p>Your card on file will be charged automatically for the final amount. No action needed.</p>
         ${finalTotal ? `<div class="estimated-total-card"><span class="estimated-total-label">Final Total</span><span class="estimated-total-amount">${finalTotal}</span></div>` : ''}
-        ${request.notes ? `<p class="track-payment-notes"><strong>Notes:</strong> ${escapeHtml(request.notes)}</p>` : ''}
       </div>
-
+    `;
+  } else if (hasPreAuth && captureFailed) {
+    paymentSection = `
+      <div class="action-required-banner">
+        <strong>⚡ Payment issue — action required</strong>
+        <p>We were unable to charge your card on file. Please provide a new payment method to complete your service.</p>
+      </div>
+      ${finalTotal ? `<div class="estimated-total-card"><span class="estimated-total-label">Final Total</span><span class="estimated-total-amount">${finalTotal}</span></div>` : ''}
       <div id="customer-payment-section-${escapeHtml(request.id)}" class="customer-payment-section">
-        ${request.payment_intent_id
-          ? `<p class="field-help">Your card was pre-authorized when you booked. Clicking below will capture the final total from that card.</p>`
-          : `<p class="field-help">Please enter your card details to pay the final total.</p>
-             <div class="stripe-card-element-wrap">
-               <div id="customer-pay-card-${escapeHtml(request.id)}" class="stripe-card-element"></div>
-             </div>`
-        }
+        <p class="field-help">Enter new card details below to complete your payment.</p>
+        <div class="stripe-card-element-wrap">
+          <div id="customer-pay-card-${escapeHtml(request.id)}" class="stripe-card-element"></div>
+        </div>
         <p class="customer-payment-error" id="customer-payment-error-${escapeHtml(request.id)}"></p>
         <button class="button primary confirm-and-pay" data-id="${escapeHtml(request.id)}" type="button">
           Confirm and Pay ${finalTotal ? finalTotal : ''}
         </button>
       </div>
+    `;
+  } else {
+    // No pre-auth on file — customer must enter card details.
+    paymentSection = `
+      <div id="customer-payment-section-${escapeHtml(request.id)}" class="customer-payment-section">
+        <p class="field-help">Please enter your card details to pay the final total.</p>
+        <div class="stripe-card-element-wrap">
+          <div id="customer-pay-card-${escapeHtml(request.id)}" class="stripe-card-element"></div>
+        </div>
+        <p class="customer-payment-error" id="customer-payment-error-${escapeHtml(request.id)}"></p>
+        <button class="button primary confirm-and-pay" data-id="${escapeHtml(request.id)}" type="button">
+          Confirm and Pay ${finalTotal ? finalTotal : ''}
+        </button>
+      </div>
+    `;
+  }
+
+  const needsAction = !hasPreAuth || captureFailed;
+
+  return `
+    <article class="track-request-card track-payment-card" data-request-id="${escapeHtml(request.id)}">
+      ${needsAction ? `<div class="action-required-banner"><strong>⚡ Action required — Final payment needed</strong></div>` : ''}
+      <div class="track-card-meta">
+        <span class="status-pill status-pill-payment">${needsAction ? 'Awaiting your payment' : 'Service complete'}</span>
+        ${vehicle ? `<span class="track-vehicle">${escapeHtml(vehicle)}</span>` : ''}
+        ${serviceDate ? `<span class="track-date">${escapeHtml(serviceDate)}</span>` : ''}
+      </div>
+
+      <p class="track-payment-intro">Your ShiftFuel service is complete!${needsAction ? ' Please review the details below and confirm your final payment.' : ''}</p>
+
+      <div class="track-payment-summary">
+        ${request.service_label ? `<p><strong>Service:</strong> ${escapeHtml(request.service_label)}</p>` : ''}
+        ${request.return_parking_location ? `<p><strong>Vehicle returned to:</strong> ${escapeHtml(request.return_parking_location)}</p>` : ''}
+        ${(needsAction && finalTotal) ? `<div class="estimated-total-card"><span class="estimated-total-label">Final Total</span><span class="estimated-total-amount">${finalTotal}</span></div>` : ''}
+        ${request.notes ? `<p class="track-payment-notes"><strong>Notes:</strong> ${escapeHtml(request.notes)}</p>` : ''}
+      </div>
+
+      ${paymentSection}
 
       ${renderTimeline(request)}
     </article>
@@ -1949,37 +2014,54 @@ trackingResult.addEventListener("click", async (event) => {
   confirmCancelButton.disabled = true;
   trackMessage.textContent = "";
 
-  let data = null;
-  let { error } = await shiftFuelDb.rpc("public_cancel_request", {
-    p_request_id: requestId,
-    p_phone: verifiedTrackingContact.phone,
-    p_email: verifiedTrackingContact.email,
-    p_reason: reason,
-  });
+  let cancelWarning = null;
 
-  if (!error) {
-    const { data: refreshed, error: refreshError } = await shiftFuelDb.rpc("public_track_request", {
-      p_request_id: requestId,
-      p_phone: verifiedTrackingContact.phone,
-      p_email: verifiedTrackingContact.email,
+  try {
+    const res = await fetch('/api/customer-cancel', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        request_id: requestId,
+        phone: verifiedTrackingContact.phone,
+        email: verifiedTrackingContact.email,
+        reason,
+      }),
     });
+    const result = await res.json().catch(() => ({}));
 
-    if (refreshError) {
-      error = refreshError;
-    } else {
-      data = refreshed?.[0] || null;
+    if (!res.ok) {
+      console.error('[track] Customer cancellation failed:', result.error);
+      trackMessage.textContent = result.error || "Could not cancel this request. Please contact ShiftFuel.";
+      confirmCancelButton.textContent = "Confirm cancellation";
+      confirmCancelButton.disabled = false;
+      return;
     }
-  }
 
-  if (error || !data) {
-    console.error('[track] Customer cancellation error:', error);
-    trackMessage.textContent = "Could not cancel this request. Please contact ShiftFuel.";
+    if (result.warning) cancelWarning = result.warning;
+
+  } catch (err) {
+    console.error('[track] Customer cancel network error:', err);
+    trackMessage.textContent = "Network error. Please try again or contact ShiftFuel.";
     confirmCancelButton.textContent = "Confirm cancellation";
     confirmCancelButton.disabled = false;
     return;
   }
 
-  trackMessage.textContent = "Request canceled.";
+  // Refresh the request to get the updated status.
+  const { data: refreshed, error: refreshError } = await shiftFuelDb.rpc("public_track_request", {
+    p_request_id: requestId,
+    p_phone: verifiedTrackingContact.phone,
+    p_email: verifiedTrackingContact.email,
+  });
+
+  const data = refreshed?.[0] || null;
+
+  if (refreshError || !data) {
+    trackMessage.textContent = "Request canceled." + (cancelWarning ? ` ${cancelWarning}` : '');
+    return;
+  }
+
+  trackMessage.textContent = "Request canceled." + (cancelWarning ? ` ${cancelWarning}` : '');
   const photos = await loadRequestPhotos(data.id);
   const review = await loadRequestReview(data.id);
   renderRequest(data, photos, review);

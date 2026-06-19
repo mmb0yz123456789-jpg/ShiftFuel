@@ -1490,7 +1490,21 @@ quickInspection.addEventListener("change", () => {
 });
 returnTime.addEventListener("change", updateServiceAvailability);
 returnTime.addEventListener("change", updateReturningConfirmationText);
-serviceDate.addEventListener("change", refreshBookedReturnSlots);
+function validateServiceDate() {
+  const val = serviceDate.value;
+  const errorEl = document.querySelector('#service-date-error');
+  function showDateError(msg) {
+    serviceDate.value = '';
+    if (errorEl) { errorEl.textContent = msg; errorEl.hidden = false; }
+  }
+  if (errorEl) errorEl.hidden = true;
+  if (!val) return;
+  if (val < todayValue) { showDateError('Past dates are not available.'); return; }
+  if (val > maxServiceDateValue) { showDateError('Choose a service date within the next 3 months.'); return; }
+}
+
+serviceDate.addEventListener("change", () => { validateServiceDate(); refreshBookedReturnSlots(); });
+serviceDate.addEventListener("input", validateServiceDate);
 fuelType.addEventListener("change", updateEstimate);
 fuelEstimate.addEventListener("change", updateEstimate);
 vehicleYear.addEventListener("change", loadModelsForSelection);
