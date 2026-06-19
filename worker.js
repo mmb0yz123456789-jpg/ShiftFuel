@@ -476,14 +476,14 @@ async function ensureWorkerProfile() {
 
   if (storedEmployeeId) {
     let { data: stored, error: storedError } = await workerDb
-      .from('employees')
+      .from('employees_public')
       .select('id,employee_code,full_name,phone,photo_url,original_photo_url,cropped_photo_url,photo_zoom,photo_position_x,photo_position_y,home_location,started_at')
       .eq('id', storedEmployeeId)
       .limit(1);
 
     if (storedError) {
       const fallback = await workerDb
-        .from('employees')
+        .from('employees_public')
         .select('id,full_name,phone,home_location')
         .eq('id', storedEmployeeId)
         .limit(1);
@@ -505,14 +505,14 @@ async function ensureWorkerProfile() {
   }
 
   let { data, error } = await workerDb
-    .from('employees')
+    .from('employees_public')
     .select('id,employee_code,full_name,phone,photo_url,original_photo_url,cropped_photo_url,photo_zoom,photo_position_x,photo_position_y,home_location,started_at')
     .eq('full_name', SESSION_WORKER_NAME)
     .limit(1);
 
   if (error) {
     const fallback = await workerDb
-      .from('employees')
+      .from('employees_public')
       .select('id,full_name,phone,home_location')
       .eq('full_name', SESSION_WORKER_NAME)
       .limit(1);
@@ -1987,7 +1987,7 @@ workerProfileForm?.addEventListener('submit', async (event) => {
       const cleanCurrent = (currentEmployee.phone || '').replace(/\D/g, '');
       if (cleanNew !== cleanCurrent) {
         const { data: phoneCheck } = await workerDb
-          .from('employees')
+          .from('employees_public')
           .select('id,full_name')
           .eq('phone', phone)
           .eq('active', true)

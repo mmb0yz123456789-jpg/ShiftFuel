@@ -51,7 +51,7 @@ CREATE OR REPLACE FUNCTION public.worker_login(
 RETURNS jsonb
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path = public, pg_temp
+SET search_path = public, extensions, pg_temp
 AS $$
 DECLARE
   v_employee      employees%ROWTYPE;
@@ -82,7 +82,7 @@ BEGIN
   END IF;
 
   v_computed := encode(
-    digest(v_employee.worker_password_salt || ':' || p_password, 'sha256'),
+    extensions.digest(v_employee.worker_password_salt || ':' || p_password, 'sha256'),
     'hex'
   );
 
@@ -211,7 +211,7 @@ CREATE OR REPLACE FUNCTION public.worker_change_password_secure(
 RETURNS void
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path = public, pg_temp
+SET search_path = public, extensions, pg_temp
 AS $$
 DECLARE
   v_employee_id   uuid;
@@ -240,8 +240,8 @@ BEGIN
     RAISE EXCEPTION 'PASSWORD_TOO_SHORT';
   END IF;
 
-  v_new_salt := encode(gen_random_bytes(16), 'hex');
-  v_new_hash := encode(digest(v_new_salt || ':' || p_new_password, 'sha256'), 'hex');
+  v_new_salt := encode(extensions.gen_random_bytes(16), 'hex');
+  v_new_hash := encode(extensions.digest(v_new_salt || ':' || p_new_password, 'sha256'), 'hex');
 
   UPDATE employees SET
     worker_password_salt  = v_new_salt,
@@ -269,7 +269,7 @@ CREATE OR REPLACE FUNCTION public.admin_reset_worker_password(
 RETURNS text
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path = public, pg_temp
+SET search_path = public, extensions, pg_temp
 AS $$
 DECLARE
   v_session_valid boolean;
@@ -297,8 +297,8 @@ BEGIN
     END LOOP;
   END LOOP;
 
-  v_new_salt := encode(gen_random_bytes(16), 'hex');
-  v_new_hash := encode(digest(v_new_salt || ':' || v_temp_password, 'sha256'), 'hex');
+  v_new_salt := encode(extensions.gen_random_bytes(16), 'hex');
+  v_new_hash := encode(extensions.digest(v_new_salt || ':' || v_temp_password, 'sha256'), 'hex');
 
   UPDATE employees SET
     worker_password_salt  = v_new_salt,
