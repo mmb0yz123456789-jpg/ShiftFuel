@@ -20,6 +20,7 @@ const workerPhotoCropUse = document.querySelector('#worker-photo-crop-use');
 const workerPhotoCropChoose = document.querySelector('#worker-photo-crop-choose');
 const workerPhotoCropCancel = document.querySelector('#worker-photo-crop-cancel');
 const workerPhotoCropStatus = document.querySelector('#worker-photo-crop-status');
+const workerSignoutBtn = document.querySelector('#worker-signout-btn');
 const openChangePasswordBtn = document.querySelector('#open-change-password-btn');
 const workerPasswordModal = document.querySelector('#worker-password-modal');
 const workerPasswordModalClose = document.querySelector('#worker-password-modal-close');
@@ -47,6 +48,15 @@ const daysOffPanel = document.querySelector('#days-off-panel');
 const saveDaysOffButton = document.querySelector('#save-days-off');
 const workerJobList = document.querySelector('#worker-job-list');
 const workerReviewList = document.querySelector('#worker-review-list');
+
+workerSignoutBtn?.addEventListener('click', () => {
+  sessionStorage.removeItem('shiftfuel_worker');
+  sessionStorage.removeItem('shiftfuel_worker_id');
+  sessionStorage.removeItem('shiftfuel_worker_token');
+  sessionStorage.removeItem('shiftfuel_worker_expires');
+  sessionStorage.removeItem('shiftfuel_worker_must_change_pw');
+  window.location.href = 'worker-login.html';
+});
 
 const SESSION_WORKER_NAME = sessionStorage.getItem('shiftfuel_worker') || 'Mark Urban';
 const SESSION_WORKER_ID = sessionStorage.getItem('shiftfuel_worker_id') || '';

@@ -88,6 +88,11 @@ function adminToken() {
   return sessionStorage.getItem('shiftfuel_admin_token');
 }
 
+document.querySelector('#admin-signout-btn')?.addEventListener('click', () => {
+  sessionStorage.removeItem('shiftfuel_admin_token');
+  window.location.href = 'admin-login.html';
+});
+
 // Admin profile photo editor state (mirrors worker.js)
 let adminPhotoZoom = 1;
 let adminPhotoPosition = { x: 0, y: 0 };

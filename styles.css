@@ -1048,6 +1048,34 @@ textarea:focus {
   text-decoration: underline;
 }
 
+.portal-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.portal-header-label {
+  font-size: 0.85rem;
+  color: var(--muted);
+  opacity: 0.75;
+}
+
+.portal-signout-btn {
+  font-size: 0.85rem;
+  color: var(--muted);
+  background: none;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 4px 12px;
+  cursor: pointer;
+  opacity: 0.75;
+}
+
+.portal-signout-btn:hover {
+  opacity: 1;
+  border-color: var(--muted);
+}
+
 .inspection-disclaimer {
   margin-top: 8px;
   font-size: 0.8rem;
