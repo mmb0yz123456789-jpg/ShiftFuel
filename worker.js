@@ -1341,9 +1341,9 @@ function renderWorkerInspectionPanel(request) {
 function renderWorkerCompletePanel(request) {
   const receiptTotals = receiptTotalsFromNotes(request);
   const workerReceiptTotal = receiptTotals.fuel + receiptTotals.wash;
-  const needsCustomerPayment = request.payment_intent_id && request.payment_status !== 'captured';
-  const primaryClass = needsCustomerPayment ? 'send-to-customer-payment' : 'complete-request';
-  const primaryLabel = needsCustomerPayment ? 'Send to Customer for Payment' : 'Complete request';
+  const needsPaymentCapture = request.payment_intent_id && request.payment_status !== 'captured';
+  const primaryClass = needsPaymentCapture ? 'send-to-customer-payment' : 'complete-request';
+  const primaryLabel = needsPaymentCapture ? 'Complete & Capture Payment' : 'Complete request';
 
   return `
     <div class="complete-panel" data-complete-for="${escapeHtml(request.id)}">
@@ -1772,32 +1772,63 @@ function workerCompleteValidation(button) {
   return { id, request, receiptTotals };
 }
 
-// Worker sends the request to the customer for payment — does NOT capture payment.
+// Worker completes a pre-authorized request — captures the Stripe payment automatically.
 async function sendWorkerToCustomerPayment(button) {
   const validated = workerCompleteValidation(button);
   if (!validated) return;
   const { id, request, receiptTotals } = validated;
 
   button.disabled = true;
-  button.textContent = 'Sending to customer...';
+  button.textContent = 'Capturing payment...';
 
   const finalTotal = finalTotalFromSavedReceipts(request, receiptTotals);
 
+  // Save the final total first so the capture endpoint can read it.
   const { error: updateErr } = await workerDb.rpc('worker_update_request', {
     p_token: SESSION_WORKER_TOKEN,
     p_request_id: id,
-    p_data: { status: 'pending_customer_payment', final_total: finalTotal },
+    p_data: { final_total: finalTotal },
   });
 
   if (updateErr) {
-    console.error('[complete] Failed to send to customer payment:', updateErr);
+    console.error('[complete] Failed to save final total before capture:', updateErr);
     button.disabled = false;
-    button.textContent = 'Send to Customer for Payment';
-    alert('Could not send the request to the customer. Please try again.');
+    button.textContent = 'Complete & Capture Payment';
+    alert('Could not save the final total. Please try again.');
     return;
   }
 
-  console.log('Request sent to customer for payment — final total saved:', finalTotal);
+  // Capture the pre-authorized Stripe payment server-side.
+  try {
+    const res = await fetch('/api/worker-capture', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ worker_token: SESSION_WORKER_TOKEN, request_id: id }),
+    });
+    const data = await res.json().catch(() => ({}));
+
+    if (!res.ok) {
+      button.disabled = false;
+      button.textContent = 'Complete & Capture Payment';
+      if (data.capture_failed) {
+        // PI expired or amount mismatch — customer has been flagged to re-pay.
+        alert(`Payment capture issue: ${data.error}\n\nThe customer's tracking page will prompt them to update their payment method.`);
+      } else {
+        alert(`Could not capture payment: ${data.error || 'Unknown error. Please try again.'}`);
+      }
+      await loadWorkerJobs();
+      await loadWorkerReviews();
+      return;
+    }
+
+    console.log('[complete] Payment captured — request marked complete:', id);
+  } catch (err) {
+    console.error('[complete] worker-capture network error:', err);
+    button.disabled = false;
+    button.textContent = 'Complete & Capture Payment';
+    alert('Network error capturing payment. Please check your connection and try again.');
+    return;
+  }
 
   await loadWorkerJobs();
   await loadWorkerReviews();

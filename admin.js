@@ -93,6 +93,33 @@ document.querySelector('#admin-signout-btn')?.addEventListener('click', () => {
   window.location.href = 'admin-login.html';
 });
 
+// Service date helpers — used by booking form and admin create-request form.
+function localDateString(date) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+}
+function maxDateString() {
+  const d = new Date();
+  d.setMonth(d.getMonth() + 3);
+  return localDateString(d);
+}
+function initServiceDateInput(input) {
+  if (!input) return;
+  const today = localDateString(new Date());
+  const max = maxDateString();
+  input.min = today;
+  input.max = max;
+  function validate() {
+    const v = input.value;
+    if (!v) return;
+    if (v < today) { input.value = ''; return; }
+    if (v > max)   { input.value = ''; return; }
+  }
+  input.addEventListener('change', validate);
+  input.addEventListener('input', validate);
+}
+
+initServiceDateInput(document.querySelector('#cr-service-date'));
+
 // Admin profile photo editor state (mirrors worker.js)
 let adminPhotoZoom = 1;
 let adminPhotoPosition = { x: 0, y: 0 };
@@ -172,13 +199,18 @@ function money(value) {
 }
 
 const PAYMENT_STATUS_LABELS = {
-  not_started:   'Not started',
-  authorized:    'Authorized (hold on card)',
-  captured:      'Captured (charged)',
-  voided:        'Voided (hold released)',
-  refunded:      'Refunded',
-  auto_reversed: 'Auto-reversed (missed service)',
+  not_started:            'Not started',
+  authorized:             'Authorized (hold on card)',
+  captured:               'Captured (charged)',
+  voided:                 'Authorization released — customer was not charged',
+  authorization_released: 'Authorization released — customer was not charged',
+  refunded:               'Refunded',
+  auto_reversed:          'Auto-reversed (missed service)',
+  payment_release_failed: 'Hold release failed — check Stripe',
+  capture_failed:         'Capture failed — customer must repay',
 };
+
+const CLOSED_STATUSES = ['denied', 'customer_canceled', 'unable_to_complete', 'auto_reversed'];
 
 function paymentStatusLabel(request) {
   const label = PAYMENT_STATUS_LABELS[request.payment_status] || request.payment_status || 'Unknown';
@@ -487,7 +519,21 @@ function requestCardDetails(request) {
       ${hasPayment ? `<p><strong>Fees:</strong> Fuel convenience ${money(fees.fuel)} | Wash convenience ${money(fees.wash)} | Inspection ${money(fees.inspection)}</p>` : ''}
       ${request.payment_intent_id ? `<hr class="details-divider">
       <p><strong>Payment status:</strong> ${paymentStatusLabel(request)}</p>
-      ${request.auto_reversed_at ? `<p><strong>Auto-reversed:</strong> ${formatTimestamp(request.auto_reversed_at)} — service was not completed on the scheduled date.</p>` : ''}` : ''}
+      ${request.auto_reversed_at ? `<p><strong>Auto-reversed:</strong> ${formatTimestamp(request.auto_reversed_at)} — service was not completed on the scheduled date.</p>` : ''}
+      ${(CLOSED_STATUSES.includes(request.status) && request.payment_status === 'payment_release_failed') ? `
+        <div class="admin-warning-banner">
+          ⚠️ Payment hold could not be released automatically. Go to the Stripe dashboard and cancel this PaymentIntent manually.
+          <div class="admin-button-row" style="margin-top:8px">
+            <button class="button danger retry-release-hold" data-id="${escapeHtml(request.id)}" data-pi="${escapeHtml(request.payment_intent_id)}" type="button">Retry hold release</button>
+          </div>
+        </div>` : ''}
+      ${(CLOSED_STATUSES.includes(request.status) && request.payment_status === 'authorized') ? `
+        <div class="admin-warning-banner">
+          ⚠️ This request was closed but the card authorization was not released. Release it now.
+          <div class="admin-button-row" style="margin-top:8px">
+            <button class="button danger retry-release-hold" data-id="${escapeHtml(request.id)}" data-pi="${escapeHtml(request.payment_intent_id)}" type="button">Release card hold</button>
+          </div>
+        </div>` : ''}` : ''}
       ${(request.payment_intent_id && request.payment_status === 'captured') ? `
         <div class="admin-button-row">
           <button class="button edit-total-charge-btn" data-request-id="${escapeHtml(request.id)}">
@@ -2488,20 +2534,47 @@ async function saveServiceUnable(button) {
 }
 
 async function voidPaymentHold(request) {
-  if (!request?.payment_intent_id || request.payment_status !== 'authorized') return;
+  const skipRelease = ['voided', 'authorization_released', 'refunded', 'auto_reversed', 'payment_release_failed', 'captured', 'not_started', null, undefined];
+  if (!request?.payment_intent_id || skipRelease.includes(request.payment_status)) return;
   try {
     await fetch('/api/cancel-payment', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ payment_intent_id: request.payment_intent_id, request_id: request.id, caller_token: adminToken() }),
     });
-    await db.rpc('admin_update_request', {
-      p_token: adminToken(),
-      p_request_id: request.id,
-      p_data: { payment_status: 'voided' },
-    });
+    // cancel-payment updates payment_status in DB itself; no second write needed.
   } catch (err) {
     console.error('Failed to void payment hold:', err.message);
+  }
+}
+
+async function retryReleaseHold(button) {
+  const id = button.dataset.id;
+  const pi = button.dataset.pi;
+  const request = allRequests.find(r => r.id === id);
+  if (!request) return;
+
+  button.disabled = true;
+  button.textContent = 'Releasing...';
+
+  try {
+    const res = await fetch('/api/cancel-payment', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ payment_intent_id: pi, request_id: id, caller_token: adminToken() }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (res.ok) {
+      await loadRequests();
+    } else {
+      button.disabled = false;
+      button.textContent = 'Retry hold release';
+      alert(`Could not release hold: ${data.error || 'Unknown error. Check Stripe dashboard directly.'}`);
+    }
+  } catch (err) {
+    button.disabled = false;
+    button.textContent = 'Retry hold release';
+    alert('Network error. Please try again or release the hold manually in Stripe.');
   }
 }
 
@@ -2531,29 +2604,15 @@ async function saveDenyReason(button) {
   const note = `[denied ${timestamp}] Admin denial reason: ${reason}`;
   const notes = request.notes ? `${request.notes}\n${note}` : note;
 
-  // Handle payment reversal before changing status
+  // Handle payment reversal before changing status.
+  // /api/cancel-payment and /api/refund-payment update payment_status in the DB themselves.
+  // We just need to know what the resulting payment_status is so we can log it in notes.
   let paymentStatus = request.payment_status;
+  const skipRelease = ['voided', 'authorization_released', 'refunded', 'auto_reversed', 'payment_release_failed', 'not_started', null, undefined];
 
-  if (request.payment_intent_id) {
-    if (request.payment_status === 'authorized') {
-      // Void the hold
-      try {
-        const res = await fetch('/api/cancel-payment', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ payment_intent_id: request.payment_intent_id, request_id: request.id, caller_token: adminToken() }),
-        });
-        if (res.ok) {
-          paymentStatus = 'voided';
-        } else {
-          const data = await res.json().catch(() => ({}));
-          console.error('[deny] Failed to void payment hold:', data.error);
-        }
-      } catch (err) {
-        console.error('[deny] Error voiding payment hold:', err.message);
-      }
-    } else if (request.payment_status === 'captured') {
-      // Issue a full refund
+  if (request.payment_intent_id && !skipRelease.includes(request.payment_status)) {
+    if (request.payment_status === 'captured') {
+      // Issue a full refund for already-captured payments.
       try {
         const res = await fetch('/api/refund-payment', {
           method: 'POST',
@@ -2565,12 +2624,32 @@ async function saveDenyReason(button) {
         } else {
           const data = await res.json().catch(() => ({}));
           console.error('[deny] Failed to refund captured payment:', data.error);
-          // Continue with denial but flag for admin review
-          const refundNote = `\n[payment_refund_failed ${timestamp}] Refund failed on denial — admin must manually refund via Stripe dashboard. Error: ${data.error || 'unknown'}`;
-          notes += refundNote;
+          notes += `\n[payment_refund_failed ${timestamp}] Refund failed on denial — admin must manually refund via Stripe. Error: ${data.error || 'unknown'}`;
         }
       } catch (err) {
         console.error('[deny] Error refunding captured payment:', err.message);
+      }
+    } else {
+      // Authorized/uncaptured — release the hold.
+      try {
+        const res = await fetch('/api/cancel-payment', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ payment_intent_id: request.payment_intent_id, request_id: request.id, caller_token: adminToken() }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (res.ok) {
+          paymentStatus = data.payment_status || 'voided';
+        } else {
+          // API already set payment_release_failed in the DB; mirror it here for the notes.
+          paymentStatus = 'payment_release_failed';
+          console.error('[deny] Failed to release hold:', data.error);
+          notes += `\n[payment_release_failed ${timestamp}] Card hold could not be released automatically. Admin must cancel the Stripe PaymentIntent manually.`;
+        }
+      } catch (err) {
+        paymentStatus = 'payment_release_failed';
+        console.error('[deny] Network error releasing hold:', err.message);
+        notes += `\n[payment_release_failed ${timestamp}] Card hold release failed (network error). Admin must cancel the Stripe PaymentIntent manually.`;
       }
     }
   }
@@ -3181,6 +3260,11 @@ requestList.addEventListener('click', async (event) => {
 
     if (button.classList.contains('save-deny-reason')) {
       await saveDenyReason(button);
+      return;
+    }
+
+    if (button.classList.contains('retry-release-hold')) {
+      await retryReleaseHold(button);
       return;
     }
 

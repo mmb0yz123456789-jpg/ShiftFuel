@@ -747,6 +747,12 @@ label {
   font-weight: 400;
 }
 
+.field-error {
+  color: #c0392b;
+  font-size: 0.84rem;
+  font-weight: 500;
+}
+
 .required-mark,
 .optional-mark {
   display: inline-flex;
@@ -1629,6 +1635,21 @@ textarea:focus {
   font-size: 0.95rem;
 }
 
+.payment-authorized-notice {
+  background: #e8f5e9;
+  border: 1px solid #81c784;
+  border-radius: 6px;
+  padding: 12px 16px;
+  margin-bottom: 12px;
+  color: #1b5e20;
+  font-size: 0.95rem;
+}
+.payment-authorized-notice p {
+  margin: 4px 0 0;
+  font-size: 0.9rem;
+  color: #2e7d32;
+}
+
 .status-pill-payment {
   color: #7a4800;
   background: #fff3cd;
@@ -2065,6 +2086,49 @@ textarea:focus {
   font-size: 1.2rem;
   font-weight: 900;
   color: var(--brand-dark, #1a4a8a);
+}
+
+.estimated-total-card.estimated-total-released {
+  background: #e8f5e9;
+  border-color: #81c784;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.estimated-total-card.estimated-total-released .estimated-total-label {
+  color: #1b5e20;
+}
+.estimated-total-card.estimated-total-released .estimated-total-amount {
+  color: #2e7d32;
+}
+.estimated-total-note {
+  width: 100%;
+  margin: 0;
+  font-size: 0.82rem;
+  color: inherit;
+  opacity: 0.8;
+}
+
+.estimated-total-card.estimated-total-release-failed {
+  background: #fff8e1;
+  border-color: #ffe082;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.estimated-total-card.estimated-total-release-failed .estimated-total-label {
+  color: #5d4037;
+}
+.estimated-total-card.estimated-total-release-failed .estimated-total-amount {
+  color: #4e342e;
+}
+
+.admin-warning-banner {
+  background: #fff3cd;
+  border: 1px solid #f0c040;
+  border-radius: 6px;
+  padding: 10px 14px;
+  margin: 8px 0 12px;
+  color: #7a4800;
+  font-size: 0.92rem;
 }
 
 .return-confirmation {
@@ -2648,6 +2712,8 @@ textarea:focus {
 
 .assigned-worker-card {
   grid-template-columns: 72px minmax(0, 1fr);
+  margin-top: 24px;
+  scroll-margin-top: 80px;
 }
 
 .worker-assignment-panel h4,
