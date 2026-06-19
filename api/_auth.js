@@ -32,14 +32,19 @@ async function verifyAdminToken(token) {
   if (!token) return false;
   try {
     const db = getSupabaseAdmin();
-    const { data } = await db
+    const { data, error } = await db
       .from('admin_sessions')
       .select('id')
       .eq('id', token)
       .gt('expires_at', new Date().toISOString())
       .maybeSingle();
+    if (error) {
+      console.error('[verifyAdminToken] Supabase error:', error.message, error.code);
+      return false;
+    }
     return !!data;
-  } catch {
+  } catch (err) {
+    console.error('[verifyAdminToken] Exception:', err.message);
     return false;
   }
 }
@@ -48,14 +53,19 @@ async function verifyWorkerToken(token) {
   if (!token) return null;
   try {
     const db = getSupabaseAdmin();
-    const { data } = await db
+    const { data, error } = await db
       .from('worker_sessions')
       .select('employee_id')
       .eq('id', token)
       .gt('expires_at', new Date().toISOString())
       .maybeSingle();
+    if (error) {
+      console.error('[verifyWorkerToken] Supabase error:', error.message, error.code);
+      return null;
+    }
     return data?.employee_id || null;
-  } catch {
+  } catch (err) {
+    console.error('[verifyWorkerToken] Exception:', err.message);
     return null;
   }
 }

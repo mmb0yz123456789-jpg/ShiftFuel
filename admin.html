@@ -299,7 +299,9 @@
                 </select>
               </label>
               <label>Service date
-                <input id="cr-service-date" type="date">
+                <div id="cr-service-date-picker" class="sfp-host">
+                  <input type="hidden" id="cr-service-date">
+                </div>
               </label>
               <label>Desired return time
                 <input id="cr-return-time" type="time">
@@ -406,6 +408,7 @@
 	<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 	<script src="supabase-client.js"></script>
 	<script src="photo-utils.js"></script>
+	<script src="date-picker.js"></script>
 	<script src="admin.js"></script>
   <script defer src="/_vercel/insights/script.js"></script>
   <script defer src="/_vercel/speed-insights/script.js"></script>

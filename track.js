@@ -78,6 +78,8 @@ const statusLabels = {
   pickup_odometer_photo_uploaded: "Pickup odometer photo uploaded",
   pickup_fuel_gauge_photo_uploaded: "Pickup fuel gauge photo uploaded",
   vehicle_picked_up: "Vehicle picked up",
+  service_in_progress: "Service in progress",
+  service_complete: "Service complete",
   fueling_in_progress: "Fueling in progress",
   fueling_complete: "Fueling complete",
   fuel_receipt_uploaded: "Fuel receipt uploaded",
@@ -97,6 +99,7 @@ const statusLabels = {
   vehicle_returned: "Vehicle returned",
   inspection_needed: "Vehicle inspection needed",
   inspection_recorded: "Vehicle inspection recorded",
+  awaiting_key_return: "Service complete",
   complete: "Complete",
   denied: "Denied",
   customer_canceled: "Canceled by customer",
@@ -288,87 +291,254 @@ function renderAssignedWorker(request) {
 function buildStatusSteps(request) {
   const needsFuel = requestNeedsFuel(request);
   const needsWash = requestNeedsWash(request);
+  const needsInspection = !!request.quick_inspection;
+
   const steps = [
-    { key: 'request_received', label: 'Request received' },
-    { key: 'accepted',         label: 'Accepted' },
-    { key: 'key_received',     label: 'Key received' },
-    { key: 'vehicle_picked_up', label: 'Vehicle picked up' },
+    { key: 'request_received',    label: 'Request received' },
+    { key: 'accepted',            label: 'Accepted' },
+    { key: 'key_received',        label: 'Key received' },
+    { key: 'vehicle_picked_up',   label: 'Vehicle picked up' },
+    { key: 'service_in_progress', label: 'Service in progress' },
   ];
-  if (needsFuel && needsWash) {
-    steps.push({ key: 'fueling_in_progress',        label: 'Fueling in progress',   group: 'fuel' });
-    steps.push({ key: 'fueling_complete',            label: 'Fuel service completed', group: 'fuel' });
-    steps.push({ key: 'car_wash_in_progress',        label: 'Car wash in progress',  group: 'wash' });
-    steps.push({ key: 'car_wash_complete',           label: 'Car wash completed',    group: 'wash' });
-  } else if (needsFuel) {
-    steps.push({ key: 'fueling_in_progress', label: 'Fueling in progress' });
-    steps.push({ key: 'fueling_complete',    label: 'Fueling complete' });
-  } else if (needsWash) {
-    steps.push({ key: 'car_wash_in_progress', label: 'Car wash in progress' });
-    steps.push({ key: 'car_wash_complete',    label: 'Car wash completed' });
+
+  if (needsFuel) {
+    steps.push({ key: 'fueling',               label: 'Fueling',               nested: true, parentKey: 'service_in_progress' });
+    steps.push({ key: 'fuel_receipt_recorded', label: 'Fuel receipt recorded', nested: true, parentKey: 'service_in_progress' });
   }
-  steps.push({ key: 'vehicle_returned',  label: 'Vehicle returned' });
-  steps.push({ key: 'awaiting_payment',  label: 'Awaiting your payment' });
-  steps.push({ key: 'complete',          label: 'Complete' });
+  if (needsWash) {
+    steps.push({ key: 'vehicle_cleaning',          label: 'Vehicle cleaning',          nested: true, parentKey: 'service_in_progress' });
+    steps.push({ key: 'car_wash_receipt_recorded', label: 'Car wash receipt recorded', nested: true, parentKey: 'service_in_progress' });
+  }
+
+  steps.push({ key: 'service_complete', label: 'Service complete' });
+  steps.push({ key: 'vehicle_returned', label: 'Vehicle returned' });
+
+  if (needsInspection) {
+    steps.push({ key: 'quick_inspection',     label: 'Quick inspection' });
+    steps.push({ key: 'inspection_in_progress', label: 'Inspection in progress', nested: true, parentKey: 'quick_inspection' });
+    steps.push({ key: 'inspection_complete',  label: 'Inspection complete',    nested: true, parentKey: 'quick_inspection' });
+  }
+
+  steps.push({ key: 'final_payment_processed', label: 'Final payment processed' });
+  steps.push({ key: 'keys_returned',           label: 'Keys returned' });
+  steps.push({ key: 'complete',                label: 'Complete' });
+
   return steps;
 }
 
-// Map every real workflow status to the nearest step key for progress tracking
-const STATUS_STEP_MAP = {
-  request_received: 'request_received',
-  accepted: 'accepted',
-  key_received: 'key_received',
-  pickup_vehicle_photo_uploaded: 'vehicle_picked_up',
-  pickup_odometer_photo_uploaded: 'vehicle_picked_up',
-  pickup_fuel_gauge_photo_uploaded: 'vehicle_picked_up',
-  vehicle_picked_up: 'vehicle_picked_up',
-  fueling_in_progress: 'fueling_in_progress',
-  fueling_complete: 'fueling_complete',
-  fuel_receipt_uploaded: 'fueling_complete',
-  car_wash_in_progress: 'car_wash_in_progress',
-  car_wash_complete: 'car_wash_complete',
-  car_wash_after_fuel_in_progress: 'car_wash_in_progress',
-  wash_receipt_uploaded: 'car_wash_complete',
-  wash_receipt_after_fuel_uploaded: 'car_wash_complete',
-  fueling_after_wash_in_progress: 'fueling_in_progress',
-  fuel_receipt_after_wash_uploaded: 'fueling_complete',
-  receipts_recorded: 'vehicle_returned',
-  returned_location_pending: 'vehicle_returned',
-  return_location_recorded: 'vehicle_returned',
-  return_photos_needed: 'vehicle_returned',
-  dropoff_vehicle_photo_uploaded: 'vehicle_returned',
-  dropoff_odometer_photo_uploaded: 'vehicle_returned',
-  vehicle_returned: 'vehicle_returned',
-  inspection_needed: 'vehicle_returned',
-  inspection_recorded: 'vehicle_returned',
-  pending_customer_payment: 'awaiting_payment',
-  complete: 'complete',
-};
+const RETURN_STATUSES = new Set([
+  'returned_location_pending', 'return_location_recorded', 'return_photos_needed',
+  'dropoff_vehicle_photo_uploaded', 'dropoff_odometer_photo_uploaded',
+  'vehicle_returned', 'inspection_needed', 'inspection_recorded',
+  'pending_customer_payment', 'awaiting_key_return', 'complete',
+]);
+
+function allReceiptsDone(request) {
+  const s = request.status;
+  if (RETURN_STATUSES.has(s) || s === 'receipts_recorded') return true;
+  const needsFuel = requestNeedsFuel(request);
+  const needsWash = requestNeedsWash(request);
+  // Fuel-only: fuel receipt uploaded means service done
+  if (needsFuel && !needsWash) return ['fuel_receipt_uploaded', 'fuel_receipt_after_wash_uploaded'].includes(s);
+  // Wash-only: wash receipt uploaded means service done
+  if (needsWash && !needsFuel) return ['wash_receipt_uploaded', 'wash_receipt_after_fuel_uploaded'].includes(s);
+  // Both: need receipts_recorded (already handled above)
+  return false;
+}
+
+function isStepDone(stepKey, request) {
+  const s = request.status;
+
+  const AT_OR_AFTER_KEY_RECEIVED = new Set([
+    'key_received', 'pickup_vehicle_photo_uploaded', 'pickup_odometer_photo_uploaded',
+    'pickup_fuel_gauge_photo_uploaded', 'vehicle_picked_up', 'service_in_progress',
+    'fueling_in_progress', 'car_wash_in_progress', 'car_wash_after_fuel_in_progress',
+    'fueling_after_wash_in_progress', 'fueling_complete', 'car_wash_complete',
+    'fuel_receipt_uploaded', 'wash_receipt_uploaded', 'wash_receipt_after_fuel_uploaded',
+    'fuel_receipt_after_wash_uploaded', 'service_complete', 'receipts_recorded',
+    ...RETURN_STATUSES,
+  ]);
+
+  const AT_OR_AFTER_VEHICLE_PICKED_UP = new Set([
+    'vehicle_picked_up', 'service_in_progress', 'fueling_in_progress', 'car_wash_in_progress',
+    'car_wash_after_fuel_in_progress', 'fueling_after_wash_in_progress',
+    'fueling_complete', 'car_wash_complete', 'fuel_receipt_uploaded', 'wash_receipt_uploaded',
+    'wash_receipt_after_fuel_uploaded', 'fuel_receipt_after_wash_uploaded', 'service_complete',
+    'receipts_recorded', ...RETURN_STATUSES,
+  ]);
+
+  switch (stepKey) {
+    case 'request_received':
+    case 'accepted':
+      // Both become ✓ at the same time — once status moves past pending/review/accepted
+      return !['request_received', 'pending_review', 'accepted'].includes(s);
+    case 'key_received':
+      return AT_OR_AFTER_KEY_RECEIVED.has(s);
+    case 'vehicle_picked_up':
+      return AT_OR_AFTER_VEHICLE_PICKED_UP.has(s);
+    case 'service_in_progress':
+    case 'service_complete':
+      return allReceiptsDone(request);
+    case 'fueling': {
+      const fuelDone = new Set([
+        'fueling_complete', 'fuel_receipt_uploaded', 'fuel_receipt_after_wash_uploaded',
+        'car_wash_after_fuel_in_progress', 'wash_receipt_after_fuel_uploaded',
+        'service_complete', 'receipts_recorded', ...RETURN_STATUSES,
+      ]);
+      return fuelDone.has(s);
+    }
+    case 'fuel_receipt_recorded': {
+      const fuelReceiptDone = new Set([
+        'fuel_receipt_uploaded', 'fuel_receipt_after_wash_uploaded',
+        'service_complete', 'receipts_recorded', ...RETURN_STATUSES,
+      ]);
+      return fuelReceiptDone.has(s);
+    }
+    case 'vehicle_cleaning': {
+      const washDone = new Set([
+        'car_wash_complete', 'wash_receipt_uploaded', 'wash_receipt_after_fuel_uploaded',
+        'fueling_after_wash_in_progress', 'fuel_receipt_after_wash_uploaded',
+        'service_complete', 'receipts_recorded', ...RETURN_STATUSES,
+      ]);
+      return washDone.has(s);
+    }
+    case 'car_wash_receipt_recorded': {
+      const washReceiptDone = new Set([
+        'wash_receipt_uploaded', 'wash_receipt_after_fuel_uploaded',
+        'service_complete', 'receipts_recorded', ...RETURN_STATUSES,
+      ]);
+      return washReceiptDone.has(s);
+    }
+    case 'vehicle_returned':
+      return new Set(['vehicle_returned', 'inspection_needed', 'inspection_recorded',
+        'pending_customer_payment', 'awaiting_key_return', 'complete']).has(s);
+    case 'quick_inspection':
+    case 'inspection_in_progress':
+    case 'inspection_complete':
+      return new Set(['inspection_recorded', 'pending_customer_payment', 'awaiting_key_return', 'complete']).has(s);
+    case 'final_payment_processed':
+      return request.payment_status === 'captured' || s === 'awaiting_key_return' || s === 'complete';
+    case 'keys_returned':
+      return s === 'complete';
+    case 'complete':
+      return false; // always the terminal arrow destination
+    default:
+      return false;
+  }
+}
+
+function getStatusMessage(request) {
+  const s = request.status;
+  const needsFuel = requestNeedsFuel(request);
+  const needsWash = requestNeedsWash(request);
+
+  if (['request_received', 'pending_review'].includes(s)) {
+    return 'We received your ShiftFuel request. A team member will review and accept it shortly.';
+  }
+  if (s === 'accepted') {
+    return 'A ShiftFuel employee accepted your request. We are confirming your key or handoff instructions.';
+  }
+  if (s === 'key_received') {
+    return 'Your key or handoff instructions have been confirmed. Your vehicle pickup is next.';
+  }
+  if (['vehicle_picked_up', 'pickup_vehicle_photo_uploaded', 'pickup_odometer_photo_uploaded', 'pickup_fuel_gauge_photo_uploaded'].includes(s)) {
+    return 'Your vehicle has been picked up. Service is starting.';
+  }
+  if (['service_in_progress', 'fueling_in_progress', 'car_wash_in_progress', 'car_wash_after_fuel_in_progress', 'fueling_after_wash_in_progress'].includes(s)) {
+    if (needsFuel && needsWash) return 'Fueling and vehicle cleaning are in progress.';
+    if (needsFuel) return 'Fueling is in progress.';
+    if (needsWash) return 'Vehicle cleaning is in progress.';
+    return 'Service is in progress.';
+  }
+  if (['fueling_complete', 'fuel_receipt_uploaded', 'fuel_receipt_after_wash_uploaded'].includes(s)) {
+    if (needsWash && !allReceiptsDone(request)) return 'Fueling complete. Vehicle cleaning is next.';
+    if (allReceiptsDone(request)) return 'Service is complete. Your vehicle is being returned to you.';
+    return 'Fueling complete. Finalizing service.';
+  }
+  if (['car_wash_complete', 'wash_receipt_uploaded', 'wash_receipt_after_fuel_uploaded'].includes(s)) {
+    if (needsFuel && !allReceiptsDone(request)) return 'Vehicle cleaning complete. Fueling is next.';
+    if (allReceiptsDone(request)) return 'Service is complete. Your vehicle is being returned to you.';
+    return 'Vehicle cleaning complete. Finalizing service.';
+  }
+  if (s === 'service_complete' || s === 'receipts_recorded') {
+    return 'Service is complete. Your vehicle is being returned to you.';
+  }
+  if (['returned_location_pending', 'return_location_recorded', 'return_photos_needed',
+       'dropoff_vehicle_photo_uploaded', 'dropoff_odometer_photo_uploaded'].includes(s)) {
+    return 'Your vehicle is being returned to its parking location.';
+  }
+  if (s === 'vehicle_returned') {
+    if (request.quick_inspection) return 'Your vehicle has been returned. A quick inspection is next.';
+    return 'Your vehicle has been returned. Final payment is processing.';
+  }
+  if (s === 'inspection_needed' || s === 'inspection_recorded') {
+    return 'A quick vehicle inspection is in progress.';
+  }
+  if (s === 'pending_customer_payment') {
+    if (request.payment_status === 'capture_failed') {
+      return 'There was an issue processing your payment. Please update your payment method below.';
+    }
+    return 'Service complete. Your final payment is being processed.';
+  }
+  if (s === 'awaiting_key_return') {
+    return 'Your payment has been processed. Your keys are being returned to you.';
+  }
+  if (s === 'complete') {
+    return 'Your service is complete. Thank you for using ShiftFuel!';
+  }
+  return '';
+}
 
 function renderTimeline(request) {
+  // No timeline for closed/terminal non-complete statuses
+  if (closedStatuses.includes(request.status)) return '';
+
   const steps = buildStatusSteps(request);
-  const mappedKey = STATUS_STEP_MAP[request.status] || request.status;
-  const currentIndex = steps.findIndex(s => s.key === mappedKey);
+
+  steps.forEach(step => { step.done = isStepDone(step.key, request); });
+
+  const firstIncompleteIdx = steps.findIndex(s => !s.done);
+  const activeKey = firstIncompleteIdx >= 0 ? steps[firstIncompleteIdx].key : null;
   const total = steps.length;
+  const currentStepNum = firstIncompleteIdx >= 0 ? firstIncompleteIdx + 1 : total;
 
-  const isIssue = request.status === 'unable_to_complete';
-  const isDenied = request.status === 'denied' || request.status === 'customer_canceled';
+  const statusMsg = getStatusMessage(request);
 
-  let html = `<div class="timeline-progress-label">Step ${Math.max(currentIndex + 1, 1)} of ${total}</div>`;
+  // Track which parent steps have had their first incomplete child claimed
+  const firstIncompleteChildClaimed = {};
+
+  let html = '';
+  if (statusMsg) {
+    html += `<p class="timeline-status-message">${escapeHtml(statusMsg)}</p>`;
+  }
+  html += `<div class="timeline-progress-label">Step ${currentStepNum} of ${total}</div>`;
   html += `<ol class="customer-timeline">`;
 
-  steps.forEach((step, index) => {
-    let cls = 'future';
-    let icon = '○';
-    if (isDenied || isIssue) {
-      cls = index < currentIndex ? 'done' : 'future';
-      icon = index < currentIndex ? '✓' : '○';
-    } else if (index < currentIndex) {
-      cls = 'done'; icon = '✓';
-    } else if (index === currentIndex) {
-      cls = 'active'; icon = '➜';
+  steps.forEach(step => {
+    const done = step.done;
+    const isActive = step.key === activeKey;
+
+    // Show active arrow on the first incomplete nested child of an active parent
+    let isActiveChild = false;
+    if (step.nested && step.parentKey && !done) {
+      const parentActive = activeKey === step.parentKey;
+      if (parentActive && !firstIncompleteChildClaimed[step.parentKey]) {
+        isActiveChild = true;
+        firstIncompleteChildClaimed[step.parentKey] = true;
+      }
     }
 
-    html += `<li class="timeline-step ${cls}"><span class="timeline-icon">${icon}</span><p>${escapeHtml(step.label)}</p></li>`;
+    let cls, icon;
+    if (done) {
+      cls = 'done'; icon = '✓';
+    } else if (isActive || isActiveChild) {
+      cls = 'active'; icon = '➜';
+    } else {
+      cls = 'future'; icon = '○';
+    }
+
+    const nestedCls = step.nested ? ' timeline-step-nested' : '';
+    html += `<li class="timeline-step ${cls}${nestedCls}"><span class="timeline-icon">${icon}</span><p>${escapeHtml(step.label)}</p></li>`;
   });
 
   html += `</ol>`;
@@ -1097,6 +1267,15 @@ async function cbInitForm(form, request) {
     if (opt) timeSel.value = slot;
   }
 
+  // Attach custom date picker (replaces native <input type="date">)
+  const dateHost = form.querySelector('.cb-service-date-host');
+  if (dateHost && window.ShiftFuelDatePicker && !dateHost.dataset.pickerReady) {
+    dateHost.dataset.pickerReady = '1';
+    const today = (() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; })();
+    const maxD  = (() => { const d = new Date(); d.setMonth(d.getMonth()+3); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; })();
+    ShiftFuelDatePicker.attach(dateHost, { min: today, max: maxD });
+  }
+
   // Initial state for service-dependent panels
   cbUpdateServiceDetails(form);
   cbUpdateEstimate(form);
@@ -1320,7 +1499,9 @@ function renderPendingCompletionCard(request) {
               </label>
               <label>
                 <span>Service date <span class="required-mark">Required</span></span>
-                <input class="cb-service-date" type="date" value="${escapeHtml(request.service_date || '')}" required>
+                <div class="sfp-host cb-service-date-host">
+                  <input type="hidden" class="cb-service-date" value="${escapeHtml(request.service_date || '')}">
+                </div>
                 <span class="field-help">Choose a service date within the next 3 months. Past dates are not available.</span>
               </label>
               <label>
@@ -1523,7 +1704,7 @@ function renderRequestCard(request, photos = [], review = null) {
   const returnTime = formatReturnTime(request.desired_return_time);
   const isReturned = ['vehicle_returned','returned_location_pending','return_location_recorded',
     'return_photos_needed','dropoff_vehicle_photo_uploaded','dropoff_odometer_photo_uploaded',
-    'inspection_needed','inspection_recorded','complete'].includes(request.status);
+    'inspection_needed','inspection_recorded','awaiting_key_return','complete'].includes(request.status);
 
   return `
     <article class="track-request-card" data-request-id="${escapeHtml(request.id)}">
@@ -2456,7 +2637,7 @@ trackingResult.addEventListener('submit', async (event) => {
   if (needsFuel && !fuelType     && fail('Please select a fuel type.', '.cb-fuel-type')) return;
   if (needsFuel && !fuelEstimate && fail('Please select the estimated fuel amount.', '.cb-fuel-estimate')) return;
   if (needsWash && !washPackage  && fail('Please select a car wash package.', '.cb-wash-package')) return;
-  if (!serviceDate && fail('Please enter a service date.', '.cb-service-date')) return;
+  if (!serviceDate && fail('Please select a service date.', '.cb-service-date-host .sfp-trigger')) return;
   if (!returnTime  && fail('Please enter a desired return time.', '.cb-return-time')) return;
   if (!agreed && fail('Please check the agreement box to confirm your booking.', '.cb-agreed')) return;
 

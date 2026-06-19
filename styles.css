@@ -1967,6 +1967,19 @@ textarea:focus {
   font-weight: 800;
 }
 
+.customer-timeline li.timeline-step-nested {
+  margin-left: 2rem;
+  border-style: dashed;
+  font-size: 0.93em;
+}
+
+.timeline-status-message {
+  font-size: 0.95rem;
+  color: var(--text);
+  margin: 0 0 12px;
+  line-height: 1.5;
+}
+
 .customer-timeline p {
   margin: 0;
 }
@@ -3033,6 +3046,26 @@ textarea:focus {
   text-align: center;
 }
 
+/* ── Service / receipt photo modal overrides (rectangular, contain) ─────── */
+.worker-photo-modal-content--service {
+  max-width: min(90vw, 800px);
+}
+.worker-photo-modal-image-frame--service {
+  width: min(85vw, 760px);
+  height: auto;
+  max-height: 80vh;
+  border-radius: 8px;
+  overflow: hidden;
+}
+.worker-photo-modal-image-frame--service .worker-photo-modal-img {
+  width: 100%;
+  height: 100%;
+  max-height: 78vh;
+  object-fit: contain;
+  object-position: center;
+  background: #111;
+}
+
 /* ── Worker profile photo frame: large variant ───────────────────────────── */
 .worker-profile-photo-frame--large {
   width: 120px;
@@ -3586,4 +3619,215 @@ textarea:focus {
   color: var(--muted);
   text-align: center;
   padding: 20px;
+}
+
+/* ── Custom date picker (sfp = ShiftFuel Picker) ────────────────────────── */
+
+.sfp-host {
+  position: relative;
+  display: block;
+}
+
+/* Trigger — styled to match app's <input>/<select> fields */
+.sfp-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  min-height: 46px;
+  padding: 12px 13px;
+  color: var(--ink);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  font: inherit;
+  font-size: 1rem; /* prevents iOS Safari auto-zoom */
+  font-weight: 400;
+  text-align: left;
+  cursor: pointer;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.sfp-trigger--empty {
+  color: var(--muted);
+}
+
+.sfp-trigger:focus {
+  outline: 3px solid rgba(8, 113, 95, 0.18);
+  border-color: var(--brand);
+}
+
+.sfp-trigger[aria-expanded="true"] {
+  border-color: var(--brand);
+  outline: 3px solid rgba(8, 113, 95, 0.18);
+}
+
+.sfp-trigger-label {
+  flex: 1 1 auto;
+}
+
+.sfp-trigger-chevron {
+  flex: 0 0 auto;
+  font-size: 0.8rem;
+  opacity: 0.6;
+}
+
+/* Popup calendar card */
+.sfp-popup {
+  position: absolute;
+  z-index: 200;
+  top: calc(100% + 4px);
+  left: 0;
+  min-width: 280px;
+  width: 100%;
+  max-width: 320px;
+  padding: 12px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  box-shadow: 0 8px 30px rgba(22, 33, 29, 0.16);
+}
+
+.sfp-popup--above {
+  top: auto;
+  bottom: calc(100% + 4px);
+}
+
+/* Month navigation header */
+.sfp-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+  gap: 6px;
+}
+
+.sfp-month-title {
+  font-weight: 700;
+  font-size: 0.95rem;
+  flex: 1 1 auto;
+  text-align: center;
+}
+
+.sfp-nav {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface);
+  font-size: 1.3rem;
+  line-height: 1;
+  cursor: pointer;
+  color: var(--ink);
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.sfp-nav:hover:not([disabled]) {
+  background: var(--surface-soft);
+  border-color: var(--brand);
+}
+
+.sfp-nav[disabled] {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+/* Day-of-week header row */
+.sfp-weekdays {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  margin-bottom: 4px;
+  text-align: center;
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: var(--muted);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.sfp-weekdays span {
+  padding: 2px 0;
+}
+
+/* Day grid — 7 equal columns */
+.sfp-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 2px;
+}
+
+/* Base cell (both span and button days) */
+.sfp-cell {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  aspect-ratio: 1 / 1;
+  border-radius: 6px;
+  font-size: 0.875rem;
+  line-height: 1;
+}
+
+/* Reset button defaults for clickable days */
+button.sfp-cell {
+  width: 100%;
+  padding: 0;
+  border: none;
+  background: transparent;
+  font: inherit;
+  font-size: 0.875rem;
+  cursor: pointer;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+/* Clickable / valid day */
+.sfp-day--ok {
+  color: var(--ink);
+}
+
+.sfp-day--ok:hover {
+  background: var(--surface-soft);
+  color: var(--brand-dark);
+}
+
+.sfp-day--ok:focus {
+  outline: 2px solid var(--brand);
+  outline-offset: -1px;
+}
+
+/* Disabled / out-of-range day */
+.sfp-day--disabled {
+  color: #b8c4be;
+  background: transparent;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+/* Today indicator */
+.sfp-day--today:not(.sfp-day--selected) {
+  border: 1.5px solid var(--brand);
+  font-weight: 700;
+  color: var(--brand-dark);
+}
+
+/* Selected day */
+.sfp-day--selected {
+  background: var(--brand) !important;
+  color: #fff !important;
+  font-weight: 700;
+  border: none !important;
+}
+
+/* Empty leading cells (fill grid before day 1) */
+.sfp-cell--empty {
+  pointer-events: none;
+  background: transparent;
 }

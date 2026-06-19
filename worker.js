@@ -119,6 +119,7 @@ const workerOpenStatuses = [
   'vehicle_returned',
   'inspection_needed',
   'inspection_recorded',
+  'awaiting_key_return',
 ];
 
 const workerStatusLabels = {
@@ -126,10 +127,12 @@ const workerStatusLabels = {
   accepted: 'Accepted',
   key_received: 'Key received',
   vehicle_picked_up: 'Vehicle picked up',
+  service_in_progress: 'Service in progress',
   fueling_complete: 'Fueling complete',
   fuel_receipt_uploaded: 'Fuel receipt uploaded',
   car_wash_complete: 'Car wash complete',
   wash_receipt_uploaded: 'Wash receipt uploaded',
+  service_complete: 'Service complete',
   receipts_recorded: 'Receipts recorded',
   returned_location_pending: 'Returned',
   return_location_recorded: 'Return location recorded',
@@ -137,6 +140,7 @@ const workerStatusLabels = {
   vehicle_returned: 'Vehicle returned',
   inspection_needed: 'Vehicle inspection needed',
   inspection_recorded: 'Inspection recorded',
+  awaiting_key_return: 'Awaiting key return',
   complete: 'Complete',
   unable_to_complete: 'Unable to complete',
 };
@@ -269,7 +273,8 @@ function nextStatusAfterServiceUnable(request, type) {
   const washDone = type === 'wash' || !serviceNeedsWash(request) || serviceDoneOrUnable(request, 'wash');
 
   if (fuelDone && washDone) {
-    return 'receipts_recorded';
+    // All services resolved — route to service_complete for receipt confirmation.
+    return 'service_complete';
   }
 
   return type === 'fuel' ? 'fuel_receipt_uploaded' : 'wash_receipt_uploaded';
@@ -1047,24 +1052,22 @@ function workerPrimaryStatusButton(request, label, status) {
 
 function workerBackStatusFor(request) {
   const map = {
-    accepted: 'request_received',
-    key_received: 'accepted',
-    vehicle_picked_up: 'key_received',
-    fueling_complete: 'vehicle_picked_up',
-    car_wash_complete: 'vehicle_picked_up',
-    fuel_receipt_uploaded: 'fueling_complete',
-    wash_receipt_uploaded: 'car_wash_complete',
-    receipts_recorded: serviceNeedsFuel(request) && serviceNeedsWash(request)
-      ? 'fuel_receipt_uploaded'
-      : serviceNeedsFuel(request)
-        ? 'fueling_complete'
-        : 'car_wash_complete',
+    accepted:                'request_received',
+    key_received:            'accepted',
+    vehicle_picked_up:       'key_received',
+    service_in_progress:     'vehicle_picked_up',
+    fueling_complete:        'service_in_progress',
+    car_wash_complete:       'service_in_progress',
+    fuel_receipt_uploaded:   'fueling_complete',
+    wash_receipt_uploaded:   'car_wash_complete',
+    service_complete:        'service_in_progress',
+    receipts_recorded:       'service_complete',
     returned_location_pending: 'receipts_recorded',
-    return_location_recorded: 'returned_location_pending',
-    return_photos_needed: 'return_location_recorded',
-    vehicle_returned: 'return_photos_needed',
-    inspection_needed: 'vehicle_returned',
-    inspection_recorded: 'inspection_needed',
+    return_location_recorded:  'returned_location_pending',
+    return_photos_needed:      'return_location_recorded',
+    vehicle_returned:          'return_photos_needed',
+    inspection_needed:         'vehicle_returned',
+    inspection_recorded:       'inspection_needed',
   };
 
   return map[request.status] || '';
@@ -1097,19 +1100,24 @@ function renderWorkerJobActions(request) {
   let activePanel = '';
 
   if (request.status === 'request_received') {
-    actions.push(workerPrimaryStatusButton(request, 'Accept', 'accepted'));
+    actions.push(workerPrimaryStatusButton(request, 'Accept request', 'accepted'));
   } else if (request.status === 'accepted') {
     actions.push(workerPrimaryStatusButton(request, 'Key received', 'key_received'));
   } else if (request.status === 'key_received') {
     actions.push(workerStepInstruction('Upload the pickup photo set below.'));
     activePanel = renderWorkerPhotoPanel(request, 'pickup');
   } else if (request.status === 'vehicle_picked_up') {
+    // Gateway: worker confirms they are beginning the service.
+    // The customer tracker advances to "Service in progress" after this click.
+    actions.push(workerPrimaryStatusButton(request, 'Start service', 'service_in_progress'));
+  } else if (request.status === 'service_in_progress') {
+    // Worker performs the actual service. Show fuel/wash action buttons.
     if (serviceNeedsFuel(request) && !serviceDoneOrUnable(request, 'fuel')) {
-      actions.push(workerPrimaryStatusButton(request, `Fuel - ${request.fuel_type || 'fuel type not listed'}`, 'fueling_complete'));
+      actions.push(workerPrimaryStatusButton(request, `Fuel complete — ${request.fuel_type || 'fuel'}`, 'fueling_complete'));
       actions.push(workerServiceUnableButton(request, 'fuel'));
     }
     if (serviceNeedsWash(request) && !serviceDoneOrUnable(request, 'wash')) {
-      actions.push(workerPrimaryStatusButton(request, `Car wash - ${request.wash_package_label || 'selected wash'}`, 'car_wash_complete'));
+      actions.push(workerPrimaryStatusButton(request, `Wash complete — ${request.wash_package_label || 'selected wash'}`, 'car_wash_complete'));
       actions.push(workerServiceUnableButton(request, 'wash'));
     }
   } else if (request.status === 'fueling_complete') {
@@ -1121,13 +1129,17 @@ function renderWorkerJobActions(request) {
     activePanel = renderWorkerReceiptPanel(request, 'wash');
     actions.push(workerServiceUnableButton(request, 'wash'));
   } else if (request.status === 'fuel_receipt_uploaded' && serviceNeedsWash(request) && !serviceDoneOrUnable(request, 'wash')) {
-    actions.push(workerPrimaryStatusButton(request, `Car wash - ${request.wash_package_label || 'selected wash'}`, 'car_wash_complete'));
+    actions.push(workerPrimaryStatusButton(request, `Wash complete — ${request.wash_package_label || 'selected wash'}`, 'car_wash_complete'));
     actions.push(workerServiceUnableButton(request, 'wash'));
   } else if (request.status === 'wash_receipt_uploaded' && serviceNeedsFuel(request) && !serviceDoneOrUnable(request, 'fuel')) {
-    actions.push(workerPrimaryStatusButton(request, `Fuel - ${request.fuel_type || 'fuel type not listed'}`, 'fueling_complete'));
+    actions.push(workerPrimaryStatusButton(request, `Fuel complete — ${request.fuel_type || 'fuel'}`, 'fueling_complete'));
     actions.push(workerServiceUnableButton(request, 'fuel'));
+  } else if (request.status === 'service_complete') {
+    // All service and receipt entry done. Worker reviews totals and confirms before returning vehicle.
+    actions.push(workerStepInstruction('Review the receipt totals below, then confirm to continue.'));
+    activePanel = renderWorkerReceiptConfirmPanel(request);
   } else if (request.status === 'receipts_recorded') {
-    actions.push(workerPrimaryStatusButton(request, 'Returned', 'returned_location_pending'));
+    actions.push(workerPrimaryStatusButton(request, 'Vehicle returned', 'returned_location_pending'));
   } else if (request.status === 'returned_location_pending') {
     actions.push(workerStepInstruction('Record where the vehicle was returned before return photos.'));
     activePanel = renderWorkerReturnLocationPanel(request);
@@ -1149,6 +1161,9 @@ function renderWorkerJobActions(request) {
   } else if (request.status === 'inspection_recorded') {
     actions.push(workerStepInstruction('Confirm the saved totals before completing.'));
     activePanel = renderWorkerCompletePanel(request);
+  } else if (request.status === 'awaiting_key_return') {
+    actions.push(workerStepInstruction('Return the customer\'s keys and document who received them.'));
+    activePanel = renderWorkerKeysReturnedPanel(request);
   }
 
   const back = workerBackButton(request);
@@ -1246,11 +1261,14 @@ function renderWorkerReceiptPanel(request, mode = 'all') {
   const isFuelMode = mode === 'fuel';
   const isWashMode = mode === 'wash';
   const receiptTotals = receiptTotalsFromNotes(request);
+  // If more services remain after this receipt, stage to the intermediate upload status.
+  // If this is the last service, advance to service_complete so the worker confirms totals
+  // before the request is marked receipts_recorded.
   const nextStatus = isFuelMode
-    ? serviceNeedsWash(request) && !serviceDoneOrUnable(request, 'wash') ? 'fuel_receipt_uploaded' : 'receipts_recorded'
+    ? serviceNeedsWash(request) && !serviceDoneOrUnable(request, 'wash') ? 'fuel_receipt_uploaded' : 'service_complete'
     : isWashMode
-      ? serviceNeedsFuel(request) && !serviceDoneOrUnable(request, 'fuel') ? 'wash_receipt_uploaded' : 'receipts_recorded'
-      : 'receipts_recorded';
+      ? serviceNeedsFuel(request) && !serviceDoneOrUnable(request, 'fuel') ? 'wash_receipt_uploaded' : 'service_complete'
+      : 'service_complete';
 
   return `
     <div class="receipt-panel" data-receipt-for="${escapeHtml(request.id)}">
@@ -1338,6 +1356,35 @@ function renderWorkerInspectionPanel(request) {
   `;
 }
 
+// Receipt-confirmation panel shown at service_complete.
+// Worker reviews totals and clicks "Receipts recorded" → advances to receipts_recorded.
+// Does NOT capture payment — that happens later at vehicle_returned/inspection_recorded.
+function renderWorkerReceiptConfirmPanel(request) {
+  const receiptTotals = receiptTotalsFromNotes(request);
+  const workerReceiptTotal = receiptTotals.fuel + receiptTotals.wash;
+
+  return `
+    <div class="complete-panel" data-complete-for="${escapeHtml(request.id)}">
+      <h4>Confirm receipt totals</h4>
+      <div class="request-details">
+        ${serviceNeedsFuel(request) ? `<p><strong>Fuel receipt total:</strong> ${money(receiptTotals.fuel)}</p>` : ''}
+        ${serviceNeedsWash(request) ? `<p><strong>Car wash receipt total:</strong> ${money(receiptTotals.wash)}</p>` : ''}
+        <p><strong>Receipt total entered:</strong> ${money(workerReceiptTotal)}</p>
+      </div>
+      <label class="checkbox-label">
+        <input class="confirm-complete-totals" type="checkbox">
+        <span>I confirm the saved receipt totals are correct.</span>
+      </label>
+      <div class="admin-button-row">
+        <button class="button primary worker-update-status" data-id="${escapeHtml(request.id)}" data-status="receipts_recorded" type="button">Receipts recorded</button>
+        ${serviceNeedsFuel(request) ? `<button class="button secondary show-total-edit" data-id="${escapeHtml(request.id)}" data-edit-total="fuel" type="button">Fuel Incorrect</button>` : ''}
+        ${serviceNeedsWash(request) ? `<button class="button secondary show-total-edit" data-id="${escapeHtml(request.id)}" data-edit-total="wash" type="button">Car Wash Incorrect</button>` : ''}
+      </div>
+      <div class="total-edit-panel" data-total-edit-for="${escapeHtml(request.id)}" hidden></div>
+    </div>
+  `;
+}
+
 function renderWorkerCompletePanel(request) {
   const receiptTotals = receiptTotalsFromNotes(request);
   const workerReceiptTotal = receiptTotals.fuel + receiptTotals.wash;
@@ -1363,6 +1410,32 @@ function renderWorkerCompletePanel(request) {
         ${serviceNeedsWash(request) ? `<button class="button secondary show-total-edit" data-id="${escapeHtml(request.id)}" data-edit-total="wash" type="button">Car Wash Incorrect</button>` : ''}
       </div>
       <div class="total-edit-panel" data-total-edit-for="${escapeHtml(request.id)}" hidden></div>
+    </div>
+  `;
+}
+
+function renderWorkerKeysReturnedPanel(request) {
+  const customerName = escapeHtml(request.customer_name || 'Customer');
+  return `
+    <div class="keys-returned-panel" data-keys-for="${escapeHtml(request.id)}">
+      <h4>Keys returned</h4>
+      <p class="field-help">Document who the customer's keys were returned to.</p>
+      <label>
+        Keys returned to
+        <select class="key-returned-to-type">
+          <option value="">Select recipient</option>
+          <option value="customer">Customer — ${customerName}</option>
+          <option value="other">Other person or location</option>
+        </select>
+      </label>
+      <label class="key-returned-other-wrap" hidden>
+        Person or location
+        <input class="key-returned-other-name" type="text" placeholder="e.g. Security desk, Front desk, Ashley Smith">
+      </label>
+      <div class="admin-button-row">
+        <button class="button primary worker-submit-keys-returned" data-id="${escapeHtml(request.id)}" type="button">Keys returned</button>
+      </div>
+      <p class="keys-returned-status form-status"></p>
     </div>
   `;
 }
@@ -1848,21 +1921,75 @@ async function completeWorkerRequest(button) {
   const { error: updateErr } = await workerDb.rpc('worker_update_request', {
     p_token: SESSION_WORKER_TOKEN,
     p_request_id: id,
-    p_data: { status: 'complete', final_total: finalTotal },
+    p_data: { status: 'awaiting_key_return', final_total: finalTotal },
   });
 
   if (updateErr) {
     console.error('[complete] Failed to save completion:', updateErr);
     button.disabled = false;
     button.textContent = 'Complete request';
-    alert('Could not mark the request as complete. Please try again.');
+    alert('Could not update the request. Please try again.');
     return;
   }
 
-  console.log('Request marked completed — no payment hold to capture.');
+  console.log('Request moved to awaiting_key_return — no payment hold to capture.');
 
   await loadWorkerJobs();
   await loadWorkerReviews();
+}
+
+async function submitWorkerKeysReturned(button) {
+  const id = button.dataset.id;
+  const request = allWorkerJobs.find(r => r.id === id);
+  if (!request) return;
+
+  const panel = button.closest('.keys-returned-panel');
+  const toType = panel?.querySelector('.key-returned-to-type')?.value;
+  const otherName = panel?.querySelector('.key-returned-other-name')?.value?.trim();
+  const statusEl = panel?.querySelector('.keys-returned-status');
+
+  if (!toType) {
+    if (statusEl) statusEl.textContent = 'Select who the keys were returned to.';
+    return;
+  }
+  if (toType === 'other' && !otherName) {
+    if (statusEl) statusEl.textContent = 'Enter the name or location keys were returned to.';
+    return;
+  }
+
+  const toName = toType === 'customer' ? (request.customer_name || 'Customer') : otherName;
+
+  button.disabled = true;
+  button.textContent = 'Saving...';
+  if (statusEl) statusEl.textContent = '';
+
+  try {
+    const res = await fetch('/api/payments', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'mark_keys_returned',
+        request_id: id,
+        caller_token: SESSION_WORKER_TOKEN,
+        key_returned_to_type: toType,
+        key_returned_to_name_or_location: toName,
+        key_returned_by: currentEmployee?.full_name || 'Worker',
+      }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      button.disabled = false;
+      button.textContent = 'Keys returned';
+      if (statusEl) statusEl.textContent = `Error: ${data.error || 'Could not save. Please try again.'}`;
+      return;
+    }
+    await loadWorkerJobs();
+    await loadWorkerReviews();
+  } catch (err) {
+    button.disabled = false;
+    button.textContent = 'Keys returned';
+    if (statusEl) statusEl.textContent = 'Network error. Please try again.';
+  }
 }
 
 workerJobList?.addEventListener('click', async (event) => {
@@ -1878,6 +2005,15 @@ workerJobList?.addEventListener('click', async (event) => {
     }
 
     if (button.classList.contains('worker-update-status')) {
+      // If this button is inside a receipt-confirm panel, require the checkbox first.
+      const confirmPanel = button.closest('.complete-panel');
+      if (confirmPanel && button.dataset.status === 'receipts_recorded') {
+        const confirmed = confirmPanel.querySelector('.confirm-complete-totals')?.checked;
+        if (!confirmed) {
+          alert('Check the confirmation box after verifying the saved totals.');
+          return;
+        }
+      }
       button.disabled = true;
       await updateWorkerJobStatus(button.dataset.id, button.dataset.status);
       return;
@@ -1959,10 +2095,17 @@ workerJobList?.addEventListener('click', async (event) => {
 
     if (button.classList.contains('send-to-customer-payment')) {
       await sendWorkerToCustomerPayment(button);
+      return;
     }
 
     if (button.classList.contains('complete-request')) {
       await completeWorkerRequest(button);
+      return;
+    }
+
+    if (button.classList.contains('worker-submit-keys-returned')) {
+      await submitWorkerKeysReturned(button);
+      return;
     }
   } catch (error) {
     console.error('Worker job action failed:', error);
@@ -1986,6 +2129,12 @@ workerJobList?.addEventListener('change', (event) => {
     if (otherWrap) {
       otherWrap.style.display = event.target.value === 'Other' ? 'block' : 'none';
     }
+  }
+
+  if (event.target.matches('.key-returned-to-type')) {
+    const panel = event.target.closest('.keys-returned-panel');
+    const otherWrap = panel?.querySelector('.key-returned-other-wrap');
+    if (otherWrap) otherWrap.hidden = event.target.value !== 'other';
   }
 });
 

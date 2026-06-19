@@ -102,23 +102,13 @@ function maxDateString() {
   d.setMonth(d.getMonth() + 3);
   return localDateString(d);
 }
-function initServiceDateInput(input) {
-  if (!input) return;
-  const today = localDateString(new Date());
-  const max = maxDateString();
-  input.min = today;
-  input.max = max;
-  function validate() {
-    const v = input.value;
-    if (!v) return;
-    if (v < today) { input.value = ''; return; }
-    if (v > max)   { input.value = ''; return; }
-  }
-  input.addEventListener('change', validate);
-  input.addEventListener('input', validate);
+function initServiceDateInput() {
+  const host = document.getElementById('cr-service-date-picker');
+  if (!host || !window.ShiftFuelDatePicker) return;
+  ShiftFuelDatePicker.attach(host, { min: localDateString(new Date()), max: maxDateString() });
 }
 
-initServiceDateInput(document.querySelector('#cr-service-date'));
+initServiceDateInput();
 
 // Admin profile photo editor state (mirrors worker.js)
 let adminPhotoZoom = 1;
@@ -140,12 +130,14 @@ const statusLabels = {
   pickup_odometer_photo_uploaded: 'Pickup odometer photo uploaded',
   pickup_fuel_gauge_photo_uploaded: 'Pickup fuel gauge photo uploaded',
   vehicle_picked_up: 'Vehicle picked up',
+  service_in_progress: 'Service in progress',
   fueling_in_progress: 'Fueling in progress',
   fueling_complete: 'Fueling complete',
   fuel_receipt_uploaded: 'Fuel receipt uploaded',
   car_wash_in_progress: 'Car wash in progress',
   car_wash_complete: 'Car wash complete',
   fuel_and_wash_complete: 'Fuel and wash complete',
+  service_complete: 'Service complete',
   receipts_recorded: 'Receipts recorded',
   returned_location_pending: 'Returned',
   return_photos_needed: 'Return photos needed',
@@ -164,6 +156,7 @@ const statusLabels = {
   auto_reversed: 'Missed — auto-reversed',
   pending_customer_info: 'Awaiting customer info',
   pending_customer_payment: 'Awaiting customer payment',
+  awaiting_key_return: 'Awaiting key return',
 };
 
 const applicantStatusLabels = {
@@ -343,20 +336,14 @@ function serviceNeedsWash(request) {
   return String(request.service_type || '').includes('wash');
 }
 
+const POST_SERVICE_STATUSES = new Set([
+  'service_complete', 'receipts_recorded', 'returned_location_pending',
+  'return_location_recorded', 'return_photos_needed', 'vehicle_returned',
+  'inspection_needed', 'inspection_recorded', 'awaiting_key_return', 'complete',
+]);
+
 function serviceWorkComplete(request) {
-  if (serviceNeedsFuel(request) && serviceNeedsWash(request)) {
-    return request.status === 'fuel_and_wash_complete' || request.status === 'receipts_recorded' || request.status === 'return_location_recorded' || request.status === 'vehicle_returned' || request.status === 'inspection_recorded';
-  }
-
-  if (serviceNeedsFuel(request)) {
-    return request.status === 'fueling_complete' || request.status === 'receipts_recorded' || request.status === 'return_location_recorded' || request.status === 'vehicle_returned' || request.status === 'inspection_recorded';
-  }
-
-  if (serviceNeedsWash(request)) {
-    return request.status === 'car_wash_complete' || request.status === 'receipts_recorded' || request.status === 'return_location_recorded' || request.status === 'vehicle_returned' || request.status === 'inspection_recorded';
-  }
-
-  return request.status === 'vehicle_picked_up' || request.status === 'receipts_recorded' || request.status === 'return_location_recorded' || request.status === 'vehicle_returned' || request.status === 'inspection_recorded';
+  return POST_SERVICE_STATUSES.has(request.status);
 }
 
 function receiptTotalsFromNotes(request) {
@@ -391,7 +378,7 @@ function nextStatusAfterServiceUnable(request, type) {
   const washDone = type === 'wash' || !serviceNeedsWash(request) || serviceDoneOrUnable(request, 'wash');
 
   if (fuelDone && washDone) {
-    return 'receipts_recorded';
+    return 'service_complete';
   }
 
   return type === 'fuel' ? 'fuel_receipt_uploaded' : 'wash_receipt_uploaded';
@@ -713,8 +700,11 @@ function renderActions(request) {
   } else if (request.status === 'pending_customer_payment') {
     actions.push(stepInstruction('Waiting for the customer to confirm and pay from the Request Tracker.'));
     if (request.payment_status === 'captured') {
-      actions.push(`<button class="button primary complete-request" data-id="${request.id}" type="button">Mark complete (payment received)</button>`);
+      actions.push(`<button class="button primary proceed-to-key-return" data-id="${request.id}" type="button">Proceed to key return (payment received)</button>`);
     }
+  } else if (request.status === 'awaiting_key_return') {
+    actions.push(stepInstruction('Return the customer\'s keys and document who received them.'));
+    activePanel = renderKeysReturnedPanel(request);
   }
 
   const back = backButton(request);
@@ -948,17 +938,21 @@ function renderCompletePanel(request) {
   const receiptTotals = receiptTotalsFromNotes(request);
   const expectedFinalTotal = finalTotalFromSavedReceipts(request, receiptTotals);
   const alreadyCaptured = request.payment_status === 'captured';
+  const hasPi = !!request.payment_intent_id;
 
-  // If payment already captured, admin can directly mark complete.
-  // Otherwise, admin sends to customer for payment.
-  const primaryBtn = alreadyCaptured
-    ? `<button class="button primary complete-request" data-id="${request.id}" type="button">Complete request</button>`
-    : `<button class="button primary send-to-customer-payment" data-id="${request.id}" type="button">Send to Customer for Payment</button>`;
+  let primaryBtn;
+  if (alreadyCaptured) {
+    primaryBtn = `<button class="button primary proceed-to-key-return" data-id="${request.id}" type="button">Proceed to key return</button>`;
+  } else if (hasPi) {
+    primaryBtn = `<button class="button primary capture-and-proceed" data-id="${request.id}" type="button">Capture payment &amp; proceed to key return</button>`;
+  } else {
+    primaryBtn = `<button class="button primary proceed-to-key-return" data-id="${request.id}" type="button">Proceed to key return (no payment)</button>`;
+  }
 
   return `
     <div class="complete-panel" data-complete-for="${request.id}">
-      <h4>Confirm before sending to customer</h4>
-      <p class="field-help">Confirm these totals are correct. The customer will review and pay from the Request Tracker.</p>
+      <h4>Confirm before ${hasPi && !alreadyCaptured ? 'capturing payment' : 'completing'}</h4>
+      <p class="field-help">Confirm these totals are correct before ${hasPi && !alreadyCaptured ? 'capturing the payment' : 'proceeding to key return'}.</p>
       <div class="request-details">
         ${serviceNeedsFuel(request) ? `<p><strong>Fuel:</strong> ${money(receiptTotals.fuel)} receipt + ${money(fees.fuel)} convenience fee.</p>` : ''}
         ${serviceNeedsWash(request) ? `<p><strong>Car wash:</strong> ${money(receiptTotals.wash)} receipt + ${money(fees.wash)} convenience fee.</p>` : ''}
@@ -966,7 +960,7 @@ function renderCompletePanel(request) {
         <p><strong>Final total currently saved:</strong> ${request.final_total == null ? 'Not recorded' : money(request.final_total)}</p>
         <p><strong>Expected total from saved receipts:</strong> ${money(expectedFinalTotal)}</p>
         ${request.return_parking_location ? `<p><strong>Return location:</strong> ${escapeHtml(request.return_parking_location)}</p>` : ''}
-        ${alreadyCaptured ? `<p class="field-help" style="color:#1a7a3a">✓ Payment already captured — you can mark complete directly.</p>` : ''}
+        ${alreadyCaptured ? `<p class="field-help" style="color:#1a7a3a">✓ Payment already captured.</p>` : ''}
       </div>
       <label class="checkbox-label">
         <input class="confirm-complete-totals" type="checkbox">
@@ -974,11 +968,38 @@ function renderCompletePanel(request) {
       </label>
       <div class="admin-button-row">
         ${primaryBtn}
+        ${hasPi && !alreadyCaptured ? `<button class="button secondary send-to-customer-payment" data-id="${request.id}" type="button">Send to Customer for Payment</button>` : ''}
         ${serviceNeedsFuel(request) ? `<button class="button secondary show-total-edit" data-id="${request.id}" data-edit-total="fuel" type="button">Fuel Incorrect</button>` : ''}
         ${serviceNeedsWash(request) ? `<button class="button secondary show-total-edit" data-id="${request.id}" data-edit-total="wash" type="button">Car Wash Incorrect</button>` : ''}
       </div>
-      <p class="field-help">Editing a total requires you to confirm the totals again before sending.</p>
+      <p class="field-help">Editing a total requires you to confirm the totals again before proceeding.</p>
       <div class="total-edit-panel" data-total-edit-for="${request.id}" hidden></div>
+    </div>
+  `;
+}
+
+function renderKeysReturnedPanel(request) {
+  const customerName = escapeHtml(request.customer_name || 'Customer');
+  return `
+    <div class="keys-returned-panel" data-keys-for="${escapeHtml(request.id)}">
+      <h4>Keys returned</h4>
+      <p class="field-help">Document who the customer's keys were returned to.</p>
+      <label>
+        Keys returned to
+        <select class="key-returned-to-type">
+          <option value="">Select recipient</option>
+          <option value="customer">Customer — ${customerName}</option>
+          <option value="other">Other person or location</option>
+        </select>
+      </label>
+      <label class="key-returned-other-wrap" hidden>
+        Person or location
+        <input class="key-returned-other-name" type="text" placeholder="e.g. Security desk, Front desk, Ashley Smith">
+      </label>
+      <div class="admin-button-row">
+        <button class="button primary admin-submit-keys-returned" data-id="${escapeHtml(request.id)}" type="button">Keys returned</button>
+      </div>
+      <p class="keys-returned-status form-status"></p>
     </div>
   `;
 }
@@ -2554,8 +2575,26 @@ async function retryReleaseHold(button) {
   const request = allRequests.find(r => r.id === id);
   if (!request) return;
 
+  const originalText = button.textContent;
   button.disabled = true;
   button.textContent = 'Releasing...';
+
+  const banner = button.closest('.admin-warning-banner');
+
+  function showInlineError(msg) {
+    button.disabled = false;
+    button.textContent = originalText;
+    if (banner) {
+      let errEl = banner.querySelector('.release-hold-error');
+      if (!errEl) {
+        errEl = document.createElement('p');
+        errEl.className = 'release-hold-error form-error';
+        errEl.style.marginTop = '6px';
+        banner.appendChild(errEl);
+      }
+      errEl.textContent = msg;
+    }
+  }
 
   try {
     const res = await fetch('/api/payments', {
@@ -2566,15 +2605,14 @@ async function retryReleaseHold(button) {
     const data = await res.json().catch(() => ({}));
     if (res.ok) {
       await loadRequests();
+    } else if (res.status === 401 || res.status === 403) {
+      showInlineError('Session expired. Redirecting to login…');
+      setTimeout(() => { window.location.href = 'admin-login.html'; }, 1500);
     } else {
-      button.disabled = false;
-      button.textContent = 'Retry hold release';
-      alert(`Could not release hold: ${data.error || 'Unknown error. Check Stripe dashboard directly.'}`);
+      showInlineError(`Could not release hold: ${data.error || 'Unknown error. Check Stripe dashboard directly.'}`);
     }
   } catch (err) {
-    button.disabled = false;
-    button.textContent = 'Retry hold release';
-    alert('Network error. Please try again or release the hold manually in Stripe.');
+    showInlineError('Network error. Please try again or release the hold manually in Stripe.');
   }
 }
 
@@ -2791,19 +2829,143 @@ async function completeRequest(button) {
 
   // Only allow direct completion when payment is already captured (or no payment).
   if (request.payment_intent_id && request.payment_status !== 'captured') {
-    alert('Payment has not been captured yet. Use "Send to Customer for Payment" instead.');
+    alert('Payment has not been captured yet. Use "Capture payment & proceed" instead.');
     return;
   }
 
   button.disabled = true;
-  button.textContent = 'Completing...';
+  button.textContent = 'Saving...';
   try {
-    await updateRequestStatus(id, 'complete');
+    await updateRequestStatus(id, 'awaiting_key_return');
   } catch (err) {
     console.error('[complete] Failed:', err.message);
     button.disabled = false;
-    button.textContent = 'Complete request';
-    alert('Could not complete the request. Please try again.');
+    button.textContent = button.dataset.originalText || 'Proceed to key return';
+    alert('Could not update the request. Please try again.');
+  }
+}
+
+async function captureAndProceed(button) {
+  const id = button.dataset.id;
+  const request = allRequests.find(r => r.id === id);
+  if (!request) return;
+
+  const panel = button.closest('.complete-panel');
+  const confirmed = panel?.querySelector('.confirm-complete-totals')?.checked;
+
+  if (request.final_total == null) {
+    alert('Save the final total before capturing payment.');
+    return;
+  }
+  if (!confirmed) {
+    alert('Check the confirmation box after verifying the saved totals.');
+    return;
+  }
+
+  button.disabled = true;
+  button.textContent = 'Processing payment...';
+
+  try {
+    const res = await fetch('/api/payments', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'capture_payment',
+        payment_intent_id: request.payment_intent_id,
+        request_id: id,
+        amount_cents: Math.round((request.final_total || 0) * 100),
+        caller_token: adminToken(),
+      }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      button.disabled = false;
+      button.textContent = 'Capture payment & proceed to key return';
+      alert(`Could not capture payment: ${data.error || 'Unknown error. Please try again.'}`);
+      return;
+    }
+    await loadRequests();
+  } catch (err) {
+    button.disabled = false;
+    button.textContent = 'Capture payment & proceed to key return';
+    alert('Network error. Please try again.');
+  }
+}
+
+async function proceedToKeyReturn(button) {
+  const id = button.dataset.id;
+  const request = allRequests.find(r => r.id === id);
+  if (!request) return;
+
+  const panel = button.closest('.complete-panel');
+  const confirmed = panel?.querySelector('.confirm-complete-totals')?.checked;
+
+  if (panel && !confirmed) {
+    alert('Check the confirmation box after verifying the saved totals.');
+    return;
+  }
+
+  button.disabled = true;
+  button.textContent = 'Saving...';
+  try {
+    await updateRequestStatus(id, 'awaiting_key_return');
+  } catch (err) {
+    button.disabled = false;
+    button.textContent = button.textContent.includes('no payment') ? 'Proceed to key return (no payment)' : 'Proceed to key return';
+    alert('Could not update the request. Please try again.');
+  }
+}
+
+async function submitAdminKeysReturned(button) {
+  const id = button.dataset.id;
+  const request = allRequests.find(r => r.id === id);
+  if (!request) return;
+
+  const panel = button.closest('.keys-returned-panel');
+  const toType = panel?.querySelector('.key-returned-to-type')?.value;
+  const otherName = panel?.querySelector('.key-returned-other-name')?.value?.trim();
+  const statusEl = panel?.querySelector('.keys-returned-status');
+
+  if (!toType) {
+    if (statusEl) statusEl.textContent = 'Select who the keys were returned to.';
+    return;
+  }
+  if (toType === 'other' && !otherName) {
+    if (statusEl) statusEl.textContent = 'Enter the name or location keys were returned to.';
+    return;
+  }
+
+  const toName = toType === 'customer' ? (request.customer_name || 'Customer') : otherName;
+
+  button.disabled = true;
+  button.textContent = 'Saving...';
+  if (statusEl) statusEl.textContent = '';
+
+  try {
+    const res = await fetch('/api/payments', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'mark_keys_returned',
+        request_id: id,
+        caller_token: adminToken(),
+        key_returned_to_type: toType,
+        key_returned_to_name_or_location: toName,
+        key_returned_by: 'Admin',
+      }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      button.disabled = false;
+      button.textContent = 'Keys returned';
+      if (statusEl) statusEl.textContent = `Error: ${data.error || 'Could not save. Please try again.'}`;
+      return;
+    }
+    await loadRequests();
+  } catch (err) {
+    button.disabled = false;
+    button.textContent = 'Keys returned';
+    if (statusEl) statusEl.textContent = 'Network error. Please try again.';
   }
 }
 
@@ -3288,6 +3450,21 @@ requestList.addEventListener('click', async (event) => {
       return;
     }
 
+    if (button.classList.contains('capture-and-proceed')) {
+      await captureAndProceed(button);
+      return;
+    }
+
+    if (button.classList.contains('proceed-to-key-return')) {
+      await proceedToKeyReturn(button);
+      return;
+    }
+
+    if (button.classList.contains('admin-submit-keys-returned')) {
+      await submitAdminKeysReturned(button);
+      return;
+    }
+
     if (button.classList.contains('send-to-customer-payment')) {
       await sendToCustomerPayment(button);
       return;
@@ -3355,6 +3532,12 @@ requestList.addEventListener('change', (event) => {
     const panel = event.target.closest('.service-unable-panel');
     const otherWrap = panel?.querySelector('.service-unable-other-wrap');
     if (otherWrap) otherWrap.hidden = event.target.value !== 'Other';
+    return;
+  }
+  if (event.target.classList.contains('key-returned-to-type')) {
+    const panel = event.target.closest('.keys-returned-panel');
+    const otherWrap = panel?.querySelector('.key-returned-other-wrap');
+    if (otherWrap) otherWrap.hidden = event.target.value !== 'other';
     return;
   }
   if (event.target.classList.contains('assign-worker-select')) {
