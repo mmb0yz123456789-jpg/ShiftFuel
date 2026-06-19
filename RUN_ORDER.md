@@ -66,6 +66,32 @@ Creates `fuel_price_settings` table (single active row) and two RPCs:
 
 ---
 
+## 9. `supabase-key-return.sql`, `supabase-cancellation-return.sql`
+Add the `key_returned_*` and cancellation/return-request columns to `service_requests`.
+
+---
+
+## 10. `supabase-production-rls-lockdown.sql`
+Production RLS lockdown — run last, after every file above:
+- Adds `admin_list_requests`, `worker_list_open_requests`, `worker_list_my_requests`,
+  `admin_list_applicants` RPCs so the admin/worker dashboards no longer need a
+  permissive anon SELECT policy on `service_requests` / `applicants`.
+- Updates `admin_update_employee` to cascade name/phone/photo changes to open
+  `service_requests` server-side (previously done with a direct anon UPDATE).
+- Unifies the terminal/closed status list used by `public_booked_return_slots`,
+  `public_cancel_request`, and the `one_active_request_per_slot` unique index.
+- Drops the remaining permissive anon policies: `"Anyone can save employees"`,
+  `"Anyone can save employee availability"`, `"Anyone can save employee days off"`,
+  `"Anyone can read applicants"`, `"Anyone can update applicants"`,
+  `"Anyone can read service requests"`, `"Anyone can update service requests"`.
+
+**After deploying:** confirm admin dashboard loads requests/applicants, worker
+dashboard loads open jobs and "My reviews", and that a logged-out browser
+console (`window.ShiftFuelSupabase.from('service_requests').select('*')`)
+returns 0 rows.
+
+---
+
 ## Post-deploy verification
 
 **Employees / security**

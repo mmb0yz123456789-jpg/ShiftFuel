@@ -103,15 +103,23 @@ let workerProfilePhotoZoom = 1;
 let workerProfilePhotoPosition = { x: 0, y: 0 };
 let workerPhotoDisplayDrag = null;
 
+// Unified active/open status list — keep in sync with admin.js, track.js,
+// and the SQL active-status list in supabase-production-rls-lockdown.sql
+// (worker_list_open_requests). This array is no longer used to filter the
+// DB query itself (that now happens server-side in the RPC) — it documents
+// the same list for the dev-only diagnostic log below.
 const workerOpenStatuses = [
+  'pending',
   'request_received',
   'accepted',
   'key_received',
   'vehicle_picked_up',
+  'service_in_progress',
   'fueling_complete',
   'car_wash_complete',
   'fuel_receipt_uploaded',
   'wash_receipt_uploaded',
+  'service_complete',
   'receipts_recorded',
   'returned_location_pending',
   'return_location_recorded',
@@ -119,30 +127,59 @@ const workerOpenStatuses = [
   'vehicle_returned',
   'inspection_needed',
   'inspection_recorded',
+  'final_payment_processed',
   'awaiting_key_return',
+  'keys_returned',
+  'return_requested',
+  'customer_return_requested',
+  'payment_issue',
+  'authorization_too_low',
 ];
 
+function normalizeName(value) {
+  return String(value || '').trim().toLowerCase();
+}
+
+function normalizePhone(value) {
+  return String(value || '').replace(/\D/g, '');
+}
+
+// Friendly labels for every status — keep in sync with admin.js and track.js.
+// Raw database status strings must never be shown to a worker.
 const workerStatusLabels = {
+  pending: 'Request received',
   request_received: 'Request received',
   accepted: 'Accepted',
   key_received: 'Key received',
   vehicle_picked_up: 'Vehicle picked up',
   service_in_progress: 'Service in progress',
   fueling_complete: 'Fueling complete',
-  fuel_receipt_uploaded: 'Fuel receipt uploaded',
-  car_wash_complete: 'Car wash complete',
-  wash_receipt_uploaded: 'Wash receipt uploaded',
+  fuel_receipt_uploaded: 'Fuel receipt recorded',
+  car_wash_complete: 'Vehicle cleaning complete',
+  wash_receipt_uploaded: 'Car wash receipt recorded',
   service_complete: 'Service complete',
   receipts_recorded: 'Receipts recorded',
-  returned_location_pending: 'Returned',
+  returned_location_pending: 'Vehicle return location needed',
   return_location_recorded: 'Return location recorded',
   return_photos_needed: 'Return photos needed',
   vehicle_returned: 'Vehicle returned',
-  inspection_needed: 'Vehicle inspection needed',
-  inspection_recorded: 'Inspection recorded',
+  inspection_needed: 'Quick inspection needed',
+  inspection_recorded: 'Quick inspection complete',
+  final_payment_processed: 'Final payment processed',
   awaiting_key_return: 'Awaiting key return',
+  keys_returned: 'Keys returned',
+  return_requested: 'Return requested',
+  customer_return_requested: 'Return requested',
+  payment_issue: 'Payment issue',
+  authorization_too_low: 'Authorization issue',
   complete: 'Complete',
+  denied: 'Denied',
+  customer_canceled: 'Canceled by customer',
+  canceled: 'Canceled',
   unable_to_complete: 'Unable to complete',
+  auto_reversed: 'Missed — auto-reversed',
+  closed_no_charge: 'Closed — no charge',
+  canceled_return_completed: 'Return completed',
 };
 
 function escapeHtml(value) {
@@ -935,9 +972,8 @@ async function loadWorkerReviews() {
   workerReviewList.innerHTML = '<div class="empty-state"><p>Loading reviews...</p></div>';
 
   const { data: requests, error: requestError } = await workerDb
-    .from('service_requests')
-    .select('id,customer_name,vehicle_year,vehicle_make,vehicle_model')
-    .eq('assigned_employee_id', currentEmployee.id);
+    .rpc('worker_list_my_requests', { p_token: SESSION_WORKER_TOKEN })
+    .select('id,customer_name,vehicle_year,vehicle_make,vehicle_model');
 
   if (requestError) {
     console.warn('Could not load assigned requests:', requestError);
@@ -1028,6 +1064,9 @@ function renderWorkerJobCard(request, mode) {
         </div>
         <span class="status-pill">${escapeHtml(request.status || '')}</span>
       </div>
+      ${(mode === 'mine' && request.assigned_worker_name && !request.assigned_employee_id) ? `
+        <p class="field-help" style="color:#b35900">⚠ Assigned by name only — worker ID missing.</p>
+      ` : ''}
       <div class="request-details">
         <p><strong>Customer:</strong> ${escapeHtml(request.customer_name || 'Customer')}</p>
         <p><strong>Phone:</strong> ${escapeHtml(request.customer_phone || 'Not provided')}</p>
@@ -1080,10 +1119,6 @@ function workerBackButton(request) {
     : '';
 }
 
-function workerStepInstruction(text) {
-  return `<span class="workflow-step-note">${escapeHtml(text)}</span>`;
-}
-
 function filePicker(label, className, extraAttributes = '', accept = 'image/*') {
   return `
     <label class="file-button-control">
@@ -1098,20 +1133,25 @@ function filePicker(label, className, extraAttributes = '', accept = 'image/*') 
 function renderWorkerJobActions(request) {
   const actions = [];
   let activePanel = '';
+  let nextAction = '';
 
   if (request.status === 'request_received') {
+    nextAction = 'Accept the request to begin service.';
     actions.push(workerPrimaryStatusButton(request, 'Accept request', 'accepted'));
   } else if (request.status === 'accepted') {
+    nextAction = 'Confirm the key or handoff instructions have been received.';
     actions.push(workerPrimaryStatusButton(request, 'Key received', 'key_received'));
   } else if (request.status === 'key_received') {
-    actions.push(workerStepInstruction('Upload the pickup photo set below.'));
+    nextAction = 'Upload the pickup photo set below.';
     activePanel = renderWorkerPhotoPanel(request, 'pickup');
   } else if (request.status === 'vehicle_picked_up') {
     // Gateway: worker confirms they are beginning the service.
     // The customer tracker advances to "Service in progress" after this click.
+    nextAction = 'Start the requested service.';
     actions.push(workerPrimaryStatusButton(request, 'Start service', 'service_in_progress'));
   } else if (request.status === 'service_in_progress') {
     // Worker performs the actual service. Show fuel/wash action buttons.
+    nextAction = 'Complete the requested fuel or cleaning service.';
     if (serviceNeedsFuel(request) && !serviceDoneOrUnable(request, 'fuel')) {
       actions.push(workerPrimaryStatusButton(request, `Fuel complete — ${request.fuel_type || 'fuel'}`, 'fueling_complete'));
       actions.push(workerServiceUnableButton(request, 'fuel'));
@@ -1121,49 +1161,64 @@ function renderWorkerJobActions(request) {
       actions.push(workerServiceUnableButton(request, 'wash'));
     }
   } else if (request.status === 'fueling_complete') {
-    actions.push(workerStepInstruction(`Upload the fuel receipt and enter the total for ${request.fuel_type || 'the selected fuel type'}.`));
+    nextAction = `Upload the fuel receipt and enter the total for ${request.fuel_type || 'the selected fuel type'}.`;
     activePanel = renderWorkerReceiptPanel(request, 'fuel');
     actions.push(workerServiceUnableButton(request, 'fuel'));
   } else if (request.status === 'car_wash_complete') {
-    actions.push(workerStepInstruction(`Upload the car wash receipt and enter the total for ${request.wash_package_label || 'the selected wash'}.`));
+    nextAction = `Upload the car wash receipt and enter the total for ${request.wash_package_label || 'the selected wash'}.`;
     activePanel = renderWorkerReceiptPanel(request, 'wash');
     actions.push(workerServiceUnableButton(request, 'wash'));
   } else if (request.status === 'fuel_receipt_uploaded' && serviceNeedsWash(request) && !serviceDoneOrUnable(request, 'wash')) {
+    nextAction = 'Complete the car wash service.';
     actions.push(workerPrimaryStatusButton(request, `Wash complete — ${request.wash_package_label || 'selected wash'}`, 'car_wash_complete'));
     actions.push(workerServiceUnableButton(request, 'wash'));
   } else if (request.status === 'wash_receipt_uploaded' && serviceNeedsFuel(request) && !serviceDoneOrUnable(request, 'fuel')) {
+    nextAction = 'Complete the fuel service.';
     actions.push(workerPrimaryStatusButton(request, `Fuel complete — ${request.fuel_type || 'fuel'}`, 'fueling_complete'));
     actions.push(workerServiceUnableButton(request, 'fuel'));
   } else if (request.status === 'service_complete') {
     // All service and receipt entry done. Worker reviews totals and confirms before returning vehicle.
-    actions.push(workerStepInstruction('Review the receipt totals below, then confirm to continue.'));
+    nextAction = 'Review the receipt totals below, then confirm to continue.';
     activePanel = renderWorkerReceiptConfirmPanel(request);
   } else if (request.status === 'receipts_recorded') {
+    nextAction = 'Mark the vehicle as returned once it is back.';
     actions.push(workerPrimaryStatusButton(request, 'Vehicle returned', 'returned_location_pending'));
   } else if (request.status === 'returned_location_pending') {
-    actions.push(workerStepInstruction('Record where the vehicle was returned before return photos.'));
+    nextAction = 'Record where the vehicle was returned before return photos.';
     activePanel = renderWorkerReturnLocationPanel(request);
   } else if (request.status === 'return_location_recorded') {
+    nextAction = 'Upload the return photo set.';
     actions.push(workerPrimaryStatusButton(request, 'Return photos', 'return_photos_needed'));
   } else if (request.status === 'return_photos_needed') {
-    actions.push(workerStepInstruction('Upload the return photo set below.'));
+    nextAction = 'Upload the return photo set below.';
     activePanel = renderWorkerPhotoPanel(request, 'dropoff');
   } else if (request.status === 'vehicle_returned') {
     if (request.quick_inspection) {
+      nextAction = 'Complete inspection if selected, otherwise process final payment.';
       actions.push(workerPrimaryStatusButton(request, 'Vehicle inspection', 'inspection_needed'));
     } else {
-      actions.push(workerStepInstruction('Confirm the saved totals before completing.'));
+      nextAction = 'Confirm the saved totals, then capture the final payment automatically.';
       activePanel = renderWorkerCompletePanel(request);
     }
   } else if (request.status === 'inspection_needed') {
-    actions.push(workerStepInstruction('Complete the vehicle inspection below.'));
+    nextAction = 'Complete the vehicle inspection below.';
     activePanel = renderWorkerInspectionPanel(request);
   } else if (request.status === 'inspection_recorded') {
-    actions.push(workerStepInstruction('Confirm the saved totals before completing.'));
+    nextAction = 'Confirm the saved totals, then capture the final payment automatically.';
     activePanel = renderWorkerCompletePanel(request);
   } else if (request.status === 'awaiting_key_return') {
-    actions.push(workerStepInstruction('Return the customer\'s keys and document who received them.'));
+    nextAction = 'Return the customer\'s keys and document who received them.';
     activePanel = renderWorkerKeysReturnedPanel(request);
+  } else if (request.status === 'return_requested' || request.status === 'customer_return_requested') {
+    nextAction = 'Return the vehicle as soon as safely possible. Admin will resolve any cancellation/service fee.';
+    activePanel = `
+      <div class="return-request-banner">
+        <h4>⚠ Customer requested vehicle return after keys were received.</h4>
+        <p class="field-help">Return the vehicle as soon as safely possible. Admin will resolve any cancellation/service fee.</p>
+      </div>
+    `;
+  } else if (request.status === 'payment_issue' || request.status === 'authorization_too_low') {
+    nextAction = 'The customer is updating their payment method. No action needed from you right now.';
   }
 
   const back = workerBackButton(request);
@@ -1171,8 +1226,9 @@ function renderWorkerJobActions(request) {
 
   return `
     <div class="guided-step">
-      <p class="eyebrow">Next step</p>
+      <p class="eyebrow">Current status</p>
       <h4>${escapeHtml(workerStatusLabels[request.status] || request.status)}</h4>
+      ${nextAction ? `<p class="next-action-label"><strong>Next action:</strong> ${escapeHtml(nextAction)}</p>` : ''}
       <div class="admin-button-row">${actions.join('')}</div>
     </div>
     ${activePanel}
@@ -1461,10 +1517,8 @@ async function loadWorkerJobs() {
   workerJobList.innerHTML = '<div class="empty-state"><p>Loading jobs...</p></div>';
 
   const { data, error } = await workerDb
-    .from('service_requests')
-    .select('id,customer_name,customer_phone,customer_email,vehicle_year,vehicle_make,vehicle_model,vehicle_color,license_plate,service_type,service_label,hospital,address_street,address_apt,address_city,address_state,address_zip,parking_location,parking_spot,parking_map_url,key_handoff_details,service_date,desired_return_time,status,assigned_employee_id,fuel_type,wash_package_label,estimated_fuel_range,quick_inspection,notes,return_parking_location,return_parking_spot,return_parking_map_url,final_total,payment_intent_id,payment_status')
-    .in('status', workerOpenStatuses)
-    .order('service_date', { ascending: true });
+    .rpc('worker_list_open_requests', { p_token: SESSION_WORKER_TOKEN })
+    .select('id,customer_name,customer_phone,customer_email,vehicle_year,vehicle_make,vehicle_model,vehicle_color,license_plate,service_type,service_label,hospital,address_street,address_apt,address_city,address_state,address_zip,parking_location,parking_spot,parking_map_url,key_handoff_details,service_date,desired_return_time,status,assigned_employee_id,assigned_worker_name,assigned_worker_phone,fuel_type,wash_package_label,estimated_fuel_range,quick_inspection,notes,return_parking_location,return_parking_spot,return_parking_map_url,final_total,payment_intent_id,payment_status');
 
   if (error) {
     console.warn('Could not load worker jobs:', error);
@@ -1474,10 +1528,33 @@ async function loadWorkerJobs() {
 
   const jobs = data || [];
   allWorkerJobs = jobs;
-  const myJobs = jobs.filter((job) => job.assigned_employee_id === currentEmployee.id);
+
+  const normalizedWorkerName = normalizeName(currentEmployee.full_name);
+  const normalizedWorkerPhone = normalizePhone(currentEmployee.phone);
+
+  const myJobs = jobs.filter((job) => {
+    const normalizedJobWorkerName = normalizeName(job.assigned_worker_name);
+    const normalizedJobWorkerPhone = normalizePhone(job.assigned_worker_phone);
+
+    return job.assigned_employee_id === currentEmployee.id
+      || (!job.assigned_employee_id && normalizedJobWorkerName && normalizedJobWorkerName === normalizedWorkerName)
+      || (!job.assigned_employee_id && normalizedJobWorkerPhone && normalizedJobWorkerPhone === normalizedWorkerPhone);
+  });
+
+  if (typeof window !== 'undefined' && ['localhost', '127.0.0.1'].includes(window.location.hostname)) {
+    console.log('[worker jobs]', {
+      currentEmployeeId: currentEmployee.id,
+      currentEmployeeName: currentEmployee.full_name,
+      loadedJobCount: jobs.length,
+      myJobCount: myJobs.length,
+      statusesLoaded: workerOpenStatuses,
+    });
+  }
+
   const workerZone = currentEmployee.home_location || DEFAULT_WORK_LOCATION;
   const availableJobs = jobs.filter((job) => {
     return !job.assigned_employee_id
+      && !myJobs.includes(job)
       && ['request_received', 'accepted'].includes(job.status);
   });
 

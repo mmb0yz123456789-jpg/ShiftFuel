@@ -123,7 +123,10 @@ const RESUME_BUCKET = "applicant-resumes";
 year.textContent = new Date().getFullYear();
 
 
-const slotReleasingStatuses = new Set(["complete", "denied", "customer_canceled", "unable_to_complete"]);
+// Unified terminal/closed status list — keep in sync with admin.js, worker.js,
+// track.js, and the SQL terminal-status list in supabase-production-rls-lockdown.sql.
+// A request in one of these statuses no longer holds its booking slot.
+const slotReleasingStatuses = new Set(["complete", "denied", "customer_canceled", "canceled", "unable_to_complete", "auto_reversed", "closed_no_charge", "canceled_return_completed"]);
 let bookedReturnSlots = new Set();
 let workerAvailabilitySlots = null;
 let workerAvailabilityLoaded = false;

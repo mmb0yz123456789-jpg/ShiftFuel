@@ -10,8 +10,11 @@ const TRACK_LOCK_KEY = "shiftfuel_track_locked_until";
 const TRACK_ATTEMPT_KEY = "shiftfuel_track_failed_attempts";
 let verifiedTrackingContact = { phone: "", email: "" };
 
-const terminalStatuses = ["complete", "denied", "customer_canceled", "unable_to_complete", "auto_reversed"];
-const closedStatuses   = ["denied", "customer_canceled", "unable_to_complete", "auto_reversed"];
+// Unified terminal/closed status list — keep in sync with admin.js, worker.js,
+// and the SQL terminal-status list in supabase-production-rls-lockdown.sql.
+const terminalStatuses = ["complete", "denied", "customer_canceled", "canceled", "unable_to_complete", "auto_reversed", "closed_no_charge", "canceled_return_completed"];
+const closedStatuses   = ["denied", "customer_canceled", "canceled", "unable_to_complete", "auto_reversed", "closed_no_charge", "canceled_return_completed"];
+const freeCancelStatuses = ["pending", "request_received", "pending_review", "pending_customer_info", "accepted", "confirmed", "assigned"];
 
 function initPhotoLightbox() {
   if (document.getElementById('photo-lightbox')) return;
@@ -70,42 +73,55 @@ document.addEventListener('keydown', (e) => {
 
 initPhotoLightbox();
 
+// Friendly labels for every status — keep in sync with admin.js and worker.js.
+// Raw database status strings must never be shown to a customer.
 const statusLabels = {
+  pending: "Request received",
   request_received: "Request received",
   accepted: "Accepted",
   key_received: "Key received",
-  pickup_vehicle_photo_uploaded: "Pickup vehicle photo uploaded",
-  pickup_odometer_photo_uploaded: "Pickup odometer photo uploaded",
-  pickup_fuel_gauge_photo_uploaded: "Pickup fuel gauge photo uploaded",
+  pickup_vehicle_photo_uploaded: "Vehicle picked up",
+  pickup_odometer_photo_uploaded: "Vehicle picked up",
+  pickup_fuel_gauge_photo_uploaded: "Vehicle picked up",
   vehicle_picked_up: "Vehicle picked up",
   service_in_progress: "Service in progress",
   service_complete: "Service complete",
-  fueling_in_progress: "Fueling in progress",
+  fueling_in_progress: "Service in progress",
   fueling_complete: "Fueling complete",
-  fuel_receipt_uploaded: "Fuel receipt uploaded",
-  car_wash_in_progress: "Car wash in progress",
-  car_wash_complete: "Car wash complete",
-  car_wash_after_fuel_in_progress: "Car wash in progress",
-  wash_receipt_uploaded: "Wash receipt uploaded",
-  wash_receipt_after_fuel_uploaded: "Wash receipt uploaded",
-  fueling_after_wash_in_progress: "Fueling in progress",
-  fuel_receipt_after_wash_uploaded: "Fuel receipt uploaded",
+  fuel_receipt_uploaded: "Fuel receipt recorded",
+  car_wash_in_progress: "Service in progress",
+  car_wash_complete: "Vehicle cleaning complete",
+  car_wash_after_fuel_in_progress: "Service in progress",
+  wash_receipt_uploaded: "Car wash receipt recorded",
+  wash_receipt_after_fuel_uploaded: "Car wash receipt recorded",
+  fueling_after_wash_in_progress: "Service in progress",
+  fuel_receipt_after_wash_uploaded: "Fuel receipt recorded",
   receipts_recorded: "Receipts recorded",
-  returned_location_pending: "Vehicle returned",
+  returned_location_pending: "Vehicle return location needed",
   return_location_recorded: "Return location recorded",
   return_photos_needed: "Return photos needed",
-  dropoff_vehicle_photo_uploaded: "Drop-off vehicle photo uploaded",
-  dropoff_odometer_photo_uploaded: "Drop-off odometer photo uploaded",
+  dropoff_vehicle_photo_uploaded: "Vehicle returned",
+  dropoff_odometer_photo_uploaded: "Vehicle returned",
   vehicle_returned: "Vehicle returned",
-  inspection_needed: "Vehicle inspection needed",
-  inspection_recorded: "Vehicle inspection recorded",
-  awaiting_key_return: "Service complete",
+  inspection_needed: "Quick inspection needed",
+  inspection_recorded: "Quick inspection complete",
+  final_payment_processed: "Final payment processed",
+  awaiting_key_return: "Awaiting key return",
+  keys_returned: "Keys returned",
   complete: "Complete",
   denied: "Denied",
   customer_canceled: "Canceled by customer",
+  canceled: "Canceled",
   unable_to_complete: "Unable to complete",
+  auto_reversed: "Missed — auto-reversed",
+  closed_no_charge: "Closed — no charge",
   pending_customer_info: "Complete your booking",
   pending_customer_payment: "Awaiting customer payment",
+  return_requested: "Return requested",
+  customer_return_requested: "Return requested",
+  payment_issue: "Payment issue",
+  authorization_too_low: "Authorization issue",
+  canceled_return_completed: "Return completed",
 };
 
 // statusSteps is now dynamic — see buildStatusSteps(request)
@@ -183,7 +199,13 @@ function hoursSince(value) {
 }
 
 function canCustomerCancel(request) {
-  return !terminalStatuses.includes(request.status);
+  return !terminalStatuses.includes(request.status)
+    && request.status !== 'return_requested'
+    && request.status !== 'customer_return_requested';
+}
+
+function canFreeCancelRequest(request) {
+  return freeCancelStatuses.includes(request.status);
 }
 
 function cancellationReasonForDisplay(request) {
@@ -461,7 +483,7 @@ function getStatusMessage(request) {
     return 'Vehicle cleaning complete. Finalizing service.';
   }
   if (s === 'service_complete' || s === 'receipts_recorded') {
-    return 'Service is complete. Your vehicle is being returned to you.';
+    return 'Receipt totals recorded. Final payment will be processed automatically after your vehicle is returned and inspection is completed, if selected.';
   }
   if (['returned_location_pending', 'return_location_recorded', 'return_photos_needed',
        'dropoff_vehicle_photo_uploaded', 'dropoff_odometer_photo_uploaded'].includes(s)) {
@@ -469,19 +491,22 @@ function getStatusMessage(request) {
   }
   if (s === 'vehicle_returned') {
     if (request.quick_inspection) return 'Your vehicle has been returned. A quick inspection is next.';
-    return 'Your vehicle has been returned. Final payment is processing.';
+    return 'Final payment is being processed automatically.';
   }
   if (s === 'inspection_needed' || s === 'inspection_recorded') {
-    return 'A quick vehicle inspection is in progress.';
+    return 'A quick vehicle inspection is in progress. Final payment is being processed automatically.';
   }
-  if (s === 'pending_customer_payment') {
-    if (request.payment_status === 'capture_failed') {
-      return 'There was an issue processing your payment. Please update your payment method below.';
-    }
-    return 'Service complete. Your final payment is being processed.';
+  if (s === 'final_payment_processed') {
+    return 'Final payment processed.';
+  }
+  if (s === 'pending_customer_payment' || s === 'payment_issue' || s === 'authorization_too_low') {
+    return 'We could not process your final payment automatically. Please update your payment method so we can close out your service.';
   }
   if (s === 'awaiting_key_return') {
-    return 'Your payment has been processed. Your keys are being returned to you.';
+    return 'Final payment processed. Your keys are being returned to you.';
+  }
+  if (s === 'keys_returned') {
+    return 'Your keys have been returned.';
   }
   if (s === 'complete') {
     return 'Your service is complete. Thank you for using ShiftFuel!';
@@ -1623,15 +1648,15 @@ function renderPendingPaymentCard(request) {
     paymentSection = `
       <div class="payment-authorized-notice">
         <strong>Payment method authorized</strong>
-        <p>Your card on file will be charged automatically for the final amount. No action needed.</p>
+        <p>Final payment will be processed automatically after your service is completed. No action needed.</p>
         ${finalTotal ? `<div class="estimated-total-card"><span class="estimated-total-label">Final Total</span><span class="estimated-total-amount">${finalTotal}</span></div>` : ''}
       </div>
     `;
   } else if (hasPreAuth && captureFailed) {
     paymentSection = `
       <div class="action-required-banner">
-        <strong>⚡ Payment issue — action required</strong>
-        <p>We were unable to charge your card on file. Please provide a new payment method to complete your service.</p>
+        <strong>⚡ Action required — payment issue</strong>
+        <p>We could not process your final payment automatically. Please update your payment method so we can close out your service.</p>
       </div>
       ${finalTotal ? `<div class="estimated-total-card"><span class="estimated-total-label">Final Total</span><span class="estimated-total-amount">${finalTotal}</span></div>` : ''}
       <div id="customer-payment-section-${escapeHtml(request.id)}" class="customer-payment-section">
@@ -1688,12 +1713,53 @@ function renderPendingPaymentCard(request) {
   `;
 }
 
+function renderReturnCompletedNotice(request) {
+  if (request.status !== 'canceled_return_completed') return '';
+  if (request.cancellation_fee_applied) {
+    return `
+      <div class="estimated-total-card">
+        <span class="estimated-total-label">Vehicle returned</span>
+        <p class="estimated-total-note">Your vehicle was returned. A $15 cancellation/service fee was charged because service had already started.</p>
+      </div>
+    `;
+  }
+  return `
+    <div class="estimated-total-card estimated-total-released">
+      <span class="estimated-total-label">Vehicle returned</span>
+      <p class="estimated-total-note">Your vehicle was returned. Your authorization was released and you were not charged.</p>
+    </div>
+  `;
+}
+
+function renderReturnRequestedCard(request) {
+  const vehicle = [request.vehicle_year, request.vehicle_make, request.vehicle_model].filter(Boolean).join(' ');
+  const serviceDate = request.service_date
+    ? new Date(request.service_date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+    : '';
+
+  return `
+    <article class="track-request-card" data-request-id="${escapeHtml(request.id)}">
+      <div class="track-card-meta">
+        <span class="status-pill">Return requested</span>
+        ${vehicle ? `<span class="track-vehicle">${escapeHtml(vehicle)}</span>` : ''}
+        ${serviceDate ? `<span class="track-date">${escapeHtml(serviceDate)}</span>` : ''}
+      </div>
+      <p class="track-payment-intro"><strong>Return requested</strong></p>
+      <p>A ShiftFuel team member has been notified and will return your vehicle as soon as safely possible.</p>
+      <p class="field-help">A $15 cancellation/service fee may apply because service had already started. ShiftFuel will confirm whether this fee applies.</p>
+    </article>
+  `;
+}
+
 function renderRequestCard(request, photos = [], review = null) {
   if (request.status === 'pending_customer_info') {
     return renderPendingCompletionCard(request);
   }
-  if (request.status === 'pending_customer_payment') {
+  if (['pending_customer_payment', 'payment_issue', 'authorization_too_low'].includes(request.status)) {
     return renderPendingPaymentCard(request);
+  }
+  if (request.status === 'return_requested' || request.status === 'customer_return_requested') {
+    return renderReturnRequestedCard(request);
   }
   const statusLabel = statusLabels[request.status] || request.status;
   const cancellationReason = cancellationReasonForDisplay(request);
@@ -1724,6 +1790,7 @@ function renderRequestCard(request, photos = [], review = null) {
         <div class="track-request-body">
           ${renderEstimatedTotalCard(request)}
           ${renderServiceIssueBanner(request)}
+          ${renderReturnCompletedNotice(request)}
           <div class="request-details">
             <p><strong>Date:</strong> ${escapeHtml(serviceDate)}</p>
             ${returnTime ? `<p><strong>Return by:</strong> ${escapeHtml(returnTime)}</p>` : ''}
@@ -1742,11 +1809,12 @@ function renderRequestCard(request, photos = [], review = null) {
           ${request.status === 'complete' ? serviceSummaryFromRequest(request) : ''}
           ${renderPhotos(request, photos)}
           ${renderReviewPrompt(request, review)}
-          ${canCustomerCancel(request) ? `
+          ${canCustomerCancel(request) ? (canFreeCancelRequest(request) ? `
             <div class="tracking-actions">
               <button class="button danger show-cancel-request" type="button">Cancel request</button>
             </div>
             <div class="cancel-panel" hidden>
+              <p class="field-help">You may cancel for free before your keys are received. After your keys are received, service has started and cancellation may no longer be available from the app.</p>
               <label>
                 Reason for cancellation
                 <textarea class="customer-cancel-reason" rows="3" placeholder="Example: I no longer need service today."></textarea>
@@ -1755,7 +1823,19 @@ function renderRequestCard(request, photos = [], review = null) {
                 Confirm cancellation
               </button>
             </div>
-          ` : ''}
+          ` : `
+            <div class="tracking-actions">
+              <button class="button danger show-cancel-request" type="button">Cancel request</button>
+            </div>
+            <div class="cancel-panel" hidden>
+              <h4>Cancellation unavailable</h4>
+              <p class="field-help">Your vehicle is already in service, so this request cannot be canceled from the app at this stage. A ShiftFuel team member has been notified and will return your vehicle as soon as safely possible. A $15 cancellation/service fee may apply because service had already started.</p>
+              <div class="admin-button-row">
+                <button class="button secondary keep-request" type="button">Keep request</button>
+                <button class="button danger confirm-request-return" data-request-id="${escapeHtml(request.id)}" type="button">Request vehicle return</button>
+              </div>
+            </div>
+          `) : ''}
         </div>
       </details>
     </article>
@@ -1834,9 +1914,12 @@ async function renderAllRequests(requests, phone, email) {
   html += `</div>`;
   trackingResult.innerHTML = html;
 
-  // Mount Stripe card elements for any pending-payment requests with no pre-auth PI.
+  // Mount Stripe card elements for any request awaiting a customer card entry —
+  // either no pre-auth exists yet, or the automatic capture on an existing
+  // pre-auth failed and the customer needs to provide a new payment method.
   requests
-    .filter(r => r.status === 'pending_customer_payment' && !r.payment_intent_id)
+    .filter(r => ['pending_customer_payment', 'payment_issue', 'authorization_too_low'].includes(r.status)
+      && (!r.payment_intent_id || r.payment_status === 'capture_failed'))
     .forEach(r => mountCustomerPayCard(r.id));
 }
 
@@ -2166,6 +2249,65 @@ trackingResult.addEventListener("click", async (event) => {
       reasonInput.focus();
     }
 
+    return;
+  }
+
+  const keepRequestButton = event.target.closest(".keep-request");
+  if (keepRequestButton) {
+    const panel = keepRequestButton.closest(".cancel-panel");
+    if (panel) panel.hidden = true;
+    return;
+  }
+
+  const confirmRequestReturnButton = event.target.closest(".confirm-request-return");
+  if (confirmRequestReturnButton) {
+    const requestId = confirmRequestReturnButton.dataset.requestId;
+    confirmRequestReturnButton.disabled = true;
+    confirmRequestReturnButton.textContent = "Submitting...";
+    trackMessage.textContent = "";
+
+    try {
+      const res = await fetch('/api/payments', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'customer_request_return',
+          request_id: requestId,
+          phone: verifiedTrackingContact.phone,
+          email: verifiedTrackingContact.email,
+        }),
+      });
+      const result = await res.json().catch(() => ({}));
+
+      if (!res.ok) {
+        console.error('[track] Return request failed:', result.error);
+        trackMessage.textContent = result.error || "Could not submit your return request. Please contact ShiftFuel.";
+        confirmRequestReturnButton.disabled = false;
+        confirmRequestReturnButton.textContent = "Request vehicle return";
+        return;
+      }
+    } catch (err) {
+      console.error('[track] Return request network error:', err);
+      trackMessage.textContent = "Network error. Please try again or contact ShiftFuel.";
+      confirmRequestReturnButton.disabled = false;
+      confirmRequestReturnButton.textContent = "Request vehicle return";
+      return;
+    }
+
+    const { data: refreshed, error: refreshError } = await shiftFuelDb.rpc("public_track_request", {
+      p_request_id: requestId,
+      p_phone: verifiedTrackingContact.phone,
+      p_email: verifiedTrackingContact.email,
+    });
+
+    const data = refreshed?.[0] || null;
+    trackMessage.textContent = "Return requested. A ShiftFuel team member has been notified and will return your vehicle as soon as safely possible.";
+
+    if (data) {
+      const photos = await loadRequestPhotos(data.id);
+      const review = await loadRequestReview(data.id);
+      renderRequest(data, photos, review);
+    }
     return;
   }
 

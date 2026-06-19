@@ -119,10 +119,16 @@ let adminCroppedPreviewUrl = '';
 let adminCroppedPhotoBlob = null;
 let adminPhotoDeleted = false; // true when admin clicks "Delete photo"
 
-const terminalStatuses = ['complete', 'denied', 'customer_canceled', 'unable_to_complete', 'auto_reversed'];
-const closedStatuses = ['denied', 'customer_canceled', 'unable_to_complete', 'auto_reversed'];
+// Unified terminal/closed status list — keep in sync with worker.js, track.js,
+// and the SQL terminal-status list in supabase-production-rls-lockdown.sql.
+const terminalStatuses = ['complete', 'denied', 'customer_canceled', 'canceled', 'unable_to_complete', 'auto_reversed', 'closed_no_charge', 'canceled_return_completed'];
+const closedStatuses = ['denied', 'customer_canceled', 'canceled', 'unable_to_complete', 'auto_reversed', 'closed_no_charge', 'canceled_return_completed'];
 
+// Friendly labels for every status — keep in sync with worker.js and track.js.
+// Raw database status strings must never be shown to a user; this map is the
+// single source of truth for that translation.
 const statusLabels = {
+  pending: 'Request received',
   request_received: 'Request received',
   accepted: 'Accepted',
   key_received: 'Key received',
@@ -133,30 +139,39 @@ const statusLabels = {
   service_in_progress: 'Service in progress',
   fueling_in_progress: 'Fueling in progress',
   fueling_complete: 'Fueling complete',
-  fuel_receipt_uploaded: 'Fuel receipt uploaded',
+  fuel_receipt_uploaded: 'Fuel receipt recorded',
   car_wash_in_progress: 'Car wash in progress',
-  car_wash_complete: 'Car wash complete',
+  car_wash_complete: 'Vehicle cleaning complete',
   fuel_and_wash_complete: 'Fuel and wash complete',
   service_complete: 'Service complete',
   receipts_recorded: 'Receipts recorded',
-  returned_location_pending: 'Returned',
+  returned_location_pending: 'Vehicle return location needed',
   return_photos_needed: 'Return photos needed',
-  inspection_needed: 'Vehicle inspection needed',
-  inspection_recorded: 'Inspection recorded',
-  wash_receipt_uploaded: 'Wash receipt uploaded',
+  inspection_needed: 'Quick inspection needed',
+  inspection_recorded: 'Quick inspection complete',
+  wash_receipt_uploaded: 'Car wash receipt recorded',
   return_location_recorded: 'Return location recorded',
   dropoff_vehicle_photo_uploaded: 'Drop-off vehicle photo uploaded',
   dropoff_odometer_photo_uploaded: 'Drop-off odometer photo uploaded',
   dropoff_fuel_gauge_photo_uploaded: 'Drop-off fuel gauge photo uploaded',
   vehicle_returned: 'Vehicle returned',
+  final_payment_processed: 'Final payment processed',
+  awaiting_key_return: 'Awaiting key return',
+  keys_returned: 'Keys returned',
   complete: 'Complete',
   denied: 'Denied',
   customer_canceled: 'Canceled by customer',
+  canceled: 'Canceled',
   unable_to_complete: 'Unable to complete',
   auto_reversed: 'Missed — auto-reversed',
+  closed_no_charge: 'Closed — no charge',
   pending_customer_info: 'Awaiting customer info',
   pending_customer_payment: 'Awaiting customer payment',
-  awaiting_key_return: 'Awaiting key return',
+  return_requested: 'Return requested',
+  customer_return_requested: 'Return requested',
+  canceled_return_completed: 'Return completed',
+  payment_issue: 'Payment issue',
+  authorization_too_low: 'Authorization issue',
 };
 
 const applicantStatusLabels = {
@@ -339,7 +354,9 @@ function serviceNeedsWash(request) {
 const POST_SERVICE_STATUSES = new Set([
   'service_complete', 'receipts_recorded', 'returned_location_pending',
   'return_location_recorded', 'return_photos_needed', 'vehicle_returned',
-  'inspection_needed', 'inspection_recorded', 'awaiting_key_return', 'complete',
+  'inspection_needed', 'inspection_recorded', 'final_payment_processed',
+  'awaiting_key_return', 'keys_returned', 'pending_customer_payment',
+  'payment_issue', 'authorization_too_low', 'complete',
 ]);
 
 function serviceWorkComplete(request) {
@@ -560,6 +577,7 @@ function renderWorkerAssignment(request) {
         <p class="eyebrow">Assigned worker</p>
         <h4>${assignedName ? escapeHtml(assignedName) : 'Choose who is working on this car'}</h4>
         ${assignedPhone ? `<p class="field-help">Customer contact: ${escapeHtml(assignedPhone)}</p>` : '<p class="field-help">Assign a worker after accepting the request.</p>'}
+        ${(assignedName && !selectedId) ? `<p class="field-help" style="color:#b35900">⚠ Assigned by name only — worker ID missing.</p>` : ''}
       </div>
       ${photoFrame}
       <label class="worker-select-label">
@@ -614,10 +632,6 @@ function backButton(request) {
   return `<button class="button secondary update-status" data-id="${request.id}" data-status="${previousStatus}" type="button">Back</button>`;
 }
 
-function stepInstruction(text) {
-  return `<span class="workflow-step-note">${escapeHtml(text)}</span>`;
-}
-
 function filePicker(label, className, extraAttributes = '', accept = 'image/*') {
   return `
     <label class="file-button-control">
@@ -643,15 +657,19 @@ function renderActions(request) {
 
   const actions = [];
   let activePanel = '';
+  let nextAction = '';
 
   if (request.status === 'request_received') {
+    nextAction = 'Review the request and accept it to begin service.';
     actions.push(primaryStatusButton(request, 'Accept', 'accepted'));
   } else if (request.status === 'accepted') {
+    nextAction = 'Confirm the key or handoff instructions have been received.';
     actions.push(primaryStatusButton(request, 'Key received', 'key_received'));
   } else if (request.status === 'key_received') {
-    actions.push(stepInstruction('Upload the pickup photo set below.'));
+    nextAction = 'Upload the pickup photo set below.';
     activePanel = renderPhotoPanel(request, 'pickup');
   } else if (request.status === 'vehicle_picked_up') {
+    nextAction = 'Complete the requested fuel or cleaning service.';
     if (serviceNeedsFuel(request) && !serviceDoneOrUnable(request, 'fuel')) {
       actions.push(primaryStatusButton(request, `Fuel - ${request.fuel_type || 'fuel type not listed'}`, 'fueling_complete'));
       actions.push(serviceUnableButton(request, 'fuel'));
@@ -661,50 +679,61 @@ function renderActions(request) {
       actions.push(serviceUnableButton(request, 'wash'));
     }
   } else if (request.status === 'fueling_complete') {
-    actions.push(stepInstruction(`Upload the fuel receipt and enter the fuel total for ${request.fuel_type || 'the selected fuel type'}.`));
+    nextAction = `Upload the fuel receipt and enter the fuel total for ${request.fuel_type || 'the selected fuel type'}.`;
     activePanel = renderReceiptPanel(request, 'fuel');
     actions.push(serviceUnableButton(request, 'fuel'));
   } else if (request.status === 'car_wash_complete') {
-    actions.push(stepInstruction(`Upload the car wash receipt and enter the total for ${request.wash_package_label || 'the selected wash'}.`));
+    nextAction = `Upload the car wash receipt and enter the total for ${request.wash_package_label || 'the selected wash'}.`;
     activePanel = renderReceiptPanel(request, 'wash');
     actions.push(serviceUnableButton(request, 'wash'));
   } else if (request.status === 'fuel_receipt_uploaded' && serviceNeedsWash(request) && !serviceDoneOrUnable(request, 'wash')) {
+    nextAction = 'Complete the car wash service.';
     actions.push(primaryStatusButton(request, `Car wash - ${request.wash_package_label || 'selected wash'}`, 'car_wash_complete'));
     actions.push(serviceUnableButton(request, 'wash'));
   } else if (request.status === 'wash_receipt_uploaded' && serviceNeedsFuel(request) && !serviceDoneOrUnable(request, 'fuel')) {
+    nextAction = 'Complete the fuel service.';
     actions.push(primaryStatusButton(request, `Fuel - ${request.fuel_type || 'fuel type not listed'}`, 'fueling_complete'));
     actions.push(serviceUnableButton(request, 'fuel'));
   } else if (request.status === 'receipts_recorded') {
+    nextAction = 'Mark the vehicle as returned once it is back.';
     actions.push(primaryStatusButton(request, 'Returned', 'returned_location_pending'));
   } else if (request.status === 'returned_location_pending') {
-    actions.push(stepInstruction('Record the return parking location after the vehicle is back.'));
+    nextAction = 'Record the return parking location after the vehicle is back.';
     activePanel = renderReturnLocationPanel(request);
   } else if (request.status === 'return_location_recorded') {
+    nextAction = 'Upload the return photo set.';
     actions.push(primaryStatusButton(request, 'Return photos', 'return_photos_needed'));
   } else if (request.status === 'return_photos_needed') {
-    actions.push(stepInstruction('Upload the return photo set below.'));
+    nextAction = 'Upload the return photo set below.';
     activePanel = renderPhotoPanel(request, 'dropoff');
   } else if (request.status === 'vehicle_returned') {
     if (request.quick_inspection) {
+      nextAction = 'Complete inspection if selected, otherwise process final payment.';
       actions.push(primaryStatusButton(request, 'Vehicle inspection', 'inspection_needed'));
     } else {
-      actions.push(stepInstruction('Confirm the saved totals before completing.'));
+      nextAction = 'Confirm the saved totals, then capture the final payment automatically.';
       activePanel = renderCompletePanel(request);
     }
   } else if (request.status === 'inspection_needed') {
-      actions.push(stepInstruction('Complete the vehicle inspection below.'));
+      nextAction = 'Complete the vehicle inspection below.';
       activePanel = renderInspectionPanel(request);
   } else if (request.status === 'inspection_recorded') {
-    actions.push(stepInstruction('Confirm the saved totals before completing.'));
+    nextAction = 'Confirm the saved totals, then capture the final payment automatically.';
     activePanel = renderCompletePanel(request);
   } else if (request.status === 'pending_customer_payment') {
-    actions.push(stepInstruction('Waiting for the customer to confirm and pay from the Request Tracker.'));
+    nextAction = 'Automatic payment capture failed. Waiting for the customer to update their payment method from the Request Tracker.';
     if (request.payment_status === 'captured') {
       actions.push(`<button class="button primary proceed-to-key-return" data-id="${request.id}" type="button">Proceed to key return (payment received)</button>`);
     }
+  } else if (request.status === 'payment_issue' || request.status === 'authorization_too_low') {
+    nextAction = 'Automatic payment capture failed. The customer has been shown an action-required payment update on their tracking page.';
+    activePanel = renderPaymentIssuePanel(request);
   } else if (request.status === 'awaiting_key_return') {
-    actions.push(stepInstruction('Return the customer\'s keys and document who received them.'));
+    nextAction = 'Return the customer\'s keys and document who received them.';
     activePanel = renderKeysReturnedPanel(request);
+  } else if (request.status === 'return_requested' || request.status === 'customer_return_requested') {
+    nextAction = 'Decide whether to waive the fee, charge the $15 cancellation/service fee, or continue normal service.';
+    activePanel = renderReturnRequestPanel(request);
   }
 
   const back = backButton(request);
@@ -716,8 +745,9 @@ function renderActions(request) {
 
   return `
     <div class="guided-step">
-      <p class="eyebrow">Next step</p>
+      <p class="eyebrow">Current status</p>
       <h4>${escapeHtml(statusLabels[request.status] || request.status)}</h4>
+      ${nextAction ? `<p class="next-action-label"><strong>Next action:</strong> ${escapeHtml(nextAction)}</p>` : ''}
       <div class="admin-button-row">${actions.join('')}</div>
     </div>
     ${activePanel}
@@ -768,6 +798,7 @@ function renderDenyReasonPanel(request) {
         <button class="button danger save-deny-reason" data-id="${escapeHtml(request.id)}" type="button">Deny request</button>
         <button class="button secondary cancel-deny-reason" type="button">Keep request open</button>
       </div>
+      <p class="deny-reason-error form-error"></p>
     </div>
   `;
 }
@@ -968,12 +999,26 @@ function renderCompletePanel(request) {
       </label>
       <div class="admin-button-row">
         ${primaryBtn}
-        ${hasPi && !alreadyCaptured ? `<button class="button secondary send-to-customer-payment" data-id="${request.id}" type="button">Send to Customer for Payment</button>` : ''}
         ${serviceNeedsFuel(request) ? `<button class="button secondary show-total-edit" data-id="${request.id}" data-edit-total="fuel" type="button">Fuel Incorrect</button>` : ''}
         ${serviceNeedsWash(request) ? `<button class="button secondary show-total-edit" data-id="${request.id}" data-edit-total="wash" type="button">Car Wash Incorrect</button>` : ''}
       </div>
       <p class="field-help">Editing a total requires you to confirm the totals again before proceeding.</p>
       <div class="total-edit-panel" data-total-edit-for="${request.id}" hidden></div>
+    </div>
+  `;
+}
+
+function renderPaymentIssuePanel(request) {
+  const finalTotal = request.final_total != null ? money(request.final_total) : 'Not recorded';
+  return `
+    <div class="return-request-banner" data-payment-issue-for="${escapeHtml(request.id)}">
+      <h4>⚡ Automatic payment capture failed</h4>
+      <p class="field-help">Final total: ${finalTotal}. The customer has automatically been shown an action-required payment update on their tracking page.</p>
+      <div class="admin-button-row">
+        ${request.payment_intent_id ? `<button class="button primary retry-payment-capture" data-id="${escapeHtml(request.id)}" type="button">Retry payment capture</button>` : ''}
+        <button class="button secondary send-to-customer-payment" data-id="${escapeHtml(request.id)}" type="button">Send to Customer for Payment</button>
+      </div>
+      <p class="payment-issue-status form-status"></p>
     </div>
   `;
 }
@@ -1000,6 +1045,24 @@ function renderKeysReturnedPanel(request) {
         <button class="button primary admin-submit-keys-returned" data-id="${escapeHtml(request.id)}" type="button">Keys returned</button>
       </div>
       <p class="keys-returned-status form-status"></p>
+    </div>
+  `;
+}
+
+function renderReturnRequestPanel(request) {
+  const requestedAt = request.return_requested_at
+    ? new Date(request.return_requested_at).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' })
+    : '';
+  return `
+    <div class="return-request-banner">
+      <h4>⚠ Customer requested cancellation/return after key receipt</h4>
+      <p class="field-help">${requestedAt ? `Requested ${escapeHtml(requestedAt)}. ` : ''}A $15 cancellation/service fee may apply.</p>
+      <div class="admin-button-row">
+        <button class="button secondary waive-return-fee" data-id="${escapeHtml(request.id)}" type="button">Waive fee &amp; release hold</button>
+        <button class="button primary charge-return-fee" data-id="${escapeHtml(request.id)}" type="button">Charge $15 cancellation/service fee</button>
+        <button class="button secondary continue-return-service" data-id="${escapeHtml(request.id)}" type="button">Continue normal service</button>
+      </div>
+      <p class="return-request-status form-status"></p>
     </div>
   `;
 }
@@ -1806,24 +1869,10 @@ async function saveAdminWorkerProfile(button) {
     throw error;
   }
 
-  // admin_update_employee also syncs employee_availability.work_location when home_location changes.
+  // admin_update_employee also syncs employee_availability.work_location when
+  // home_location changes, and cascades name/phone/photo to any open
+  // service_requests assigned to this employee (server-side, in the RPC).
   const data = (rpcRows || [])[0];
-
-  // Propagate name/phone/photo to open service requests (non-fatal).
-  const { error: srError } = await db
-    .from('service_requests')
-    .update({
-      assigned_worker_name: data.full_name,
-      assigned_worker_phone: data.phone || null,
-      assigned_worker_photo_url: data.cropped_photo_url || data.photo_url || null,
-      assigned_worker_original_photo_url: data.original_photo_url || null,
-      updated_at: new Date().toISOString(),
-    })
-    .eq('assigned_employee_id', employeeId);
-
-  if (srError) {
-    console.warn(`saveAdminWorkerProfile: could not update service_requests for employee ${employeeId}:`, srError);
-  }
 
   // Normalize the returned row so photo_zoom/position defaults are always numbers.
   allEmployees = allEmployees.map((employee) => employee.id === employeeId ? normalizeEmployee(data) : employee);
@@ -1966,10 +2015,7 @@ async function permanentlyDeleteInactiveWorker(button) {
 
 async function loadRequests() {
   requestList.innerHTML = '<div class="empty-state"><p>Loading requests...</p></div>';
-  const { data, error } = await db
-    .from('service_requests')
-    .select('*')
-    .order('created_at', { ascending: false });
+  const { data, error } = await db.rpc('admin_list_requests', { p_token: adminToken() });
 
   if (error) {
     console.error(error);
@@ -2057,7 +2103,7 @@ async function loadReviews() {
 
   if (requestIds.length) {
     const { data: requests, error: requestError } = await db
-      .from('service_requests')
+      .rpc('admin_list_requests', { p_token: adminToken() })
       .select('id,assigned_worker_name')
       .in('id', requestIds);
 
@@ -2118,22 +2164,20 @@ async function loadApplicants() {
   applicantList.innerHTML = '<div class="empty-state"><p>Loading applicants...</p></div>';
 
   let { data, error } = await db
-    .from('applicants')
+    .rpc('admin_list_applicants', { p_token: adminToken() })
     .select('id,name,email,phone,availability,notes,resume_url,resume_storage_path,status,created_at')
-    .neq('status', 'hired')
-    .order('created_at', { ascending: false });
+    .neq('status', 'hired');
 
   if (error?.code === 'PGRST204') {
     ({ data, error } = await db
-      .from('applicants')
+      .rpc('admin_list_applicants', { p_token: adminToken() })
       .select('id,name,email,phone,availability,notes,status,created_at')
-      .neq('status', 'hired')
-      .order('created_at', { ascending: false }));
+      .neq('status', 'hired'));
   }
 
   if (error) {
     console.warn('Could not load applicants:', error);
-    applicantList.innerHTML = '<div class="empty-state"><p>Could not load applicants. Run supabase-operational-upgrades.sql in Supabase.</p></div>';
+    applicantList.innerHTML = '<div class="empty-state"><p>Could not load applicants. Run supabase-production-rls-lockdown.sql in Supabase.</p></div>';
     return;
   }
 
@@ -2143,13 +2187,8 @@ async function loadApplicants() {
 }
 
 async function hireApplicant(applicantId) {
-  const { data: applicant, error: applicantError } = await db
-    .from('applicants')
-    .select('id,name,email,phone,availability,notes')
-    .eq('id', applicantId)
-    .single();
-
-  if (applicantError) throw applicantError;
+  const applicant = allApplicantsList.find((item) => item.id === applicantId);
+  if (!applicant) throw new Error('Applicant not found. Reload the applicants list and try again.');
 
   const phone = applicant.phone || null;
   let employeeId = null;
@@ -2623,29 +2662,46 @@ async function saveDenyReason(button) {
   const selected = panel?.querySelector('.deny-reason-select')?.value.trim();
   const custom   = panel?.querySelector('.deny-reason-other')?.value.trim();
   const reason   = selected === 'Other' ? (custom || '') : selected;
+  const errorEl  = panel?.querySelector('.deny-reason-error');
+  const originalText = button.textContent;
+
+  function showInlineError(msg) {
+    button.disabled = false;
+    button.textContent = originalText;
+    if (errorEl) errorEl.textContent = msg;
+  }
 
   if (!request) return;
 
   if (!selected) {
-    alert('Select a denial reason before denying this request.');
+    showInlineError('Select a denial reason before denying this request.');
     return;
   }
   if (selected === 'Other' && !custom) {
-    alert('Describe the reason when "Other" is selected.');
+    showInlineError('Describe the reason when "Other" is selected.');
+    return;
+  }
+
+  if (!adminToken()) {
+    showInlineError('Your admin session expired. Please log in again.');
+    setTimeout(() => { window.location.href = 'admin-login.html'; }, 1500);
     return;
   }
 
   button.disabled = true;
   button.textContent = 'Denying...';
+  if (errorEl) errorEl.textContent = '';
 
   const timestamp = new Date().toISOString();
   const note = `[denied ${timestamp}] Admin denial reason: ${reason}`;
-  const notes = request.notes ? `${request.notes}\n${note}` : note;
+  let notes = request.notes ? `${request.notes}\n${note}` : note;
 
   // Handle payment reversal before changing status.
-  // /api/payments and /api/payments update payment_status in the DB themselves.
-  // We just need to know what the resulting payment_status is so we can log it in notes.
+  // /api/payments updates payment_status in the DB itself for cancel_payment/refund;
+  // we just need to know the resulting payment_status so we can log it in notes here.
   let paymentStatus = request.payment_status;
+  let holdReleaseWarning = null;
+  let sessionExpired = false;
   const skipRelease = ['voided', 'authorization_released', 'refunded', 'auto_reversed', 'payment_release_failed', 'not_started', null, undefined];
 
   if (request.payment_intent_id && !skipRelease.includes(request.payment_status)) {
@@ -2659,13 +2715,18 @@ async function saveDenyReason(button) {
         });
         if (res.ok) {
           paymentStatus = 'refunded';
+        } else if (res.status === 401 || res.status === 403) {
+          sessionExpired = true;
         } else {
           const data = await res.json().catch(() => ({}));
           console.error('[deny] Failed to refund captured payment:', data.error);
           notes += `\n[payment_refund_failed ${timestamp}] Refund failed on denial — admin must manually refund via Stripe. Error: ${data.error || 'unknown'}`;
+          holdReleaseWarning = 'The refund could not be processed automatically. Check Stripe and refund manually.';
         }
       } catch (err) {
         console.error('[deny] Error refunding captured payment:', err.message);
+        notes += `\n[payment_refund_failed ${timestamp}] Refund failed on denial (network error) — admin must manually refund via Stripe.`;
+        holdReleaseWarning = 'The refund could not be processed automatically (network error). Check Stripe and refund manually.';
       }
     } else {
       // Authorized/uncaptured — release the hold.
@@ -2678,20 +2739,32 @@ async function saveDenyReason(button) {
         const data = await res.json().catch(() => ({}));
         if (res.ok) {
           paymentStatus = data.payment_status || 'voided';
+        } else if (res.status === 401 || res.status === 403) {
+          sessionExpired = true;
         } else {
           // API already set payment_release_failed in the DB; mirror it here for the notes.
           paymentStatus = 'payment_release_failed';
           console.error('[deny] Failed to release hold:', data.error);
-          notes += `\n[payment_release_failed ${timestamp}] Card hold could not be released automatically. Admin must cancel the Stripe PaymentIntent manually.`;
+          notes += `\n[payment_release_failed ${timestamp}] Card hold could not be released automatically. Admin must cancel the Stripe PaymentIntent manually. Error: ${data.error || 'unknown'}`;
+          holdReleaseWarning = 'The card hold could not be released automatically. Check Stripe and release it manually.';
         }
       } catch (err) {
         paymentStatus = 'payment_release_failed';
         console.error('[deny] Network error releasing hold:', err.message);
         notes += `\n[payment_release_failed ${timestamp}] Card hold release failed (network error). Admin must cancel the Stripe PaymentIntent manually.`;
+        holdReleaseWarning = 'The card hold could not be released automatically (network error). Check Stripe and release it manually.';
       }
     }
   }
 
+  if (sessionExpired) {
+    showInlineError('Your admin session expired. Please log in again.');
+    setTimeout(() => { window.location.href = 'admin-login.html'; }, 1500);
+    return;
+  }
+
+  // Deny the request regardless of whether the payment release/refund succeeded —
+  // a failed Stripe call must never block the denial itself.
   const { error } = await db.rpc('admin_update_request', {
     p_token: adminToken(),
     p_request_id: id,
@@ -2705,10 +2778,12 @@ async function saveDenyReason(button) {
 
   if (error) {
     console.error('[deny] admin_update_request failed:', error);
-    button.disabled = false;
-    button.textContent = 'Deny request';
-    alert(`Could not deny the request: ${error.message || 'Database error'}. Please try again.`);
+    showInlineError(`Could not deny the request: ${error.message || 'Database error'}. Please try again.`);
     return;
+  }
+
+  if (holdReleaseWarning) {
+    alert(`Request denied. ${holdReleaseWarning}`);
   }
 
   await loadRequests();
@@ -2892,6 +2967,53 @@ async function captureAndProceed(button) {
   }
 }
 
+// Retries an automatic capture that already failed once (status = payment_issue /
+// authorization_too_low). Totals were already confirmed before the first attempt,
+// so this does not require re-checking the confirm-totals checkbox.
+async function retryPaymentCapture(button) {
+  const id = button.dataset.id;
+  const request = allRequests.find(r => r.id === id);
+  if (!request) return;
+
+  const panel = button.closest('[data-payment-issue-for]');
+  const statusEl = panel?.querySelector('.payment-issue-status');
+
+  if (request.final_total == null) {
+    if (statusEl) statusEl.textContent = 'Save the final total before retrying the capture.';
+    return;
+  }
+
+  button.disabled = true;
+  button.textContent = 'Retrying...';
+  if (statusEl) statusEl.textContent = '';
+
+  try {
+    const res = await fetch('/api/payments', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'capture_payment',
+        payment_intent_id: request.payment_intent_id,
+        request_id: id,
+        amount_cents: Math.round((request.final_total || 0) * 100),
+        caller_token: adminToken(),
+      }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      button.disabled = false;
+      button.textContent = 'Retry payment capture';
+      if (statusEl) statusEl.textContent = `Could not capture payment: ${data.error || 'Unknown error. Please try again.'}`;
+      return;
+    }
+    await loadRequests();
+  } catch (err) {
+    button.disabled = false;
+    button.textContent = 'Retry payment capture';
+    if (statusEl) statusEl.textContent = 'Network error. Please try again.';
+  }
+}
+
 async function proceedToKeyReturn(button) {
   const id = button.dataset.id;
   const request = allRequests.find(r => r.id === id);
@@ -2913,6 +3035,39 @@ async function proceedToKeyReturn(button) {
     button.disabled = false;
     button.textContent = button.textContent.includes('no payment') ? 'Proceed to key return (no payment)' : 'Proceed to key return';
     alert('Could not update the request. Please try again.');
+  }
+}
+
+async function resolveReturnRequest(button, decision) {
+  const id = button.dataset.id;
+  const panel = button.closest('.return-request-banner');
+  const statusEl = panel?.querySelector('.return-request-status');
+  const allButtons = panel?.querySelectorAll('button') || [];
+
+  allButtons.forEach((b) => { b.disabled = true; });
+  if (statusEl) statusEl.textContent = 'Processing...';
+
+  try {
+    const res = await fetch('/api/payments', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'resolve_return_request',
+        request_id: id,
+        caller_token: adminToken(),
+        decision,
+      }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      allButtons.forEach((b) => { b.disabled = false; });
+      if (statusEl) statusEl.textContent = `Error: ${data.error || 'Could not process. Please try again.'}`;
+      return;
+    }
+    await loadRequests();
+  } catch (err) {
+    allButtons.forEach((b) => { b.disabled = false; });
+    if (statusEl) statusEl.textContent = 'Network error. Please try again.';
   }
 }
 
@@ -2969,29 +3124,26 @@ async function submitAdminKeysReturned(button) {
   }
 }
 
+// Failure-recovery only: used when automatic payment capture has already
+// failed (status = payment_issue / authorization_too_low). Puts the request
+// in front of the customer's Confirm-and-Pay card on the tracking page.
 async function sendToCustomerPayment(button) {
   const id = button.dataset.id;
   const request = allRequests.find((item) => item.id === id);
-  const panel = button.closest('.complete-panel');
-  const confirmed = panel.querySelector('.confirm-complete-totals')?.checked;
+  if (!request) return;
+
+  const panel = button.closest('[data-payment-issue-for]');
+  const statusEl = panel?.querySelector('.payment-issue-status');
 
   if (request.final_total == null) {
-    alert('Save the final total before sending to the customer.');
-    return;
-  }
-
-  if (!confirmed) {
-    alert('Check the confirmation box after verifying the saved totals.');
-    return;
-  }
-
-  if (request.quick_inspection && request.status !== 'inspection_recorded') {
-    alert('Complete the quick inspection before sending to the customer.');
+    if (statusEl) statusEl.textContent = 'Save the final total before sending to the customer.';
+    else alert('Save the final total before sending to the customer.');
     return;
   }
 
   button.disabled = true;
   button.textContent = 'Sending...';
+  if (statusEl) statusEl.textContent = '';
 
   try {
     const { error } = await db.rpc('admin_update_request', {
@@ -3006,7 +3158,8 @@ async function sendToCustomerPayment(button) {
     console.error('[sendToCustomerPayment] Failed:', err.message);
     button.disabled = false;
     button.textContent = 'Send to Customer for Payment';
-    alert('Could not update the request. Please try again.');
+    if (statusEl) statusEl.textContent = 'Could not update the request. Please try again.';
+    else alert('Could not update the request. Please try again.');
   }
 }
 
@@ -3416,6 +3569,8 @@ requestList.addEventListener('click', async (event) => {
         if (sel) sel.value = '';
         const otherWrap = panel.querySelector('.deny-reason-other-wrap');
         if (otherWrap) otherWrap.hidden = true;
+        const errorEl = panel.querySelector('.deny-reason-error');
+        if (errorEl) errorEl.textContent = '';
       }
       return;
     }
@@ -3455,6 +3610,11 @@ requestList.addEventListener('click', async (event) => {
       return;
     }
 
+    if (button.classList.contains('retry-payment-capture')) {
+      await retryPaymentCapture(button);
+      return;
+    }
+
     if (button.classList.contains('proceed-to-key-return')) {
       await proceedToKeyReturn(button);
       return;
@@ -3462,6 +3622,21 @@ requestList.addEventListener('click', async (event) => {
 
     if (button.classList.contains('admin-submit-keys-returned')) {
       await submitAdminKeysReturned(button);
+      return;
+    }
+
+    if (button.classList.contains('waive-return-fee')) {
+      await resolveReturnRequest(button, 'waive');
+      return;
+    }
+
+    if (button.classList.contains('charge-return-fee')) {
+      await resolveReturnRequest(button, 'charge_fee');
+      return;
+    }
+
+    if (button.classList.contains('continue-return-service')) {
+      await resolveReturnRequest(button, 'continue_service');
       return;
     }
 
