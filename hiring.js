@@ -32,8 +32,8 @@ applicantForm?.addEventListener('submit', async (event) => {
   const applicantPhone = String(data.get('applicantPhone') || '').trim();
   const applicantResume = data.get('applicantResume');
 
-  if (!applicantName || (!applicantEmail && !applicantPhone)) {
-    if (applicantStatus) applicantStatus.textContent = 'Add your name and either a phone number or email.';
+  if (!applicantName || !applicantEmail || !applicantPhone) {
+    if (applicantStatus) applicantStatus.textContent = 'Name, email, and phone number are all required.';
     return;
   }
 

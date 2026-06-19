@@ -346,3 +346,6 @@ WHERE routine_schema = 'public'
   )
 ORDER BY routine_name;
 */
+
+-- Refresh PostgREST schema cache after all function changes.
+NOTIFY pgrst, 'reload schema';
