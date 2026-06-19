@@ -248,33 +248,34 @@ async function loadVehiclePsiGuides() {
   vehiclePsiGuides = data?.length ? data : fallbackPsiGuides;
 }
 
-function randomPassword(length = 12) {
-  const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#';
-  const values = new Uint32Array(length);
-  crypto.getRandomValues(values);
-  return Array.from(values, (value) => alphabet[value % alphabet.length]).join('');
+// Password reset modal helpers
+const workerPwResetModal = document.querySelector('#worker-pw-reset-modal');
+const workerPwResetValue = document.querySelector('#worker-pw-reset-value');
+const copyWorkerPwBtn = document.querySelector('#copy-worker-pw');
+const copyPwStatus = document.querySelector('#copy-pw-status');
+const closeWorkerPwReset = document.querySelector('#close-worker-pw-reset');
+
+function showTempPasswordModal(tempPassword) {
+  if (!workerPwResetModal || !workerPwResetValue) return;
+  workerPwResetValue.textContent = tempPassword;
+  if (copyPwStatus) copyPwStatus.textContent = '';
+  workerPwResetModal.removeAttribute('hidden');
 }
 
-function randomSalt() {
-  const values = new Uint8Array(16);
-  crypto.getRandomValues(values);
-  return Array.from(values, (value) => value.toString(16).padStart(2, '0')).join('');
-}
+closeWorkerPwReset?.addEventListener('click', () => {
+  workerPwResetModal?.setAttribute('hidden', '');
+  if (workerPwResetValue) workerPwResetValue.textContent = '';
+});
 
-async function sha256Hex(value) {
-  const bytes = new TextEncoder().encode(value);
-  const digest = await crypto.subtle.digest('SHA-256', bytes);
-  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('');
-}
-
-async function passwordFields(password) {
-  const salt = randomSalt();
-  return {
-    worker_password_salt: salt,
-    worker_password_hash: await sha256Hex(`${salt}:${password}`),
-    password_updated_at: new Date().toISOString(),
-  };
-}
+copyWorkerPwBtn?.addEventListener('click', async () => {
+  const pw = workerPwResetValue?.textContent || '';
+  try {
+    await navigator.clipboard.writeText(pw);
+    if (copyPwStatus) copyPwStatus.textContent = 'Copied.';
+  } catch {
+    if (copyPwStatus) copyPwStatus.textContent = 'Could not copy — copy the password manually.';
+  }
+});
 
 function formatDateTime(value) {
   if (!value) return '';
@@ -1340,13 +1341,10 @@ function renderWorkerProfiles() {
         <label>Started
           <input class="admin-worker-started" type="date" value="${escapeHtml(employee.started_at || '')}">
         </label>
-        <label>New portal password
-          <input class="admin-worker-password" type="text" placeholder="Leave blank unless resetting">
-        </label>
       </div>
       <div class="admin-button-row">
         <button class="button primary save-worker-profile" data-id="${escapeHtml(employee.id)}" type="button" ${isLocal ? 'disabled' : ''}>Save worker profile</button>
-        <button class="button secondary reset-worker-password" data-id="${escapeHtml(employee.id)}" type="button" ${isLocal ? 'disabled' : ''}>Reset password</button>
+        <button class="button secondary reset-worker-password" data-id="${escapeHtml(employee.id)}" type="button" ${isLocal ? 'disabled' : ''}>Create new portal password</button>
         ${employee.active
           ? `<button class="button danger deactivate-worker-profile" data-id="${escapeHtml(employee.id)}" type="button" ${isLocal ? 'disabled' : ''}>Deactivate worker</button>`
           : `<button class="button primary reactivate-worker-profile" data-id="${escapeHtml(employee.id)}" type="button" ${isLocal ? 'disabled' : ''}>Reactivate worker</button>
@@ -1725,12 +1723,6 @@ async function saveAdminWorkerProfile(button) {
     photo_position_y: adminPhotoPosition.y,
     profile_updated_at: new Date().toISOString(),
   };
-  const password = card?.querySelector('.admin-worker-password')?.value.trim();
-
-  if (password) {
-    Object.assign(updates, await passwordFields(password));
-  }
-
   const { data: rpcRows, error } = await db.rpc('admin_update_employee', {
     p_token: adminToken(),
     p_employee_id: employeeId,
@@ -1777,21 +1769,18 @@ async function resetAdminWorkerPassword(button) {
   const card = button.closest('.worker-profile-card');
   const employeeId = button.dataset.id;
   const status = card?.querySelector('.admin-worker-status');
-  const passwordInput = card?.querySelector('.admin-worker-password');
-  const password = passwordInput?.value.trim() || randomPassword();
 
-  if (status) status.textContent = 'Resetting worker password...';
+  if (status) status.textContent = 'Generating new password...';
 
-  const { error } = await db.rpc('admin_update_employee', {
+  const { data: tempPassword, error } = await db.rpc('admin_reset_worker_password', {
     p_token: adminToken(),
     p_employee_id: employeeId,
-    p_data: await passwordFields(password),
   });
 
   if (error) throw error;
 
-  if (passwordInput) passwordInput.value = password;
-  if (status) status.textContent = `Password reset. Give this password to the worker: ${password}`;
+  if (status) status.textContent = 'Password reset. Worker must change it on next login.';
+  showTempPasswordModal(tempPassword);
 }
 
 async function deactivateAdminWorkerProfile(button) {
@@ -2090,27 +2079,22 @@ async function hireApplicant(applicantId) {
 
   if (applicantError) throw applicantError;
 
-  const generatedPassword = randomPassword();
-  const passwordUpdate = await passwordFields(generatedPassword);
   const phone = applicant.phone || null;
-  let employee = null;
+  let employeeId = null;
 
   if (!phone) {
     throw new Error('Applicant needs a phone number before hiring.');
   }
 
-  if (phone) {
-    // Use employees_public view so this works whether or not the anon
-    // SELECT policy on the base employees table has been restricted.
-    const { data: existingByPhone, error: phoneError } = await db
-      .from('employees_public')
-      .select('id')
-      .eq('phone', phone)
-      .limit(1);
+  // Use employees_public view so this works with restricted base table access.
+  const { data: existingByPhone, error: phoneError } = await db
+    .from('employees_public')
+    .select('id')
+    .eq('phone', phone)
+    .limit(1);
 
-    if (phoneError) throw phoneError;
-    employee = existingByPhone?.[0] || null;
-  }
+  if (phoneError) throw phoneError;
+  const employee = existingByPhone?.[0] || null;
 
   if (employee) {
     const { error } = await db.rpc('admin_update_employee', {
@@ -2122,14 +2106,14 @@ async function hireApplicant(applicantId) {
         phone,
         active: true,
         home_location: DEFAULT_WORK_LOCATION,
-        ...passwordUpdate,
         profile_updated_at: new Date().toISOString(),
       },
     });
     if (error) throw error;
+    employeeId = employee.id;
   } else {
     const randomSuffix = Array.from(crypto.getRandomValues(new Uint8Array(3)), (value) => value.toString(16).padStart(2, '0')).join('').toUpperCase();
-    const { error } = await db.rpc('admin_insert_employee', {
+    const { data: newRows, error } = await db.rpc('admin_insert_employee', {
       p_token: adminToken(),
       p_data: {
         employee_code: `EMP-${randomSuffix}`,
@@ -2138,11 +2122,19 @@ async function hireApplicant(applicantId) {
         phone,
         active: true,
         home_location: DEFAULT_WORK_LOCATION,
-        ...passwordUpdate,
       },
     });
     if (error) throw error;
+    employeeId = newRows?.[0]?.id;
+    if (!employeeId) throw new Error('Employee creation failed — could not get new employee ID.');
   }
+
+  // Generate a server-side temporary password and show it once to the admin.
+  const { data: tempPassword, error: pwError } = await db.rpc('admin_reset_worker_password', {
+    p_token: adminToken(),
+    p_employee_id: employeeId,
+  });
+  if (pwError) throw pwError;
 
   const { error: statusError } = await db.rpc('admin_update_applicant', {
     p_token: adminToken(),
@@ -2155,7 +2147,7 @@ async function hireApplicant(applicantId) {
   applicantList?.querySelector(`[data-applicant-id="${applicantId}"]`)?.remove();
   await loadEmployees();
   await loadApplicants();
-  alert(`Applicant hired. Temporary worker password: ${generatedPassword}`);
+  showTempPasswordModal(tempPassword);
 }
 
 applicantList?.addEventListener('change', async (event) => {
@@ -4144,4 +4136,67 @@ document.querySelector('#admin-create-request-form')?.addEventListener('submit',
   } finally {
     submitBtn.disabled = false;
   }
+});
+
+// ── Settings tab — Fuel Prices ────────────────────────────────────────────────
+
+async function loadFuelPricesForAdmin() {
+  try {
+    const { data, error } = await db.rpc('public_get_fuel_prices');
+    if (error || !data) return;
+    const v = (id) => document.getElementById(id);
+    if (v('fp-regular')) v('fp-regular').value = Number(data.regular_price).toFixed(3);
+    if (v('fp-midgrade')) v('fp-midgrade').value = Number(data.midgrade_price).toFixed(3);
+    if (v('fp-premium')) v('fp-premium').value = Number(data.premium_price).toFixed(3);
+    if (v('fp-diesel')) v('fp-diesel').value = Number(data.diesel_price).toFixed(3);
+    if (v('fp-area')) v('fp-area').value = data.service_area_label || '';
+    const lastUpdated = document.getElementById('fuel-prices-last-updated');
+    if (lastUpdated && data.last_updated_at) {
+      const d = new Date(data.last_updated_at);
+      lastUpdated.textContent = `Last updated: ${d.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}`;
+    }
+  } catch {
+    // Non-fatal — form stays blank.
+  }
+}
+
+document.querySelector('#admin-fuel-prices-form')?.addEventListener('submit', async (event) => {
+  event.preventDefault();
+  const statusEl = document.getElementById('fuel-prices-status');
+  const submitBtn = event.target.querySelector('[type="submit"]');
+  if (statusEl) statusEl.textContent = 'Saving...';
+  if (submitBtn) submitBtn.disabled = true;
+
+  try {
+    const val = (id) => parseFloat(document.getElementById(id)?.value || '0');
+    const area = document.getElementById('fp-area')?.value.trim() || null;
+
+    const { data, error } = await db.rpc('admin_update_fuel_prices', {
+      p_token: adminToken(),
+      p_regular: val('fp-regular'),
+      p_midgrade: val('fp-midgrade'),
+      p_premium: val('fp-premium'),
+      p_diesel: val('fp-diesel'),
+      p_service_area: area,
+    });
+
+    if (error) throw error;
+
+    if (statusEl) statusEl.textContent = 'Fuel prices saved.';
+    const lastUpdated = document.getElementById('fuel-prices-last-updated');
+    if (lastUpdated && data?.last_updated_at) {
+      const d = new Date(data.last_updated_at);
+      lastUpdated.textContent = `Last updated: ${d.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}`;
+    }
+  } catch (err) {
+    console.error('Fuel price save failed:', err);
+    if (statusEl) statusEl.textContent = `Could not save: ${err.message || err}`;
+  } finally {
+    if (submitBtn) submitBtn.disabled = false;
+  }
+});
+
+// Load fuel prices when the Settings tab is opened.
+document.querySelectorAll('.admin-page-tab[data-page="settings"]').forEach((tab) => {
+  tab.addEventListener('click', loadFuelPricesForAdmin, { once: false });
 });

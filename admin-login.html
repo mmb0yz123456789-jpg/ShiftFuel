@@ -8,18 +8,9 @@
 </head>
 <body class="portal-login-page admin-login-page">
 
-  <header class="site-header">
+  <header class="portal-header">
     <a class="logo" href="index.html">ShiftFuel Concierge</a>
-    <nav class="nav" aria-label="Main navigation">
-      <a href="index.html#services">What we do</a>
-      <a href="index.html#how">How it works</a>
-      <a href="index.html#pricing">Pricing</a>
-      <a href="index.html#book">Book now</a>
-      <a href="track.html">Track</a>
-      <a href="hiring.html">Hiring</a>
-      <a href="worker-login.html">Worker</a>
-      <a href="admin-login.html">Admin</a>
-    </nav>
+    <a class="portal-back-link" href="index.html">← Back to home</a>
   </header>
 
   <main>
@@ -116,19 +107,24 @@
         sessionStorage.setItem("shiftfuel_admin_token", token);
         sessionStorage.setItem("shiftfuel_admin_expires", String(Date.now() + 8 * 60 * 60 * 1000));
         window.location.href = "admin.html";
-      } catch {
+      } catch (err) {
+        const msg = err?.message || "";
+        if (msg.includes("ACCOUNT_LOCKED")) {
+          message.textContent = "Admin login is temporarily locked. Try again in 15 minutes.";
+          return;
+        }
         message.textContent = "";
         const attempts = Number(localStorage.getItem(ATTEMPT_KEY) || 0) + 1;
         localStorage.setItem(ATTEMPT_KEY, String(attempts));
 
-        if (attempts >= 5) {
-          localStorage.setItem(LOCK_KEY, String(Date.now() + 5 * 60 * 1000));
+        if (attempts >= 3) {
+          localStorage.setItem(LOCK_KEY, String(Date.now() + 15 * 60 * 1000));
           localStorage.setItem(ATTEMPT_KEY, "0");
-          message.textContent = "Too many attempts. Admin login is locked for 5 minutes.";
+          message.textContent = "Too many attempts. Admin login is locked for 15 minutes.";
           return;
         }
 
-        message.textContent = `Incorrect username or password. ${5 - attempts} attempt${5 - attempts === 1 ? "" : "s"} left before a temporary lock.`;
+        message.textContent = `Incorrect username or password. ${3 - attempts} attempt${3 - attempts === 1 ? "" : "s"} left before a temporary lock.`;
       }
     });
   </script>

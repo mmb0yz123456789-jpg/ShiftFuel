@@ -486,12 +486,32 @@ const serviceTypes = {
   },
 };
 
+// Fuel prices — defaults used until DB prices load.
 const averageFuelPrices = {
-  Regular: 3.792,
-  "Mid-grade": 4.411,
-  Premium: 4.701,
-  Diesel: 4.967,
+  Regular: 3.799,
+  "Mid-grade": 4.199,
+  Premium: 4.499,
+  Diesel: 4.199,
 };
+let fuelPriceLastUpdated = null;
+let fuelPriceArea = 'Delaware area';
+
+async function loadFuelPricesFromDb() {
+  try {
+    const { data, error } = await window.ShiftFuelSupabase.rpc('public_get_fuel_prices');
+    if (error || !data) return;
+    averageFuelPrices.Regular = Number(data.regular_price);
+    averageFuelPrices['Mid-grade'] = Number(data.midgrade_price);
+    averageFuelPrices.Premium = Number(data.premium_price);
+    averageFuelPrices.Diesel = Number(data.diesel_price);
+    fuelPriceLastUpdated = data.last_updated_at ? new Date(data.last_updated_at) : null;
+    fuelPriceArea = data.service_area_label || fuelPriceArea;
+    updateEstimate();
+    renderFuelPricingSummary();
+  } catch {
+    // Use defaults silently.
+  }
+}
 
 function formatCurrency(value) {
   return new Intl.NumberFormat("en-US", {
@@ -1588,20 +1608,24 @@ function validateReturningConfirmation() {
   form.elements[fieldName]?.addEventListener("change", updateReturningConfirmationText);
 });
 
-// Populate fuel price summary in the pricing card using the shared averageFuelPrices object.
-// Update averageFuelPrices monthly — that single change reflects here and in the booking estimate.
-(function renderFuelPricingSummary() {
+function renderFuelPricingSummary() {
   const container = document.querySelector('#fuel-pricing-summary');
   if (!container) return;
   const rows = Object.entries(averageFuelPrices)
     .map(([type, price]) => `<div class="fuel-price-row"><span>${type}</span><span>${formatPricePerGallon(price)}</span></div>`)
     .join('');
+  const updatedText = fuelPriceLastUpdated
+    ? fuelPriceLastUpdated.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
+    : null;
   container.innerHTML = `
-    <p class="fuel-pricing-label">Current average fuel estimate</p>
+    <p class="fuel-pricing-label">Estimated fuel price — ${fuelPriceArea}</p>
     <div class="fuel-price-list">${rows}</div>
-    <p class="fuel-pricing-note">Updated monthly for estimating only. Final fuel cost is based on the receipt.</p>
+    ${updatedText ? `<p class="fuel-pricing-updated">Last updated ${updatedText}</p>` : ''}
+    <p class="fuel-pricing-note">Estimated fuel price based on local area averages. Actual pump price may vary.</p>
   `;
-})();
+}
+renderFuelPricingSummary();
+loadFuelPricesFromDb();
 
 form.addEventListener("submit", async (event) => {
   event.preventDefault();

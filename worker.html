@@ -40,7 +40,7 @@
           <p>View jobs in your work area, update availability, and keep your account information current.</p>
           <div class="actions">
             <a class="button primary" href="#worker-jobs">View jobs</a>
-            <a class="button secondary" href="#worker-password-form">Reset password</a>
+            <button class="button secondary" id="open-change-password-btn" type="button">Change password</button>
           </div>
         </div>
       </section>
@@ -176,31 +176,42 @@
           </fieldset>
         </form>
 
-        <form id="worker-password-form" class="booking-form worker-profile-form">
-          <fieldset>
-            <legend>Reset worker password</legend>
-            <div class="field-grid">
-              <label>
-                New password
-                <input id="worker-new-password" type="password" minlength="8" placeholder="At least 8 characters">
-              </label>
-              <label>
-                Confirm password
-                <input id="worker-confirm-password" type="password" minlength="8">
-              </label>
-            </div>
-            <div class="form-action-row">
-              <button class="button primary" type="submit">Update password</button>
-            </div>
-            <p id="worker-password-status" class="form-status" role="status"></p>
-          </fieldset>
-        </form>
       </section>
     </main>
 
     <footer class="site-footer">
       <p>&copy; <span id="year"></span> ShiftFuel Concierge. Serving workplaces in Delaware.</p>
     </footer>
+
+    <!-- Change password modal -->
+    <div id="worker-password-modal" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="wpm-title" hidden>
+      <div class="modal-dialog">
+        <div class="modal-header">
+          <h2 id="wpm-title">Change password</h2>
+          <button class="modal-close" id="worker-password-modal-close" type="button" aria-label="Close">&times;</button>
+        </div>
+        <div class="modal-body">
+          <form id="worker-password-change-form" class="booking-form">
+            <label>
+              Current password
+              <input id="wpc-current" type="password" autocomplete="current-password" required>
+            </label>
+            <label>
+              New password
+              <input id="wpc-new" type="password" minlength="10" autocomplete="new-password" placeholder="At least 10 characters" required>
+            </label>
+            <label>
+              Confirm new password
+              <input id="wpc-confirm" type="password" minlength="10" autocomplete="new-password" required>
+            </label>
+            <div class="form-action-row">
+              <button class="button primary" type="submit">Update password</button>
+            </div>
+            <p id="worker-password-status" class="form-status" role="status"></p>
+          </form>
+        </div>
+      </div>
+    </div>
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="supabase-client.js"></script>

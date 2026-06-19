@@ -8,7 +8,7 @@ Run these files in the Supabase SQL Editor **in this exact order** before launch
 Creates the `worker_login(p_identifier, p_password)` RPC (server-side SHA-256 password verification) and the `employees_public` security-barrier view that excludes password columns.
 
 **After deploying:** confirm worker login works on the deployed site.  
-**Required hardening (not optional):** the file now includes `DROP POLICY "Anyone can read employees"` and a deny-all replacement. Run the full file — this is required before going live.
+**Note:** This file creates the `employees_public` view and a deny-all RLS policy. Step 6 (`supabase-advisor-security-cleanup.sql`) supersedes the deny-all policy with a more precise column-grant approach — run both files in order.
 
 ---
 
@@ -30,6 +30,39 @@ Secondary copy of the same `::time` cast fix. Safe to run after step 2.
 
 ## 5. `supabase-create-request.sql`
 Ensures `public_track_request` includes support for `pending_customer_info` status.
+
+---
+
+## 6. `supabase-advisor-security-cleanup.sql`
+Fixes Supabase Advisor security findings:
+- Converts `employees_public` from a Security Definer view to a `security_invoker` view + column-level grants (anon can read safe columns, never password hash/salt)
+- Revokes `worker_create_session(uuid)` from anon/authenticated (was callable without password verification)
+- Adds `SET search_path = public, pg_temp` to all SECURITY DEFINER functions that were missing it
+- Replaces `WITH CHECK (true)` on `service_requests` INSERT with strict field validation
+- Replaces `WITH CHECK (true)` on `photos` INSERT with photo_type allowlist
+- Drops unused `quick_inspections` public policies
+
+**Run after step 5.**
+
+---
+
+## 7. `supabase-portal-password-security.sql`
+Adds server-side login lockout (3 failed attempts → 15-minute lock), `must_change_password` tracking, and two new RPCs:
+- `worker_change_password_secure(token, current_password, new_password)` — server hashes; browser never sends hashes
+- `admin_reset_worker_password(token, employee_id)` — server generates `SF-XXXX-XXXX-XXXX` temp password, sets `must_change_password = true`, returns it once
+
+Also adds `failed_login_attempts`, `locked_until`, `last_login_at`, `must_change_password`, `password_reset_at` columns to `employees`, and creates `admin_lockout` table.
+
+**Run after step 6.**
+
+---
+
+## 8. `supabase-fuel-prices.sql`
+Creates `fuel_price_settings` table (single active row) and two RPCs:
+- `public_get_fuel_prices()` — anon-readable; used by booking page
+- `admin_update_fuel_prices(token, ...)` — admin-only manual price update
+
+**Run after step 7. Then open Admin → Settings to enter current local prices.**
 
 ---
 
