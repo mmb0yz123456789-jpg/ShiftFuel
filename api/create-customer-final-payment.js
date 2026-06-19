@@ -26,7 +26,7 @@ module.exports = async (req, res) => {
 
   const { data: request, error: reqErr } = await db
     .from('service_requests')
-    .select('id, customer_phone, customer_email, customer_name, status, final_total, service_label')
+    .select('id, customer_phone, customer_email, customer_name, status, final_total, service_label, payment_intent_id, payment_status')
     .eq('id', request_id)
     .maybeSingle();
 
@@ -42,6 +42,15 @@ module.exports = async (req, res) => {
 
   if (request.status !== 'pending_customer_payment') {
     return res.status(400).json({ error: 'This request is not awaiting customer payment' });
+  }
+
+  // Do not create a new PI if the request already has an authorized pre-auth hold.
+  // The customer should capture that existing hold via /api/customer-capture instead.
+  if (request.payment_intent_id && request.payment_status === 'authorized') {
+    return res.status(400).json({
+      error: 'A payment authorization already exists for this request. Please use the existing payment confirmation.',
+      has_pre_auth: true,
+    });
   }
 
   if (request.final_total == null || request.final_total <= 0) {

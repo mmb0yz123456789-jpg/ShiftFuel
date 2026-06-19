@@ -2432,16 +2432,16 @@ async function saveFinalTotal(button) {
     await uploadPhotoFile(id, 'wash_receipt', washReceiptFile);
   }
 
-  const updates = { final_total: finalTotal, notes, updated_at: new Date().toISOString() };
-
+  const rpcData = { final_total: finalTotal, notes };
   if (button.dataset.nextStatus) {
-    updates.status = button.dataset.nextStatus;
+    rpcData.status = button.dataset.nextStatus;
   }
 
-  const { error } = await db
-    .from('service_requests')
-    .update(updates)
-    .eq('id', id);
+  const { error } = await db.rpc('admin_update_request', {
+    p_token: adminToken(),
+    p_request_id: id,
+    p_data: rpcData,
+  });
 
   if (error) throw error;
   await loadRequests();
@@ -2476,15 +2476,11 @@ async function saveServiceUnable(button) {
   button.disabled = true;
   button.textContent = 'Saving...';
 
-  const { error } = await db
-    .from('service_requests')
-    .update({
-      status: nextStatusAfterServiceUnable(request, type),
-      final_total: finalTotal,
-      notes,
-      updated_at: new Date().toISOString(),
-    })
-    .eq('id', id);
+  const { error } = await db.rpc('admin_update_request', {
+    p_token: adminToken(),
+    p_request_id: id,
+    p_data: { status: nextStatusAfterServiceUnable(request, type), final_total: finalTotal, notes },
+  });
 
   if (error) throw error;
   const nextStatus = nextStatusAfterServiceUnable(request, type);
@@ -2629,10 +2625,11 @@ async function saveTotalEdit(button) {
   button.disabled = true;
   button.textContent = 'Updating...';
 
-  const { error } = await db
-    .from('service_requests')
-    .update({ final_total: finalTotal, notes, updated_at: new Date().toISOString() })
-    .eq('id', id);
+  const { error } = await db.rpc('admin_update_request', {
+    p_token: adminToken(),
+    p_request_id: id,
+    p_data: { final_total: finalTotal, notes },
+  });
 
   if (error) throw error;
   await loadRequests();
@@ -2648,16 +2645,11 @@ async function saveReturnLocation(button) {
     return;
   }
 
-  const { error } = await db
-    .from('service_requests')
-    .update({
-      return_parking_location: returnParkingLocation,
-      return_parking_spot: null,
-      return_parking_map_url: null,
-      status: 'return_location_recorded',
-      updated_at: new Date().toISOString(),
-    })
-    .eq('id', id);
+  const { error } = await db.rpc('admin_update_request', {
+    p_token: adminToken(),
+    p_request_id: id,
+    p_data: { return_parking_location: returnParkingLocation, status: 'return_location_recorded' },
+  });
 
   if (error) throw error;
   await loadRequests();
@@ -2690,10 +2682,11 @@ async function saveInspection(button) {
   ].join(' ');
   const notes = request.notes ? `${request.notes}\n${note}` : note;
 
-  const { error } = await db
-    .from('service_requests')
-    .update({ notes, status: 'inspection_recorded', updated_at: new Date().toISOString() })
-    .eq('id', id);
+  const { error } = await db.rpc('admin_update_request', {
+    p_token: adminToken(),
+    p_request_id: id,
+    p_data: { notes, status: 'inspection_recorded' },
+  });
 
   if (error) throw error;
   await loadRequests();
@@ -2939,10 +2932,11 @@ async function uploadPhotoSet(button) {
   const timestamp = new Date().toISOString();
   const note = photoTimestampNote(stage, timestamp);
   const notes = request.notes ? `${request.notes}\n${note}` : note;
-  const { error } = await db
-    .from('service_requests')
-    .update({ status: panel.dataset.nextStatus, notes, updated_at: timestamp })
-    .eq('id', id);
+  const { error } = await db.rpc('admin_update_request', {
+    p_token: adminToken(),
+    p_request_id: id,
+    p_data: { status: panel.dataset.nextStatus, notes },
+  });
 
   if (error) throw error;
   await loadRequests();

@@ -122,16 +122,40 @@ AS
 -- Allow anon to query the view (not the base table directly).
 GRANT SELECT ON public.employees_public TO anon, authenticated;
 
--- NOTE: The existing "Anyone can read employees" policy on the
--- employees base table still allows anon to SELECT from it directly,
--- including the hash/salt columns. To fully close this:
+-- ──────────────────────────────────────────────────────────
+-- REQUIRED: Lock down the employees base table.
+-- All app code (admin.js, worker.js) now queries employees_public
+-- or SECURITY DEFINER RPCs — not the base table directly.
+-- Run this block to prevent anon from reading password columns.
+-- ──────────────────────────────────────────────────────────
+
+-- Drop the open read policy and replace it with a deny-all for anon.
+-- SECURITY DEFINER functions (worker_login, admin RPCs) bypass RLS
+-- and can still read the full table — this only affects direct queries.
+DROP POLICY IF EXISTS "Anyone can read employees" ON employees;
+
+CREATE POLICY "deny_direct_select"
+  ON employees
+  FOR SELECT
+  TO anon, authenticated
+  USING (false);
+
+-- ── Verification (run after applying the above) ──────────
+-- The following query should return 0 rows when executed as anon
+-- (i.e., from the client with a public anon key, no auth token).
+-- If it returns rows the policy is not applied correctly.
 --
---   DROP POLICY IF EXISTS "Anyone can read employees" ON employees;
---   CREATE POLICY "Staff RPCs only" ON employees FOR SELECT
---     TO anon, authenticated USING (false);
+--   SELECT id, worker_password_hash, worker_password_salt
+--   FROM employees
+--   LIMIT 1;
 --
--- Only run the DROP/CREATE block above after confirming that
--- worker.js and admin.js no longer query the employees table
--- directly (they should go through employees_public or RPCs).
--- The worker_login and admin RPCs use SECURITY DEFINER so they
--- bypass RLS and can still read the full table.
+-- You can also confirm RLS is enabled on the table:
+--
+--   SELECT relname, relrowsecurity
+--   FROM pg_class
+--   WHERE relname = 'employees';
+--   -- relrowsecurity should be true.
+--
+-- Confirm the view still works (should return rows without hash/salt):
+--
+--   SELECT id, full_name, phone FROM employees_public LIMIT 5;

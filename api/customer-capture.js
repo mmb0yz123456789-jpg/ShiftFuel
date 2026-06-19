@@ -118,6 +118,11 @@ module.exports = async (req, res) => {
       console.log('[customer-capture] New card payment succeeded for request', request_id);
       return res.status(200).json({ status: 'succeeded' });
     } catch (err) {
+      if (err.message === 'DB_UPDATE_FAILED') {
+        return res.status(500).json({
+          error: `Payment was processed, but we could not update your request. Please contact ShiftFuel and reference request ${request_id}.`,
+        });
+      }
       console.error('[customer-capture] New PI verification failed:', err.message);
       return res.status(500).json({ error: 'Payment verification failed. Please try again.' });
     }
@@ -163,15 +168,26 @@ module.exports = async (req, res) => {
     await markComplete(db, request_id, piId);
     return res.status(200).json({ status: intent.status, amount_captured: intent.amount_captured });
   } catch (err) {
+    if (err.message === 'DB_UPDATE_FAILED') {
+      return res.status(500).json({
+        error: `Payment was processed, but we could not update your request. Please contact ShiftFuel and reference request ${request_id}.`,
+      });
+    }
     console.error('[customer-capture] Stripe error:', err.message);
     if (err.code === 'payment_intent_unexpected_state') {
       try {
         const intent = await stripe.paymentIntents.retrieve(piId);
         if (intent.status === 'succeeded') {
           await markComplete(db, request_id, piId);
-              return res.status(200).json({ status: 'succeeded', already_captured: true });
+          return res.status(200).json({ status: 'succeeded', already_captured: true });
         }
-      } catch {}
+      } catch (innerErr) {
+        if (innerErr.message === 'DB_UPDATE_FAILED') {
+          return res.status(500).json({
+            error: `Payment was processed, but we could not update your request. Please contact ShiftFuel and reference request ${request_id}.`,
+          });
+        }
+      }
       return res.status(400).json({ error: 'Payment could not be processed. Please contact ShiftFuel.' });
     }
     return res.status(500).json({ error: 'Payment capture failed. Please try again.' });
@@ -185,5 +201,10 @@ async function markComplete(db, requestId, paymentIntentId) {
     payment_intent_id: paymentIntentId,
     updated_at: new Date().toISOString(),
   }).eq('id', requestId);
-  if (error) console.error('[customer-capture] markComplete DB error:', error.message);
+
+  if (error) {
+    // Log full detail for admin recovery — request ID and PI ID are critical here.
+    console.error('[customer-capture] CRITICAL: markComplete DB error for request', requestId, 'PI', paymentIntentId, '—', error.message);
+    throw new Error('DB_UPDATE_FAILED');
+  }
 }

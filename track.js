@@ -1792,17 +1792,12 @@ trackingResult.addEventListener("click", async (event) => {
       p_reason: 'Customer declined service',
     });
 
-    if (error && !isMissingRpcError(error)) {
-      // Fallback direct update
-      await shiftFuelDb.from('service_requests').update({
-        status: 'customer_canceled',
-        cancellation_reason: 'Customer declined service',
-      }).eq('id', requestId);
-    } else if (error && isMissingRpcError(error)) {
-      await shiftFuelDb.from('service_requests').update({
-        status: 'customer_canceled',
-        notes: 'Customer declined service via Track page',
-      }).eq('id', requestId);
+    if (error) {
+      console.error('[track] Cancel RPC failed for cb flow:', error);
+      trackMessage.textContent = 'Could not cancel this request. Please contact ShiftFuel.';
+      cbConfirmCancelBtn.disabled = false;
+      cbConfirmCancelBtn.textContent = 'Cancel request';
+      return;
     }
 
     trackMessage.textContent = 'Request canceled.';
@@ -1959,30 +1954,7 @@ trackingResult.addEventListener("click", async (event) => {
     p_reason: reason,
   });
 
-  if (error && isMissingRpcError(error)) {
-    console.warn("Cancel RPC unavailable, falling back to direct update:", error);
-    ({ data, error } = await shiftFuelDb
-      .from("service_requests")
-      .update({
-        status: "customer_canceled",
-        cancellation_reason: reason,
-      })
-      .eq("id", requestId)
-      .select()
-      .single());
-
-    if (error?.code === "PGRST204") {
-      ({ data, error } = await shiftFuelDb
-        .from("service_requests")
-        .update({
-          status: "customer_canceled",
-          notes: `Customer cancellation reason: ${reason}`,
-        })
-        .eq("id", requestId)
-        .select()
-        .single());
-    }
-  } else if (!error) {
+  if (!error) {
     const { data: refreshed, error: refreshError } = await shiftFuelDb.rpc("public_track_request", {
       p_request_id: requestId,
       p_phone: verifiedTrackingContact.phone,
@@ -1994,13 +1966,11 @@ trackingResult.addEventListener("click", async (event) => {
     } else {
       data = refreshed?.[0] || null;
     }
-  } else {
-    console.warn("Cancel blocked:", error);
   }
 
   if (error || !data) {
-    console.error("Customer cancellation error:", error);
-    trackMessage.textContent = "Could not cancel this request.";
+    console.error('[track] Customer cancellation error:', error);
+    trackMessage.textContent = "Could not cancel this request. Please contact ShiftFuel.";
     confirmCancelButton.textContent = "Confirm cancellation";
     confirmCancelButton.disabled = false;
     return;
