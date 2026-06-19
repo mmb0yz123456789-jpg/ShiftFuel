@@ -39,6 +39,7 @@
         <button class="admin-page-tab active" data-page="dashboard">Dashboard</button>
         <button class="admin-page-tab" data-page="workers">Workers <span id="worker-count-badge" class="page-tab-badge">0</span></button>
         <button class="admin-page-tab" data-page="create-request">Create Request</button>
+        <button class="admin-page-tab" data-page="settings">Settings</button>
       </nav>
 
       <!-- ═══════════════════ DASHBOARD PAGE ═══════════════════ -->
@@ -203,6 +204,42 @@
         </form>
       </section>
 
+      <!-- ═══════════════════ SETTINGS PAGE ═══════════════════ -->
+
+      <section class="section admin-section" data-page-section="settings" hidden>
+        <div class="admin-toolbar">
+          <div>
+            <p class="eyebrow">Settings</p>
+            <h2>Fuel prices</h2>
+          </div>
+        </div>
+        <form id="admin-fuel-prices-form" class="admin-edit-panel booking-form">
+          <p class="field-help">Set local area fuel price averages used in booking estimates. Update manually when prices change.</p>
+          <div class="field-grid">
+            <label>Regular (per gallon)
+              <input id="fp-regular" type="number" step="0.001" min="0" max="20" placeholder="3.799">
+            </label>
+            <label>Mid-grade (per gallon)
+              <input id="fp-midgrade" type="number" step="0.001" min="0" max="20" placeholder="4.199">
+            </label>
+            <label>Premium (per gallon)
+              <input id="fp-premium" type="number" step="0.001" min="0" max="20" placeholder="4.499">
+            </label>
+            <label>Diesel (per gallon)
+              <input id="fp-diesel" type="number" step="0.001" min="0" max="20" placeholder="4.199">
+            </label>
+            <label>Service area label
+              <input id="fp-area" type="text" maxlength="80" placeholder="Delaware area">
+            </label>
+          </div>
+          <div class="admin-button-row">
+            <button class="button primary" type="submit">Save fuel prices</button>
+          </div>
+          <p id="fuel-prices-status" class="form-status"></p>
+          <p id="fuel-prices-last-updated" class="field-help"></p>
+        </form>
+      </section>
+
       <!-- ═══════════════════ CREATE REQUEST PAGE ═══════════════════ -->
 
       <section class="section admin-hero" data-page-section="create-request" hidden>
@@ -336,6 +373,25 @@
             </label>
           </div>
           <div id="find-tickets-results" class="find-tickets-results"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Worker password reset result modal (shown once after admin resets a worker password) -->
+    <div id="worker-pw-reset-modal" class="modal-overlay" hidden aria-modal="true" role="dialog" aria-labelledby="worker-pw-reset-title">
+      <div class="modal-dialog">
+        <div class="modal-header">
+          <h2 id="worker-pw-reset-title">Temporary password</h2>
+          <button id="close-worker-pw-reset" class="modal-close" aria-label="Close">&times;</button>
+        </div>
+        <div class="modal-body">
+          <p>Give this password to the worker. It will not be shown again.</p>
+          <div class="temp-password-display">
+            <code id="worker-pw-reset-value"></code>
+            <button class="button secondary" id="copy-worker-pw" type="button">Copy</button>
+          </div>
+          <p class="form-status" id="copy-pw-status"></p>
+          <p class="field-help">The worker will be required to change this password on first login.</p>
         </div>
       </div>
     </div>

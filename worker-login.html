@@ -7,18 +7,9 @@
   <link rel="stylesheet" href="styles.css">
 </head>
 <body class="portal-login-page worker-login-page">
-  <header class="site-header">
+  <header class="portal-header">
     <a class="logo" href="index.html">ShiftFuel Concierge</a>
-    <nav class="nav" aria-label="Main navigation">
-      <a href="index.html#services">What we do</a>
-      <a href="index.html#how">How it works</a>
-      <a href="index.html#pricing">Pricing</a>
-      <a href="index.html#book">Book now</a>
-      <a href="track.html">Track</a>
-      <a href="hiring.html">Hiring</a>
-      <a href="worker-login.html">Worker</a>
-      <a href="admin-login.html">Admin</a>
-    </nav>
+    <a class="portal-back-link" href="index.html">← Back to home</a>
   </header>
 
   <main>
@@ -67,14 +58,14 @@
       const attempts = Number(localStorage.getItem(ATTEMPT_KEY) || 0) + 1;
       localStorage.setItem(ATTEMPT_KEY, String(attempts));
 
-      if (attempts >= 5) {
-        localStorage.setItem(LOCK_KEY, String(Date.now() + 5 * 60 * 1000));
+      if (attempts >= 3) {
+        localStorage.setItem(LOCK_KEY, String(Date.now() + 15 * 60 * 1000));
         localStorage.setItem(ATTEMPT_KEY, "0");
-        message.textContent = "Too many attempts. Worker login is locked for 5 minutes.";
+        message.textContent = "Too many attempts. Worker login is locked for 15 minutes.";
         return;
       }
 
-      message.textContent = `Incorrect worker name or password. ${5 - attempts} attempt${5 - attempts === 1 ? "" : "s"} left before a temporary lock.`;
+      message.textContent = `Incorrect worker name or password. ${3 - attempts} attempt${3 - attempts === 1 ? "" : "s"} left before a temporary lock.`;
     }
 
     form.addEventListener("submit", async (event) => {
@@ -109,12 +100,17 @@
           sessionStorage.setItem("shiftfuel_worker_id", data.employee_id);
           sessionStorage.setItem("shiftfuel_worker_token", data.token);
           sessionStorage.setItem("shiftfuel_worker_expires", String(Date.now() + 8 * 60 * 60 * 1000));
+          sessionStorage.setItem("shiftfuel_worker_must_change_pw", String(data.must_change_password === true));
           window.location.href = "worker.html";
           return;
         }
       } catch (error) {
-        // RPC raises an exception for invalid credentials — do not log the message
-        // to avoid leaking which field was wrong.
+        const msg = error?.message || "";
+        if (msg.includes("ACCOUNT_LOCKED")) {
+          message.textContent = "This account is temporarily locked. Try again in 15 minutes.";
+          return;
+        }
+        // Do not log the message to avoid leaking which field was wrong.
         console.warn("Worker login failed");
       }
 

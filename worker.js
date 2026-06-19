@@ -20,9 +20,13 @@ const workerPhotoCropUse = document.querySelector('#worker-photo-crop-use');
 const workerPhotoCropChoose = document.querySelector('#worker-photo-crop-choose');
 const workerPhotoCropCancel = document.querySelector('#worker-photo-crop-cancel');
 const workerPhotoCropStatus = document.querySelector('#worker-photo-crop-status');
-const workerPasswordForm = document.querySelector('#worker-password-form');
-const workerNewPassword = document.querySelector('#worker-new-password');
-const workerConfirmPassword = document.querySelector('#worker-confirm-password');
+const openChangePasswordBtn = document.querySelector('#open-change-password-btn');
+const workerPasswordModal = document.querySelector('#worker-password-modal');
+const workerPasswordModalClose = document.querySelector('#worker-password-modal-close');
+const workerPasswordChangeForm = document.querySelector('#worker-password-change-form');
+const wpcCurrent = document.querySelector('#wpc-current');
+const wpcNew = document.querySelector('#wpc-new');
+const wpcConfirm = document.querySelector('#wpc-confirm');
 const workerPasswordStatus = document.querySelector('#worker-password-status');
 const workerProfilePhotoPreview = document.querySelector('#worker-profile-photo-preview');
 const workerProfilePhotoPlaceholder = document.querySelector('#worker-profile-photo-placeholder');
@@ -353,23 +357,16 @@ function setWorkerPasswordStatus(message) {
   }
 }
 
-function randomSalt() {
+async function passwordFields(password) {
   const values = new Uint8Array(16);
   crypto.getRandomValues(values);
-  return Array.from(values, (value) => value.toString(16).padStart(2, '0')).join('');
-}
-
-async function sha256Hex(value) {
-  const bytes = new TextEncoder().encode(value);
+  const salt = Array.from(values, (v) => v.toString(16).padStart(2, '0')).join('');
+  const bytes = new TextEncoder().encode(`${salt}:${password}`);
   const digest = await crypto.subtle.digest('SHA-256', bytes);
-  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('');
-}
-
-async function passwordFields(password) {
-  const salt = randomSalt();
+  const hash = Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, '0')).join('');
   return {
     worker_password_salt: salt,
-    worker_password_hash: await sha256Hex(`${salt}:${password}`),
+    worker_password_hash: hash,
     password_updated_at: new Date().toISOString(),
   };
 }
@@ -731,6 +728,9 @@ async function loadWorkerProfile() {
     );
     resetWorkerPhotoCrop();
     setWorkerStatus('');
+    if (sessionStorage.getItem('shiftfuel_worker_must_change_pw') === 'true') {
+      openPasswordModal(true);
+    }
     await loadWorkerSchedule();
     await loadWorkerJobs();
     await loadWorkerReviews();
@@ -2252,23 +2252,43 @@ function endWorkerCropDrag(event) {
 workerPhotoCropImage?.addEventListener('pointerup', endWorkerCropDrag);
 workerPhotoCropImage?.addEventListener('pointercancel', endWorkerCropDrag);
 
-workerPasswordForm?.addEventListener('submit', async (event) => {
+let passwordModalForced = false;
+
+function openPasswordModal(forced = false) {
+  passwordModalForced = forced;
+  if (!workerPasswordModal) return;
+  workerPasswordModal.removeAttribute('hidden');
+  if (workerPasswordModalClose) workerPasswordModalClose.hidden = forced;
+  if (forced) setWorkerPasswordStatus('You must set a new password before continuing.');
+  wpcCurrent?.focus();
+}
+
+function closePasswordModal() {
+  if (passwordModalForced) return;
+  workerPasswordModal?.setAttribute('hidden', '');
+  workerPasswordChangeForm?.reset();
+  setWorkerPasswordStatus('');
+}
+
+openChangePasswordBtn?.addEventListener('click', () => openPasswordModal(false));
+workerPasswordModalClose?.addEventListener('click', closePasswordModal);
+workerPasswordModal?.addEventListener('click', (event) => {
+  if (event.target === workerPasswordModal) closePasswordModal();
+});
+
+workerPasswordChangeForm?.addEventListener('submit', async (event) => {
   event.preventDefault();
 
-  if (!currentEmployee) {
-    setWorkerPasswordStatus('Worker profile is still loading.');
+  const currentPw = wpcCurrent?.value || '';
+  const newPw = wpcNew?.value || '';
+  const confirmPw = wpcConfirm?.value || '';
+
+  if (newPw.length < 10) {
+    setWorkerPasswordStatus('New password must be at least 10 characters.');
     return;
   }
 
-  const password = workerNewPassword?.value || '';
-  const confirmation = workerConfirmPassword?.value || '';
-
-  if (password.length < 8) {
-    setWorkerPasswordStatus('Use at least 8 characters.');
-    return;
-  }
-
-  if (password !== confirmation) {
+  if (newPw !== confirmPw) {
     setWorkerPasswordStatus('Passwords do not match.');
     return;
   }
@@ -2276,20 +2296,29 @@ workerPasswordForm?.addEventListener('submit', async (event) => {
   setWorkerPasswordStatus('Updating password...');
 
   try {
-    const { worker_password_hash, worker_password_salt } = await passwordFields(password);
-    const { error } = await workerDb.rpc('worker_change_password', {
+    const { error } = await workerDb.rpc('worker_change_password_secure', {
       p_token: SESSION_WORKER_TOKEN,
-      p_hash: worker_password_hash,
-      p_salt: worker_password_salt,
+      p_current_password: currentPw,
+      p_new_password: newPw,
     });
 
     if (error) throw error;
 
-    workerPasswordForm.reset();
-    setWorkerPasswordStatus('Password updated.');
-  } catch (error) {
-    console.error('Worker password update failed:', error);
-    setWorkerPasswordStatus('Could not update password. Ask admin to reset it.');
+    sessionStorage.removeItem('shiftfuel_worker_must_change_pw');
+    passwordModalForced = false;
+    workerPasswordChangeForm.reset();
+    setWorkerPasswordStatus('Password updated successfully.');
+    setTimeout(() => closePasswordModal(), 1500);
+  } catch (err) {
+    const msg = err?.message || '';
+    if (msg.includes('INVALID_CURRENT_PASSWORD')) {
+      setWorkerPasswordStatus('Current password is incorrect.');
+    } else if (msg.includes('PASSWORD_TOO_SHORT')) {
+      setWorkerPasswordStatus('New password must be at least 10 characters.');
+    } else {
+      console.error('Worker password update failed:', err);
+      setWorkerPasswordStatus('Could not update password. Contact your admin.');
+    }
   }
 });
 

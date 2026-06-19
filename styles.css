@@ -970,28 +970,81 @@ textarea:focus {
 }
 
 .site-footer {
-  padding: 26px clamp(20px, 5vw, 72px);
+  padding: 32px clamp(20px, 5vw, 72px);
   color: var(--muted);
   border-top: 1px solid var(--line);
+  font-size: 0.85rem;
 }
 
-.site-footer p {
+.footer-main {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
+  flex-wrap: wrap;
+}
+
+.footer-copy {
   margin: 0;
+  font-size: 0.85rem;
+  color: var(--muted);
 }
 
-.footer-internal-links {
-  margin-top: 10px;
-  font-size: 0.78rem;
-  opacity: 0.65;
+.footer-groups {
+  display: flex;
+  gap: 40px;
+  flex-wrap: wrap;
 }
 
-.footer-internal-links a {
+.footer-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.footer-group-label {
+  margin: 0;
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+  opacity: 0.6;
+}
+
+.footer-group a {
   color: var(--muted);
   text-decoration: none;
-  margin-right: 16px;
+  font-size: 0.82rem;
+  opacity: 0.75;
 }
 
-.footer-internal-links a:hover {
+.footer-group a:hover {
+  opacity: 1;
+  text-decoration: underline;
+}
+
+/* ─── Portal header (worker-login, admin-login) ──────────────────────────── */
+.portal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px clamp(20px, 5vw, 72px);
+  background: rgba(245, 247, 244, 0.94);
+  border-bottom: 1px solid var(--line);
+  backdrop-filter: blur(12px);
+}
+
+.portal-back-link {
+  font-size: 0.85rem;
+  color: var(--muted);
+  text-decoration: none;
+  opacity: 0.75;
+}
+
+.portal-back-link:hover {
+  opacity: 1;
   text-decoration: underline;
 }
 
@@ -3041,6 +3094,31 @@ textarea:focus {
 .modal-body {
   padding: 18px 22px 22px;
   overflow-y: auto;
+}
+
+.temp-password-display {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 14px 0 8px;
+  padding: 12px 16px;
+  background: var(--surface-soft, #f5f5f5);
+  border-radius: 8px;
+  border: 1px solid var(--line);
+}
+
+.temp-password-display code {
+  flex: 1;
+  font-family: monospace;
+  font-size: 1.1rem;
+  letter-spacing: 0.05em;
+  word-break: break-all;
+}
+
+.fuel-pricing-updated {
+  font-size: 0.78rem;
+  color: var(--muted);
+  margin: 4px 0 0;
 }
 
 /* ─── Admin hero stats ──────────────────────────────────────────── */
