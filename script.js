@@ -209,9 +209,11 @@ const todayValue = formatDateInputValue(new Date());
 const maxServiceDate = new Date();
 maxServiceDate.setMonth(maxServiceDate.getMonth() + 3);
 const maxServiceDateValue = formatDateInputValue(maxServiceDate);
-serviceDate.min = todayValue;
-serviceDate.max = maxServiceDateValue;
-serviceDate.value = todayValue;
+
+const serviceDatePicker = window.ShiftFuelDatePicker?.attach(
+  document.getElementById('service-date-picker'),
+  { min: todayValue, max: maxServiceDateValue, value: todayValue }
+);
 
 const currentYear = new Date().getFullYear() + 1;
 
@@ -1490,21 +1492,9 @@ quickInspection.addEventListener("change", () => {
 });
 returnTime.addEventListener("change", updateServiceAvailability);
 returnTime.addEventListener("change", updateReturningConfirmationText);
-function validateServiceDate() {
-  const val = serviceDate.value;
-  const errorEl = document.querySelector('#service-date-error');
-  function showDateError(msg) {
-    serviceDate.value = '';
-    if (errorEl) { errorEl.textContent = msg; errorEl.hidden = false; }
-  }
-  if (errorEl) errorEl.hidden = true;
-  if (!val) return;
-  if (val < todayValue) { showDateError('Past dates are not available.'); return; }
-  if (val > maxServiceDateValue) { showDateError('Choose a service date within the next 3 months.'); return; }
-}
 
-serviceDate.addEventListener("change", () => { validateServiceDate(); refreshBookedReturnSlots(); });
-serviceDate.addEventListener("input", validateServiceDate);
+// Picker enforces min/max at selection time; this listener refreshes return slots on date change.
+serviceDate.addEventListener("change", refreshBookedReturnSlots);
 fuelType.addEventListener("change", updateEstimate);
 fuelEstimate.addEventListener("change", updateEstimate);
 vehicleYear.addEventListener("change", loadModelsForSelection);
@@ -1644,19 +1634,13 @@ loadFuelPricesFromDb();
 form.addEventListener("submit", async (event) => {
   event.preventDefault();
 
-  if (serviceDate.value < todayValue) {
-    serviceDate.setCustomValidity("Choose today or a future date.");
-    serviceDate.reportValidity();
+  const dateErrorEl = document.querySelector('#service-date-error');
+  if (!serviceDate.value || serviceDate.value < todayValue || serviceDate.value > maxServiceDateValue) {
+    if (dateErrorEl) { dateErrorEl.textContent = 'Please select a valid service date.'; dateErrorEl.hidden = false; }
+    document.getElementById('service-date-picker')?.querySelector('.sfp-trigger')?.focus();
     return;
   }
-
-  if (serviceDate.value > maxServiceDateValue) {
-    serviceDate.setCustomValidity("Choose a date within the next 3 months.");
-    serviceDate.reportValidity();
-    return;
-  }
-
-  serviceDate.setCustomValidity("");
+  if (dateErrorEl) dateErrorEl.hidden = true;
 
   if (bookedReturnSlots.has(returnTime.value)) {
     returnTime.setCustomValidity("That time slot was already booked. Choose another available time.");
@@ -1733,9 +1717,7 @@ async function saveBooking(payload) {
       returningCustomerResults.innerHTML = "";
     }
     resetReturningConfirmation();
-    serviceDate.min = todayValue;
-    serviceDate.max = maxServiceDateValue;
-    serviceDate.value = todayValue;
+    serviceDatePicker?.setValue(todayValue);
     resetModels();
     updateServiceControls();
     await refreshBookedReturnSlots();

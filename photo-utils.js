@@ -35,11 +35,14 @@ window.ShiftFuelPhoto = (() => {
     document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !modal.hidden) closePhotoModal(); });
   }
 
-  function openPhotoModal({ photo_url, name = '' }) {
+  // mode: 'profile' (circular crop) | 'service' (rectangular, object-fit: contain)
+  function openPhotoModal({ photo_url, name = '', mode = 'profile' }) {
     if (!modal) initPhotoModal();
     const img = modal.querySelector('.worker-photo-modal-img');
     const placeholder = modal.querySelector('.worker-photo-modal-placeholder');
     const nameEl = modal.querySelector('.worker-photo-modal-name');
+    const frame = modal.querySelector('.worker-photo-modal-image-frame');
+    const content = modal.querySelector('.worker-photo-modal-content');
 
     if (photo_url) {
       img.src = photo_url;
@@ -51,6 +54,11 @@ window.ShiftFuelPhoto = (() => {
       img.hidden = true;
       placeholder.hidden = false;
     }
+
+    // Toggle between profile (circular) and service-photo (rectangular) styling.
+    const isService = mode === 'service';
+    frame.classList.toggle('worker-photo-modal-image-frame--service', isService);
+    content.classList.toggle('worker-photo-modal-content--service', isService);
 
     nameEl.textContent = name;
     modal.hidden = false;
@@ -147,12 +155,17 @@ window.ShiftFuelPhoto = (() => {
   document.addEventListener('click', (event) => {
     const frame = event.target.closest('[data-open-worker-photo]');
     if (frame) {
-      openPhotoModal({ photo_url: frame.dataset.photoUrl || '', name: frame.dataset.photoName || '' });
+      // Profile photo — circular modal.
+      openPhotoModal({ photo_url: frame.dataset.photoUrl || '', name: frame.dataset.photoName || '', mode: 'profile' });
       return;
     }
     const card = event.target.closest('[data-lightbox-src]');
     if (card) {
-      openPhotoModal({ photo_url: card.dataset.lightboxSrc || '', name: card.dataset.lightboxLabel || '' });
+      // If the page has its own #photo-lightbox (track.js), let it handle this.
+      // Otherwise open via our shared modal in rectangular/service mode.
+      if (!document.getElementById('photo-lightbox')) {
+        openPhotoModal({ photo_url: card.dataset.lightboxSrc || '', name: card.dataset.lightboxLabel || '', mode: 'service' });
+      }
     }
   });
 
@@ -161,13 +174,15 @@ window.ShiftFuelPhoto = (() => {
     const frame = event.target.closest('[data-open-worker-photo]');
     if (frame) {
       event.preventDefault();
-      openPhotoModal({ photo_url: frame.dataset.photoUrl || '', name: frame.dataset.photoName || '' });
+      openPhotoModal({ photo_url: frame.dataset.photoUrl || '', name: frame.dataset.photoName || '', mode: 'profile' });
       return;
     }
     const card = event.target.closest('[data-lightbox-src]');
     if (card) {
       event.preventDefault();
-      openPhotoModal({ photo_url: card.dataset.lightboxSrc || '', name: card.dataset.lightboxLabel || '' });
+      if (!document.getElementById('photo-lightbox')) {
+        openPhotoModal({ photo_url: card.dataset.lightboxSrc || '', name: card.dataset.lightboxLabel || '', mode: 'service' });
+      }
     }
   });
 

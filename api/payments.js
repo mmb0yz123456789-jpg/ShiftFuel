@@ -31,7 +31,7 @@ function getStripe() {
 
 async function markRequestComplete(db, requestId, paymentIntentId) {
   const { error } = await db.from('service_requests').update({
-    status: 'complete',
+    status: 'awaiting_key_return',
     payment_status: 'captured',
     payment_intent_id: paymentIntentId,
     updated_at: new Date().toISOString(),
@@ -49,7 +49,7 @@ async function markRequestComplete(db, requestId, paymentIntentId) {
     .eq('id', requestId)
     .maybeSingle();
 
-  if (vErr || !verified || verified.status !== 'complete' || verified.payment_status !== 'captured') {
+  if (vErr || !verified || verified.status !== 'awaiting_key_return' || verified.payment_status !== 'captured') {
     console.error('[payments] post-write verify failed for request', requestId, JSON.stringify(verified), vErr?.message);
     throw new Error('DB_UPDATE_FAILED');
   }
@@ -505,6 +505,10 @@ async function handleCapturePayment(body, res) {
     if (amount_cents && amount_cents >= 50) captureParams.amount_to_capture = Math.round(amount_cents);
     const intent = await stripe.paymentIntents.capture(payment_intent_id, captureParams);
     console.log('[payments/capture_payment] Captured', intent.id, 'for request', request_id);
+
+    // Update DB: captured payment moves request to awaiting key return.
+    await markRequestComplete(db, request_id, payment_intent_id);
+
     return res.status(200).json({ status: intent.status, amount_captured: intent.amount_captured });
   } catch (err) {
     if (err.code === 'payment_intent_unexpected_state') {
@@ -554,6 +558,47 @@ async function handleRefund(body, res) {
   }
 }
 
+async function handleMarkKeysReturned(body, res) {
+  const { request_id, caller_token, key_returned_to_type, key_returned_to_name_or_location, key_returned_by } = body;
+
+  if (!caller_token) return res.status(401).json({ error: 'Authorization required' });
+  const authorized = await verifyAnyStaffToken(caller_token);
+  if (!authorized) return res.status(403).json({ error: 'Session expired or invalid. Please log in again.' });
+
+  if (!request_id || !key_returned_to_type || !key_returned_to_name_or_location) {
+    return res.status(400).json({ error: 'request_id, key_returned_to_type, and key_returned_to_name_or_location are required' });
+  }
+
+  const db = getSupabaseAdmin();
+  const { data: request, error: reqErr } = await db
+    .from('service_requests')
+    .select('id, status')
+    .eq('id', request_id)
+    .maybeSingle();
+
+  if (reqErr || !request) return res.status(404).json({ error: 'Request not found' });
+  if (request.status !== 'awaiting_key_return') {
+    return res.status(400).json({ error: 'Request is not awaiting key return' });
+  }
+
+  const { error: updateErr } = await db.from('service_requests').update({
+    status: 'complete',
+    key_returned_to_type,
+    key_returned_to_name_or_location,
+    key_returned_at: new Date().toISOString(),
+    key_returned_by: key_returned_by || null,
+    updated_at: new Date().toISOString(),
+  }).eq('id', request_id);
+
+  if (updateErr) {
+    console.error('[payments/mark_keys_returned] DB error:', updateErr.message);
+    return res.status(500).json({ error: 'Could not mark keys as returned. Please try again.' });
+  }
+
+  console.log('[payments/mark_keys_returned] Keys returned for request', request_id);
+  return res.status(200).json({ status: 'complete' });
+}
+
 // ── Main router ───────────────────────────────────────────────────────────────
 
 const HANDLERS = {
@@ -565,6 +610,7 @@ const HANDLERS = {
   cancel_payment:        handleCancelPayment,
   capture_payment:       handleCapturePayment,
   refund:                handleRefund,
+  mark_keys_returned:    handleMarkKeysReturned,
 };
 
 module.exports = async (req, res) => {

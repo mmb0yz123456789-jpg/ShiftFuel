@@ -304,7 +304,9 @@
                   </label>
                   <label>
                     <span>Service date <span class="required-mark">Required</span></span>
-                    <input id="service-date" name="serviceDate" type="date" required>
+                    <div id="service-date-picker" class="sfp-host">
+                      <input type="hidden" id="service-date" name="serviceDate">
+                    </div>
                     <span class="field-help">Choose a service date within the next 3 months. Past dates are not available.</span>
                     <span id="service-date-error" class="field-error" role="alert" aria-live="polite" hidden></span>
                   </label>
@@ -429,6 +431,7 @@
 	<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 	<script src="supabase-client.js"></script>
 
+    <script src="date-picker.js"></script>
     <script src="script.js"></script>
     <script defer src="/_vercel/insights/script.js"></script>
     <script defer src="/_vercel/speed-insights/script.js"></script>
