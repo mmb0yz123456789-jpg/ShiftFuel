@@ -2051,6 +2051,20 @@ textarea:focus {
   color: #555;
 }
 
+.return-request-banner {
+  background: #fff0f0;
+  border: 1px solid #e88;
+  border-left: 4px solid #c0392b;
+  border-radius: 6px;
+  padding: 14px 16px;
+  margin: 12px 0;
+}
+
+.return-request-banner h4 {
+  margin: 0 0 6px;
+  color: #8a2c1f;
+}
+
 .service-package-details {
   margin: 12px 0;
   display: grid;
@@ -2425,8 +2439,13 @@ textarea:focus {
   margin: 0;
 }
 
-.workflow-step-note {
-  align-self: center;
+.next-action-label {
+  margin: 0;
+  color: var(--text);
+  font-size: 0.93rem;
+}
+
+.next-action-label strong {
   color: var(--muted);
   font-weight: 700;
 }

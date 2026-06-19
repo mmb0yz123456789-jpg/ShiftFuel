@@ -13,6 +13,9 @@
  *   cancel_payment           – Admin/worker: void an authorized (uncaptured) hold
  *   capture_payment          – Admin: manually capture an authorized PI
  *   refund                   – Admin: refund a captured payment
+ *   mark_keys_returned       – Admin/worker: record key hand-back and complete the request
+ *   customer_request_return  – Customer: request the vehicle be returned after key receipt (no free cancel)
+ *   resolve_return_request   – Admin: waive fee / charge $15 fee / continue service for a return request
  */
 
 const Stripe = require('stripe');
@@ -109,7 +112,8 @@ async function handleCreateCustomerFinal(body, res) {
   if (!phoneMatch || !emailMatch) {
     return res.status(403).json({ error: 'Your phone and email do not match this request' });
   }
-  if (request.status !== 'pending_customer_payment') {
+  const awaitingCustomerPayment = ['pending_customer_payment', 'payment_issue', 'authorization_too_low'];
+  if (!awaitingCustomerPayment.includes(request.status)) {
     return res.status(400).json({ error: 'This request is not awaiting customer payment' });
   }
   if (request.payment_intent_id && request.payment_status === 'authorized') {
@@ -174,8 +178,9 @@ async function handleCustomerCapture(body, res) {
     return res.status(403).json({ error: 'Your phone and email do not match this request' });
   }
 
-  if (request.status !== 'pending_customer_payment') {
-    if (request.status === 'complete' && request.payment_status === 'captured') {
+  const awaitingCustomerPayment = ['pending_customer_payment', 'payment_issue', 'authorization_too_low'];
+  if (!awaitingCustomerPayment.includes(request.status)) {
+    if (['complete', 'awaiting_key_return'].includes(request.status) && request.payment_status === 'captured') {
       return res.status(200).json({ status: 'already_complete' });
     }
     return res.status(400).json({ error: 'This request is not awaiting customer payment' });
@@ -294,9 +299,10 @@ async function handleCustomerCancel(body, res) {
     return res.status(403).json({ error: 'Contact details do not match this request' });
   }
 
-  const cancelableStatuses = ['pending', 'received', 'pending_review', 'pending_customer_info', 'confirmed', 'assigned', 'en_route'];
+  // Free cancellation is only allowed before the worker has received the keys.
+  const cancelableStatuses = ['pending', 'request_received', 'pending_review', 'pending_customer_info', 'accepted', 'confirmed', 'assigned'];
   if (!cancelableStatuses.includes(request.status)) {
-    return res.status(400).json({ error: `This request cannot be canceled at status "${request.status}". Contact ShiftFuel for help.` });
+    return res.status(400).json({ error: `This request cannot be canceled for free at status "${request.status}". Use the "Request vehicle return" option instead.` });
   }
 
   const timestamp = new Date().toISOString();
@@ -326,6 +332,8 @@ async function handleCustomerCancel(body, res) {
   const updateData = {
     status: 'customer_canceled',
     cancellation_reason: reason.trim(),
+    canceled_at: timestamp,
+    canceled_by: 'customer',
     updated_at: timestamp,
   };
   if (paymentStatus !== request.payment_status) updateData.payment_status = paymentStatus;
@@ -380,11 +388,11 @@ async function handleWorkerCapture(body, res) {
       return res.status(200).json({ status: 'succeeded', already_captured: true });
     }
     if (intent.status !== 'requires_capture') {
-      await db.from('service_requests').update({ payment_status: 'capture_failed', status: 'pending_customer_payment', updated_at: new Date().toISOString() }).eq('id', request_id);
+      await db.from('service_requests').update({ payment_status: 'capture_failed', status: 'payment_issue', updated_at: new Date().toISOString() }).eq('id', request_id);
       return res.status(400).json({ capture_failed: true, error: 'Payment authorization has expired or is no longer valid. The customer will need to provide a new payment method.' });
     }
     if (intent.amount_capturable < amountToCaptureInCents) {
-      await db.from('service_requests').update({ payment_status: 'capture_failed', status: 'pending_customer_payment', updated_at: new Date().toISOString() }).eq('id', request_id);
+      await db.from('service_requests').update({ payment_status: 'capture_failed', status: 'authorization_too_low', updated_at: new Date().toISOString() }).eq('id', request_id);
       return res.status(400).json({ capture_failed: true, error: `The authorized amount ($${(intent.amount_capturable / 100).toFixed(2)}) is less than the final total ($${request.final_total.toFixed(2)}). The customer will need to pay the difference.` });
     }
     const captured = await stripe.paymentIntents.capture(piId, { amount_to_capture: amountToCaptureInCents });
@@ -405,7 +413,7 @@ async function handleWorkerCapture(body, res) {
       } catch (_) {}
     }
     console.error('[payments/worker_capture] Stripe error:', err.message);
-    await db.from('service_requests').update({ payment_status: 'capture_failed', status: 'pending_customer_payment', updated_at: new Date().toISOString() }).eq('id', request_id).catch(() => {});
+    await db.from('service_requests').update({ payment_status: 'capture_failed', status: 'payment_issue', updated_at: new Date().toISOString() }).eq('id', request_id).catch(() => {});
     return res.status(500).json({ capture_failed: true, error: 'Payment capture failed. The customer will be prompted to update their payment method.' });
   }
 }
@@ -515,7 +523,8 @@ async function handleCapturePayment(body, res) {
       return res.status(200).json({ status: 'already_finalized' });
     }
     console.error('[payments/capture_payment] Error:', err.message);
-    return res.status(500).json({ error: 'Payment capture failed. Please try again.' });
+    await db.from('service_requests').update({ payment_status: 'capture_failed', status: 'payment_issue', updated_at: new Date().toISOString() }).eq('id', request_id).catch(() => {});
+    return res.status(500).json({ capture_failed: true, error: 'Payment capture failed. The customer will be prompted to update their payment method.' });
   }
 }
 
@@ -599,6 +608,174 @@ async function handleMarkKeysReturned(body, res) {
   return res.status(200).json({ status: 'complete' });
 }
 
+async function handleCustomerRequestReturn(body, res) {
+  const { request_id, phone, email } = body;
+
+  if (!request_id || (!phone && !email)) {
+    return res.status(400).json({ error: 'request_id and phone or email are required' });
+  }
+
+  const db = getSupabaseAdmin();
+  const { data: request, error: reqErr } = await db
+    .from('service_requests')
+    .select('id, status, customer_phone, customer_email')
+    .eq('id', request_id)
+    .maybeSingle();
+
+  if (reqErr || !request) return res.status(404).json({ error: 'Request not found' });
+
+  const phoneMatch = phone && cleanPhone(phone) && cleanPhone(phone) === cleanPhone(request.customer_phone);
+  const emailMatch = email && email.trim().toLowerCase() === (request.customer_email || '').toLowerCase();
+  if (!phoneMatch && !emailMatch) {
+    return res.status(403).json({ error: 'Contact details do not match this request' });
+  }
+
+  const freeCancelStatuses = ['pending', 'request_received', 'pending_review', 'pending_customer_info', 'accepted', 'confirmed', 'assigned'];
+  if (freeCancelStatuses.includes(request.status)) {
+    return res.status(400).json({ error: 'This request can still be canceled for free. Use Cancel request instead.' });
+  }
+
+  const blockedStatuses = ['complete', 'denied', 'customer_canceled', 'canceled', 'unable_to_complete', 'auto_reversed', 'closed_no_charge', 'canceled_return_completed', 'return_requested', 'customer_return_requested'];
+  if (blockedStatuses.includes(request.status)) {
+    return res.status(400).json({ error: `A vehicle return cannot be requested at status "${request.status}". Contact ShiftFuel for help.` });
+  }
+
+  const timestamp = new Date().toISOString();
+  const { error: updateErr } = await db.from('service_requests').update({
+    status: 'return_requested',
+    pre_return_request_status: request.status,
+    return_requested_at: timestamp,
+    return_requested_by: 'customer',
+    return_request_reason: 'customer_requested_after_key_receipt',
+    updated_at: timestamp,
+  }).eq('id', request_id);
+
+  if (updateErr) {
+    console.error('[payments/customer_request_return] DB update failed:', updateErr.message);
+    return res.status(500).json({ error: 'Could not submit your return request. Please contact ShiftFuel.' });
+  }
+
+  console.log('[payments/customer_request_return] Return requested for request', request_id);
+  return res.status(200).json({ success: true, status: 'return_requested' });
+}
+
+async function handleResolveReturnRequest(body, res) {
+  const { request_id, caller_token, decision } = body; // decision: 'waive' | 'charge_fee' | 'continue_service'
+
+  if (!caller_token) return res.status(401).json({ error: 'Authorization required' });
+  const isAdmin = await verifyAdminToken(caller_token);
+  if (!isAdmin) return res.status(403).json({ error: 'Admin access required' });
+
+  if (!request_id || !decision) {
+    return res.status(400).json({ error: 'request_id and decision are required' });
+  }
+  if (!['waive', 'charge_fee', 'continue_service'].includes(decision)) {
+    return res.status(400).json({ error: 'Invalid decision' });
+  }
+
+  const db = getSupabaseAdmin();
+  const { data: request, error: reqErr } = await db
+    .from('service_requests')
+    .select('id, status, payment_intent_id, payment_status, pre_return_request_status')
+    .eq('id', request_id)
+    .maybeSingle();
+
+  if (reqErr || !request) return res.status(404).json({ error: 'Request not found' });
+  if (request.status !== 'return_requested') {
+    return res.status(400).json({ error: 'Request is not awaiting a return-request decision' });
+  }
+
+  const timestamp = new Date().toISOString();
+
+  if (decision === 'continue_service') {
+    const { error: updateErr } = await db.from('service_requests').update({
+      status: request.pre_return_request_status || 'key_received',
+      cancellation_fee_decision_by: 'admin',
+      cancellation_fee_decision_at: timestamp,
+      updated_at: timestamp,
+    }).eq('id', request_id);
+    if (updateErr) {
+      console.error('[payments/resolve_return_request] DB update failed:', updateErr.message);
+      return res.status(500).json({ error: 'Could not update the request. Please try again.' });
+    }
+    return res.status(200).json({ success: true, status: request.pre_return_request_status || 'key_received' });
+  }
+
+  const alreadyFinalized = ['voided', 'authorization_released', 'refunded', 'captured', 'cancellation_fee_paid', 'payment_release_failed'];
+
+  if (decision === 'waive') {
+    let paymentStatus = request.payment_status;
+
+    if (request.payment_intent_id && !alreadyFinalized.includes(request.payment_status)) {
+      try {
+        const stripe = getStripe();
+        await stripe.paymentIntents.cancel(request.payment_intent_id);
+        paymentStatus = 'authorization_released';
+      } catch (err) {
+        if (err.code === 'payment_intent_unexpected_state') {
+          paymentStatus = 'authorization_released';
+        } else {
+          console.error('[payments/resolve_return_request] Failed to release hold:', err.message);
+          return res.status(500).json({ error: 'Payment hold could not be released automatically. Check Stripe.' });
+        }
+      }
+    }
+
+    const { error: updateErr } = await db.from('service_requests').update({
+      status: 'canceled_return_completed',
+      payment_status: paymentStatus,
+      captured_amount: 0,
+      cancellation_fee_applied: false,
+      cancellation_fee_waived: true,
+      cancellation_fee_decision_by: 'admin',
+      cancellation_fee_decision_at: timestamp,
+      authorization_released_at: timestamp,
+      updated_at: timestamp,
+    }).eq('id', request_id);
+
+    if (updateErr) {
+      console.error('[payments/resolve_return_request] DB update failed:', updateErr.message);
+      return res.status(500).json({ error: 'Could not update the request. Please try again.' });
+    }
+    return res.status(200).json({ success: true, status: 'canceled_return_completed', payment_status: paymentStatus });
+  }
+
+  // decision === 'charge_fee'
+  if (!request.payment_intent_id) {
+    return res.status(400).json({ error: 'No payment authorization exists to charge the fee against.' });
+  }
+  if (alreadyFinalized.includes(request.payment_status)) {
+    return res.status(400).json({ error: 'Payment was already finalized. Use the refund/review flow instead.' });
+  }
+
+  try {
+    const stripe = getStripe();
+    const intent = await stripe.paymentIntents.capture(request.payment_intent_id, { amount_to_capture: 1500 });
+    console.log('[payments/resolve_return_request] Captured $15 fee for request', request_id);
+
+    const { error: updateErr } = await db.from('service_requests').update({
+      status: 'canceled_return_completed',
+      payment_status: 'cancellation_fee_paid',
+      captured_amount: 15.00,
+      cancellation_fee_applied: true,
+      cancellation_fee_amount: 15.00,
+      cancellation_fee_waived: false,
+      cancellation_fee_decision_by: 'admin',
+      cancellation_fee_decision_at: timestamp,
+      updated_at: timestamp,
+    }).eq('id', request_id);
+
+    if (updateErr) {
+      console.error('[payments/resolve_return_request] DB update failed after charge:', updateErr.message);
+      return res.status(200).json({ success: true, warning: 'Fee charged in Stripe but database update failed. Contact support.' });
+    }
+    return res.status(200).json({ success: true, status: 'canceled_return_completed', amount_captured: intent.amount_captured });
+  } catch (err) {
+    console.error('[payments/resolve_return_request] Fee capture failed:', err.message);
+    return res.status(500).json({ error: 'Cancellation fee could not be processed. Please review payment status.' });
+  }
+}
+
 // ── Main router ───────────────────────────────────────────────────────────────
 
 const HANDLERS = {
@@ -611,6 +788,8 @@ const HANDLERS = {
   capture_payment:       handleCapturePayment,
   refund:                handleRefund,
   mark_keys_returned:    handleMarkKeysReturned,
+  customer_request_return: handleCustomerRequestReturn,
+  resolve_return_request:  handleResolveReturnRequest,
 };
 
 module.exports = async (req, res) => {
