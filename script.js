@@ -1364,25 +1364,11 @@ function getBookingPayload() {
   };
 }
 
-function missingColumnName(error) {
-  const match = String(error?.message || "").match(/'([^']+)' column/);
-  return match?.[1] || "";
-}
-
 function isMissingRpcError(error) {
   const message = String(error?.message || "").toLowerCase();
   return ["PGRST202", "PGRST204", "42883"].includes(error?.code)
     || message.includes("could not find the function")
     || (message.includes("function") && message.includes("does not exist"));
-}
-
-function addScheduleToNotes(row, payload) {
-  const scheduleNote = `Service date: ${payload.request.serviceDate || "Not set"}; desired return time: ${payload.request.desiredReturnTime || "Not set"}`;
-  if (String(row.notes || "").includes(scheduleNote)) {
-    return;
-  }
-
-  row.notes = row.notes ? `${row.notes}\n${scheduleNote}` : scheduleNote;
 }
 
 async function uploadApplicantResume(file, applicantName) {
@@ -1453,35 +1439,54 @@ function getServiceRequestInsert(payload) {
 }
 
 async function insertServiceRequest(supabase, payload) {
+  // Booking creation now happens server-side (api/payments.js,
+  // action: create_authorized_booking) after Stripe authorization succeeds.
+  // This verifies the PaymentIntent and inserts with the service-role key,
+  // since production RLS no longer allows a direct anon insert with
+  // customer-controlled status/payment fields.
   const row = getServiceRequestInsert(payload);
+  const paymentIntentId = payload.payment.paymentIntentId;
 
-  for (let attempt = 0; attempt < 20; attempt += 1) {
-    const { data, error } = await supabase
-      .from("service_requests")
-      .insert(row)
-      .select();
-
-    if (!error) {
-      return { data, error: null };
-    }
-
-    const column = missingColumnName(error);
-
-    if (error.code !== "PGRST204" || !column || !(column in row)) {
-      return { data: null, error };
-    }
-
-    if (column === "service_date" || column === "desired_return_time") {
-      addScheduleToNotes(row, payload);
-    }
-
-    delete row[column];
+  if (!paymentIntentId) {
+    return { data: null, error: new Error('Missing payment authorization. Please try again.') };
   }
 
-  return {
-    data: null,
-    error: new Error("Could not save booking after removing unsupported Supabase columns."),
-  };
+  const amountCents = Math.max(Math.round((payload.payment.estimatedAmount || 0) * 100), 50);
+
+  // These are always set server-side — strip any local copies before sending.
+  delete row.status;
+  delete row.payment_status;
+  delete row.payment_intent_id;
+
+  try {
+    const res = await fetch('/api/payments', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'create_authorized_booking',
+        payment_intent_id: paymentIntentId,
+        amount_cents: amountCents,
+        ...row,
+      }),
+    });
+    const data = await res.json().catch(() => ({}));
+
+    if (!res.ok) {
+      console.error('[insertServiceRequest] create_authorized_booking failed:', data.error);
+      return {
+        data: null,
+        error: new Error(data.error || 'We could not finish saving your booking after payment authorization. Please try again or contact ShiftFuel.'),
+      };
+    }
+
+    return { data: [data], error: null };
+  } catch (err) {
+    console.error('[insertServiceRequest] Network error:', err);
+    return {
+      data: null,
+      error: new Error('We could not finish saving your booking after payment authorization. Please try again or contact ShiftFuel.'),
+    };
+  }
 }
 
 service.addEventListener("change", updateServiceControls);
@@ -1725,9 +1730,10 @@ async function saveBooking(payload) {
     updateServiceControls();
     await refreshBookedReturnSlots();
   } catch (err) {
-    console.error("Supabase save error:", JSON.stringify(err, null, 2), err);
-    const msg = err?.message || err?.details || err?.hint || JSON.stringify(err);
-    statusMessage.textContent = `Could not save booking: ${msg}`;
+    console.error("Booking save error:", err);
+    // err.message is already a customer-safe string set by insertServiceRequest —
+    // raw Supabase/RLS error details are logged above, never shown here.
+    statusMessage.textContent = err?.message || "We could not finish saving your booking after payment authorization. Please try again or contact ShiftFuel.";
   }
 }
 
