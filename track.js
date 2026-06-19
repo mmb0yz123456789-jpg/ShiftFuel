@@ -2017,10 +2017,11 @@ trackingResult.addEventListener("click", async (event) => {
   let cancelWarning = null;
 
   try {
-    const res = await fetch('/api/customer-cancel', {
+    const res = await fetch('/api/payments', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
+        action: 'customer_cancel',
         request_id: requestId,
         phone: verifiedTrackingContact.phone,
         email: verifiedTrackingContact.email,
@@ -2116,10 +2117,11 @@ async function handleConfirmAndPay(button) {
   try {
     // ── Case A: pre-authorized PaymentIntent exists ──────────────────────────
     if (request.payment_intent_id) {
-      const res = await fetch('/api/customer-capture', {
+      const res = await fetch('/api/payments', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          action: 'customer_capture',
           request_id: requestId,
           phone,
           email,
@@ -2151,10 +2153,10 @@ async function handleConfirmAndPay(button) {
       }
 
       // Create a PaymentIntent server-side — amount comes from DB, not frontend.
-      const piRes = await fetch('/api/create-customer-final-payment', {
+      const piRes = await fetch('/api/payments', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ request_id: requestId, phone, email }),
+        body: JSON.stringify({ action: 'create_customer_final', request_id: requestId, phone, email }),
       });
       const piData = await piRes.json().catch(() => ({}));
       if (!piRes.ok) {
@@ -2176,10 +2178,11 @@ async function handleConfirmAndPay(button) {
       }
 
       // Notify server: record the new PI and mark complete.
-      const captureRes = await fetch('/api/customer-capture', {
+      const captureRes = await fetch('/api/payments', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          action: 'customer_capture',
           request_id: requestId,
           phone,
           email,
@@ -2341,10 +2344,10 @@ async function _handleCbModalAuthorize() {
 
     if (stripe && _cbModalCard?.cardElement) {
       const { authAmountCents, serviceLabel, customerName, customerEmail } = _cbModalMeta;
-      const piRes = await fetch('/api/create-payment-intent', {
+      const piRes = await fetch('/api/payments', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ amount_cents: authAmountCents, customer_name: customerName, customer_email: customerEmail, service_label: serviceLabel }),
+        body: JSON.stringify({ action: 'create_intent', amount_cents: authAmountCents, customer_name: customerName, customer_email: customerEmail, service_label: serviceLabel }),
       });
       const piData = await piRes.json();
       if (!piRes.ok) throw new Error(piData.error || 'Could not create payment authorization.');

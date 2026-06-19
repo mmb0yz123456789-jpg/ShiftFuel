@@ -2537,12 +2537,12 @@ async function voidPaymentHold(request) {
   const skipRelease = ['voided', 'authorization_released', 'refunded', 'auto_reversed', 'payment_release_failed', 'captured', 'not_started', null, undefined];
   if (!request?.payment_intent_id || skipRelease.includes(request.payment_status)) return;
   try {
-    await fetch('/api/cancel-payment', {
+    await fetch('/api/payments', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ payment_intent_id: request.payment_intent_id, request_id: request.id, caller_token: adminToken() }),
+      body: JSON.stringify({ action: 'cancel_payment', payment_intent_id: request.payment_intent_id, request_id: request.id, caller_token: adminToken() }),
     });
-    // cancel-payment updates payment_status in DB itself; no second write needed.
+    // cancel_payment updates payment_status in DB itself; no second write needed.
   } catch (err) {
     console.error('Failed to void payment hold:', err.message);
   }
@@ -2558,10 +2558,10 @@ async function retryReleaseHold(button) {
   button.textContent = 'Releasing...';
 
   try {
-    const res = await fetch('/api/cancel-payment', {
+    const res = await fetch('/api/payments', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ payment_intent_id: pi, request_id: id, caller_token: adminToken() }),
+      body: JSON.stringify({ action: 'cancel_payment', payment_intent_id: pi, request_id: id, caller_token: adminToken() }),
     });
     const data = await res.json().catch(() => ({}));
     if (res.ok) {
@@ -2605,7 +2605,7 @@ async function saveDenyReason(button) {
   const notes = request.notes ? `${request.notes}\n${note}` : note;
 
   // Handle payment reversal before changing status.
-  // /api/cancel-payment and /api/refund-payment update payment_status in the DB themselves.
+  // /api/payments and /api/payments update payment_status in the DB themselves.
   // We just need to know what the resulting payment_status is so we can log it in notes.
   let paymentStatus = request.payment_status;
   const skipRelease = ['voided', 'authorization_released', 'refunded', 'auto_reversed', 'payment_release_failed', 'not_started', null, undefined];
@@ -2614,10 +2614,10 @@ async function saveDenyReason(button) {
     if (request.payment_status === 'captured') {
       // Issue a full refund for already-captured payments.
       try {
-        const res = await fetch('/api/refund-payment', {
+        const res = await fetch('/api/payments', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ payment_intent_id: request.payment_intent_id, request_id: request.id, caller_token: adminToken() }),
+          body: JSON.stringify({ action: 'refund', payment_intent_id: request.payment_intent_id, request_id: request.id, caller_token: adminToken() }),
         });
         if (res.ok) {
           paymentStatus = 'refunded';
@@ -2632,10 +2632,10 @@ async function saveDenyReason(button) {
     } else {
       // Authorized/uncaptured — release the hold.
       try {
-        const res = await fetch('/api/cancel-payment', {
+        const res = await fetch('/api/payments', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ payment_intent_id: request.payment_intent_id, request_id: request.id, caller_token: adminToken() }),
+          body: JSON.stringify({ action: 'cancel_payment', payment_intent_id: request.payment_intent_id, request_id: request.id, caller_token: adminToken() }),
         });
         const data = await res.json().catch(() => ({}));
         if (res.ok) {
@@ -3123,10 +3123,10 @@ async function saveEditTotalCharge(button) {
   // If new total is lower, issue partial refund for the difference
   if (diff < 0 && request.payment_intent_id) {
     const refundCents = Math.round(Math.abs(diff) * 100);
-    const res = await fetch('/api/refund-payment', {
+    const res = await fetch('/api/payments', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ payment_intent_id: request.payment_intent_id, request_id: request.id, amount_cents: refundCents, caller_token: adminToken() }),
+      body: JSON.stringify({ action: 'refund', payment_intent_id: request.payment_intent_id, request_id: request.id, amount_cents: refundCents, caller_token: adminToken() }),
     });
     const result = await res.json().catch(() => ({}));
     if (!res.ok) {

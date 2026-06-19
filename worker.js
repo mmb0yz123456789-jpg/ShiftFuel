@@ -1800,10 +1800,10 @@ async function sendWorkerToCustomerPayment(button) {
 
   // Capture the pre-authorized Stripe payment server-side.
   try {
-    const res = await fetch('/api/worker-capture', {
+    const res = await fetch('/api/payments', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ worker_token: SESSION_WORKER_TOKEN, request_id: id }),
+      body: JSON.stringify({ action: 'worker_capture', worker_token: SESSION_WORKER_TOKEN, request_id: id }),
     });
     const data = await res.json().catch(() => ({}));
 

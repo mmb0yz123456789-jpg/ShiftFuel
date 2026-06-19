@@ -1762,10 +1762,10 @@ async function handlePaymentModalSubmit() {
 
   let clientSecret;
   try {
-    const piRes = await fetch('/api/create-payment-intent', {
+    const piRes = await fetch('/api/payments', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ amount_cents: estimatedCents }),
+      body: JSON.stringify({ action: 'create_intent', amount_cents: estimatedCents }),
     });
     const piData = await piRes.json();
     if (!piRes.ok) throw new Error(piData.error || 'Payment setup failed');
