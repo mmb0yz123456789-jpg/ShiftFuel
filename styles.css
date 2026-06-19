@@ -190,7 +190,7 @@ h3 {
 .receipt-panel input[type="file"]::file-selector-button,
 .photo-upload-panel input[type="file"]::file-selector-button,
 .photo-action input[type="file"]::file-selector-button {
-  min-height: 38px;
+  min-height: 44px;
   margin-right: 10px;
   padding: 8px 14px;
   border: 1px solid var(--brand);
@@ -211,7 +211,7 @@ h3 {
 
 .file-button-text {
   justify-self: start;
-  min-height: 42px;
+  min-height: 44px;
   padding: 10px 16px;
   box-shadow: 0 10px 24px rgba(8, 113, 95, 0.18);
 }
@@ -521,7 +521,7 @@ h3 {
 }
 
 .returning-customer-actions .button {
-  min-height: 40px;
+  min-height: 44px;
 }
 
 .returning-confirmation-control {
@@ -782,6 +782,7 @@ textarea {
   border: 1px solid var(--line);
   border-radius: 8px;
   font: inherit;
+  font-size: 1rem; /* prevents iOS Safari auto-zoom on focus */
 }
 
 textarea {
@@ -833,8 +834,10 @@ textarea:focus {
   border-radius: 12px;
   padding: 0;
   width: min(480px, 94vw);
+  max-height: min(680px, 90svh);
   box-shadow: 0 8px 40px rgba(0,0,0,0.22);
   background: var(--surface, #fff);
+  overflow: hidden;
 }
 
 .payment-modal::backdrop {
@@ -845,6 +848,8 @@ textarea:focus {
   padding: 32px 28px 28px;
   display: grid;
   gap: 16px;
+  overflow-y: auto;
+  max-height: inherit;
 }
 
 .payment-modal-title {
@@ -1206,6 +1211,8 @@ textarea:focus {
   padding: 32px 28px 28px;
   width: 100%;
   max-width: 440px;
+  max-height: min(680px, 90svh);
+  overflow-y: auto;
   position: relative;
   display: flex;
   flex-direction: column;
@@ -1214,16 +1221,21 @@ textarea:focus {
 
 .cb-payment-modal-close {
   position: absolute;
-  top: 12px;
-  right: 14px;
+  top: 10px;
+  right: 10px;
   background: none;
   border: none;
   font-size: 1.5rem;
   line-height: 1;
   color: var(--text-secondary, #666);
   cursor: pointer;
-  padding: 4px 8px;
-  border-radius: 4px;
+  padding: 0;
+  min-width: 44px;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
 }
 .cb-payment-modal-close:hover { background: var(--surface-soft, #f0f0f0); }
 
@@ -1689,6 +1701,12 @@ textarea:focus {
   .site-header {
     align-items: flex-start;
     flex-direction: column;
+    gap: 10px;
+  }
+
+  .nav {
+    gap: 12px;
+    font-size: 0.88rem;
   }
 
   .hero {
@@ -1697,10 +1715,15 @@ textarea:focus {
     padding-bottom: 64px;
   }
 
+  .proof-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .field-grid {
     grid-template-columns: 1fr;
   }
 
+  /* City gets its own row; State+ZIP share the second row */
   .address-csz {
     grid-template-columns: 1fr 1fr;
   }
@@ -1721,6 +1744,39 @@ textarea:focus {
     padding: 18px;
   }
 
+  /* Admin summary: 1 col on phones */
+  .admin-summary {
+    grid-template-columns: 1fr;
+  }
+
+  /* Admin toolbar wraps cleanly */
+  .admin-toolbar {
+    flex-wrap: wrap;
+  }
+
+  /* Modals: reduce padding on small screens */
+  .payment-modal-inner {
+    padding: 22px 18px 18px;
+  }
+
+  .cb-payment-modal-dialog {
+    padding: 22px 18px 18px;
+  }
+
+  .modal-overlay {
+    padding: 12px;
+  }
+
+  /* Photo cards: stack on phones */
+  .photo-proof-grid {
+    grid-template-columns: 1fr;
+  }
+
+  /* Worker/admin job cards: full width */
+  .request-card {
+    padding: 16px;
+  }
+
   .portal-login-page {
     background:
       linear-gradient(rgba(245, 247, 244, 0.96), rgba(245, 247, 244, 0.92)),
@@ -1731,6 +1787,42 @@ textarea:focus {
     min-height: auto;
     padding-top: 56px;
     padding-bottom: 56px;
+  }
+
+  /* Payment box rows: allow label/amount to wrap */
+  .payment-box dl div {
+    flex-wrap: wrap;
+    gap: 4px;
+  }
+
+  /* Track timeline: reduce gap */
+  .customer-timeline {
+    gap: 8px;
+  }
+
+  .customer-timeline li {
+    padding: 12px;
+  }
+}
+
+/* ─── Very small phones (< 400px) ───────────────────────────── */
+@media (max-width: 400px) {
+  .address-csz {
+    grid-template-columns: 1fr;
+  }
+
+  .hero-points {
+    gap: 6px;
+  }
+
+  .hero-points span {
+    font-size: 0.8rem;
+    padding: 4px 10px;
+  }
+
+  .pricing-grid,
+  .service-grid {
+    grid-template-columns: 1fr;
   }
 }
 
@@ -2872,6 +2964,18 @@ textarea:focus {
   .worker-day-row {
     grid-template-columns: 1fr;
   }
+
+  .worker-day-copy-actions .button {
+    min-height: 44px;
+  }
+
+  .worker-assignment-panel {
+    grid-template-columns: 1fr;
+  }
+
+  .worker-assignment-panel .worker-avatar {
+    display: none;
+  }
 }
 
 /* ─── Modal overlay ─────────────────────────────────────────────── */
@@ -3182,7 +3286,7 @@ textarea:focus {
 /* ─── Summary cards – 6-card layout ────────────────────────────── */
 @media (max-width: 900px) {
   .admin-summary {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
