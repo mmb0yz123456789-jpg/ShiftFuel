@@ -29,7 +29,7 @@ CREATE OR REPLACE FUNCTION public.worker_login(
 RETURNS jsonb
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path = public, pg_temp
+SET search_path = public, extensions, pg_temp
 AS $$
 DECLARE
   v_employee  employees%ROWTYPE;
@@ -58,7 +58,7 @@ BEGIN
 
   -- Hash: sha256(salt:password), hex-encoded — matches client-side sha256Hex().
   v_computed := encode(
-    digest(v_employee.worker_password_salt || ':' || p_password, 'sha256'),
+    extensions.digest(v_employee.worker_password_salt || ':' || p_password, 'sha256'),
     'hex'
   );
 

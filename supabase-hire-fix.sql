@@ -41,7 +41,7 @@ CREATE OR REPLACE FUNCTION public.admin_reset_worker_password(
 RETURNS text
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path = public, pg_temp
+SET search_path = public, extensions, pg_temp
 AS $$
 DECLARE
   v_session_valid boolean;
@@ -71,8 +71,9 @@ BEGIN
   END LOOP;
 
   -- Hash the generated password server-side.
-  v_new_salt := encode(gen_random_bytes(16), 'hex');
-  v_new_hash := encode(digest(v_new_salt || ':' || v_temp_password, 'sha256'), 'hex');
+  -- extensions.gen_random_bytes / extensions.digest: pgcrypto lives in the extensions schema on Supabase.
+  v_new_salt := encode(extensions.gen_random_bytes(16), 'hex');
+  v_new_hash := encode(extensions.digest(v_new_salt || ':' || v_temp_password, 'sha256'), 'hex');
 
   UPDATE employees SET
     worker_password_salt  = v_new_salt,
