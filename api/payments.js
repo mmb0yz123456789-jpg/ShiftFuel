@@ -6,6 +6,7 @@
  *
  * Actions (all POST):
  *   create_intent            – Create a manual-capture PaymentIntent for booking authorization
+ *   create_authorized_booking – Verify an authorized PaymentIntent and create the service_request row server-side
  *   create_customer_final    – Create an automatic-capture PI for customer final payment (no pre-auth)
  *   customer_capture         – Confirm/capture payment on a pending_customer_payment request
  *   customer_cancel          – Cancel a request (customer-authenticated) and void any hold
@@ -88,6 +89,110 @@ async function handleCreateIntent(body, res) {
     console.error('[payments/create_intent] Stripe error:', err.message);
     return res.status(500).json({ error: 'Could not initialize payment. Please try again.' });
   }
+}
+
+// Customer-submitted booking fields only. Anything not in this list is
+// silently dropped — protected fields (status, payment_status,
+// payment_intent_id, assigned_*, final_total, etc.) are always set
+// server-side below, never taken from the request body.
+const ALLOWED_BOOKING_FIELDS = [
+  'customer_name', 'customer_phone', 'customer_email',
+  'vehicle_year', 'vehicle_make', 'vehicle_model', 'vehicle_color', 'license_plate',
+  'hospital', 'address_street', 'address_apt', 'address_city', 'address_state', 'address_zip',
+  'parking_location', 'parking_spot', 'parking_map_url', 'key_handoff_details',
+  'service_type', 'service_label', 'service_date', 'desired_return_time',
+  'fuel_type', 'estimated_fuel_range', 'estimated_gallons', 'price_per_gallon', 'estimated_fuel_amount',
+  'fuel_convenience_fee', 'wash_package', 'wash_package_label', 'wash_fee', 'wash_convenience_fee',
+  'quick_inspection', 'quick_inspection_fee', 'service_fee', 'detailing_available_window',
+  'estimated_total', 'notes',
+];
+
+const ALLOWED_SERVICE_TYPES = ['fuel', 'car-wash', 'car-wash-fuel', 'fuel-only', 'wash-only'];
+
+async function handleCreateAuthorizedBooking(body, res) {
+  const { payment_intent_id, amount_cents, ...rawFields } = body;
+
+  if (!payment_intent_id) {
+    return res.status(400).json({ error: 'payment_intent_id is required' });
+  }
+
+  const row = {};
+  for (const field of ALLOWED_BOOKING_FIELDS) {
+    if (rawFields[field] !== undefined) row[field] = rawFields[field];
+  }
+
+  if (!row.customer_name || !String(row.customer_name).trim()) {
+    return res.status(400).json({ error: 'Customer name is required' });
+  }
+  if (!row.customer_phone || !String(row.customer_phone).trim()) {
+    return res.status(400).json({ error: 'Customer phone is required' });
+  }
+  if (!row.customer_email || !String(row.customer_email).trim()) {
+    return res.status(400).json({ error: 'Customer email is required' });
+  }
+  if (!ALLOWED_SERVICE_TYPES.includes(row.service_type)) {
+    return res.status(400).json({ error: 'Invalid service type' });
+  }
+
+  const expectedCents = Math.round(Number(amount_cents));
+  if (!expectedCents || expectedCents < 50) {
+    return res.status(400).json({ error: 'Amount must be at least $0.50' });
+  }
+
+  // ── Verify the PaymentIntent before activating the booking ────────────────
+  let intent;
+  try {
+    const stripe = getStripe();
+    intent = await stripe.paymentIntents.retrieve(payment_intent_id);
+  } catch (err) {
+    console.error('[payments/create_authorized_booking] Stripe retrieve failed:', err.message);
+    return res.status(400).json({ error: 'Payment authorization could not be verified. Please try again.' });
+  }
+
+  if (!intent) {
+    return res.status(400).json({ error: 'Payment authorization could not be verified. Please try again.' });
+  }
+  if (intent.status === 'canceled' || intent.status === 'requires_payment_method') {
+    return res.status(400).json({ error: 'Payment authorization could not be verified. Please try again.' });
+  }
+  if (intent.status !== 'requires_capture' && intent.status !== 'succeeded') {
+    // requires_action (3D Secure not yet completed) or any other unexpected
+    // state — the booking must not activate until authorization is final.
+    return res.status(400).json({ error: 'Payment authorization could not be verified. Please try again.' });
+  }
+  if (intent.amount !== expectedCents) {
+    console.error('[payments/create_authorized_booking] Amount mismatch:', intent.amount, 'vs expected', expectedCents);
+    return res.status(400).json({ error: 'Payment authorization could not be verified. Please try again.' });
+  }
+
+  row.status = 'request_received';
+  row.payment_status = 'authorized';
+  row.payment_intent_id = intent.id;
+  row.estimated_total = expectedCents / 100;
+  row.final_total = null;
+
+  const db = getSupabaseAdmin();
+
+  // Mirror the frontend's old missing-column resilience: some deployments
+  // lag behind on optional columns. Retry once per unsupported column.
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    const { data, error } = await db.from('service_requests').insert(row).select().maybeSingle();
+
+    if (!error) {
+      console.log('[payments/create_authorized_booking] Created request', data?.id, 'for PI', intent.id);
+      return res.status(200).json({ id: data?.id, status: 'request_received', payment_status: 'authorized' });
+    }
+
+    const match = String(error.message || '').match(/'([^']+)' column/);
+    const column = match?.[1] || '';
+    if (error.code !== 'PGRST204' || !column || !(column in row)) {
+      console.error('[payments/create_authorized_booking] DB insert failed:', error.message);
+      return res.status(500).json({ error: 'We could not finish saving your booking after payment authorization. Please try again or contact ShiftFuel.' });
+    }
+    delete row[column];
+  }
+
+  return res.status(500).json({ error: 'We could not finish saving your booking after payment authorization. Please try again or contact ShiftFuel.' });
 }
 
 async function handleCreateCustomerFinal(body, res) {
@@ -779,7 +884,8 @@ async function handleResolveReturnRequest(body, res) {
 // ── Main router ───────────────────────────────────────────────────────────────
 
 const HANDLERS = {
-  create_intent:         handleCreateIntent,
+  create_intent:             handleCreateIntent,
+  create_authorized_booking: handleCreateAuthorizedBooking,
   create_customer_final: handleCreateCustomerFinal,
   customer_capture:      handleCustomerCapture,
   customer_cancel:       handleCustomerCancel,

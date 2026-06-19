@@ -92,6 +92,20 @@ returns 0 rows.
 
 ---
 
+## 11. `supabase-booking-rpc-lockdown.sql`
+Run after step 10. Booking creation now goes through `/api/payments`
+(`action: create_authorized_booking`), which verifies the Stripe PaymentIntent
+server-side and inserts with the service-role key. This drops the now-unused
+`public_insert_service_request` anon INSERT policy — leaving it in place would
+let anyone fabricate a `payment_status: 'authorized'` row without ever paying,
+since RLS has no way to check a PaymentIntent against Stripe.
+
+**After deploying:** run a full booking through the public site with a Stripe
+test card (including the 3D Secure card `4000 0025 0000 3155`) and confirm the
+request lands in the admin queue as `request_received` / `authorized`.
+
+---
+
 ## Post-deploy verification
 
 **Employees / security**
