@@ -7,10 +7,17 @@ module.exports = async (req, res) => {
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
-  const { amount_cents, customer_name, customer_email, service_label, capture_method } = req.body || {};
+  // capture_method is not accepted from the client — always use manual for booking authorization.
+  // For customer final payments use /api/create-customer-final-payment instead.
+  const { amount_cents, customer_name, customer_email, service_label } = req.body || {};
 
-  if (!amount_cents || amount_cents < 50) {
+  const parsedCents = Math.round(Number(amount_cents));
+  if (!parsedCents || parsedCents < 50) {
     return res.status(400).json({ error: 'Amount must be at least $0.50' });
+  }
+  // Sanity cap: no single authorization should exceed $2,000 for a fuel/wash service.
+  if (parsedCents > 200000) {
+    return res.status(400).json({ error: 'Amount exceeds the maximum allowed for this service' });
   }
 
   if (!process.env.STRIPE_SECRET_KEY) {
@@ -21,9 +28,9 @@ module.exports = async (req, res) => {
   try {
     const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
     const paymentIntent = await stripe.paymentIntents.create({
-      amount: Math.round(amount_cents),
+      amount: parsedCents,
       currency: 'usd',
-      capture_method: capture_method === 'automatic' ? 'automatic' : 'manual',
+      capture_method: 'manual',
       description: service_label || 'ShiftFuel service',
       receipt_email: customer_email || undefined,
       metadata: {
