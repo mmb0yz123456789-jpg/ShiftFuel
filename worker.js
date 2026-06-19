@@ -1210,7 +1210,7 @@ function renderWorkerPhotoPanel(request, stage = 'pickup') {
   const heading = isDropoff ? 'Upload return photos' : 'Upload pickup photos';
   const help = isDropoff
     ? 'Upload all four sides after return plus the return odometer and ending fuel gauge. Do not reuse pickup photos.'
-    : 'Upload all four sides at pickup plus the pickup odometer before moving the vehicle.';
+    : 'Upload all four sides at pickup plus the pickup odometer and pickup fuel gauge before moving the vehicle.';
   const nextStatus = isDropoff ? 'vehicle_returned' : 'vehicle_picked_up';
   const prefix = isDropoff ? 'dropoff' : 'pickup';
 
@@ -1224,7 +1224,7 @@ function renderWorkerPhotoPanel(request, stage = 'pickup') {
         ${filePicker('Driver side rear', 'photo-file required-photo', `data-photo-type="${prefix}_driver_rear"`)}
         ${filePicker('Passenger side rear', 'photo-file required-photo', `data-photo-type="${prefix}_passenger_rear"`)}
         ${filePicker(`${isDropoff ? 'Return' : 'Pickup'} odometer photo`, 'photo-file required-photo', `data-photo-type="${prefix}_odometer"`)}
-        ${isDropoff ? filePicker('Ending fuel gauge photo', 'photo-file required-photo', 'data-photo-type="dropoff_fuel_gauge"') : ''}
+        ${filePicker(`${isDropoff ? 'Ending' : 'Pickup'} fuel gauge photo`, 'photo-file required-photo', `data-photo-type="${isDropoff ? 'dropoff_fuel_gauge' : 'pickup_fuel_gauge'}"`, )}
       </div>
       <p class="field-help duplicate-photo-warning" data-warning-for="${escapeHtml(request.id)}"></p>
       <button class="button primary upload-action-button upload-photo-set" data-id="${escapeHtml(request.id)}" type="button">Upload photo set</button>

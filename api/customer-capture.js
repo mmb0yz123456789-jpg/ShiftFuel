@@ -203,8 +203,31 @@ async function markComplete(db, requestId, paymentIntentId) {
   }).eq('id', requestId);
 
   if (error) {
-    // Log full detail for admin recovery — request ID and PI ID are critical here.
     console.error('[customer-capture] CRITICAL: markComplete DB error for request', requestId, 'PI', paymentIntentId, '—', error.message);
+    throw new Error('DB_UPDATE_FAILED');
+  }
+
+  // Verify the write landed correctly before returning success.
+  const { data: verified, error: verifyErr } = await db
+    .from('service_requests')
+    .select('id, status, payment_status, payment_intent_id')
+    .eq('id', requestId)
+    .maybeSingle();
+
+  if (
+    verifyErr ||
+    !verified ||
+    verified.id !== requestId ||
+    verified.status !== 'complete' ||
+    verified.payment_status !== 'captured' ||
+    verified.payment_intent_id !== paymentIntentId
+  ) {
+    console.error(
+      '[customer-capture] CRITICAL: post-write verification failed for request', requestId,
+      'PI', paymentIntentId,
+      '— db row:', JSON.stringify(verified),
+      verifyErr ? '— verifyErr: ' + verifyErr.message : ''
+    );
     throw new Error('DB_UPDATE_FAILED');
   }
 }

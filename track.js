@@ -76,6 +76,7 @@ const statusLabels = {
   key_received: "Key received",
   pickup_vehicle_photo_uploaded: "Pickup vehicle photo uploaded",
   pickup_odometer_photo_uploaded: "Pickup odometer photo uploaded",
+  pickup_fuel_gauge_photo_uploaded: "Pickup fuel gauge photo uploaded",
   vehicle_picked_up: "Vehicle picked up",
   fueling_in_progress: "Fueling in progress",
   fueling_complete: "Fueling complete",
@@ -318,6 +319,7 @@ const STATUS_STEP_MAP = {
   key_received: 'key_received',
   pickup_vehicle_photo_uploaded: 'vehicle_picked_up',
   pickup_odometer_photo_uploaded: 'vehicle_picked_up',
+  pickup_fuel_gauge_photo_uploaded: 'vehicle_picked_up',
   vehicle_picked_up: 'vehicle_picked_up',
   fueling_in_progress: 'fueling_in_progress',
   fueling_complete: 'fueling_complete',
@@ -492,7 +494,8 @@ function renderPhotos(request, photos) {
         { label: "Passenger Side Front", types: ["pickup_passenger_front", "pickup_passenger_side"] },
         { label: "Driver Side Rear", types: ["pickup_driver_rear", "pickup_driver_side"] },
         { label: "Passenger Side Rear", types: ["pickup_passenger_rear", "pickup_rear"] },
-        { label: "Odometer", types: ["pickup_odometer"] },
+        { label: "Pickup odometer", types: ["pickup_odometer"] },
+        { label: "Pickup fuel gauge", types: ["pickup_fuel_gauge"] },
       ])}
       ${requestNeedsFuel(request) ? section("Fuel Receipt", [
         { label: "Receipt", types: ["fuel_receipt"] },

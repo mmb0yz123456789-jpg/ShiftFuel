@@ -1138,84 +1138,8 @@ async function lookupReturningCustomer() {
       return;
     }
 
-    if (!isMissingRpcError(rpcError)) {
-      console.warn("Returning customer lookup blocked:", rpcError);
-      returningCustomerStatus.textContent = "No previous booking found. You can still complete the form below.";
-      renderReturningCustomerResults([]);
-      return;
-    }
-
-    console.warn("Returning customer RPC unavailable, falling back to direct lookup:", rpcError);
-
-    const columns = [
-      "id",
-      "customer_name",
-      "customer_phone",
-      "customer_email",
-      "vehicle_year",
-      "vehicle_make",
-      "vehicle_model",
-      "vehicle_color",
-      "license_plate",
-      "hospital",
-      "address_street",
-      "address_apt",
-      "address_city",
-      "address_state",
-      "address_zip",
-      "parking_location",
-      "parking_spot",
-      "parking_map_url",
-      "key_handoff_details",
-      "service_type",
-      "service_label",
-      "fuel_type",
-      "wash_package",
-      "wash_package_label",
-      "service_date",
-      "created_at",
-    ];
-    let data = null;
-    let error = null;
-
-    for (let attempt = 0; attempt < 6; attempt += 1) {
-      ({ data, error } = await window.ShiftFuelSupabase
-        .from("service_requests")
-        .select(columns.join(","))
-        .order("created_at", { ascending: false })
-        .limit(100));
-
-      const missingColumn = missingColumnName(error);
-
-      if (!error || !missingColumn || !columns.includes(missingColumn)) {
-        break;
-      }
-
-      columns.splice(columns.indexOf(missingColumn), 1);
-    }
-
-    if (error) throw error;
-
-    const seenVehicles = new Set();
-    returningCustomerMatches = (data || []).filter((request) => {
-      const matchesPhone = phone && cleanLookupPhone(request.customer_phone) === phone;
-      const matchesEmail = lookupEmail && String(request.customer_email || "").toLowerCase() === lookupEmail;
-      return matchesPhone && matchesEmail;
-    }).filter((request) => {
-      const key = [request.license_plate, request.vehicle_year, request.vehicle_make, request.vehicle_model].join("|").toLowerCase();
-      if (seenVehicles.has(key)) return false;
-      seenVehicles.add(key);
-      return true;
-    }).slice(0, 5);
-
-    if (!returningCustomerMatches.length) {
-      returningCustomerStatus.textContent = "No previous booking found. You can still complete the form below.";
-      renderReturningCustomerResults([]);
-      return;
-    }
-
-    returningCustomerStatus.textContent = "Choose a previous vehicle to prefill the form.";
-    renderReturningCustomerResults(returningCustomerMatches);
+    console.warn("Returning customer lookup failed:", rpcError);
+    returningCustomerStatus.textContent = "Returning customer lookup is not available right now. Please complete the form manually.";
   } catch (error) {
     console.error("Returning customer lookup failed:", error);
     returningCustomerStatus.textContent = "Could not look up previous bookings right now.";
