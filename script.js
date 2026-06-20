@@ -928,6 +928,7 @@ async function refreshBookedReturnSlots() {
   if (!rpcError) {
     bookedReturnSlots = new Set(
       (rpcSlots || [])
+        .filter((request) => !slotReleasingStatuses.has(request.status))
         .map((request) => normalizeTimeSlot(request.desired_return_time))
         .filter(Boolean)
     );

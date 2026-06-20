@@ -1488,7 +1488,10 @@ async function cbRefreshReturnTimes(form) {
   let bookedSlots = new Set();
   try {
     const { data } = await shiftFuelDb.rpc('public_booked_return_slots', { p_service_date: dateValue });
-    if (data) bookedSlots = new Set((data).map((r) => String(r.desired_return_time || '').slice(0, 5)).filter(Boolean));
+    if (data) bookedSlots = new Set((data)
+      .filter((r) => !terminalStatuses.includes(r.status))
+      .map((r) => String(r.desired_return_time || '').slice(0, 5))
+      .filter(Boolean));
   } catch (e) { console.warn('cbRefreshReturnTimes:', e); }
 
   const rawSlots = needsWash ? cbTimeSlots(9, 18) : cbTimeSlots(7, 22);
@@ -2080,11 +2083,16 @@ function renderReturnRequestedCard(request) {
   `;
 }
 
+function needsCustomerPaymentAction(request) {
+  return ['pending_customer_payment', 'payment_issue', 'authorization_too_low'].includes(request.status)
+    || request.payment_status === 'capture_failed';
+}
+
 function renderRequestCard(request, photos = [], review = null) {
   if (request.status === 'pending_customer_info') {
     return renderPendingCompletionCard(request);
   }
-  if (['pending_customer_payment', 'payment_issue', 'authorization_too_low'].includes(request.status)) {
+  if (needsCustomerPaymentAction(request)) {
     return renderPendingPaymentCard(request);
   }
   if (request.status === 'return_requested' || request.status === 'customer_return_requested') {
@@ -2703,7 +2711,7 @@ async function handleConfirmAndPay(button) {
 
   try {
     // ── Case A: pre-authorized PaymentIntent exists ──────────────────────────
-    if (request.payment_intent_id) {
+    if (request.payment_intent_id && request.payment_status !== 'capture_failed') {
       const res = await fetch('/api/payments', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

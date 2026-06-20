@@ -129,6 +129,23 @@ async function markRequestComplete(db, requestId, paymentIntentId, capturedAmoun
 
 // ── Action handlers ───────────────────────────────────────────────────────────
 
+async function tryIncrementAuthorization(stripe, paymentIntentId, targetAmountCents) {
+  if (typeof stripe.paymentIntents.incrementAuthorization !== 'function') {
+    return { intent: null, error: new Error('Stripe incremental authorization is not available in this SDK version.') };
+  }
+
+  try {
+    const intent = await stripe.paymentIntents.incrementAuthorization(paymentIntentId, {
+      amount: targetAmountCents,
+    });
+    console.log('[payments] Incremented authorization', paymentIntentId, 'to', targetAmountCents);
+    return { intent, error: null };
+  } catch (error) {
+    console.warn('[payments] Incremental authorization failed for', paymentIntentId, '-', error.message);
+    return { intent: null, error };
+  }
+}
+
 async function handleCreateIntent(body, res) {
   // Booking authorization — manual capture, no DB involvement here.
   const { amount_cents, customer_name, customer_email, service_label } = body;
@@ -143,14 +160,30 @@ async function handleCreateIntent(body, res) {
 
   try {
     const stripe = getStripe();
-    const pi = await stripe.paymentIntents.create({
+    const paymentIntentParams = {
       amount: parsedCents,
       currency: 'usd',
       capture_method: 'manual',
       description: service_label || 'ShiftFuel service',
       receipt_email: customer_email || undefined,
       metadata: { customer_name: customer_name || '', service_label: service_label || '' },
-    });
+      payment_method_options: {
+        card: {
+          request_incremental_authorization_support: 'if_available',
+        },
+      },
+    };
+    let pi;
+    try {
+      pi = await stripe.paymentIntents.create(paymentIntentParams);
+    } catch (createErr) {
+      const incrementalParamRejected = createErr.code === 'parameter_unknown'
+        || /request_incremental_authorization_support|payment_method_options/i.test(String(createErr.message || ''));
+      if (!incrementalParamRejected) throw createErr;
+      console.warn('[payments/create_intent] Incremental authorization option rejected; retrying without it:', createErr.message);
+      delete paymentIntentParams.payment_method_options;
+      pi = await stripe.paymentIntents.create(paymentIntentParams);
+    }
     console.log('[payments/create_intent] Created', pi.id, 'amount:', parsedCents);
     return res.status(200).json({ client_secret: pi.client_secret, payment_intent_id: pi.id });
   } catch (err) {
@@ -406,7 +439,7 @@ async function handleCreateCustomerFinal(body, res) {
     return res.status(403).json({ error: 'Your phone and email do not match this request' });
   }
   const awaitingCustomerPayment = ['pending_customer_payment', 'payment_issue', 'authorization_too_low'];
-  if (!awaitingCustomerPayment.includes(request.status)) {
+  if (!awaitingCustomerPayment.includes(request.status) && request.payment_status !== 'capture_failed') {
     return res.status(400).json({ error: 'This request is not awaiting customer payment' });
   }
   if (request.payment_intent_id && request.payment_status === 'authorized') {
@@ -471,7 +504,7 @@ async function handleCustomerCapture(body, res) {
   }
 
   const awaitingCustomerPayment = ['pending_customer_payment', 'payment_issue', 'authorization_too_low'];
-  if (!awaitingCustomerPayment.includes(request.status)) {
+  if (!awaitingCustomerPayment.includes(request.status) && request.payment_status !== 'capture_failed') {
     if (['complete', 'awaiting_key_return'].includes(request.status) && request.payment_status === 'captured') {
       return res.status(200).json({ status: 'already_complete' });
     }
@@ -535,7 +568,7 @@ async function handleCustomerCapture(body, res) {
   const amountToCaptureInCents = Math.round(request.final_total * 100);
 
   try {
-    const intent = await stripe.paymentIntents.retrieve(piId);
+    let intent = await stripe.paymentIntents.retrieve(piId);
     if (intent.status === 'succeeded') {
       await markRequestComplete(db, request_id, piId, request.final_total);
       return res.status(200).json({ status: 'succeeded', already_captured: true });
@@ -748,6 +781,12 @@ async function handleWorkerCapture(body, res) {
       return res.status(400).json({ capture_failed: true, error: 'Payment authorization has expired or is no longer valid. The customer will need to provide a new payment method.' });
     }
     if (intent.amount_capturable < amountToCaptureInCents) {
+      const increment = await tryIncrementAuthorization(stripe, piId, amountToCaptureInCents);
+      if (increment.intent) {
+        intent = increment.intent;
+      }
+    }
+    if (intent.amount_capturable < amountToCaptureInCents) {
       await db.from('service_requests').update({ payment_status: 'capture_failed', status: 'authorization_too_low', updated_at: new Date().toISOString() }).eq('id', request_id);
       return res.status(400).json({ capture_failed: true, error: `The authorized amount ($${(intent.amount_capturable / 100).toFixed(2)}) is less than the final total ($${request.final_total.toFixed(2)}). The customer will need to pay the difference.` });
     }
@@ -866,7 +905,24 @@ async function handleCapturePayment(body, res) {
   try {
     const stripe = getStripe();
     const captureParams = {};
-    if (amount_cents && amount_cents >= 50) captureParams.amount_to_capture = Math.round(amount_cents);
+    if (amount_cents && amount_cents >= 50) {
+      const targetAmountCents = Math.round(amount_cents);
+      captureParams.amount_to_capture = targetAmountCents;
+      let currentIntent = await stripe.paymentIntents.retrieve(payment_intent_id);
+      if (currentIntent.status !== 'requires_capture') {
+        return res.status(400).json({ error: 'Payment authorization has expired or is no longer valid.' });
+      }
+      if (currentIntent.amount_capturable < targetAmountCents) {
+        const increment = await tryIncrementAuthorization(stripe, payment_intent_id, targetAmountCents);
+        if (increment.intent) currentIntent = increment.intent;
+      }
+      if (currentIntent.amount_capturable < targetAmountCents) {
+        return res.status(400).json({
+          capture_failed: true,
+          error: `The authorized amount ($${(currentIntent.amount_capturable / 100).toFixed(2)}) is less than the final total ($${(targetAmountCents / 100).toFixed(2)}). The customer will need to pay the difference.`,
+        });
+      }
+    }
     const intent = await stripe.paymentIntents.capture(payment_intent_id, captureParams);
     console.log('[payments/capture_payment] Captured', intent.id, 'for request', request_id);
 
