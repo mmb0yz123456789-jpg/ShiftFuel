@@ -15,7 +15,7 @@ let verifiedTrackingContact = { phone: "", email: "" };
 // and the SQL terminal-status list in supabase-production-rls-lockdown.sql.
 const terminalStatuses = ["complete", "denied", "customer_canceled", "canceled", "unable_to_complete", "auto_reversed", "closed_no_charge", "canceled_return_completed"];
 const closedStatuses   = ["denied", "customer_canceled", "canceled", "unable_to_complete", "auto_reversed", "closed_no_charge", "canceled_return_completed"];
-const freeCancelStatuses = ["pending", "request_received", "pending_review", "pending_customer_info", "accepted", "confirmed", "assigned"];
+const freeCancelStatuses = ["pending", "request_received", "accepted"];
 
 function initPhotoLightbox() {
   if (document.getElementById('photo-lightbox')) return;
@@ -287,6 +287,57 @@ async function submitCustomerReturnRequest(requestId, button = null) {
     const review = await loadRequestReview(data.id);
     renderRequest(data, photos, review);
   }
+}
+
+async function fetchTrackedRequests(requestId = null) {
+  const { data, error } = await shiftFuelDb.rpc("public_track_request", {
+    p_request_id: requestId,
+    p_phone: verifiedTrackingContact.phone,
+    p_email: verifiedTrackingContact.email,
+  });
+
+  if (error) throw error;
+  return data || [];
+}
+
+async function refreshTrackedRequestsAfterAction(requestId = null) {
+  const refreshed = await fetchTrackedRequests(requestId);
+  if (!requestId) {
+    window._trackingRequests = refreshed;
+    await renderAllRequests(refreshed, verifiedTrackingContact.phone, verifiedTrackingContact.email);
+    return refreshed;
+  }
+
+  const existing = window._trackingRequests || [];
+  const byId = new Map(existing.map((request) => [request.id, request]));
+  refreshed.forEach((request) => byId.set(request.id, request));
+  const merged = Array.from(byId.values());
+  window._trackingRequests = sortTrackedRequests(merged);
+  await renderAllRequests(window._trackingRequests, verifiedTrackingContact.phone, verifiedTrackingContact.email);
+  return refreshed;
+}
+
+async function cancelCustomerRequestFromTrack({ requestId, reason }) {
+  const res = await fetch('/api/payments', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      action: 'customer_cancel',
+      request_id: requestId,
+      phone: verifiedTrackingContact.phone,
+      email: verifiedTrackingContact.email,
+      reason,
+    }),
+  });
+  const result = await res.json().catch(() => ({}));
+
+  if (!res.ok) {
+    const error = new Error(result.error || "Could not cancel this request. Please contact ShiftFuel.");
+    error.payload = result;
+    throw error;
+  }
+
+  return result;
 }
 
 function cancellationReasonForDisplay(request) {
@@ -2090,6 +2141,7 @@ async function renderAllRequests(requests, phone, email) {
   const completed  = requests.filter(r => r.status === 'complete'
     && (now - new Date(r.updated_at || r.created_at).getTime()) <= TWENTY_FOUR_HOURS);
   const denied     = requests.filter(r => r.status === 'denied');
+  const canceledClosed = requests.filter(r => closedStatuses.includes(r.status) && r.status !== 'denied');
 
   let html = `<div class="track-sections">`;
 
@@ -2126,6 +2178,26 @@ async function renderAllRequests(requests, phone, email) {
     html += `<p class="track-empty-msg">No completed requests available.</p>`;
   } else {
     for (const request of completed) {
+      const photos = await loadRequestPhotos(request.id, phone, email);
+      const review = await loadRequestReview(request.id, phone, email);
+      html += renderRequestCard(request, photos, review);
+    }
+  }
+  html += `</div></details>`;
+
+  // Canceled / closed section
+  html += `
+    <details class="track-section">
+      <summary class="track-section-header">
+        Canceled / closed requests
+        <span class="track-section-count">${canceledClosed.length}</span>
+      </summary>
+      <div class="track-section-body">
+  `;
+  if (canceledClosed.length === 0) {
+    html += `<p class="track-empty-msg">No canceled or closed requests found.</p>`;
+  } else {
+    for (const request of canceledClosed) {
       const photos = await loadRequestPhotos(request.id, phone, email);
       const review = await loadRequestReview(request.id, phone, email);
       html += renderRequestCard(request, photos, review);
@@ -2360,36 +2432,27 @@ trackingResult.addEventListener("click", async (event) => {
 
   if (cbConfirmCancelBtn) {
     const requestId = cbConfirmCancelBtn.dataset.requestId;
+    const card = cbConfirmCancelBtn.closest('.pending-completion-card');
+    const reason = card?.querySelector('.customer-cancel-reason')?.value.trim() || 'Customer declined service';
     cbConfirmCancelBtn.disabled = true;
     cbConfirmCancelBtn.textContent = 'Canceling…';
     trackMessage.textContent = '';
 
-    const { error } = await shiftFuelDb.rpc('public_cancel_request', {
-      p_request_id: requestId,
-      p_phone: verifiedTrackingContact.phone,
-      p_email: verifiedTrackingContact.email,
-      p_reason: 'Customer declined service',
-    });
-
-    if (error) {
-      console.error('[track] Cancel RPC failed for cb flow:', error);
-      trackMessage.textContent = 'Could not cancel this request. Please contact ShiftFuel.';
+    try {
+      await cancelCustomerRequestFromTrack({ requestId, reason });
+      trackMessage.textContent = 'Your request has been canceled. Your card authorization was released and you were not charged.';
+      await refreshTrackedRequestsAfterAction(requestId);
+    } catch (error) {
+      console.error('[track] Customer cancellation failed for cb flow:', error.payload || error);
+      if (String(error.message || '').toLowerCase().includes('request vehicle return')) {
+        await submitCustomerReturnRequest(requestId, cbConfirmCancelBtn);
+        return;
+      }
+      trackMessage.textContent = String(error.message || '').includes('release the authorization')
+        ? 'We could not release the authorization automatically. Please contact ShiftFuel.'
+        : (error.message || 'Could not cancel this request. Please contact ShiftFuel.');
       cbConfirmCancelBtn.disabled = false;
       cbConfirmCancelBtn.textContent = 'Cancel request';
-      return;
-    }
-
-    trackMessage.textContent = 'Request canceled.';
-    // Re-render the card as a regular canceled card
-    const { data: refreshed } = await shiftFuelDb.rpc('public_track_request', {
-      p_request_id: requestId,
-      p_phone: verifiedTrackingContact.phone,
-      p_email: verifiedTrackingContact.email,
-    });
-    if (refreshed?.[0]) {
-      const photos = await loadRequestPhotos(refreshed[0].id);
-      const review = await loadRequestReview(refreshed[0].id);
-      renderRequest(refreshed[0], photos, review);
     }
     return;
   }
@@ -2539,62 +2602,29 @@ trackingResult.addEventListener("click", async (event) => {
   confirmCancelButton.disabled = true;
   trackMessage.textContent = "";
 
-  let cancelWarning = null;
-
   try {
-    const res = await fetch('/api/payments', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        action: 'customer_cancel',
-        request_id: requestId,
-        phone: verifiedTrackingContact.phone,
-        email: verifiedTrackingContact.email,
-        reason,
-      }),
-    });
-    const result = await res.json().catch(() => ({}));
-
-    if (!res.ok) {
-      console.error('[track] Customer cancellation failed:', result.error);
-      if (String(result.error || '').toLowerCase().includes('request vehicle return')) {
-        await submitCustomerReturnRequest(requestId, confirmCancelButton);
-        return;
-      }
-      trackMessage.textContent = result.error || "Could not cancel this request. Please contact ShiftFuel.";
-      confirmCancelButton.textContent = "Confirm cancellation";
-      confirmCancelButton.disabled = false;
-      return;
-    }
-
-    if (result.warning) cancelWarning = result.warning;
+    await cancelCustomerRequestFromTrack({ requestId, reason });
 
   } catch (err) {
-    console.error('[track] Customer cancel network error:', err);
-    trackMessage.textContent = "Network error. Please try again or contact ShiftFuel.";
+    console.error('[track] Customer cancellation failed:', err.payload || err);
+    if (String(err.message || '').toLowerCase().includes('request vehicle return')) {
+      await submitCustomerReturnRequest(requestId, confirmCancelButton);
+      return;
+    }
+    trackMessage.textContent = String(err.message || '').includes('release the authorization')
+      ? "We could not release the authorization automatically. Please contact ShiftFuel."
+      : (err.message || "Network error. Please try again or contact ShiftFuel.");
     confirmCancelButton.textContent = "Confirm cancellation";
     confirmCancelButton.disabled = false;
     return;
   }
 
-  // Refresh the request to get the updated status.
-  const { data: refreshed, error: refreshError } = await shiftFuelDb.rpc("public_track_request", {
-    p_request_id: requestId,
-    p_phone: verifiedTrackingContact.phone,
-    p_email: verifiedTrackingContact.email,
-  });
-
-  const data = refreshed?.[0] || null;
-
-  if (refreshError || !data) {
-    trackMessage.textContent = "Request canceled." + (cancelWarning ? ` ${cancelWarning}` : '');
-    return;
+  trackMessage.textContent = "Your request has been canceled. Your card authorization was released and you were not charged.";
+  try {
+    await refreshTrackedRequestsAfterAction(requestId);
+  } catch (refreshError) {
+    console.error('[track] Refresh after cancellation failed:', refreshError);
   }
-
-  trackMessage.textContent = "Request canceled." + (cancelWarning ? ` ${cancelWarning}` : '');
-  const photos = await loadRequestPhotos(data.id);
-  const review = await loadRequestReview(data.id);
-  renderRequest(data, photos, review);
 });
 
 // ── Confirm and Pay (pending_customer_payment) ────────────────────────────────

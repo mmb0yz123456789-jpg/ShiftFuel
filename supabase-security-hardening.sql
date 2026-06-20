@@ -321,11 +321,18 @@ begin
   update service_requests sr
   set status = 'customer_canceled',
       cancellation_reason = trim(p_reason),
+      canceled_at = now(),
+      canceled_by = 'customer',
+      payment_status = case
+        when sr.payment_intent_id is null then 'canceled'
+        else sr.payment_status
+      end,
       updated_at = now()
   where sr.id = p_request_id
     and public.clean_phone(sr.customer_phone) = public.clean_phone(p_phone)
     and lower(coalesce(sr.customer_email, '')) = lower(coalesce(p_email, ''))
-    and sr.status not in ('complete', 'denied', 'customer_canceled', 'unable_to_complete');
+    and sr.payment_intent_id is null
+    and sr.status in ('pending', 'request_received', 'accepted');
 
   if not found then
     raise exception 'Request could not be verified for cancellation.';

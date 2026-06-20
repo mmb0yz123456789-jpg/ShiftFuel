@@ -427,7 +427,6 @@ async function handleCustomerCapture(body, res) {
     .maybeSingle();
 
   if (reqErr || !request) {
-    console.error('[payments/customer_capture] Request lookup failed:', reqErr?.message);
     return res.status(404).json({ error: 'Request not found' });
   }
 
@@ -444,14 +443,9 @@ async function handleCustomerCapture(body, res) {
     }
     return res.status(400).json({ error: 'This request is not awaiting customer payment' });
   }
-  if (request.payment_status === 'captured' && !new_payment_intent_id) {
-    await markRequestComplete(db, request_id, request.payment_intent_id);
-    return res.status(200).json({ status: 'succeeded', already_captured: true });
-  }
 
   const stripe = getStripe();
 
-  // ── Case B: customer paid with a new card ─────────────────────────────────
   if (new_payment_intent_id) {
     try {
       const intent = await stripe.paymentIntents.retrieve(new_payment_intent_id);
@@ -485,54 +479,59 @@ async function handleCustomerCapture(body, res) {
       return res.status(200).json({ status: 'succeeded' });
     } catch (err) {
       if (err.message === 'DB_UPDATE_FAILED') {
-        return res.status(500).json({ error: `Payment was processed, but we could not update your request. Contact ShiftFuel and reference request ${request_id}.` });
+        return res.status(500).json({ error: `Payment succeeded but we could not update the request. Contact ShiftFuel support and reference request ${request_id}.` });
       }
-      console.error('[payments/customer_capture] New PI verification failed:', err.message);
-      return res.status(500).json({ error: 'Payment verification failed. Please try again.' });
+      console.error('[payments/customer_capture] New card payment error:', err.message);
+      return res.status(500).json({ error: 'Payment verification failed. Please contact ShiftFuel.' });
     }
   }
 
-  // ── Case A: capture the existing pre-authorized PI ────────────────────────
-  const piId = request.payment_intent_id;
-  if (!piId) return res.status(400).json({ error: 'No payment authorization found for this request' });
-  if (request.final_total == null) return res.status(400).json({ error: 'Final total is not set. Please contact ShiftFuel.' });
+  if (!request.payment_intent_id) {
+    return res.status(400).json({ error: 'No payment authorization found for this request' });
+  }
+  if (request.payment_status === 'captured') {
+    await markRequestComplete(db, request_id, request.payment_intent_id);
+    return res.status(200).json({ status: 'succeeded', already_captured: true });
+  }
+  if (request.final_total == null || request.final_total <= 0) {
+    return res.status(400).json({ error: 'Final total is not set. Please contact ShiftFuel.' });
+  }
 
+  const piId = request.payment_intent_id;
   const amountToCaptureInCents = Math.round(request.final_total * 100);
+
   try {
-    const intentCheck = await stripe.paymentIntents.retrieve(piId);
-    if (intentCheck.status === 'succeeded') {
+    const intent = await stripe.paymentIntents.retrieve(piId);
+    if (intent.status === 'succeeded') {
       await markRequestComplete(db, request_id, piId);
       return res.status(200).json({ status: 'succeeded', already_captured: true });
     }
-    if (intentCheck.status !== 'requires_capture') {
-      return res.status(400).json({ error: 'Payment authorization is no longer valid. Please contact ShiftFuel.' });
+    if (intent.status !== 'requires_capture') {
+      return res.status(400).json({ error: 'Payment authorization has expired or is no longer valid. Please contact ShiftFuel.' });
     }
-    if (intentCheck.amount_capturable < amountToCaptureInCents) {
+    if (intent.amount_capturable < amountToCaptureInCents) {
       return res.status(400).json({ error: 'The authorized amount is less than the final total. Please contact ShiftFuel.' });
     }
-    const intent = await stripe.paymentIntents.capture(piId, { amount_to_capture: amountToCaptureInCents });
-    console.log('[payments/customer_capture] Captured', intent.id, 'for request', request_id);
+    const intentCapture = await stripe.paymentIntents.capture(piId, { amount_to_capture: amountToCaptureInCents });
     await markRequestComplete(db, request_id, piId);
-    return res.status(200).json({ status: intent.status, amount_captured: intent.amount_captured });
+    return res.status(200).json({ status: intentCapture.status, amount_captured: intentCapture.amount_captured });
   } catch (err) {
     if (err.message === 'DB_UPDATE_FAILED') {
-      return res.status(500).json({ error: `Payment was processed, but we could not update your request. Contact ShiftFuel and reference request ${request_id}.` });
+      return res.status(500).json({ error: `Payment was captured but we could not update the request. Contact ShiftFuel support and reference request ${request_id}.` });
     }
     if (err.code === 'payment_intent_unexpected_state') {
       try {
-        const intent = await stripe.paymentIntents.retrieve(piId);
-        if (intent.status === 'succeeded') {
+        const check = await stripe.paymentIntents.retrieve(piId);
+        if (check.status === 'succeeded') {
           await markRequestComplete(db, request_id, piId);
           return res.status(200).json({ status: 'succeeded', already_captured: true });
         }
       } catch (_) {}
-      return res.status(400).json({ error: 'Payment could not be processed. Please contact ShiftFuel.' });
     }
     console.error('[payments/customer_capture] Stripe error:', err.message);
-    return res.status(500).json({ error: 'Payment capture failed. Please try again.' });
+    return res.status(500).json({ error: 'Payment capture failed. Please contact ShiftFuel.' });
   }
 }
-
 async function handleCustomerCancel(body, res) {
   const { request_id, phone, email, reason } = body;
 
@@ -558,34 +557,58 @@ async function handleCustomerCancel(body, res) {
     return res.status(403).json({ error: 'Contact details do not match this request' });
   }
 
-  // Free cancellation is only allowed before the worker has received the keys.
-  const cancelableStatuses = ['pending', 'request_received', 'pending_review', 'pending_customer_info', 'accepted', 'confirmed', 'assigned'];
+  const cancelableStatuses = ['pending', 'request_received', 'accepted'];
   if (!cancelableStatuses.includes(request.status)) {
-    return res.status(400).json({ error: `This request cannot be canceled for free at status "${request.status}". Use the "Request vehicle return" option instead.` });
+    const serviceStartedStatuses = [
+      'key_received', 'vehicle_picked_up', 'service_in_progress', 'fueling_complete',
+      'fuel_receipt_uploaded', 'car_wash_complete', 'wash_receipt_uploaded',
+      'service_complete', 'receipts_recorded', 'returned_location_pending',
+      'return_location_recorded', 'return_photos_needed', 'vehicle_returned',
+      'inspection_needed', 'inspection_recorded', 'final_payment_processed',
+      'awaiting_key_return', 'keys_returned', 'complete',
+    ];
+    if (serviceStartedStatuses.includes(request.status)) {
+      return res.status(400).json({ error: 'This request cannot be canceled for free. Use the Request vehicle return option instead.' });
+    }
+    return res.status(400).json({ error: 'This request cannot be canceled from Track. Please contact ShiftFuel.' });
   }
 
   const timestamp = new Date().toISOString();
-  let paymentStatus = request.payment_status;
-  let holdReleaseWarning = null;
+  let paymentStatus = request.payment_status || 'canceled';
 
   const releaseableStatuses = ['authorized', 'requires_capture'];
-  const alreadyReleased = ['voided', 'authorization_released', 'refunded', 'failed', 'auto_reversed', 'payment_release_failed'];
+  const alreadyReleased = ['voided', 'authorization_released', 'refunded', 'failed', 'auto_reversed', 'canceled'];
 
   if (request.payment_intent_id && releaseableStatuses.includes(request.payment_status)) {
     try {
       const stripe = getStripe();
       await stripe.paymentIntents.cancel(request.payment_intent_id);
-      paymentStatus = 'voided';
+      paymentStatus = 'authorization_released';
       console.log('[payments/customer_cancel] Voided PI', request.payment_intent_id, 'for request', request_id);
     } catch (err) {
       if (err.code === 'payment_intent_unexpected_state') {
-        paymentStatus = 'voided';
+        try {
+          const intent = await getStripe().paymentIntents.retrieve(request.payment_intent_id);
+          if (intent.status === 'canceled') {
+            paymentStatus = 'authorization_released';
+          } else {
+            console.error('[payments/customer_cancel] PI unexpected state while canceling:', intent.status);
+            return res.status(500).json({ error: 'We could not release the authorization automatically. Please contact ShiftFuel.' });
+          }
+        } catch (retrieveErr) {
+          console.error('[payments/customer_cancel] Failed to verify PI after unexpected state:', retrieveErr.message);
+          return res.status(500).json({ error: 'We could not release the authorization automatically. Please contact ShiftFuel.' });
+        }
       } else {
         console.error('[payments/customer_cancel] Failed to void PI:', err.message);
-        paymentStatus = 'payment_release_failed';
-        holdReleaseWarning = 'Your card hold could not be released automatically. ShiftFuel will release it manually within 1–3 business days.';
+        return res.status(500).json({ error: 'We could not release the authorization automatically. Please contact ShiftFuel.' });
       }
     }
+  } else if (request.payment_intent_id && !alreadyReleased.includes(request.payment_status)) {
+    console.error('[payments/customer_cancel] Payment status is not releaseable:', request.payment_status, 'request:', request_id);
+    return res.status(500).json({ error: 'We could not release the authorization automatically. Please contact ShiftFuel.' });
+  } else if (!request.payment_intent_id) {
+    paymentStatus = 'canceled';
   }
 
   const updateData = {
@@ -593,9 +616,9 @@ async function handleCustomerCancel(body, res) {
     cancellation_reason: reason.trim(),
     canceled_at: timestamp,
     canceled_by: 'customer',
+    payment_status: paymentStatus,
     updated_at: timestamp,
   };
-  if (paymentStatus !== request.payment_status) updateData.payment_status = paymentStatus;
 
   const { error: updateErr } = await db.from('service_requests').update(updateData).eq('id', request_id);
   if (updateErr) {
@@ -604,7 +627,7 @@ async function handleCustomerCancel(body, res) {
   }
 
   console.log('[payments/customer_cancel] Request', request_id, 'canceled. payment_status:', paymentStatus);
-  return res.status(200).json({ success: true, payment_status: paymentStatus, ...(holdReleaseWarning ? { warning: holdReleaseWarning } : {}) });
+  return res.status(200).json({ success: true, payment_status: paymentStatus });
 }
 
 async function handleWorkerCapture(body, res) {
@@ -899,7 +922,7 @@ async function handleCustomerRequestReturn(body, res) {
     return res.status(403).json({ error: 'Contact details do not match this request' });
   }
 
-  const freeCancelStatuses = ['pending', 'request_received', 'pending_review', 'pending_customer_info', 'accepted', 'confirmed', 'assigned'];
+  const freeCancelStatuses = ['pending', 'request_received', 'accepted'];
   if (freeCancelStatuses.includes(request.status)) {
     return res.status(400).json({ error: 'This request can still be canceled for free. Use Cancel request instead.' });
   }
