@@ -374,6 +374,13 @@ function serviceUnable(request, type) {
   return Boolean(serviceUnableMap(request)[type]);
 }
 
+// True only if admin/worker explicitly chose to charge the service fee for
+// an unable_to_complete service (default is to waive it entirely).
+function serviceUnableFeeCharged(request, type) {
+  const notes = String(request.notes || '');
+  return new RegExp(`\\[service_unable_fee_charged ${type}\\]`).test(notes);
+}
+
 function serviceDoneOrUnable(request, type) {
   const receiptTotals = receiptTotalsFromNotes(request);
   return serviceUnable(request, type) || Number(receiptTotals[type] || 0) > 0;
@@ -410,8 +417,11 @@ function roundMoneyValue(value) {
 }
 
 function transactionPricingSummary(request, receiptTotals = { fuel: 0, wash: 0 }) {
-  const fuelBase = serviceNeedsFuel(request) && Number(receiptTotals.fuel || 0) > 0 ? BASE_FUEL_SERVICE_FEE : 0;
-  const washBase = serviceNeedsWash(request) && Number(receiptTotals.wash || 0) > 0 ? BASE_WASH_SERVICE_FEE : 0;
+  // A service is chargeable if it was actually performed (has a receipt) or
+  // admin/worker explicitly chose to charge the fee anyway for an
+  // unable_to_complete service. Fuel/wash cost is never charged without a receipt.
+  const fuelBase = serviceNeedsFuel(request) && (Number(receiptTotals.fuel || 0) > 0 || serviceUnableFeeCharged(request, 'fuel')) ? BASE_FUEL_SERVICE_FEE : 0;
+  const washBase = serviceNeedsWash(request) && (Number(receiptTotals.wash || 0) > 0 || serviceUnableFeeCharged(request, 'wash')) ? BASE_WASH_SERVICE_FEE : 0;
   const inspection = request.quick_inspection ? BASE_QUICK_INSPECTION_FEE : 0;
   const netTarget = roundMoneyValue(Number(receiptTotals.fuel || 0) + Number(receiptTotals.wash || 0) + fuelBase + washBase + inspection);
   const roundedTotal = netTarget > 0
@@ -1209,7 +1219,7 @@ function renderWorkerJobCard(request, mode) {
       ` : ''}
       ${hasReturnRequest ? `
         <div class="return-request-banner">
-          <h4>Customer requested vehicle return</h4>
+          <h4>Customer requested vehicle return.</h4>
           <p class="field-help">Return vehicle as soon as safely possible.</p>
         </div>
       ` : ''}
@@ -1282,13 +1292,20 @@ function renderWorkerJobActions(request) {
   let nextAction = '';
 
   if (request.return_requested_at && !['canceled_return_completed', 'complete'].includes(request.status)) {
+    const returnBanner = `
+      <div class="return-request-banner">
+        <h4>Customer requested vehicle return.</h4>
+        <p class="field-help">Return vehicle as soon as safely possible.</p>
+      </div>
+    `;
     nextAction = 'Return vehicle as soon as safely possible.';
     if (String(request.notes || '').includes('[dropoff_time')) {
       nextAction = 'Vehicle return photos are recorded. Admin will review completed receipts before charging or waiving fees.';
+      activePanel = returnBanner;
     } else {
-      activePanel = request.return_parking_location
+      activePanel = returnBanner + (request.return_parking_location
         ? renderWorkerPhotoPanel(request, 'dropoff')
-        : renderWorkerReturnLocationPanel(request);
+        : renderWorkerReturnLocationPanel(request));
     }
   } else if (request.status === 'request_received') {
     nextAction = 'Accept the request to begin service.';
@@ -1364,19 +1381,6 @@ function renderWorkerJobActions(request) {
   } else if (request.status === 'awaiting_key_return') {
     nextAction = 'Return the customer\'s keys and document who received them.';
     activePanel = renderWorkerKeysReturnedPanel(request);
-  } else if (request.status === 'return_requested' || request.status === 'customer_return_requested') {
-    nextAction = 'Return vehicle as soon as safely possible.';
-    if (request.return_parking_location) {
-      actions.push(workerPrimaryStatusButton(request, 'Return vehicle', 'return_photos_needed'));
-    } else {
-      actions.push(workerPrimaryStatusButton(request, 'Record return location', 'returned_location_pending'));
-    }
-    activePanel = `
-      <div class="return-request-banner">
-        <h4>Customer requested vehicle return</h4>
-        <p class="field-help">Return vehicle as soon as safely possible.</p>
-      </div>
-    `;
   } else if (request.status === 'payment_issue' || request.status === 'authorization_too_low') {
     nextAction = 'The customer is updating their payment method. No action needed from you right now.';
   }
@@ -1437,6 +1441,10 @@ function renderWorkerServiceUnablePanel(request) {
       <label class="service-unable-other-wrap" style="display:none">
         Describe the reason
         <textarea class="service-unable-other" rows="2" placeholder="Describe the service issue."></textarea>
+      </label>
+      <label class="checkbox-label">
+        <input class="service-unable-charge-fee" type="checkbox">
+        <span>Charge the service fee anyway (e.g. work was attempted). No fuel/wash cost is ever charged when there's no receipt — leave unchecked to waive the fee entirely.</span>
       </label>
       <div class="admin-button-row">
         <button class="button danger save-service-unable" data-id="${escapeHtml(request.id)}" type="button">Save reason</button>
@@ -1777,10 +1785,12 @@ async function saveWorkerServiceUnable(button) {
   const label = type === 'fuel' ? 'Fuel' : 'Car wash';
   const timestamp = new Date().toISOString();
   const nextStatus = nextStatusAfterServiceUnable(request, type);
+  const chargeFeeAnyway = panel?.querySelector('.service-unable-charge-fee')?.checked || false;
   const receiptTotals = receiptTotalsFromNotes(request);
-  const finalTotal = finalTotalFromSavedReceipts(request, receiptTotals);
-  const note = `[service_unable ${type}] ${label} could not be completed: ${reason}`;
+  const note = `[service_unable ${type}] ${label} could not be completed: ${reason}`
+    + (chargeFeeAnyway ? `\n[service_unable_fee_charged ${type}]` : '');
   const notes = request.notes ? `${request.notes}\n${note}` : note;
+  const finalTotal = finalTotalFromSavedReceipts({ ...request, notes }, receiptTotals);
 
   button.disabled = true;
   button.textContent = 'Saving...';
@@ -1788,7 +1798,7 @@ async function saveWorkerServiceUnable(button) {
   const { error } = await workerDb.rpc('worker_update_request', {
     p_token: SESSION_WORKER_TOKEN,
     p_request_id: id,
-    p_data: { status: nextStatus, final_total: finalTotal, notes, ...pricingAuditFields(request, receiptTotals) },
+    p_data: { status: nextStatus, final_total: finalTotal, notes, ...pricingAuditFields({ ...request, notes }, receiptTotals) },
   });
 
   if (error) throw error;
@@ -2054,8 +2064,10 @@ function workerCompleteValidation(button) {
   if (!request) return null;
 
   const receiptTotals = receiptTotalsFromNotes(request);
-  const hasReceipts = (serviceNeedsFuel(request) ? receiptTotals.fuel > 0 : true)
-    && (serviceNeedsWash(request) ? receiptTotals.wash > 0 : true);
+  // A service marked unable_to_complete has no receipt by definition — only
+  // require a receipt for services that were actually performed.
+  const hasReceipts = (serviceNeedsFuel(request) ? (receiptTotals.fuel > 0 || serviceUnable(request, 'fuel')) : true)
+    && (serviceNeedsWash(request) ? (receiptTotals.wash > 0 || serviceUnable(request, 'wash')) : true);
 
   if (!hasReceipts) {
     alert('Save the receipt total before completing this request.');
