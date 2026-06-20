@@ -53,9 +53,21 @@ function closePaymentModal() {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
-  document.querySelector('#payment-modal-cancel')?.addEventListener('click', closePaymentModal);
+  // Block Cancel/backdrop-click while authorization or saving is in progress —
+  // closing mid-save could orphan a successful Stripe authorization with no
+  // confirmed booking and no visible error.
+  const isProcessing = () => getPaymentModalSubmit()?.disabled === true;
+
+  document.querySelector('#payment-modal-cancel')?.addEventListener('click', () => {
+    if (isProcessing()) return;
+    closePaymentModal();
+  });
   document.querySelector('#payment-modal')?.addEventListener('click', (e) => {
-    if (e.target === document.querySelector('#payment-modal')) closePaymentModal();
+    if (e.target === document.querySelector('#payment-modal') && !isProcessing()) closePaymentModal();
+  });
+  // Native <dialog> Escape-key dismissal — block it the same way while processing.
+  document.querySelector('#payment-modal')?.addEventListener('cancel', (e) => {
+    if (isProcessing()) e.preventDefault();
   });
   document.querySelector('#payment-modal-submit')?.addEventListener('click', handlePaymentModalSubmit);
 });
@@ -131,10 +143,14 @@ let bookedReturnSlots = new Set();
 let workerAvailabilitySlots = null;
 let workerAvailabilityLoaded = false;
 let returningCustomerMatches = [];
+let returningCustomerSavedOptions = { addresses: [], vehicles: [], recentRequests: [] };
 let returningCustomerNeedsConfirmation = false;
 let currentlyAppliedRequestId = null;
+let currentlyAppliedSavedAddressId = null;
+let currentlyAppliedSavedVehicleId = null;
 let addressValidated = false;
 let isReturningCustomer = false;
+let isApplyingSavedAddress = false;
 
 function setAddressStatus(type, message) {
   if (!addressAreaStatus) return;
@@ -149,6 +165,7 @@ function setPostAddressSections(visible) {
 }
 
 function resetAddressValidation() {
+  if (isApplyingSavedAddress) return;
   if (!addressValidated) {
     const hasContent = [addressStreet, addressApt, addressCity, addressState, addressZip]
       .some(f => f?.value?.trim());
@@ -157,6 +174,7 @@ function resetAddressValidation() {
     return;
   }
   addressValidated = false;
+  currentlyAppliedSavedAddressId = null;
   setPostAddressSections(false);
   if (!isReturningCustomer) {
     setAddressStatus('warning', 'Please validate your service address before continuing.');
@@ -531,6 +549,44 @@ function formatPricePerGallon(value) {
   return `$${value.toFixed(3)}/gal`;
 }
 
+const PAYMENT_RECOVERY_RATE = 0.029;
+const PAYMENT_RECOVERY_FIXED = 0.30;
+
+function roundMoneyValue(value) {
+  return Math.round((Number(value) || 0) * 100) / 100;
+}
+
+function servicePricingParts({ needsFuel, needsWash, fuelAmount = 0, washAmount = 0, quickInspection = false }) {
+  const fuelBase = needsFuel ? fees.fuelConvenience : 0;
+  const washBase = needsWash ? fees.washConvenience : 0;
+  const inspection = quickInspection ? fees.quickInspection : 0;
+  const netTarget = roundMoneyValue(fuelAmount + washAmount + fuelBase + washBase + inspection);
+  const roundedTotal = netTarget > 0
+    ? Math.ceil((netTarget + PAYMENT_RECOVERY_FIXED) / (1 - PAYMENT_RECOVERY_RATE))
+    : 0;
+  const recovery = roundMoneyValue(roundedTotal - netTarget);
+  const recoveryCents = Math.round(recovery * 100);
+  let fuelRecovery = 0;
+  let washRecovery = 0;
+
+  if (needsFuel && needsWash) {
+    fuelRecovery = Math.floor(recoveryCents / 2) / 100;
+    washRecovery = (recoveryCents - Math.floor(recoveryCents / 2)) / 100;
+  } else if (needsFuel) {
+    fuelRecovery = recovery;
+  } else if (needsWash) {
+    washRecovery = recovery;
+  }
+
+  return {
+    fuelService: roundMoneyValue(fuelBase + fuelRecovery),
+    washService: roundMoneyValue(washBase + washRecovery),
+    inspection,
+    recovery,
+    total: roundedTotal,
+  };
+}
+
 function selectedServiceType() {
   return serviceTypes[service.value] || { needsFuel: false, needsWash: false };
 }
@@ -550,11 +606,14 @@ function updateEstimate() {
   const gallons = serviceType.needsFuel && fuelRange ? fuelRange.gallons : 0;
   const pricePerGallon = averageFuelPrices[fuelType.value] || averageFuelPrices.Regular;
   const fuelAmount = gallons * pricePerGallon;
-  const fuelConvenienceFee = serviceType.needsFuel ? fees.fuelConvenience : 0;
   const washFee = serviceType.needsWash && washPackage ? washPackage.price : 0;
-  const washConvenienceFee = serviceType.needsWash && washPackage ? fees.washConvenience : 0;
-  const inspectionFee = quickInspection.checked ? fees.quickInspection : 0;
-  const selectedFee = fuelConvenienceFee + washFee + washConvenienceFee + inspectionFee;
+  const pricing = servicePricingParts({
+    needsFuel: serviceType.needsFuel,
+    needsWash: serviceType.needsWash && !!washPackage,
+    fuelAmount,
+    washAmount: washFee,
+    quickInspection: quickInspection.checked,
+  });
 
   paymentWashRow.hidden = !serviceType.needsWash || !washPackage;
   paymentWashConvenienceRow.hidden = !serviceType.needsWash || !washPackage;
@@ -564,14 +623,14 @@ function updateEstimate() {
   paymentInspectionRow.hidden = !quickInspection.checked;
 
   estimatedWash.textContent = washPackage ? `${washPackage.label} - ${formatCurrency(washFee)}` : "$0.00";
-  washConvenienceFeeDisplay.textContent = formatCurrency(washConvenienceFee);
+  washConvenienceFeeDisplay.textContent = formatCurrency(pricing.washService);
   estimatedFuel.textContent = serviceType.needsFuel
     ? `${fuelRange?.label || "0 gallons"} estimated at ${gallons} gallons x ${formatPricePerGallon(pricePerGallon)} = ${formatCurrency(fuelAmount)}`
     : formatCurrency(fuelAmount);
   averagePrice.textContent = formatPricePerGallon(pricePerGallon);
-  fuelConvenienceFeeDisplay.textContent = formatCurrency(fuelConvenienceFee);
-  inspectionFeeDisplay.textContent = formatCurrency(inspectionFee);
-  estimatedTotal.textContent = formatCurrency(fuelAmount + selectedFee);
+  fuelConvenienceFeeDisplay.textContent = formatCurrency(pricing.fuelService);
+  inspectionFeeDisplay.textContent = formatCurrency(pricing.inspection);
+  estimatedTotal.textContent = formatCurrency(pricing.total);
 }
 
 function formatTimeLabel(value) {
@@ -666,16 +725,16 @@ async function nominatimSearch(query) {
   return results?.length ? results[0] : null;
 }
 
-async function validateServiceArea(workplaceText) {
+async function validateServiceArea(workplaceText, fallbackParts = null) {
   try {
     // Try the full address first; fall back to city+state+zip so that streets
     // missing from OpenStreetMap still pass area validation.
     let result = await nominatimSearch(workplaceText);
 
     if (!result) {
-      const city  = addressCity?.value?.trim()  || '';
-      const state = addressState?.value?.trim() || '';
-      const zip   = addressZip?.value?.trim()   || '';
+      const city  = fallbackParts?.city ?? addressCity?.value?.trim()  ?? '';
+      const state = fallbackParts?.state ?? addressState?.value?.trim() ?? '';
+      const zip   = fallbackParts?.zip ?? addressZip?.value?.trim()   ?? '';
       const fallback = [city, state, zip].filter(Boolean).join(', ');
       if (fallback) result = await nominatimSearch(fallback);
     }
@@ -705,7 +764,7 @@ async function validateServiceArea(workplaceText) {
     ].filter(Boolean);
     return { valid: true, canonicalAddress: canonicalParts.join(', ') };
   } catch {
-    return { valid: false, message: 'We could not verify this address. Please try again or contact ShiftFuel.' };
+    return { valid: false, message: 'We could not verify this address. Please check your address and try again.' };
   }
 }
 
@@ -1022,13 +1081,7 @@ function updateServiceDetails() {
     details.push("Select a wash package to see what is included.");
   }
 
-  if (serviceType.needsFuel && serviceType.needsWash) {
-    details.push("$30 car wash + fuel convenience fee added.");
-  } else if (serviceType.needsFuel) {
-    details.push("$15 fuel convenience fee added.");
-  } else if (serviceType.needsWash) {
-    details.push("$15 car wash convenience fee added.");
-  }
+  details.push("Service prices include payment and operating costs. Final fuel cost is based on the actual receipt. Final totals are rounded up to the nearest dollar.");
 
   if (quickInspection.checked) {
     details.push("Quick vehicle inspection add-on.");
@@ -1045,18 +1098,43 @@ function updateServiceDetails() {
 function moneyValue(text) {
   return Number(text.replace(/[^0-9.-]+/g, "")) || 0;
 }
-function formatPhoneNumber(value) {
-  const digits = String(value || "").replace(/\D/g, "");
+function normalizePhone(value) {
+  return String(value || "").replace(/\D/g, "");
+}
 
-  if (digits.length === 10) {
-    return `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`;
-  }
-
-  return value;
+function formatPhone(value) {
+  let digits = normalizePhone(value);
+  if (digits.length === 11 && digits[0] === "1") digits = digits.slice(1);
+  if (digits.length !== 10) return value || "";
+  return `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`;
 }
 
 function cleanLookupPhone(value) {
-  return String(value || "").replace(/\D/g, "");
+  return normalizePhone(value);
+}
+
+// Reformats a phone <input> live as the customer types, preserving cursor
+// position by digit count. Safe to call more than once on the same element.
+function attachPhoneInputFormatting(input) {
+  if (!input || input.dataset.phoneFormatBound) return;
+  input.dataset.phoneFormatBound = "1";
+  input.addEventListener("input", () => {
+    const digitsBeforeCursor = normalizePhone(input.value.slice(0, input.selectionStart || 0)).length;
+    const digits = normalizePhone(input.value).slice(0, 10);
+    let formatted = digits;
+    if (digits.length > 6) formatted = `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`;
+    else if (digits.length > 3) formatted = `(${digits.slice(0, 3)}) ${digits.slice(3)}`;
+    else if (digits.length > 0) formatted = `(${digits}`;
+    input.value = formatted;
+
+    let pos = 0;
+    let seen = 0;
+    while (pos < formatted.length && seen < digitsBeforeCursor) {
+      if (/\d/.test(formatted[pos])) seen += 1;
+      pos += 1;
+    }
+    input.setSelectionRange(pos, pos);
+  });
 }
 
 function escapeHtml(value) {
@@ -1078,6 +1156,14 @@ function returningVehicleLabel(request) {
   ].filter(Boolean).join(" ");
 }
 
+function returningVehicleCardTitle(vehicle) {
+  return [
+    vehicle.vehicle_year,
+    vehicle.vehicle_make,
+    vehicle.vehicle_model,
+  ].filter(Boolean).join(" ");
+}
+
 function returningServiceLabel(request) {
   const serviceName = request.service_label || request.service_type || "Service not listed";
   const details = [
@@ -1086,6 +1172,81 @@ function returningServiceLabel(request) {
   ].filter(Boolean).join(" | ");
 
   return details ? `${serviceName} (${details})` : serviceName;
+}
+
+function returningAddressLabel(address) {
+  return address.address_street || address.hospital || "Saved address";
+}
+
+function returningVehicleDetails(vehicle) {
+  return [
+    vehicle.vehicle_color ? `Color: ${vehicle.vehicle_color}` : "",
+    vehicle.license_plate ? `Plate: ${vehicle.license_plate}` : "",
+  ].filter(Boolean).join(" | ");
+}
+
+function savedVehiclePlateKey(value) {
+  return String(value || "").trim().toUpperCase().replace(/[\s-]+/g, "");
+}
+
+function savedVehicleColorKey(value) {
+  return String(value || "").trim().toLowerCase();
+}
+
+function savedVehicleDuplicateExists(candidate, currentVehicleId = null) {
+  const plateKey = savedVehiclePlateKey(candidate.license_plate);
+  const colorKey = savedVehicleColorKey(candidate.vehicle_color);
+  if (!plateKey || !colorKey) return false;
+
+  return returningCustomerSavedOptions.vehicles.some((vehicle) => {
+    if (currentVehicleId && vehicle.id === currentVehicleId) return false;
+    return savedVehiclePlateKey(vehicle.license_plate) === plateKey
+      && savedVehicleColorKey(vehicle.vehicle_color) === colorKey;
+  });
+}
+
+function returningAddressCityLine(address) {
+  return [address.address_city, address.address_state, address.address_zip].filter(Boolean).join(", ");
+}
+
+function savedAddressTextKey(value) {
+  return String(value || "").trim().replace(/\s+/g, " ").toLowerCase();
+}
+
+function savedAddressStateKey(value) {
+  return String(value || "").trim().toUpperCase();
+}
+
+function savedAddressZipKey(value) {
+  return String(value || "").replace(/\D/g, "");
+}
+
+function savedAddressDuplicateKey(address) {
+  return [
+    savedAddressTextKey(address.address_street || address.hospital),
+    savedAddressTextKey(address.address_apt),
+    savedAddressTextKey(address.address_city),
+    savedAddressStateKey(address.address_state),
+    savedAddressZipKey(address.address_zip),
+  ].join("|");
+}
+
+function uniqueSavedAddresses(addresses) {
+  const seen = new Set();
+  return (addresses || []).filter((address) => {
+    const key = savedAddressDuplicateKey(address);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+function savedAddressDuplicateExists(candidate, currentAddressId = null) {
+  const key = savedAddressDuplicateKey(candidate);
+  return returningCustomerSavedOptions.addresses.some((address) => {
+    if (currentAddressId && address.id === currentAddressId) return false;
+    return savedAddressDuplicateKey(address) === key;
+  });
 }
 
 function shortDate(value) {
@@ -1098,28 +1259,96 @@ function shortDate(value) {
   }).format(new Date(value));
 }
 
-function renderReturningCustomerResults(requests) {
+function legacyRequestsToSavedOptions(requests) {
+  const addressKeys = new Set();
+  const vehicleKeys = new Set();
+  const addresses = [];
+  const vehicles = [];
+
+  (requests || []).forEach((request, index) => {
+    const addressKey = [
+      request.address_street || request.hospital || "",
+      request.address_apt || "",
+      request.address_city || "",
+      request.address_state || "",
+      request.address_zip || "",
+    ].map((part) => String(part).toLowerCase()).join("|");
+    if (!addressKeys.has(addressKey)) {
+      addressKeys.add(addressKey);
+      addresses.push({ ...request, id: request.id || `legacy-address-${index}`, legacy_request_index: index });
+    }
+
+    const vehicleKey = [
+      request.license_plate || "",
+      request.vehicle_year || "",
+      request.vehicle_make || "",
+      request.vehicle_model || "",
+    ].map((part) => String(part).toLowerCase()).join("|");
+    if (!vehicleKeys.has(vehicleKey)) {
+      vehicleKeys.add(vehicleKey);
+      vehicles.push({ ...request, id: request.id || `legacy-vehicle-${index}`, legacy_request_index: index });
+    }
+  });
+
+  return { addresses, vehicles, recentRequests: requests || [] };
+}
+
+function setReturningSavedOptions(options) {
+  returningCustomerSavedOptions = {
+    addresses: uniqueSavedAddresses(Array.isArray(options?.addresses) ? options.addresses : []),
+    vehicles: Array.isArray(options?.vehicles) ? options.vehicles : [],
+    recentRequests: Array.isArray(options?.recent_requests)
+      ? options.recent_requests
+      : Array.isArray(options?.recentRequests)
+      ? options.recentRequests
+      : [],
+  };
+  returningCustomerMatches = returningCustomerSavedOptions.recentRequests;
+}
+
+function renderReturningCustomerResults() {
   if (!returningCustomerResults) return;
 
-  if (!requests.length) {
-    returningCustomerResults.hidden = true;
-    returningCustomerResults.innerHTML = "";
-    return;
-  }
-
+  const { addresses, vehicles } = returningCustomerSavedOptions;
   returningCustomerResults.hidden = false;
-  returningCustomerResults.innerHTML = requests.map((request, index) => `
-    <article class="returning-customer-card">
-      <span>${escapeHtml(returningVehicleLabel(request) || "Previous vehicle")}</span>
-      <small>${escapeHtml(returningServiceLabel(request))}</small>
-      <small>${escapeHtml(request.customer_name || "Customer")} | ${escapeHtml(request.address_street ? [request.address_street, request.address_city, request.address_state, request.address_zip].filter(Boolean).join(", ") : (request.hospital || "Address not listed"))} | ${escapeHtml(shortDate(request.service_date || request.created_at))}</small>
-      <div class="returning-customer-actions">
-        <button class="button primary" type="button" data-returning-index="${index}" data-returning-mode="same-car">Use this car</button>
-        <button class="button secondary" type="button" data-returning-index="${index}" data-returning-mode="new-car">Add new car but keep same service</button>
-        <button class="button danger" type="button" data-returning-delete="${index}">Delete this car</button>
+  returningCustomerResults.innerHTML = `
+    <section class="returning-customer-section">
+      <div class="returning-customer-section-head">
+        <h4>Saved addresses</h4>
+        <button class="button secondary" type="button" data-returning-add-address>Add new address</button>
       </div>
-    </article>
-  `).join("");
+      ${addresses.length ? addresses.map((address, index) => `
+        <article class="returning-customer-card ${currentlyAppliedSavedAddressId && currentlyAppliedSavedAddressId === address.id ? "is-selected" : ""}">
+          <span>${escapeHtml(returningAddressLabel(address))}</span>
+          ${currentlyAppliedSavedAddressId && currentlyAppliedSavedAddressId === address.id ? `<small class="selected-option-note">Selected address</small>` : ""}
+          ${returningAddressCityLine(address) ? `<small>${escapeHtml(returningAddressCityLine(address))}</small>` : ""}
+          <div class="returning-customer-actions">
+            <button class="button primary" type="button" data-returning-address-index="${index}">${currentlyAppliedSavedAddressId && currentlyAppliedSavedAddressId === address.id ? "Address selected" : "Use this address"}</button>
+            <button class="button secondary" type="button" data-returning-edit-address="${index}">Edit</button>
+            <button class="button danger" type="button" data-returning-delete-address="${index}">Delete</button>
+          </div>
+        </article>
+      `).join("") : `<p class="field-help">No saved addresses. Use Add new address.</p>`}
+    </section>
+    <section class="returning-customer-section">
+      <div class="returning-customer-section-head">
+        <h4>Saved vehicles</h4>
+        <button class="button secondary" type="button" data-returning-add-vehicle>Add new vehicle</button>
+      </div>
+      ${vehicles.length ? vehicles.map((vehicle, index) => `
+        <article class="returning-customer-card ${currentlyAppliedSavedVehicleId && currentlyAppliedSavedVehicleId === vehicle.id ? "is-selected" : ""}">
+          <span>${escapeHtml(returningVehicleCardTitle(vehicle) || "Saved vehicle")}</span>
+          ${currentlyAppliedSavedVehicleId && currentlyAppliedSavedVehicleId === vehicle.id ? `<small class="selected-option-note">Selected vehicle</small>` : ""}
+          ${returningVehicleDetails(vehicle) ? `<small>${escapeHtml(returningVehicleDetails(vehicle))}</small>` : ""}
+          <div class="returning-customer-actions">
+            <button class="button primary" type="button" data-returning-vehicle-index="${index}">${currentlyAppliedSavedVehicleId && currentlyAppliedSavedVehicleId === vehicle.id ? "Vehicle selected" : "Use this vehicle"}</button>
+            <button class="button secondary" type="button" data-returning-edit-vehicle="${index}">Edit</button>
+            <button class="button danger" type="button" data-returning-delete-vehicle="${index}">Delete</button>
+          </div>
+        </article>
+      `).join("") : `<p class="field-help">No saved vehicles. Use Add new vehicle.</p>`}
+    </section>
+  `;
 }
 
 async function lookupReturningCustomer() {
@@ -1143,6 +1372,44 @@ async function lookupReturningCustomer() {
   returningCustomerStatus.textContent = "Searching previous bookings...";
 
   try {
+    const { data: savedOptions, error: savedError } = await window.ShiftFuelSupabase
+      .rpc("public_returning_customer_options", {
+        p_phone: phone,
+        p_email: lookupEmail,
+      });
+
+    if (!savedError) {
+      setReturningSavedOptions(savedOptions || {});
+
+      if (!returningCustomerSavedOptions.addresses.length && !returningCustomerSavedOptions.vehicles.length) {
+        returningCustomerStatus.textContent = "No saved addresses or vehicles found. Use Add new address and Add new vehicle below.";
+        returningCustomerResults.hidden = false;
+        returningCustomerResults.innerHTML = `
+          <section class="returning-customer-section">
+            <div class="returning-customer-section-head">
+              <h4>Saved addresses</h4>
+              <button class="button secondary" type="button" data-returning-add-address>Add new address</button>
+            </div>
+            <p class="field-help">No saved addresses yet.</p>
+          </section>
+          <section class="returning-customer-section">
+            <div class="returning-customer-section-head">
+              <h4>Saved vehicles</h4>
+              <button class="button secondary" type="button" data-returning-add-vehicle>Add new vehicle</button>
+            </div>
+            <p class="field-help">No saved vehicles yet.</p>
+          </section>
+        `;
+        return;
+      }
+
+      returningCustomerStatus.textContent = "Choose a saved address and saved vehicle to prefill the form.";
+      renderReturningCustomerResults();
+      return;
+    }
+
+    console.warn("Saved returning customer lookup failed; trying legacy lookup:", savedError);
+
     const { data: rpcMatches, error: rpcError } = await window.ShiftFuelSupabase
       .rpc("public_returning_customer_lookup", {
         p_phone: phone,
@@ -1150,16 +1417,16 @@ async function lookupReturningCustomer() {
       });
 
     if (!rpcError) {
-      returningCustomerMatches = rpcMatches || [];
+      setReturningSavedOptions(legacyRequestsToSavedOptions(rpcMatches || []));
 
-      if (!returningCustomerMatches.length) {
+      if (!returningCustomerSavedOptions.addresses.length && !returningCustomerSavedOptions.vehicles.length) {
         returningCustomerStatus.textContent = "No previous booking found. You can still complete the form below.";
-        renderReturningCustomerResults([]);
+        renderReturningCustomerResults();
         return;
       }
 
-      returningCustomerStatus.textContent = "Choose a previous vehicle to prefill the form.";
-      renderReturningCustomerResults(returningCustomerMatches);
+      returningCustomerStatus.textContent = "Choose a saved address and saved vehicle to prefill the form.";
+      renderReturningCustomerResults();
       return;
     }
 
@@ -1253,7 +1520,7 @@ async function applyReturningCustomer(index, mode = "same-car") {
   currentlyAppliedRequestId = request.id;
 
   form.elements.name.value = request.customer_name || "";
-  form.elements.phone.value = request.customer_phone || "";
+  form.elements.phone.value = formatPhone(request.customer_phone || "");
   form.elements.email.value = request.customer_email || "";
   // Fill address fields; fall back to the old single-field value for legacy bookings.
   if (addressStreet) addressStreet.value = request.address_street || request.hospital || "";
@@ -1290,6 +1557,486 @@ async function applyReturningCustomer(index, mode = "same-car") {
     : "Your previous info has been filled in. Confirm parking and key handoff, then choose today's date and return time.";
 }
 
+function fillReturningContact(option) {
+  form.elements.name.value = option.customer_name || form.elements.name.value || "";
+  form.elements.phone.value = formatPhone(returningCustomerSearch?.value || option.customer_phone || form.elements.phone.value || "");
+  form.elements.email.value = (returningCustomerEmail?.value || option.customer_email || form.elements.email.value || "").toLowerCase();
+}
+
+function applyReturningAddress(index) {
+  const address = returningCustomerSavedOptions.addresses[index];
+  if (!address) return;
+  currentlyAppliedSavedAddressId = address.id || null;
+  fillReturningContact(address);
+
+  isApplyingSavedAddress = true;
+  try {
+    if (addressStreet) addressStreet.value = address.address_street || address.hospital || "";
+    if (addressApt)    addressApt.value    = address.address_apt    || "";
+    if (addressCity)   addressCity.value   = address.address_city   || "";
+    if (addressState)  addressState.value  = address.address_state  || "DE";
+    if (addressZip)    addressZip.value    = address.address_zip    || "";
+    form.elements.parkingLocation.value = [address.parking_location, address.parking_spot ? `spot ${address.parking_spot}` : ""].filter(Boolean).join(", ");
+    form.elements.parkingMapUrl.value = address.parking_map_url || "";
+    form.elements.keyHandoffDetails.value = address.key_handoff_details || "";
+  } finally {
+    isApplyingSavedAddress = false;
+  }
+
+  isReturningCustomer = true;
+  addressValidated = true;
+  setPostAddressSections(true);
+  setAddressStatus("success", "Saved address selected. Confirm parking and key handoff before continuing.");
+  showReturningConfirmation();
+  updateReturningConfirmationText();
+  renderReturningCustomerResults();
+  returningCustomerStatus.textContent = "Saved address selected. Confirm parking and key handoff before continuing.";
+}
+
+async function applyReturningVehicle(index) {
+  const vehicle = returningCustomerSavedOptions.vehicles[index];
+  if (!vehicle) return;
+  currentlyAppliedSavedVehicleId = vehicle.id || null;
+  fillReturningContact(vehicle);
+
+  form.elements.color.value = vehicle.vehicle_color || "";
+  form.elements.license.value = vehicle.license_plate || "";
+  if (vehicle.fuel_type && fuelType) fuelType.value = vehicle.fuel_type;
+  await setVehicleFromPrevious(vehicle);
+
+  isReturningCustomer = true;
+  updateServiceControls();
+  updateEstimate();
+  renderReturningCustomerResults();
+  if (currentlyAppliedSavedAddressId) {
+    scrollToParkingVerification();
+    returningCustomerStatus.textContent = "Saved vehicle selected. Confirm parking and key handoff before continuing.";
+  } else {
+    returningCustomerStatus.textContent = "Saved vehicle selected. Choose a saved address or add a new address next.";
+  }
+}
+
+async function addNewReturningAddress() {
+  currentlyAppliedSavedAddressId = null;
+  const data = await openSavedAddressModal(null);
+  if (!data) return;
+  const phone = cleanLookupPhone(returningCustomerSearch?.value.trim() || "");
+  const email = (returningCustomerEmail?.value.trim() || "").toLowerCase();
+  const { error } = await window.ShiftFuelSupabase.rpc("public_add_saved_address", {
+    p_phone: phone,
+    p_email: email,
+    p_data: data,
+  });
+  if (error) {
+    console.warn("Could not add saved address:", error);
+    returningCustomerStatus.textContent = String(error.message || "").includes("already saved")
+      ? "This address is already saved. Please use the saved address or edit the existing one."
+      : "Could not add that saved address.";
+    return;
+  }
+  await refreshReturningOptionsAfterMutation("Saved address added.");
+}
+
+async function addNewReturningVehicle() {
+  currentlyAppliedSavedVehicleId = null;
+  const data = await openSavedVehicleModal(null);
+  if (!data) return;
+  const phone = cleanLookupPhone(returningCustomerSearch?.value.trim() || "");
+  const email = (returningCustomerEmail?.value.trim() || "").toLowerCase();
+  const { error } = await window.ShiftFuelSupabase.rpc("public_add_saved_vehicle", {
+    p_phone: phone,
+    p_email: email,
+    p_data: data,
+  });
+  if (error) {
+    console.warn("Could not add saved vehicle:", error);
+    returningCustomerStatus.textContent = String(error.message || "").includes("already appears to be saved")
+      ? "This vehicle already appears to be saved. Please use the saved vehicle or edit the existing one."
+      : "Could not add that saved vehicle.";
+    return;
+  }
+  await refreshReturningOptionsAfterMutation("Saved vehicle added.");
+}
+
+async function refreshReturningOptionsAfterMutation(message) {
+  await lookupReturningCustomer();
+  if (message && returningCustomerStatus) returningCustomerStatus.textContent = message;
+}
+
+function modalOption(value, label = value, selected = false) {
+  return `<option value="${escapeHtml(value)}"${selected ? " selected" : ""}>${escapeHtml(label)}</option>`;
+}
+
+function populateModalVehicleYears(select, selectedValue = "") {
+  select.innerHTML = `<option value="">Select year</option>`;
+  for (let optionYear = currentYear; optionYear >= 1980; optionYear -= 1) {
+    select.insertAdjacentHTML("beforeend", modalOption(String(optionYear), String(optionYear), String(optionYear) === String(selectedValue)));
+  }
+}
+
+function populateModalVehicleMakes(select, selectedValue = "") {
+  select.innerHTML = "";
+  const popular = document.createElement("optgroup");
+  const other = document.createElement("optgroup");
+  popular.label = "Most common makes";
+  other.label = "Other makes";
+  popularMakes.forEach((make) => popular.append(createOption(make)));
+  otherMakes
+    .filter((make) => !popularMakes.includes(make))
+    .sort((a, b) => a.localeCompare(b))
+    .forEach((make) => other.append(createOption(make)));
+  select.append(popular, other);
+  if (selectedValue) select.value = selectedValue;
+}
+
+async function loadModalVehicleModels(year, make, modelSelect, selectedModel = "") {
+  modelSelect.innerHTML = `<option value="">Loading models...</option>`;
+  modelSelect.disabled = true;
+  if (!year || !make) {
+    modelSelect.innerHTML = `<option value="">Select year and make first</option>`;
+    return;
+  }
+
+  try {
+    const url = `https://vpic.nhtsa.dot.gov/api/vehicles/GetModelsForMakeYear/make/${encodeURIComponent(make)}/modelyear/${year}/vehicletype/car?format=json`;
+    const response = await fetch(url);
+    if (!response.ok) throw new Error("Vehicle model lookup failed.");
+    const data = await response.json();
+    const models = [...new Set(data.Results.map((item) => item.Model_Name).filter(Boolean))].sort((a, b) => a.localeCompare(b));
+    modelSelect.innerHTML = `<option value="">Select model</option>`;
+    models.forEach((model) => modelSelect.append(createOption(model)));
+  } catch {
+    const fallback = fallbackModels[make] || [];
+    modelSelect.innerHTML = `<option value="">${fallback.length ? "Select model" : "No models found"}</option>`;
+    fallback.forEach((model) => modelSelect.append(createOption(model)));
+  }
+
+  if (selectedModel && !Array.from(modelSelect.options).some((option) => option.value === selectedModel)) {
+    modelSelect.append(createOption(selectedModel));
+  }
+  if (selectedModel) modelSelect.value = selectedModel;
+  modelSelect.disabled = modelSelect.options.length <= 1;
+}
+
+function openReturningModal(title, bodyHtml) {
+  let modalRef = null;
+  const promise = new Promise((resolve) => {
+    const modal = document.createElement("div");
+    modalRef = modal;
+    modal.className = "returning-modal";
+    modal.innerHTML = `
+      <div class="returning-modal-dialog" role="dialog" aria-modal="true" aria-label="${escapeHtml(title)}">
+        <div class="returning-modal-header">
+          <h3>${escapeHtml(title)}</h3>
+          <button class="button secondary returning-modal-close" type="button">Close</button>
+        </div>
+        ${bodyHtml}
+      </div>
+    `;
+    document.body.append(modal);
+    const close = (value = null) => {
+      modal.remove();
+      resolve(value);
+    };
+    modal.querySelector(".returning-modal-close")?.addEventListener("click", () => close(null));
+    modal.addEventListener("click", (event) => {
+      if (event.target === modal) close(null);
+    });
+    modal.addEventListener("returning-modal-save", (event) => close(event.detail));
+  });
+  return { promise, modal: modalRef };
+}
+
+async function openSavedAddressModal(address = null) {
+  const title = address ? "Edit saved address" : "Add new address";
+  const { promise: resultPromise, modal } = openReturningModal(title, `
+    <form class="returning-address-modal-form">
+      <fieldset>
+        <legend>Service address</legend>
+        <div class="address-fields">
+          <label><span>Street address <span class="required-mark">Required</span></span><input class="ram-street" type="text" autocomplete="address-line1" placeholder="123 Main Street" value="${escapeHtml(address?.address_street || address?.hospital || "")}" required></label>
+          <label><span>Apt / Suite / Unit <span class="optional-mark">Optional</span></span><input class="ram-apt" type="text" autocomplete="address-line2" placeholder="Suite 200, Unit B" value="${escapeHtml(address?.address_apt || "")}"></label>
+          <div class="address-csz">
+            <label><span>City <span class="required-mark">Required</span></span><input class="ram-city" type="text" autocomplete="address-level2" placeholder="Newark" value="${escapeHtml(address?.address_city || "")}" required></label>
+            <label><span>State</span><input class="ram-state" type="text" autocomplete="address-level1" placeholder="DE" value="${escapeHtml(address?.address_state || "DE")}"></label>
+            <label><span>ZIP <span class="required-mark">Required</span></span><input class="ram-zip" type="text" autocomplete="postal-code" inputmode="numeric" placeholder="19702" value="${escapeHtml(address?.address_zip || "")}" required></label>
+          </div>
+        </div>
+        <div class="address-validate-row">
+          <button class="button secondary ram-validate" type="button">Validate Address</button>
+        </div>
+        <p class="field-help ram-status" role="status"></p>
+      </fieldset>
+      <div class="returning-modal-actions">
+        <button class="button primary ram-save" type="submit" disabled>Save address</button>
+      </div>
+    </form>
+  `);
+
+  const formEl = modal.querySelector(".returning-address-modal-form");
+  const statusEl = modal.querySelector(".ram-status");
+  const saveBtn = modal.querySelector(".ram-save");
+  let validated = false;
+
+  const collect = () => {
+    const street = modal.querySelector(".ram-street")?.value.trim() || "";
+    const apt = modal.querySelector(".ram-apt")?.value.trim() || "";
+    const city = modal.querySelector(".ram-city")?.value.trim() || "";
+    const state = modal.querySelector(".ram-state")?.value.trim() || "DE";
+    const zip = modal.querySelector(".ram-zip")?.value.trim() || "";
+    return {
+      customer_name: form.elements.name.value || "",
+      hospital: [street, city, state, zip].filter(Boolean).join(", "),
+      address_street: street,
+      address_apt: apt,
+      address_city: city,
+      address_state: state,
+      address_zip: zip,
+      service_area_valid: true,
+    };
+  };
+
+  formEl.querySelectorAll("input").forEach((input) => input.addEventListener("input", () => {
+    validated = false;
+    saveBtn.disabled = true;
+    statusEl.textContent = "Validate this address before saving.";
+    statusEl.dataset.status = "warning";
+  }));
+
+  modal.querySelector(".ram-validate")?.addEventListener("click", async () => {
+    const data = collect();
+    if (!data.address_street || !data.address_city || !data.address_zip) {
+      statusEl.textContent = "Please enter the required address fields.";
+      statusEl.dataset.status = "error";
+      return;
+    }
+    if (savedAddressDuplicateExists(data, address?.id || null)) {
+      statusEl.textContent = "This address is already saved. Please use the saved address or edit the existing one.";
+      statusEl.dataset.status = "error";
+      validated = false;
+      saveBtn.disabled = true;
+      return;
+    }
+    statusEl.textContent = "Verifying address...";
+    statusEl.dataset.status = "";
+    const validation = await validateServiceArea(
+      [data.address_street, data.address_city, data.address_state, data.address_zip].filter(Boolean).join(", "),
+      { city: data.address_city, state: data.address_state, zip: data.address_zip }
+    );
+    if (!validation.valid) {
+      statusEl.textContent = validation.message || "We currently do not serve this area.";
+      statusEl.dataset.status = "error";
+      validated = false;
+      saveBtn.disabled = true;
+      return;
+    }
+    if (savedAddressDuplicateExists(data, address?.id || null)) {
+      statusEl.textContent = "This address is already saved. Please use the saved address or edit the existing one.";
+      statusEl.dataset.status = "error";
+      validated = false;
+      saveBtn.disabled = true;
+      return;
+    }
+    statusEl.textContent = "Address verified.";
+    statusEl.dataset.status = "success";
+    validated = true;
+    saveBtn.disabled = false;
+  });
+
+  formEl.addEventListener("submit", (event) => {
+    event.preventDefault();
+    if (!validated) return;
+    modal.dispatchEvent(new CustomEvent("returning-modal-save", { detail: collect() }));
+  });
+
+  return resultPromise;
+}
+
+async function openSavedVehicleModal(vehicle = null) {
+  const title = vehicle ? "Edit saved vehicle" : "Add new vehicle";
+  const { promise: resultPromise, modal } = openReturningModal(title, `
+    <form class="returning-vehicle-modal-form">
+      <fieldset>
+        <legend>Vehicle</legend>
+        <div class="field-grid">
+          <label><span>Year <span class="required-mark">Required</span></span><select class="rvm-year" required></select></label>
+          <label><span>Make <span class="required-mark">Required</span></span><select class="rvm-make" required></select></label>
+          <label><span>Model <span class="required-mark">Required</span></span><select class="rvm-model" required disabled><option value="">Select year and make first</option></select><span class="field-help">Models load after you choose a year and make.</span></label>
+          <label><span>Color <span class="required-mark">Required</span></span><input class="rvm-color" type="text" placeholder="Silver" value="${escapeHtml(vehicle?.vehicle_color || "")}" required></label>
+          <label><span>License plate <span class="required-mark">Required</span></span><input class="rvm-plate" type="text" placeholder="ABC-1234" value="${escapeHtml(vehicle?.license_plate || "")}" required></label>
+        </div>
+      </fieldset>
+      <p class="field-help rvm-status" role="status"></p>
+      <div class="returning-modal-actions">
+        <button class="button primary" type="submit">Save vehicle</button>
+      </div>
+    </form>
+  `);
+
+  const yearSel = modal.querySelector(".rvm-year");
+  const makeSel = modal.querySelector(".rvm-make");
+  const modelSel = modal.querySelector(".rvm-model");
+  const statusEl = modal.querySelector(".rvm-status");
+  populateModalVehicleYears(yearSel, vehicle?.vehicle_year || "");
+  populateModalVehicleMakes(makeSel, vehicle?.vehicle_make || "");
+  await loadModalVehicleModels(yearSel.value, makeSel.value, modelSel, vehicle?.vehicle_model || "");
+
+  const reloadModels = () => loadModalVehicleModels(yearSel.value, makeSel.value, modelSel, "");
+  yearSel.addEventListener("change", reloadModels);
+  makeSel.addEventListener("change", reloadModels);
+
+  modal.querySelector(".returning-vehicle-modal-form")?.addEventListener("submit", (event) => {
+    event.preventDefault();
+    const data = {
+      customer_name: form.elements.name.value || "",
+      vehicle_year: yearSel.value,
+      vehicle_make: makeSel.value,
+      vehicle_model: modelSel.value,
+      vehicle_color: modal.querySelector(".rvm-color")?.value.trim() || "",
+      license_plate: modal.querySelector(".rvm-plate")?.value.trim() || "",
+    };
+    if (savedVehicleDuplicateExists(data, vehicle?.id || null)) {
+      statusEl.textContent = "This vehicle already appears to be saved. Please use the saved vehicle or edit the existing one.";
+      statusEl.dataset.status = "error";
+      return;
+    }
+    modal.dispatchEvent(new CustomEvent("returning-modal-save", {
+      detail: data,
+    }));
+  });
+
+  return resultPromise;
+}
+
+async function editReturningAddress(index) {
+  const address = returningCustomerSavedOptions.addresses[index];
+  if (!address?.id || !window.ShiftFuelSupabase) {
+    applyReturningAddress(index);
+    returningCustomerStatus.textContent = "Address filled in. Edit the fields below before booking.";
+    return;
+  }
+
+  const data = await openSavedAddressModal(address);
+  if (!data) return;
+
+  const phone = cleanLookupPhone(returningCustomerSearch?.value.trim() || "");
+  const email = (returningCustomerEmail?.value.trim() || "").toLowerCase();
+  const { error } = await window.ShiftFuelSupabase.rpc("public_update_saved_address", {
+    p_address_id: address.id,
+    p_phone: phone,
+    p_email: email,
+    p_data: data,
+  });
+  if (error) {
+    console.warn("Could not edit saved address:", error);
+    returningCustomerStatus.textContent = String(error.message || "").includes("already saved")
+      ? "This address is already saved. Please use the saved address or edit the existing one."
+      : "Could not update that saved address. You can still edit the booking form below.";
+    return;
+  }
+  await refreshReturningOptionsAfterMutation("Saved address updated.");
+}
+
+async function editReturningVehicle(index) {
+  const vehicle = returningCustomerSavedOptions.vehicles[index];
+  if (!vehicle?.id || !window.ShiftFuelSupabase) {
+    await applyReturningVehicle(index);
+    returningCustomerStatus.textContent = "Vehicle filled in. Edit the fields below before booking.";
+    return;
+  }
+
+  const data = await openSavedVehicleModal(vehicle);
+  if (!data) return;
+
+  const phone = cleanLookupPhone(returningCustomerSearch?.value.trim() || "");
+  const email = (returningCustomerEmail?.value.trim() || "").toLowerCase();
+  const { error } = await window.ShiftFuelSupabase.rpc("public_update_saved_vehicle", {
+    p_vehicle_id: vehicle.id,
+    p_phone: phone,
+    p_email: email,
+    p_data: data,
+  });
+  if (error) {
+    console.warn("Could not edit saved vehicle:", error);
+    returningCustomerStatus.textContent = String(error.message || "").includes("already appears to be saved")
+      ? "This vehicle already appears to be saved. Please use the saved vehicle or edit the existing one."
+      : "Could not update that saved vehicle. You can still edit the booking form below.";
+    return;
+  }
+  await refreshReturningOptionsAfterMutation("Saved vehicle updated.");
+}
+
+async function deleteReturningAddress(index, button) {
+  const address = returningCustomerSavedOptions.addresses[index];
+  if (!address) return;
+  const confirmed = confirm("Delete this saved address? This removes it from future booking options only. Past requests will not be changed.");
+  if (!confirmed) return;
+
+  button.disabled = true;
+  button.textContent = "Deleting...";
+  const phone = cleanLookupPhone(returningCustomerSearch?.value.trim() || "");
+  const email = (returningCustomerEmail?.value.trim() || "").toLowerCase();
+
+  if (window.ShiftFuelSupabase && address.id && phone && email) {
+    const { error } = await window.ShiftFuelSupabase.rpc("public_soft_delete_saved_address", {
+      p_address_id: address.id,
+      p_phone: phone,
+      p_email: email,
+    });
+    if (error) {
+      console.warn("Could not delete saved address:", error);
+      button.disabled = false;
+      button.textContent = "Delete";
+      returningCustomerStatus.textContent = "Could not delete that saved address.";
+      return;
+    }
+  }
+
+  if (currentlyAppliedSavedAddressId === address.id) currentlyAppliedSavedAddressId = null;
+  returningCustomerSavedOptions.addresses.splice(index, 1);
+  renderReturningCustomerResults();
+  returningCustomerStatus.textContent = returningCustomerSavedOptions.addresses.length
+    ? "Saved address removed from future booking options."
+    : "No saved addresses remaining. Use Add new address.";
+}
+
+async function deleteReturningVehicle(index, button) {
+  const vehicle = returningCustomerSavedOptions.vehicles[index];
+  if (!vehicle) return;
+  const confirmed = confirm("Delete this saved vehicle? This removes it from future booking options only. Past requests will not be changed.");
+  if (!confirmed) return;
+
+  button.disabled = true;
+  button.textContent = "Deleting...";
+  const phone = cleanLookupPhone(returningCustomerSearch?.value.trim() || "");
+  const email = (returningCustomerEmail?.value.trim() || "").toLowerCase();
+
+  if (window.ShiftFuelSupabase && vehicle.id && phone && email) {
+    const { error } = await window.ShiftFuelSupabase.rpc("public_soft_delete_saved_vehicle", {
+      p_vehicle_id: vehicle.id,
+      p_phone: phone,
+      p_email: email,
+    });
+    if (error) {
+      console.warn("Could not delete saved vehicle:", error);
+      button.disabled = false;
+      button.textContent = "Delete";
+      returningCustomerStatus.textContent = "Could not delete that saved vehicle.";
+      return;
+    }
+  }
+
+  if (currentlyAppliedSavedVehicleId === vehicle.id) {
+    clearVehicleFields();
+    currentlyAppliedSavedVehicleId = null;
+  }
+  returningCustomerSavedOptions.vehicles.splice(index, 1);
+  renderReturningCustomerResults();
+  returningCustomerStatus.textContent = returningCustomerSavedOptions.vehicles.length
+    ? "Saved vehicle removed from future booking options."
+    : "No saved vehicles remaining. Use Add new vehicle.";
+}
+
 function getBookingPayload() {
   const data = new FormData(form);
   const selectedService = data.get("service");
@@ -1299,18 +2046,22 @@ function getBookingPayload() {
   const gallons = serviceType.needsFuel && fuelRange ? fuelRange.gallons : 0;
   const selectedFuelType = serviceType.needsFuel ? data.get("fuel") : null;
   const pricePerGallon = averageFuelPrices[selectedFuelType] || averageFuelPrices.Regular;
-  const fuelConvenienceFee = serviceType.needsFuel ? fees.fuelConvenience : 0;
   const washFee = serviceType.needsWash && washPackage ? washPackage.price : 0;
-  const washConvenienceFee = serviceType.needsWash && washPackage ? fees.washConvenience : 0;
-  const inspectionFee = data.get("quickInspection") === "yes" ? fees.quickInspection : 0;
-  const selectedFee = fuelConvenienceFee + washFee + washConvenienceFee + inspectionFee;
   const estimatedFuelAmount = gallons * pricePerGallon;
-  const estimatedTotalAmount = estimatedFuelAmount + selectedFee;
+  const pricing = servicePricingParts({
+    needsFuel: serviceType.needsFuel,
+    needsWash: serviceType.needsWash && !!washPackage,
+    fuelAmount: estimatedFuelAmount,
+    washAmount: washFee,
+    quickInspection: data.get("quickInspection") === "yes",
+  });
+  const selectedFee = pricing.fuelService + washFee + pricing.washService + pricing.inspection;
+  const estimatedTotalAmount = pricing.total;
 
   return {
     customer: {
       name: data.get("name"),
-	  phone: formatPhoneNumber(data.get("phone")),
+	  phone: formatPhone(data.get("phone")),
       email: data.get("email"),
     },
     vehicle: {
@@ -1340,13 +2091,14 @@ function getBookingPayload() {
       fuelType: selectedFuelType,
       estimatedFuelAmount,
       serviceFee: selectedFee,
-      fuelConvenienceFee,
+      fuelConvenienceFee: pricing.fuelService,
       washPackage: washPackage ? carWashPackage.value : null,
       washPackageLabel: washPackage?.label || null,
       washFee,
-      washConvenienceFee,
-      quickInspection: inspectionFee > 0,
-      quickInspectionFee: inspectionFee,
+      washConvenienceFee: pricing.washService,
+      quickInspection: pricing.inspection > 0,
+      quickInspectionFee: pricing.inspection,
+      paymentOperatingRecovery: pricing.recovery,
       serviceLabel: service.options[service.selectedIndex]?.textContent || selectedService,
       detailingAvailableWindow: serviceType.needsWash ? "9:00 AM - 6:00 PM" : null,
       estimatedTotal: estimatedTotalAmount || moneyValue(estimatedTotal.textContent),
@@ -1489,6 +2241,9 @@ async function insertServiceRequest(supabase, payload) {
   }
 }
 
+attachPhoneInputFormatting(form.elements.phone);
+attachPhoneInputFormatting(returningCustomerSearch);
+
 service.addEventListener("change", updateServiceControls);
 carWashPackage.addEventListener("change", () => {
   updateServiceDetails();
@@ -1521,45 +2276,54 @@ returningCustomerEmail?.addEventListener("keydown", (event) => {
   }
 });
 returningCustomerResults?.addEventListener("click", async (event) => {
-  const deleteBtn = event.target.closest("[data-returning-delete]");
-  if (deleteBtn) {
-    const index = Number(deleteBtn.dataset.returningDelete);
-    const request = returningCustomerMatches[index];
-    if (!request) return;
-    const confirmed = confirm("Are you sure you want to delete this vehicle? This will not erase your current service selections.");
-    if (!confirmed) return;
-
-    deleteBtn.disabled = true;
-    deleteBtn.textContent = "Deleting...";
-
-    const phone = cleanLookupPhone(returningCustomerSearch?.value.trim() || "");
-    const email = (returningCustomerEmail?.value.trim() || "").toLowerCase();
-
-    if (window.ShiftFuelSupabase && phone && email) {
-      const { error } = await window.ShiftFuelSupabase.rpc("public_hide_vehicle", {
-        p_request_id: request.id,
-        p_phone: phone,
-        p_email: email,
-      });
-      if (error) {
-        console.warn("Could not delete vehicle from database:", error);
-      }
-    }
-
-    const wasSelected = currentlyAppliedRequestId === request.id;
-    returningCustomerMatches.splice(index, 1);
-    if (wasSelected) {
-      clearVehicleFields();
-      currentlyAppliedRequestId = null;
-    }
-    renderReturningCustomerResults(returningCustomerMatches);
-    if (!returningCustomerMatches.length) {
-      returningCustomerStatus.textContent = "No saved vehicles remaining. Fill in your vehicle details below.";
-    } else {
-      returningCustomerStatus.textContent = "Vehicle removed. Your service selections are still saved.";
-    }
+  const addAddressBtn = event.target.closest("[data-returning-add-address]");
+  if (addAddressBtn) {
+    await addNewReturningAddress();
     return;
   }
+
+  const addVehicleBtn = event.target.closest("[data-returning-add-vehicle]");
+  if (addVehicleBtn) {
+    await addNewReturningVehicle();
+    return;
+  }
+
+  const addressBtn = event.target.closest("[data-returning-address-index]");
+  if (addressBtn) {
+    applyReturningAddress(Number(addressBtn.dataset.returningAddressIndex));
+    return;
+  }
+
+  const vehicleBtn = event.target.closest("[data-returning-vehicle-index]");
+  if (vehicleBtn) {
+    await applyReturningVehicle(Number(vehicleBtn.dataset.returningVehicleIndex));
+    return;
+  }
+
+  const editAddressBtn = event.target.closest("[data-returning-edit-address]");
+  if (editAddressBtn) {
+    await editReturningAddress(Number(editAddressBtn.dataset.returningEditAddress));
+    return;
+  }
+
+  const editVehicleBtn = event.target.closest("[data-returning-edit-vehicle]");
+  if (editVehicleBtn) {
+    await editReturningVehicle(Number(editVehicleBtn.dataset.returningEditVehicle));
+    return;
+  }
+
+  const deleteAddressBtn = event.target.closest("[data-returning-delete-address]");
+  if (deleteAddressBtn) {
+    await deleteReturningAddress(Number(deleteAddressBtn.dataset.returningDeleteAddress), deleteAddressBtn);
+    return;
+  }
+
+  const deleteVehicleBtn = event.target.closest("[data-returning-delete-vehicle]");
+  if (deleteVehicleBtn) {
+    await deleteReturningVehicle(Number(deleteVehicleBtn.dataset.returningDeleteVehicle), deleteVehicleBtn);
+    return;
+  }
+
   const button = event.target.closest("[data-returning-index]");
   if (!button) return;
   applyReturningCustomer(Number(button.dataset.returningIndex), button.dataset.returningMode || "same-car");
@@ -1670,6 +2434,10 @@ form.addEventListener("submit", async (event) => {
   }
   // Re-verify on submit — no bypass allowed
   statusMessage.textContent = "Verifying service area…";
+  if (currentlyAppliedSavedAddressId) {
+    setAddressStatus('success', 'Saved address selected. Confirm parking and key handoff before continuing.');
+    statusMessage.textContent = '';
+  } else {
   const areaResult = await validateServiceArea(getServiceAddress());
   if (!areaResult.valid) {
     statusMessage.textContent = "";
@@ -1680,6 +2448,7 @@ form.addEventListener("submit", async (event) => {
   }
   setAddressStatus('success', 'Address verified.');
   statusMessage.textContent = '';
+  }
 
   // Open the payment modal — Stripe flow runs there
   const payload = getBookingPayload();
@@ -1695,6 +2464,10 @@ form.addEventListener("submit", async (event) => {
   }
 });
 
+// Returns true on success, false on failure. Never throws — the caller (the
+// payment modal flow) needs a clean success/failure signal so it knows
+// whether it's safe to close the modal, without losing the customer-safe
+// error message that used to only live in the catch block here.
 async function saveBooking(payload) {
   const supabase = window.ShiftFuelSupabase;
   statusMessage.textContent = "Saving booking…";
@@ -1707,7 +2480,7 @@ async function saveBooking(payload) {
       item.classList.toggle("active", index === 0);
     });
 
-    statusMessage.textContent = "Booking confirmed!";
+    statusMessage.textContent = "Your booking has been confirmed.";
 
 
     setAddressStatus('', '');
@@ -1717,6 +2490,10 @@ async function saveBooking(payload) {
 
     form.reset();
     returningCustomerMatches = [];
+    returningCustomerSavedOptions = { addresses: [], vehicles: [], recentRequests: [] };
+    currentlyAppliedSavedAddressId = null;
+    currentlyAppliedSavedVehicleId = null;
+    currentlyAppliedRequestId = null;
     if (returningCustomerSearch) returningCustomerSearch.value = "";
     if (returningCustomerEmail) returningCustomerEmail.value = "";
     if (returningCustomerStatus) returningCustomerStatus.textContent = "";
@@ -1729,11 +2506,13 @@ async function saveBooking(payload) {
     resetModels();
     updateServiceControls();
     await refreshBookedReturnSlots();
+    return true;
   } catch (err) {
     console.error("Booking save error:", err);
     // err.message is already a customer-safe string set by insertServiceRequest —
     // raw Supabase/RLS error details are logged above, never shown here.
-    statusMessage.textContent = err?.message || "We could not finish saving your booking after payment authorization. Please try again or contact ShiftFuel.";
+    statusMessage.textContent = err?.message || "We could not finish saving your booking after payment authorization. Please contact ShiftFuel.";
+    return false;
   }
 }
 
@@ -1746,6 +2525,22 @@ async function handlePaymentModalSubmit() {
 
   const cardErrors = document.querySelector('#card-errors');
   if (cardErrors) cardErrors.textContent = '';
+
+  // If a previous attempt already authorized the card but the save step
+  // failed, retry only the save — never re-run Stripe confirmation, which
+  // would create a second authorization hold on the same card.
+  if (payload.payment._authorized && payload.payment.paymentIntentId) {
+    if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = 'Saving booking…'; }
+    const saved = await saveBooking(payload);
+    if (saved) {
+      closePaymentModal();
+      if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = 'Authorize payment'; }
+    } else {
+      if (cardErrors) cardErrors.textContent = 'We could not finish saving your booking after payment authorization. Please contact ShiftFuel.';
+      if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = 'Try saving again'; }
+    }
+    return;
+  }
 
   if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = 'Authorizing…'; }
 
@@ -1778,11 +2573,24 @@ async function handlePaymentModalSubmit() {
     return;
   }
 
+  // Authorization succeeded (including any 3D Secure challenge Stripe.js
+  // handled). Mark it so a retry never re-authorizes — and keep the modal
+  // open/button disabled until we know the booking actually saved.
   payload.payment.paymentIntentId = paymentIntent.id;
-  closePaymentModal();
-  if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = 'Authorize payment'; }
+  payload.payment._authorized = true;
 
-  await saveBooking(payload);
+  if (submitBtn) { submitBtn.textContent = 'Saving booking…'; }
+  const saved = await saveBooking(payload);
+
+  if (saved) {
+    closePaymentModal();
+    if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = 'Authorize payment'; }
+  } else {
+    // Card is already authorized — do not let the customer re-click into a
+    // second authorization. Only offer to retry the save itself.
+    if (cardErrors) cardErrors.textContent = 'We could not finish saving your booking after payment authorization. Please contact ShiftFuel.';
+    if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = 'Try saving again'; }
+  }
 }
 
 applicantForm?.addEventListener("submit", async (event) => {

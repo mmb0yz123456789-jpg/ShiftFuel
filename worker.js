@@ -22,6 +22,7 @@ const workerPhotoCropCancel = document.querySelector('#worker-photo-crop-cancel'
 const workerPhotoCropStatus = document.querySelector('#worker-photo-crop-status');
 const workerSignoutBtn = document.querySelector('#worker-signout-btn');
 const openChangePasswordBtn = document.querySelector('#open-change-password-btn');
+const workerRefreshJobsBtn = document.querySelector('#worker-refresh-jobs-btn');
 const workerPasswordModal = document.querySelector('#worker-password-modal');
 const workerPasswordModalClose = document.querySelector('#worker-password-modal-close');
 const workerPasswordChangeForm = document.querySelector('#worker-password-change-form');
@@ -56,6 +57,18 @@ workerSignoutBtn?.addEventListener('click', () => {
   sessionStorage.removeItem('shiftfuel_worker_expires');
   sessionStorage.removeItem('shiftfuel_worker_must_change_pw');
   window.location.href = 'worker-login.html';
+});
+
+workerRefreshJobsBtn?.addEventListener('click', async () => {
+  const originalText = workerRefreshJobsBtn.textContent;
+  workerRefreshJobsBtn.disabled = true;
+  workerRefreshJobsBtn.textContent = 'Refreshing...';
+  try {
+    await loadWorkerProfile();
+  } finally {
+    workerRefreshJobsBtn.disabled = false;
+    workerRefreshJobsBtn.textContent = originalText;
+  }
 });
 
 const SESSION_WORKER_NAME = sessionStorage.getItem('shiftfuel_worker') || 'Mark Urban';
@@ -143,6 +156,37 @@ function normalizeName(value) {
 function normalizePhone(value) {
   return String(value || '').replace(/\D/g, '');
 }
+
+function formatPhone(value) {
+  let digits = normalizePhone(value);
+  if (digits.length === 11 && digits[0] === '1') digits = digits.slice(1);
+  if (digits.length !== 10) return value || '';
+  return `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`;
+}
+
+function attachPhoneInputFormatting(input) {
+  if (!input || input.dataset.phoneFormatBound) return;
+  input.dataset.phoneFormatBound = '1';
+  input.addEventListener('input', () => {
+    const digitsBeforeCursor = normalizePhone(input.value.slice(0, input.selectionStart || 0)).length;
+    const digits = normalizePhone(input.value).slice(0, 10);
+    let formatted = digits;
+    if (digits.length > 6) formatted = `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`;
+    else if (digits.length > 3) formatted = `(${digits.slice(0, 3)}) ${digits.slice(3)}`;
+    else if (digits.length > 0) formatted = `(${digits}`;
+    input.value = formatted;
+
+    let pos = 0;
+    let seen = 0;
+    while (pos < formatted.length && seen < digitsBeforeCursor) {
+      if (/\d/.test(formatted[pos])) seen += 1;
+      pos += 1;
+    }
+    input.setSelectionRange(pos, pos);
+  });
+}
+
+attachPhoneInputFormatting(workerProfilePhone);
 
 // Friendly labels for every status — keep in sync with admin.js and track.js.
 // Raw database status strings must never be shown to a worker.
@@ -325,11 +369,49 @@ function feeSummary(request) {
   };
 }
 
+const PAYMENT_RECOVERY_RATE = 0.029;
+const PAYMENT_RECOVERY_FIXED = 0.30;
+const BASE_FUEL_SERVICE_FEE = 15;
+const BASE_WASH_SERVICE_FEE = 15;
+const BASE_QUICK_INSPECTION_FEE = 5;
+
+function roundMoneyValue(value) {
+  return Math.round((Number(value) || 0) * 100) / 100;
+}
+
+function transactionPricingSummary(request, receiptTotals = { fuel: 0, wash: 0 }) {
+  const fuelBase = serviceNeedsFuel(request) && Number(receiptTotals.fuel || 0) > 0 ? BASE_FUEL_SERVICE_FEE : 0;
+  const washBase = serviceNeedsWash(request) && Number(receiptTotals.wash || 0) > 0 ? BASE_WASH_SERVICE_FEE : 0;
+  const inspection = request.quick_inspection ? BASE_QUICK_INSPECTION_FEE : 0;
+  const netTarget = roundMoneyValue(Number(receiptTotals.fuel || 0) + Number(receiptTotals.wash || 0) + fuelBase + washBase + inspection);
+  const roundedTotal = netTarget > 0
+    ? Math.ceil((netTarget + PAYMENT_RECOVERY_FIXED) / (1 - PAYMENT_RECOVERY_RATE))
+    : 0;
+  const recovery = roundMoneyValue(roundedTotal - netTarget);
+  const recoveryCents = Math.round(recovery * 100);
+  let fuelRecovery = 0;
+  let washRecovery = 0;
+
+  if (fuelBase && washBase) {
+    fuelRecovery = Math.floor(recoveryCents / 2) / 100;
+    washRecovery = (recoveryCents - Math.floor(recoveryCents / 2)) / 100;
+  } else if (fuelBase) {
+    fuelRecovery = recovery;
+  } else if (washBase) {
+    washRecovery = recovery;
+  }
+
+  return {
+    fuel: roundMoneyValue(fuelBase + fuelRecovery),
+    wash: roundMoneyValue(washBase + washRecovery),
+    inspection,
+    recovery,
+    total: roundedTotal,
+  };
+}
+
 function finalTotalFromSavedReceipts(request, receiptTotals = receiptTotalsFromNotes(request)) {
-  const fees = feeSummary(request);
-  const fuelFee = serviceNeedsFuel(request) && receiptTotals.fuel > 0 ? fees.fuel : 0;
-  const washFee = serviceNeedsWash(request) && receiptTotals.wash > 0 ? fees.wash : 0;
-  return receiptTotals.fuel + receiptTotals.wash + fuelFee + washFee + fees.inspection;
+  return transactionPricingSummary(request, receiptTotals).total;
 }
 
 function photoTimestampNote(stage, timestamp) {
@@ -766,7 +848,7 @@ async function loadWorkerProfile() {
 
     if (workerPortalHeading) workerPortalHeading.textContent = workerName;
     if (workerProfileName) workerProfileName.value = workerName;
-    if (workerProfilePhone) workerProfilePhone.value = currentEmployee.phone || '';
+    if (workerProfilePhone) workerProfilePhone.value = formatPhone(currentEmployee.phone || '');
     if (workerProfileLocation) workerProfileLocation.value = currentEmployee.home_location || DEFAULT_WORK_LOCATION;
     if (workerProfileStarted) workerProfileStarted.value = currentEmployee.started_at || '';
     if (workerLocation) workerLocation.value = currentEmployee.home_location || DEFAULT_WORK_LOCATION;
@@ -1048,6 +1130,7 @@ function workerFormatService(request) {
 function renderWorkerJobCard(request, mode) {
   const receiptTotals = receiptTotalsFromNotes(request);
   const workerReceiptTotal = receiptTotals.fuel + receiptTotals.wash;
+  const hasReturnRequest = !!request.return_requested_at || request.status === 'return_requested' || request.status === 'customer_return_requested';
 
   return `
     <article class="request-card worker-job-card${mode === 'available' ? ' worker-job-available' : ''}">
@@ -1067,9 +1150,15 @@ function renderWorkerJobCard(request, mode) {
       ${(mode === 'mine' && request.assigned_worker_name && !request.assigned_employee_id) ? `
         <p class="field-help" style="color:#b35900">⚠ Assigned by name only — worker ID missing.</p>
       ` : ''}
+      ${hasReturnRequest ? `
+        <div class="return-request-banner">
+          <h4>Customer requested vehicle return</h4>
+          <p class="field-help">Return vehicle as soon as safely possible.</p>
+        </div>
+      ` : ''}
       <div class="request-details">
         <p><strong>Customer:</strong> ${escapeHtml(request.customer_name || 'Customer')}</p>
-        <p><strong>Phone:</strong> ${escapeHtml(request.customer_phone || 'Not provided')}</p>
+        <p><strong>Phone:</strong> ${request.customer_phone ? escapeHtml(formatPhone(request.customer_phone)) : 'Not provided'}</p>
         <p class="worker-job-address-line"><strong>Service address:</strong> <span class="worker-job-address-value">${escapeHtml(workerFormatAddress(request))}</span></p>
         <p><strong>Parking:</strong> ${[request.parking_location, request.parking_spot ? `spot ${request.parking_spot}` : ''].filter(Boolean).map(escapeHtml).join(', ') || 'Not provided'}</p>
         ${request.key_handoff_details ? `<p><strong>Key handoff:</strong> ${escapeHtml(request.key_handoff_details)}</p>` : ''}
@@ -1135,7 +1224,16 @@ function renderWorkerJobActions(request) {
   let activePanel = '';
   let nextAction = '';
 
-  if (request.status === 'request_received') {
+  if (request.return_requested_at && !['canceled_return_completed', 'complete'].includes(request.status)) {
+    nextAction = 'Return vehicle as soon as safely possible.';
+    if (String(request.notes || '').includes('[dropoff_time')) {
+      nextAction = 'Vehicle return photos are recorded. Admin will review completed receipts before charging or waiving fees.';
+    } else {
+      activePanel = request.return_parking_location
+        ? renderWorkerPhotoPanel(request, 'dropoff')
+        : renderWorkerReturnLocationPanel(request);
+    }
+  } else if (request.status === 'request_received') {
     nextAction = 'Accept the request to begin service.';
     actions.push(workerPrimaryStatusButton(request, 'Accept request', 'accepted'));
   } else if (request.status === 'accepted') {
@@ -1210,11 +1308,16 @@ function renderWorkerJobActions(request) {
     nextAction = 'Return the customer\'s keys and document who received them.';
     activePanel = renderWorkerKeysReturnedPanel(request);
   } else if (request.status === 'return_requested' || request.status === 'customer_return_requested') {
-    nextAction = 'Return the vehicle as soon as safely possible. Admin will resolve any cancellation/service fee.';
+    nextAction = 'Return vehicle as soon as safely possible.';
+    if (request.return_parking_location) {
+      actions.push(workerPrimaryStatusButton(request, 'Return vehicle', 'return_photos_needed'));
+    } else {
+      actions.push(workerPrimaryStatusButton(request, 'Record return location', 'returned_location_pending'));
+    }
     activePanel = `
       <div class="return-request-banner">
-        <h4>⚠ Customer requested vehicle return after keys were received.</h4>
-        <p class="field-help">Return the vehicle as soon as safely possible. Admin will resolve any cancellation/service fee.</p>
+        <h4>Customer requested vehicle return</h4>
+        <p class="field-help">Return vehicle as soon as safely possible.</p>
       </div>
     `;
   } else if (request.status === 'payment_issue' || request.status === 'authorization_too_low') {
@@ -1358,7 +1461,7 @@ function renderWorkerReturnLocationPanel(request) {
           <input class="return-parking-location" type="text" value="${escapeHtml(returnLocation)}" placeholder="Example: Lot F, space F-19">
         </label>
       </div>
-      <button class="button primary save-return-location" data-id="${escapeHtml(request.id)}" type="button">Save return location</button>
+        <button class="button primary save-return-location" data-id="${escapeHtml(request.id)}" type="button">Record return location</button>
     </div>
   `;
 }
@@ -1518,7 +1621,7 @@ async function loadWorkerJobs() {
 
   const { data, error } = await workerDb
     .rpc('worker_list_open_requests', { p_token: SESSION_WORKER_TOKEN })
-    .select('id,customer_name,customer_phone,customer_email,vehicle_year,vehicle_make,vehicle_model,vehicle_color,license_plate,service_type,service_label,hospital,address_street,address_apt,address_city,address_state,address_zip,parking_location,parking_spot,parking_map_url,key_handoff_details,service_date,desired_return_time,status,assigned_employee_id,assigned_worker_name,assigned_worker_phone,fuel_type,wash_package_label,estimated_fuel_range,quick_inspection,notes,return_parking_location,return_parking_spot,return_parking_map_url,final_total,payment_intent_id,payment_status');
+    .select('id,customer_name,customer_phone,customer_email,vehicle_year,vehicle_make,vehicle_model,vehicle_color,license_plate,service_type,service_label,hospital,address_street,address_apt,address_city,address_state,address_zip,parking_location,parking_spot,parking_map_url,key_handoff_details,service_date,desired_return_time,status,assigned_employee_id,assigned_worker_name,assigned_worker_phone,fuel_type,wash_package_label,estimated_fuel_range,quick_inspection,notes,return_parking_location,return_parking_spot,return_parking_map_url,return_requested_at,final_total,payment_intent_id,payment_status');
 
   if (error) {
     console.warn('Could not load worker jobs:', error);
@@ -1580,7 +1683,7 @@ async function claimWorkerJob(requestId) {
     p_request_id: requestId,
     p_data: {
       assigned_worker_name: currentEmployee.full_name,
-      assigned_worker_phone: currentEmployee.phone || null,
+      assigned_worker_phone: currentEmployee.phone ? formatPhone(currentEmployee.phone) : null,
       assigned_worker_photo_url: currentEmployee.cropped_photo_url || currentEmployee.photo_url || null,
       assigned_worker_original_photo_url: currentEmployee.original_photo_url || null,
       status: request?.status === 'request_received' ? 'accepted' : request?.status || 'accepted',
@@ -1718,10 +1821,11 @@ async function uploadWorkerPhotoSet(button) {
   const timestamp = new Date().toISOString();
   const note = photoTimestampNote(panel.dataset.photoStage, timestamp);
   const notes = request.notes ? `${request.notes}\n${note}` : note;
+  const nextStatus = request.return_requested_at ? request.status : panel.dataset.nextStatus;
   const { error } = await workerDb.rpc('worker_update_request', {
     p_token: SESSION_WORKER_TOKEN,
     p_request_id: id,
-    p_data: { status: panel.dataset.nextStatus, notes },
+    p_data: { status: nextStatus, notes },
   });
 
   if (error) throw error;
@@ -1756,14 +1860,14 @@ async function saveWorkerFinalTotal(button) {
     fuel: receiptMode === 'fuel' || receiptMode === 'all' ? numberFromInput(fuelReceipt) : savedTotals.fuel,
     wash: receiptMode === 'wash' || receiptMode === 'all' ? numberFromInput(washReceipt) : savedTotals.wash,
   };
-  const fees = feeSummary(request);
+  const fees = transactionPricingSummary(request, newReceiptTotals);
   const finalTotal = finalTotalFromSavedReceipts(request, newReceiptTotals);
   const serviceNote = receiptMode === 'fuel'
     ? `Fuel receipt recorded: ${money(newReceiptTotals.fuel)}.`
     : receiptMode === 'wash'
       ? `Car wash receipt recorded: ${money(newReceiptTotals.wash)}.`
       : `Receipt totals recorded: fuel ${money(newReceiptTotals.fuel)}, wash ${money(newReceiptTotals.wash)}.`;
-  const note = `${serviceNote} [receipt_totals fuel=${newReceiptTotals.fuel.toFixed(2)} wash=${newReceiptTotals.wash.toFixed(2)}] Fees: fuel convenience ${money(fees.fuel)}, wash convenience ${money(fees.wash)}, inspection ${money(fees.inspection)}. Final total ${money(finalTotal)}.`;
+  const note = `${serviceNote} [receipt_totals fuel=${newReceiptTotals.fuel.toFixed(2)} wash=${newReceiptTotals.wash.toFixed(2)}] Service totals: fuel ${money(fees.fuel)}, car wash ${money(fees.wash)}, inspection ${money(fees.inspection)}. Payment/operating recovery ${money(fees.recovery)}. Final total ${money(finalTotal)}.`;
   const notes = request.notes ? `${request.notes}\n${note}` : note;
 
   button.disabled = true;
@@ -1810,7 +1914,7 @@ async function saveWorkerReturnLocation(button) {
       return_parking_location: returnParkingLocation,
       return_parking_spot: null,
       return_parking_map_url: null,
-      status: 'return_location_recorded',
+      status: request.return_requested_at ? request.status : 'return_location_recorded',
     },
   });
 
@@ -1879,9 +1983,9 @@ async function saveWorkerTotalEdit(button) {
     fuel: type === 'fuel' ? value : receiptTotals.fuel,
     wash: type === 'wash' ? value : receiptTotals.wash,
   };
-  const fees = feeSummary(request);
+  const fees = transactionPricingSummary(request, newReceiptTotals);
   const finalTotal = finalTotalFromSavedReceipts(request, newReceiptTotals);
-  const note = `Corrected ${type === 'fuel' ? 'fuel' : 'car wash'} total: ${money(value)}. [receipt_totals fuel=${newReceiptTotals.fuel.toFixed(2)} wash=${newReceiptTotals.wash.toFixed(2)}] Fees: fuel convenience ${money(fees.fuel)}, wash convenience ${money(fees.wash)}, inspection ${money(fees.inspection)}. Final total ${money(finalTotal)}.`;
+  const note = `Corrected ${type === 'fuel' ? 'fuel' : 'car wash'} total: ${money(value)}. [receipt_totals fuel=${newReceiptTotals.fuel.toFixed(2)} wash=${newReceiptTotals.wash.toFixed(2)}] Service totals: fuel ${money(fees.fuel)}, car wash ${money(fees.wash)}, inspection ${money(fees.inspection)}. Payment/operating recovery ${money(fees.recovery)}. Final total ${money(finalTotal)}.`;
   const notes = request.notes ? `${request.notes}\n${note}` : note;
 
   const { error } = await workerDb.rpc('worker_update_request', {
@@ -2211,7 +2315,13 @@ workerJobList?.addEventListener('change', (event) => {
   if (event.target.matches('.key-returned-to-type')) {
     const panel = event.target.closest('.keys-returned-panel');
     const otherWrap = panel?.querySelector('.key-returned-other-wrap');
-    if (otherWrap) otherWrap.hidden = event.target.value !== 'other';
+    const otherInput = panel?.querySelector('.key-returned-other-name');
+    const isOther = event.target.value === 'other';
+    if (otherWrap) otherWrap.hidden = !isOther;
+    if (otherInput) {
+      otherInput.required = isOther;
+      if (!isOther) otherInput.value = '';
+    }
   }
 });
 
@@ -2245,7 +2355,8 @@ workerProfileForm?.addEventListener('submit', async (event) => {
     const photoPositionX = Number(workerProfilePhotoPosition.x || 0);
     const photoPositionY = Number(workerProfilePhotoPosition.y || 0);
     const fullName = workerProfileName?.value.trim() || currentEmployee.full_name;
-    const phone = workerProfilePhone?.value.trim() || null;
+    const phoneInputValue = workerProfilePhone?.value.trim() || null;
+    const phone = phoneInputValue ? formatPhone(phoneInputValue) : null;
     const homeLocation = workerProfileLocation?.value || currentEmployee.home_location || DEFAULT_WORK_LOCATION;
 
     // Check for phone duplicate before uploading photo.
@@ -2253,14 +2364,13 @@ workerProfileForm?.addEventListener('submit', async (event) => {
       const cleanNew = phone.replace(/\D/g, '');
       const cleanCurrent = (currentEmployee.phone || '').replace(/\D/g, '');
       if (cleanNew !== cleanCurrent) {
-        const { data: phoneCheck } = await workerDb
+        const { data: phoneCheck, error: phoneCheckError } = await workerDb
           .from('employees_public')
           .select('id,full_name')
-          .eq('phone', phone)
           .eq('active', true)
-          .neq('id', currentEmployee.id)
-          .limit(1);
-        if (phoneCheck?.length) {
+          .neq('id', currentEmployee.id);
+        if (phoneCheckError) throw phoneCheckError;
+        if ((phoneCheck || []).some((employee) => normalizePhone(employee.phone) === cleanNew)) {
           setWorkerStatus('That phone number is already used by another worker. Please use a different number.');
           return;
         }
@@ -2322,7 +2432,7 @@ workerProfileForm?.addEventListener('submit', async (event) => {
     if (workerPortalHeading) workerPortalHeading.textContent = currentEmployee.full_name;
     workerProfileForm.reset();
     if (workerProfileName) workerProfileName.value = currentEmployee.full_name;
-    if (workerProfilePhone) workerProfilePhone.value = currentEmployee.phone || '';
+    if (workerProfilePhone) workerProfilePhone.value = formatPhone(currentEmployee.phone || '');
     if (workerProfileLocation) workerProfileLocation.value = currentEmployee.home_location || DEFAULT_WORK_LOCATION;
     if (workerProfileStarted) workerProfileStarted.value = currentEmployee.started_at || '';
     if (workerLocation) workerLocation.value = currentEmployee.home_location || DEFAULT_WORK_LOCATION;

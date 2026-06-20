@@ -90,7 +90,10 @@
             <p class="eyebrow" id="request-queue-eyebrow">Queue</p>
             <h2 id="request-queue-heading">Open requests</h2>
           </div>
-          <button id="show-all-time-btn" class="button secondary" style="display:none" type="button">Show all time</button>
+          <div class="admin-button-row">
+            <button id="admin-refresh-btn" class="button secondary" type="button">Refresh</button>
+            <button id="show-all-time-btn" class="button secondary" style="display:none" type="button">Show all time</button>
+          </div>
         </div>
         <div id="request-list" class="request-list"></div>
       </section>
@@ -101,6 +104,7 @@
             <p class="eyebrow">Retention</p>
             <h2>Service reviews</h2>
           </div>
+          <button id="admin-reviews-refresh-btn" class="button secondary" type="button">Refresh</button>
           <div class="review-filter-row">
             <span id="review-average-display" class="review-average"></span>
             <div class="star-filter-buttons">
@@ -122,6 +126,7 @@
             <p class="eyebrow">Hiring</p>
             <h2>Applicants</h2>
           </div>
+          <button id="admin-applicants-refresh-btn" class="button secondary" type="button">Refresh</button>
         </div>
         <div id="applicant-list" class="request-list"></div>
       </section>
@@ -134,6 +139,7 @@
             <p class="eyebrow">Team</p>
             <h2>Worker profiles</h2>
           </div>
+          <button id="admin-workers-refresh-btn" class="button secondary" type="button">Refresh</button>
         </div>
         <div class="admin-edit-panel worker-profile-search-panel">
           <label>Find active worker
@@ -247,13 +253,13 @@
           <fieldset>
             <legend>Customer</legend>
             <div class="field-grid">
-              <label>Customer name <span class="required-mark">*</span>
+              <label>Customer name <span class="required-mark">Required</span>
                 <input id="cr-customer-name" type="text" placeholder="Full name" required>
               </label>
-              <label>Phone number <span class="required-mark">*</span>
+              <label>Phone number <span class="required-mark">Required</span>
                 <input id="cr-customer-phone" type="tel" placeholder="(302) 555-0100" required>
               </label>
-              <label>Email <span class="required-mark">*</span>
+              <label>Email <span class="required-mark">Required</span>
                 <input id="cr-customer-email" type="email" placeholder="customer@email.com" required>
               </label>
             </div>
@@ -298,14 +304,52 @@
                   <option value="car-wash-fuel">Car Wash + Fuel</option>
                 </select>
               </label>
+              <label class="cr-wash-control conditional-control" hidden>Car wash package
+                <select id="cr-wash-package">
+                  <option value="">Select wash package</option>
+                  <option value="buff-shine">Buff & Shine - $27</option>
+                  <option value="shine-protect">Shine & Protect - $20</option>
+                  <option value="shine">Shine - $16</option>
+                  <option value="double-wash">Double Wash - $12</option>
+                </select>
+              </label>
+              <label class="cr-fuel-control conditional-control" hidden>Fuel type
+                <select id="cr-fuel-type">
+                  <option value="">Select fuel type</option>
+                  <option>Regular</option>
+                  <option>Mid-grade</option>
+                  <option>Premium</option>
+                  <option>Diesel</option>
+                </select>
+              </label>
+              <label class="cr-fuel-control conditional-control" hidden>Estimated fuel needed, in gallons
+                <select id="cr-fuel-estimate">
+                  <option value="">Select fuel range</option>
+                  <option value="5">5 gallons or less</option>
+                  <option value="10">5-10 gallons</option>
+                  <option value="15">10-15 gallons</option>
+                  <option value="20">15-20 gallons</option>
+                  <option value="25">20-25 gallons</option>
+                  <option value="30">25+ gallons</option>
+                </select>
+              </label>
               <label>Service date
                 <div id="cr-service-date-picker" class="sfp-host">
                   <input type="hidden" id="cr-service-date">
                 </div>
               </label>
               <label>Desired return time
-                <input id="cr-return-time" type="time">
+                <select id="cr-return-time">
+                  <option value="">Select a date first</option>
+                </select>
+                <span id="cr-time-help" class="field-help">Choose a service date to load available return times.</span>
               </label>
+              <div class="inspection-addon-control">
+                <label class="checkbox-label">
+                  <input id="cr-quick-inspection" type="checkbox" value="yes">
+                  <span>Add a quick vehicle inspection for $5 <span class="optional-mark">Optional</span></span>
+                </label>
+              </div>
             </div>
           </fieldset>
 

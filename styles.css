@@ -485,8 +485,25 @@ h3 {
 
 .returning-customer-results {
   display: grid;
-  gap: 10px;
+  gap: 16px;
   margin-top: 14px;
+}
+
+.returning-customer-section {
+  display: grid;
+  gap: 10px;
+}
+
+.returning-customer-section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.returning-customer-section-head h4 {
+  margin: 0;
+  color: var(--ink);
 }
 
 .returning-customer-card {
@@ -505,12 +522,23 @@ h3 {
   border-color: var(--brand);
 }
 
+.returning-customer-card.is-selected {
+  border-color: var(--brand);
+  background: rgba(0, 116, 93, 0.08);
+  box-shadow: 0 0 0 2px rgba(0, 116, 93, 0.12);
+}
+
 .returning-customer-card span {
   font-weight: 800;
 }
 
 .returning-customer-card small {
   color: var(--muted);
+}
+
+.returning-customer-card .selected-option-note {
+  color: var(--brand);
+  font-weight: 800;
 }
 
 .returning-customer-actions {
@@ -522,6 +550,44 @@ h3 {
 
 .returning-customer-actions .button {
   min-height: 44px;
+}
+
+.returning-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: grid;
+  place-items: center;
+  padding: 18px;
+  background: rgba(17, 24, 39, 0.45);
+}
+
+.returning-modal-dialog {
+  width: min(720px, 100%);
+  max-height: min(92vh, 760px);
+  overflow: auto;
+  border-radius: 8px;
+  background: var(--surface);
+  padding: 20px;
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.22);
+}
+
+.returning-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.returning-modal-header h3 {
+  margin: 0;
+}
+
+.returning-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 14px;
 }
 
 .returning-confirmation-control {
@@ -2470,6 +2536,10 @@ textarea:focus {
 }
 
 .edit-total-charge-panel[hidden] {
+  display: none;
+}
+
+.key-returned-other-wrap[hidden] {
   display: none;
 }
 
