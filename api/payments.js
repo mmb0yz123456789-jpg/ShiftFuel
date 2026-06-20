@@ -940,7 +940,7 @@ async function handleMarkKeysReturned(body, res) {
   const db = getSupabaseAdmin();
   let { data: request, error: reqErr } = await db
     .from('service_requests')
-    .select('id, status, customer_name, payment_intent_id, payment_status, return_requested_at, notes')
+    .select('id, status, customer_name, payment_intent_id, payment_status, captured_amount, return_requested_at, notes')
     .eq('id', request_id)
     .maybeSingle();
 
@@ -960,7 +960,7 @@ async function handleMarkKeysReturned(body, res) {
     if (missingOptionalColumn) {
       const fallback = await db
         .from('service_requests')
-        .select('id, status, customer_name, payment_intent_id, payment_status, notes')
+        .select('id, status, customer_name, payment_intent_id, payment_status, captured_amount, notes')
         .eq('id', request_id)
         .maybeSingle();
       request = fallback.data ? { ...fallback.data, return_requested_at: null } : null;
@@ -990,6 +990,34 @@ async function handleMarkKeysReturned(body, res) {
     return res.status(400).json({ error: 'Enter the name or location keys were returned to.' });
   }
 
+  async function closeReturnRequestAfterCharge({ charge, capturedAmount, note }) {
+    const timestamp = new Date().toISOString();
+    const notes = note ? (request.notes ? `${request.notes}\n${note}` : note) : request.notes;
+
+    return db.from('service_requests').update({
+      status: 'canceled_return_completed',
+      payment_status: 'cancellation_fee_paid',
+      captured_amount: capturedAmount,
+      cancellation_fee_applied: true,
+      cancellation_fee_amount: RETURN_CANCELLATION_FEE,
+      cancellation_fee_waived: false,
+      cancellation_fee_decision_by: key_returned_by || 'staff',
+      cancellation_fee_decision_at: timestamp,
+      final_total: charge.total,
+      actual_fuel_receipt_amount: charge.fuel || null,
+      actual_car_wash_receipt_amount: charge.wash || null,
+      payment_operating_recovery_amount: charge.recovery,
+      net_target_amount: charge.subtotal,
+      rounded_customer_total: charge.total,
+      key_returned_to_type,
+      key_returned_to_name_or_location: returnedToName,
+      key_returned_at: timestamp,
+      key_returned_by: key_returned_by || null,
+      notes,
+      updated_at: timestamp,
+    }).eq('id', request_id);
+  }
+
   const returnPaymentResolved = ['cancellation_fee_paid', 'authorization_released', 'voided', 'closed_no_charge'];
   if (hasCustomerReturnRequestAlert(request) && !returnPaymentResolved.includes(request.payment_status)) {
     if (!request.payment_intent_id) {
@@ -1002,6 +1030,18 @@ async function handleMarkKeysReturned(body, res) {
       const currentIntent = await stripe.paymentIntents.retrieve(request.payment_intent_id);
 
       if (currentIntent.status !== 'requires_capture') {
+        if (currentIntent.status === 'succeeded') {
+          const capturedAmount = currentIntent.amount_received ? currentIntent.amount_received / 100 : charge.total;
+          const timestamp = new Date().toISOString();
+          const note = `[return_fee_charge_reconciled ${timestamp}] Stripe payment was already captured before key-return closeout. Keys returned by ${key_returned_by || 'staff'}. Captured amount $${capturedAmount.toFixed(2)}.`;
+          const { error: reconciledUpdateErr } = await closeReturnRequestAfterCharge({ charge, capturedAmount, note });
+          if (reconciledUpdateErr) {
+            console.error('[payments/mark_keys_returned] DB reconcile failed after existing Stripe capture:', reconciledUpdateErr.message);
+            return res.status(500).json({ error: 'Payment was already processed, but the request could not be closed. Contact an admin.' });
+          }
+          return res.status(200).json({ status: 'canceled_return_completed', amount_captured: Math.round(capturedAmount * 100), reconciled: true });
+        }
+
         return res.status(400).json({ error: 'The payment authorization is not available for capture. Please contact an admin.' });
       }
       if (currentIntent.amount_capturable != null && currentIntent.amount_capturable < charge.amount_cents) {
@@ -1013,30 +1053,7 @@ async function handleMarkKeysReturned(body, res) {
       const intent = await stripe.paymentIntents.capture(request.payment_intent_id, { amount_to_capture: charge.amount_cents });
       const timestamp = new Date().toISOString();
       const chargeNote = `[return_fee_charge ${timestamp}] Keys returned by ${key_returned_by || 'staff'}. Fuel receipts $${charge.fuel.toFixed(2)}, car wash receipts $${charge.wash.toFixed(2)}, cancellation/service fee $${charge.cancellation_fee.toFixed(2)}, payment/operating recovery $${charge.recovery.toFixed(2)}, rounded total $${charge.total.toFixed(2)}.`;
-      const notes = request.notes ? `${request.notes}\n${chargeNote}` : chargeNote;
-
-      const { error: returnUpdateErr } = await db.from('service_requests').update({
-        status: 'canceled_return_completed',
-        payment_status: 'cancellation_fee_paid',
-        captured_amount: charge.total,
-        cancellation_fee_applied: true,
-        cancellation_fee_amount: RETURN_CANCELLATION_FEE,
-        cancellation_fee_waived: false,
-        cancellation_fee_decision_by: key_returned_by || 'staff',
-        cancellation_fee_decision_at: timestamp,
-        final_total: charge.total,
-        actual_fuel_receipt_amount: charge.fuel || null,
-        actual_car_wash_receipt_amount: charge.wash || null,
-        payment_operating_recovery_amount: charge.recovery,
-        net_target_amount: charge.subtotal,
-        rounded_customer_total: charge.total,
-        key_returned_to_type,
-        key_returned_to_name_or_location: returnedToName,
-        key_returned_at: timestamp,
-        key_returned_by: key_returned_by || null,
-        notes,
-        updated_at: timestamp,
-      }).eq('id', request_id);
+      const { error: returnUpdateErr } = await closeReturnRequestAfterCharge({ charge, capturedAmount: charge.total, note: chargeNote });
 
       if (returnUpdateErr) {
         console.error('[payments/mark_keys_returned] DB update failed after return charge:', returnUpdateErr.message);
@@ -1049,6 +1066,21 @@ async function handleMarkKeysReturned(body, res) {
       console.error('[payments/mark_keys_returned] Return charge failed:', err.message);
       return res.status(500).json({ error: 'Cancellation/service amount could not be processed. Please contact an admin.' });
     }
+  }
+
+  if (hasCustomerReturnRequestAlert(request) && request.payment_status === 'cancellation_fee_paid') {
+    const charge = returnRequestChargeFromNotes(request.notes);
+    const note = `[return_keys_recorded ${new Date().toISOString()}] Keys returned by ${key_returned_by || 'staff'} after return charge was already processed.`;
+    const { error: resolvedUpdateErr } = await closeReturnRequestAfterCharge({
+      charge,
+      capturedAmount: request.captured_amount || charge.total,
+      note,
+    });
+    if (resolvedUpdateErr) {
+      console.error('[payments/mark_keys_returned] DB close failed after resolved return payment:', resolvedUpdateErr.message);
+      return res.status(500).json({ error: 'Could not close the returned request. Please try again.' });
+    }
+    return res.status(200).json({ status: 'canceled_return_completed', already_charged: true });
   }
 
   const { error: updateErr } = await db.from('service_requests').update({
