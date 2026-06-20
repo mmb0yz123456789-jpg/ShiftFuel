@@ -579,11 +579,17 @@ function servicePricingParts({ needsFuel, needsWash, fuelAmount = 0, washAmount 
     washRecovery = recovery;
   }
 
+  const grossBeforeRounding = netTarget > 0 ? (netTarget + PAYMENT_RECOVERY_FIXED) / (1 - PAYMENT_RECOVERY_RATE) : 0;
+
   return {
+    fuelBase,
+    washBase,
     fuelService: roundMoneyValue(fuelBase + fuelRecovery),
     washService: roundMoneyValue(washBase + washRecovery),
     inspection,
     recovery,
+    netTarget,
+    grossBeforeRounding,
     total: roundedTotal,
   };
 }
@@ -2108,6 +2114,13 @@ function getBookingPayload() {
       quickInspection: pricing.inspection > 0,
       quickInspectionFee: pricing.inspection,
       paymentOperatingRecovery: pricing.recovery,
+      baseFuelServiceFee: serviceType.needsFuel ? pricing.fuelBase : null,
+      baseCarWashServiceFee: serviceType.needsWash && washPackage ? pricing.washBase : null,
+      baseInspectionFee: pricing.inspection > 0 ? pricing.inspection : null,
+      netTargetAmount: pricing.netTarget,
+      grossTotalBeforeRounding: roundMoneyValue(pricing.grossBeforeRounding),
+      roundedCustomerTotal: pricing.total,
+      authorizedAmount: pricing.total,
       serviceLabel: service.options[service.selectedIndex]?.textContent || selectedService,
       detailingAvailableWindow: serviceType.needsWash ? "9:00 AM - 6:00 PM" : null,
       estimatedTotal: estimatedTotalAmount || moneyValue(estimatedTotal.textContent),
@@ -2196,6 +2209,17 @@ function getServiceRequestInsert(payload) {
     notes: payload.request.notes,
     payment_intent_id: payload.payment.paymentIntentId || null,
     payment_status: payload.payment.paymentIntentId ? 'authorized' : 'not_started',
+    base_fuel_service_fee: payload.request.baseFuelServiceFee,
+    base_car_wash_service_fee: payload.request.baseCarWashServiceFee,
+    base_inspection_fee: payload.request.baseInspectionFee,
+    payment_operating_recovery_amount: payload.request.paymentOperatingRecovery,
+    displayed_fuel_service_fee: payload.request.fuelConvenienceFee,
+    displayed_car_wash_service_fee: payload.request.washConvenienceFee,
+    displayed_inspection_fee: payload.request.baseInspectionFee,
+    net_target_amount: payload.request.netTargetAmount,
+    gross_total_before_rounding: payload.request.grossTotalBeforeRounding,
+    rounded_customer_total: payload.request.roundedCustomerTotal,
+    authorized_amount: payload.request.authorizedAmount,
   };
 }
 

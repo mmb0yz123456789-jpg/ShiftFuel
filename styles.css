@@ -1788,6 +1788,21 @@ textarea:focus {
   margin: 4px 0;
 }
 
+.pricing-audit-details {
+  margin: 6px 0;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.pricing-audit-details summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.pricing-audit-details p {
+  margin: 4px 0 4px 12px;
+}
+
 .admin-actions {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));

@@ -649,9 +649,12 @@ function transactionPricingSummary(request, receiptTotals = { fuel: 0, wash: 0 }
   return {
     fuel: roundMoneyValue(fuelBase + fuelRecovery),
     wash: roundMoneyValue(washBase + washRecovery),
+    fuelBase,
+    washBase,
     inspection,
     recovery,
     netTarget,
+    grossBeforeRounding: netTarget > 0 ? (netTarget + RETURN_RECOVERY_FIXED) / (1 - RETURN_RECOVERY_RATE) : 0,
     total: roundedTotal,
   };
 }
@@ -692,6 +695,47 @@ function photoTimestampNote(stage, timestamp) {
 
 function finalTotalFromSavedReceipts(request, receiptTotals = receiptTotalsFromNotes(request)) {
   return transactionPricingSummary(request, receiptTotals).total;
+}
+
+// Builds the internal pricing-audit fields (admin/internal only — never
+// shown to the customer) to save alongside final_total.
+function pricingAuditFields(request, receiptTotals = receiptTotalsFromNotes(request)) {
+  const fees = transactionPricingSummary(request, receiptTotals);
+  return {
+    base_fuel_service_fee: fees.fuelBase || null,
+    base_car_wash_service_fee: fees.washBase || null,
+    base_inspection_fee: fees.inspection || null,
+    payment_operating_recovery_amount: fees.recovery,
+    displayed_fuel_service_fee: fees.fuel || null,
+    displayed_car_wash_service_fee: fees.wash || null,
+    displayed_inspection_fee: fees.inspection || null,
+    actual_fuel_receipt_amount: receiptTotals.fuel || null,
+    actual_car_wash_receipt_amount: receiptTotals.wash || null,
+    net_target_amount: fees.netTarget,
+    gross_total_before_rounding: roundMoneyValue(fees.grossBeforeRounding),
+    rounded_customer_total: fees.total,
+  };
+}
+
+// Admin/internal-only pricing breakdown — never shown to the customer.
+// Reads from the saved audit columns (set whenever final_total is saved);
+// falls back to "Not recorded" before the first receipt is entered.
+function renderPricingAuditDetails(request) {
+  const row = (label, value) => `<p><strong>${escapeHtml(label)}:</strong> ${value == null ? 'Not recorded' : money(value)}</p>`;
+  return `
+    <details class="pricing-audit-details">
+      <summary>Pricing audit (admin only)</summary>
+      ${request.base_fuel_service_fee != null || request.base_car_wash_service_fee != null || request.base_inspection_fee != null ? `
+        <p><strong>Base fees:</strong> Fuel ${request.base_fuel_service_fee != null ? money(request.base_fuel_service_fee) : '—'} | Car wash ${request.base_car_wash_service_fee != null ? money(request.base_car_wash_service_fee) : '—'} | Inspection ${request.base_inspection_fee != null ? money(request.base_inspection_fee) : '—'}</p>
+      ` : ''}
+      ${row('Payment/operating recovery', request.payment_operating_recovery_amount)}
+      ${row('Net target (before recovery)', request.net_target_amount)}
+      ${row('Gross total before rounding', request.gross_total_before_rounding)}
+      ${row('Rounded customer total', request.rounded_customer_total)}
+      ${row('Authorized amount', request.authorized_amount)}
+      ${row('Captured amount', request.captured_amount)}
+    </details>
+  `;
 }
 
 function normalizeTroubleCode(value) {
@@ -813,6 +857,7 @@ function requestCardDetails(request) {
       ${hasPayment ? `<p><strong>Estimated total:</strong> ${money(request.estimated_total)} | <strong>Final total:</strong> ${request.final_total == null ? 'Not recorded' : money(request.final_total)}</p>` : ''}
       ${(receiptTotals.fuel || receiptTotals.wash) ? `<p><strong>Receipt totals:</strong> Fuel ${money(receiptTotals.fuel)} | Car wash ${money(receiptTotals.wash)}</p>` : ''}
       ${hasPayment ? `<p><strong>Service fees:</strong> Fuel service ${money(fees.fuel)} | Car wash service ${money(fees.wash)} | Quick inspection ${money(fees.inspection)}</p>` : ''}
+      ${hasPayment ? renderPricingAuditDetails(request) : ''}
       ${request.payment_intent_id ? `<hr class="details-divider">
       <p><strong>Payment status:</strong> ${paymentStatusLabel(request)}</p>
       ${request.auto_reversed_at ? `<p><strong>Auto-reversed:</strong> ${formatTimestamp(request.auto_reversed_at)} — service was not completed on the scheduled date.</p>` : ''}
@@ -2840,7 +2885,7 @@ async function saveFinalTotal(button) {
     await uploadPhotoFile(id, 'wash_receipt', washReceiptFile);
   }
 
-  const rpcData = { final_total: finalTotal, notes };
+  const rpcData = { final_total: finalTotal, notes, ...pricingAuditFields(request, newReceiptTotals) };
   if (button.dataset.nextStatus) {
     rpcData.status = button.dataset.nextStatus;
   }
@@ -2887,7 +2932,7 @@ async function saveServiceUnable(button) {
   const { error } = await db.rpc('admin_update_request', {
     p_token: adminToken(),
     p_request_id: id,
-    p_data: { status: nextStatusAfterServiceUnable(request, type), final_total: finalTotal, notes },
+    p_data: { status: nextStatusAfterServiceUnable(request, type), final_total: finalTotal, notes, ...pricingAuditFields(request, receiptTotals) },
   });
 
   if (error) throw error;
@@ -3122,7 +3167,7 @@ async function saveTotalEdit(button) {
   const { error } = await db.rpc('admin_update_request', {
     p_token: adminToken(),
     p_request_id: id,
-    p_data: { final_total: finalTotal, notes },
+    p_data: { final_total: finalTotal, notes, ...pricingAuditFields(request, newReceiptTotals) },
   });
 
   if (error) throw error;
