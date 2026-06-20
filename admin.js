@@ -52,6 +52,10 @@ const applicantList = document.querySelector('#applicant-list');
 const workerProfileList = document.querySelector('#worker-profile-list');
 const workerProfileSelectActive = document.querySelector('#worker-profile-select-active');
 const workerProfileSelectInactive = document.querySelector('#worker-profile-select-inactive');
+const adminRefreshBtn = document.querySelector('#admin-refresh-btn');
+const adminWorkersRefreshBtn = document.querySelector('#admin-workers-refresh-btn');
+const adminReviewsRefreshBtn = document.querySelector('#admin-reviews-refresh-btn');
+const adminApplicantsRefreshBtn = document.querySelector('#admin-applicants-refresh-btn');
 
 const PHOTO_BUCKET = 'service-photos';
 const DEFAULT_WORKER_NAME = 'Mark Urban';
@@ -102,13 +106,189 @@ function maxDateString() {
   d.setMonth(d.getMonth() + 3);
   return localDateString(d);
 }
+
+const CR_WASH_PACKAGES = [
+  { value: 'buff-shine', label: 'Buff & Shine', price: 27 },
+  { value: 'shine-protect', label: 'Shine & Protect', price: 20 },
+  { value: 'shine', label: 'Shine', price: 16 },
+  { value: 'double-wash', label: 'Double Wash', price: 12 },
+];
+const CR_FUEL_ESTIMATE_RANGES = [
+  { value: '5', gallons: 5 },
+  { value: '10', gallons: 10 },
+  { value: '15', gallons: 15 },
+  { value: '20', gallons: 20 },
+  { value: '25', gallons: 25 },
+  { value: '30', gallons: 30 },
+];
+const CR_AVG_FUEL_PRICES = { Regular: 3.792, 'Mid-grade': 4.411, Premium: 4.701, Diesel: 4.967 };
+const CR_FEES = { fuelConvenience: 15, washConvenience: 15, quickInspection: 5 };
+
+function crNormalizeTimeSlot(value) {
+  return String(value || '').slice(0, 5);
+}
+
+function crMinutesFromSlot(value) {
+  const [hour, minute] = crNormalizeTimeSlot(value).split(':').map(Number);
+  return (hour || 0) * 60 + (minute || 0);
+}
+
+function crFormatTimeLabel(value) {
+  const [hourText, minute] = crNormalizeTimeSlot(value).split(':');
+  const hour = Number(hourText);
+  const period = hour >= 12 ? 'PM' : 'AM';
+  const displayHour = hour % 12 || 12;
+  return `${displayHour}:${minute || '00'} ${period}`;
+}
+
+function crTimeSlots(startHour, endHour) {
+  const slots = [];
+  for (let hour = startHour; hour <= endHour; hour += 1) {
+    for (const minute of ['00', '30']) {
+      if (hour === endHour && minute === '30') continue;
+      slots.push(`${String(hour).padStart(2, '0')}:${minute}`);
+    }
+  }
+  return slots;
+}
+
+function crFutureSlotsForDate(slots, dateValue) {
+  if (dateValue !== localDateString(new Date())) return slots;
+  const now = new Date();
+  const nowMinutes = now.getHours() * 60 + now.getMinutes();
+  return slots.filter((slot) => crMinutesFromSlot(slot) > nowMinutes);
+}
+
+function crServiceNeedsWash() {
+  const value = document.getElementById('cr-service-type')?.value || '';
+  return value === 'car-wash' || value === 'car-wash-fuel';
+}
+
+function crServiceNeedsFuel() {
+  const value = document.getElementById('cr-service-type')?.value || '';
+  return value === 'fuel' || value === 'car-wash-fuel';
+}
+
+function crIsMissingRpcError(error) {
+  const message = String(error?.message || '').toLowerCase();
+  return ['PGRST202', 'PGRST204', '42883'].includes(error?.code)
+    || message.includes('could not find the function')
+    || (message.includes('function') && message.includes('does not exist'));
+}
+
+async function crLoadWorkerAvailabilitySlots(dateValue) {
+  if (!dateValue || !db) return null;
+  const { data, error } = await db.rpc('public_worker_availability_slots', {
+    p_service_date: dateValue,
+    p_hospital: '',
+  });
+  if (!error) {
+    return (data || []).map((row) => crNormalizeTimeSlot(row.slot)).filter(Boolean);
+  }
+  if (!crIsMissingRpcError(error)) {
+    console.warn('Admin create request worker availability lookup blocked:', error);
+    return [];
+  }
+  console.warn('Worker availability RPC unavailable for admin create request:', error);
+  return null;
+}
+
+function crFillReturnSelect(select, slots, bookedSlots, placeholder) {
+  const currentValue = select.value;
+  select.innerHTML = '';
+  const blank = document.createElement('option');
+  blank.value = '';
+  blank.textContent = placeholder;
+  select.append(blank);
+
+  slots.forEach((slot) => {
+    const option = document.createElement('option');
+    option.value = slot;
+    option.textContent = crFormatTimeLabel(slot);
+    if (bookedSlots.has(slot)) {
+      option.disabled = true;
+      option.textContent += ' - booked';
+    }
+    select.append(option);
+  });
+
+  if (slots.includes(currentValue) && !bookedSlots.has(currentValue)) {
+    select.value = currentValue;
+  }
+}
+
+async function refreshAdminCreateReturnTimes() {
+  const dateValue = document.getElementById('cr-service-date')?.value || '';
+  const timeSelect = document.getElementById('cr-return-time');
+  const help = document.getElementById('cr-time-help');
+  if (!timeSelect) return;
+
+  if (!dateValue) {
+    timeSelect.innerHTML = '<option value="">Select a date first</option>';
+    if (help) help.textContent = 'Choose a service date to load available return times.';
+    return;
+  }
+
+  const needsWash = crServiceNeedsWash();
+  let slots = crFutureSlotsForDate(crTimeSlots(needsWash ? 9 : 7, needsWash ? 18 : 22), dateValue);
+  const availabilitySlots = await crLoadWorkerAvailabilitySlots(dateValue);
+  if (Array.isArray(availabilitySlots)) {
+    slots = slots.filter((slot) => availabilitySlots.includes(slot));
+  }
+
+  let bookedSlots = new Set();
+  try {
+    const { data, error } = await db.rpc('public_booked_return_slots', { p_service_date: dateValue });
+    if (error) throw error;
+    bookedSlots = new Set((data || []).map((row) => crNormalizeTimeSlot(row.desired_return_time)).filter(Boolean));
+  } catch (error) {
+    console.warn('Admin create request booked slot lookup failed:', error);
+  }
+
+  const placeholder = needsWash
+    ? (slots.length ? 'Select car wash return time' : 'No car wash times left today')
+    : (slots.length ? 'Select return time' : 'No return times left today');
+  crFillReturnSelect(timeSelect, slots, bookedSlots, placeholder);
+  if (help) {
+    const availabilitySuffix = Array.isArray(availabilitySlots) && availabilitySlots.length === 0
+      ? ' No worker availability is saved for this date.'
+      : '';
+    help.textContent = needsWash
+      ? (slots.length ? `Car wash service selected. Return times are limited to 9:00 AM through 6:00 PM.${availabilitySuffix}` : `No more car wash return times are available today. Choose tomorrow or another future date.${availabilitySuffix}`)
+      : (slots.length ? `Choose the time you want the vehicle returned.${availabilitySuffix}` : `No more return times are available today. Choose tomorrow or another future date.${availabilitySuffix}`);
+  }
+}
+
+function updateAdminCreateServiceControls() {
+  const needsFuel = crServiceNeedsFuel();
+  const needsWash = crServiceNeedsWash();
+  document.querySelectorAll('.cr-fuel-control').forEach((el) => {
+    el.hidden = !needsFuel;
+    el.querySelectorAll('select,input').forEach((input) => {
+      input.disabled = !needsFuel;
+      if (!needsFuel) input.value = '';
+    });
+  });
+  document.querySelectorAll('.cr-wash-control').forEach((el) => {
+    el.hidden = !needsWash;
+    el.querySelectorAll('select,input').forEach((input) => {
+      input.disabled = !needsWash;
+      if (!needsWash) input.value = '';
+    });
+  });
+  refreshAdminCreateReturnTimes();
+}
+
 function initServiceDateInput() {
   const host = document.getElementById('cr-service-date-picker');
   if (!host || !window.ShiftFuelDatePicker) return;
-  ShiftFuelDatePicker.attach(host, { min: localDateString(new Date()), max: maxDateString() });
+  ShiftFuelDatePicker.attach(host, { min: localDateString(new Date()), max: maxDateString(), onChange: refreshAdminCreateReturnTimes });
 }
 
 initServiceDateInput();
+updateAdminCreateServiceControls();
+document.getElementById('cr-service-type')?.addEventListener('change', updateAdminCreateServiceControls);
+document.getElementById('cr-service-date')?.addEventListener('change', refreshAdminCreateReturnTimes);
 
 // Admin profile photo editor state (mirrors worker.js)
 let adminPhotoZoom = 1;
@@ -373,6 +553,105 @@ function receiptTotalsFromNotes(request) {
   };
 }
 
+const RETURN_CANCELLATION_FEE = 15;
+const RETURN_RECOVERY_RATE = 0.029;
+const RETURN_RECOVERY_FIXED = 0.30;
+const BASE_FUEL_SERVICE_FEE = 15;
+const BASE_WASH_SERVICE_FEE = 15;
+const BASE_QUICK_INSPECTION_FEE = 5;
+
+function roundMoneyValue(value) {
+  return Math.round((Number(value) || 0) * 100) / 100;
+}
+
+function estimatePricingSummary({ needsFuel, needsWash, fuelAmount = 0, washAmount = 0, quickInspection = false }) {
+  const fuelBase = needsFuel ? BASE_FUEL_SERVICE_FEE : 0;
+  const washBase = needsWash ? BASE_WASH_SERVICE_FEE : 0;
+  const inspection = quickInspection ? BASE_QUICK_INSPECTION_FEE : 0;
+  const netTarget = roundMoneyValue(fuelAmount + washAmount + fuelBase + washBase + inspection);
+  const roundedTotal = netTarget > 0
+    ? Math.ceil((netTarget + RETURN_RECOVERY_FIXED) / (1 - RETURN_RECOVERY_RATE))
+    : 0;
+  const recovery = roundMoneyValue(roundedTotal - netTarget);
+  const recoveryCents = Math.round(recovery * 100);
+  let fuelRecovery = 0;
+  let washRecovery = 0;
+
+  if (needsFuel && needsWash) {
+    fuelRecovery = Math.floor(recoveryCents / 2) / 100;
+    washRecovery = (recoveryCents - Math.floor(recoveryCents / 2)) / 100;
+  } else if (needsFuel) {
+    fuelRecovery = recovery;
+  } else if (needsWash) {
+    washRecovery = recovery;
+  }
+
+  return {
+    fuel: roundMoneyValue(fuelBase + fuelRecovery),
+    wash: roundMoneyValue(washBase + washRecovery),
+    inspection,
+    recovery,
+    total: roundedTotal,
+  };
+}
+
+function returnRequestChargeSummary(request) {
+  const receiptTotals = receiptTotalsFromNotes(request);
+  const subtotal = roundMoneyValue(receiptTotals.fuel + receiptTotals.wash + RETURN_CANCELLATION_FEE);
+  const total = subtotal > 0
+    ? Math.ceil((subtotal + RETURN_RECOVERY_FIXED) / (1 - RETURN_RECOVERY_RATE))
+    : 0;
+  const recovery = roundMoneyValue(total - subtotal);
+
+  return {
+    fuel: roundMoneyValue(receiptTotals.fuel),
+    wash: roundMoneyValue(receiptTotals.wash),
+    cancellationFee: RETURN_CANCELLATION_FEE,
+    recovery,
+    subtotal,
+    total,
+    hasReceipts: receiptTotals.fuel > 0 || receiptTotals.wash > 0,
+  };
+}
+
+function transactionPricingSummary(request, receiptTotals = { fuel: 0, wash: 0 }) {
+  const needsFuel = serviceNeedsFuel(request);
+  const needsWash = serviceNeedsWash(request);
+  const fuelBase = needsFuel && Number(receiptTotals.fuel || 0) > 0 ? BASE_FUEL_SERVICE_FEE : 0;
+  const washBase = needsWash && Number(receiptTotals.wash || 0) > 0 ? BASE_WASH_SERVICE_FEE : 0;
+  const inspection = request.quick_inspection ? BASE_QUICK_INSPECTION_FEE : 0;
+  const netTarget = roundMoneyValue(Number(receiptTotals.fuel || 0) + Number(receiptTotals.wash || 0) + fuelBase + washBase + inspection);
+  const roundedTotal = netTarget > 0
+    ? Math.ceil((netTarget + RETURN_RECOVERY_FIXED) / (1 - RETURN_RECOVERY_RATE))
+    : 0;
+  const recovery = roundMoneyValue(roundedTotal - netTarget);
+  const recoveryCents = Math.round(recovery * 100);
+  let fuelRecovery = 0;
+  let washRecovery = 0;
+
+  if (fuelBase && washBase) {
+    fuelRecovery = Math.floor(recoveryCents / 2) / 100;
+    washRecovery = (recoveryCents - Math.floor(recoveryCents / 2)) / 100;
+  } else if (fuelBase) {
+    fuelRecovery = recovery;
+  } else if (washBase) {
+    washRecovery = recovery;
+  } else if (needsFuel && !needsWash) {
+    fuelRecovery = recovery;
+  } else if (needsWash) {
+    washRecovery = recovery;
+  }
+
+  return {
+    fuel: roundMoneyValue(fuelBase + fuelRecovery),
+    wash: roundMoneyValue(washBase + washRecovery),
+    inspection,
+    recovery,
+    netTarget,
+    total: roundedTotal,
+  };
+}
+
 function serviceUnableMap(request) {
   const notes = String(request.notes || '');
   return {
@@ -408,10 +687,7 @@ function photoTimestampNote(stage, timestamp) {
 }
 
 function finalTotalFromSavedReceipts(request, receiptTotals = receiptTotalsFromNotes(request)) {
-  const fees = feeSummary(request);
-  const fuelFee = serviceNeedsFuel(request) && receiptTotals.fuel > 0 ? fees.fuel : 0;
-  const washFee = serviceNeedsWash(request) && receiptTotals.wash > 0 ? fees.wash : 0;
-  return receiptTotals.fuel + receiptTotals.wash + fuelFee + washFee + fees.inspection;
+  return transactionPricingSummary(request, receiptTotals).total;
 }
 
 function normalizeTroubleCode(value) {
@@ -468,17 +744,21 @@ function troubleCodeDetails(code) {
 }
 
 function finalTotalFromParts(request, fuelReceipt, washReceipt) {
-  const fuelConvenience = serviceNeedsFuel(request) ? savedFeeOrDefault(request.fuel_convenience_fee, 15) : 0;
-  const washConvenience = serviceNeedsWash(request) ? savedFeeOrDefault(request.wash_convenience_fee, 15) : 0;
-  const inspection = request.quick_inspection ? savedFeeOrDefault(request.quick_inspection_fee, 5) : 0;
-  return numberFromInput(fuelReceipt) + numberFromInput(washReceipt) + fuelConvenience + washConvenience + inspection;
+  return transactionPricingSummary(request, {
+    fuel: numberFromInput(fuelReceipt),
+    wash: numberFromInput(washReceipt),
+  }).total;
 }
 
-function feeSummary(request) {
+function feeSummary(request, receiptTotals = null) {
+  if (receiptTotals) {
+    return transactionPricingSummary(request, receiptTotals);
+  }
   return {
-    fuel: serviceNeedsFuel(request) ? savedFeeOrDefault(request.fuel_convenience_fee, 15) : 0,
-    wash: serviceNeedsWash(request) ? savedFeeOrDefault(request.wash_convenience_fee, 15) : 0,
-    inspection: request.quick_inspection ? savedFeeOrDefault(request.quick_inspection_fee, 5) : 0,
+    fuel: serviceNeedsFuel(request) ? savedFeeOrDefault(request.fuel_convenience_fee, BASE_FUEL_SERVICE_FEE) : 0,
+    wash: serviceNeedsWash(request) ? savedFeeOrDefault(request.wash_convenience_fee, BASE_WASH_SERVICE_FEE) : 0,
+    inspection: request.quick_inspection ? savedFeeOrDefault(request.quick_inspection_fee, BASE_QUICK_INSPECTION_FEE) : 0,
+    recovery: 0,
   };
 }
 
@@ -501,14 +781,22 @@ function adminFormatService(request) {
 }
 
 function requestCardDetails(request) {
-  const fees = feeSummary(request);
   const receiptTotals = receiptTotalsFromNotes(request);
+  const hasReceipts = Number(receiptTotals.fuel || 0) > 0 || Number(receiptTotals.wash || 0) > 0;
+  const fees = hasReceipts ? feeSummary(request, receiptTotals) : feeSummary(request);
   const hasPayment = request.estimated_total != null || request.final_total != null || receiptTotals.fuel || receiptTotals.wash;
+  const hasReturnRequest = !!request.return_requested_at || request.status === 'return_requested' || request.status === 'customer_return_requested';
 
   return `
     <div class="request-details">
+      ${hasReturnRequest ? `
+        <div class="return-request-banner">
+          <h4>Customer requested return after service started</h4>
+          <p class="field-help">Review completed receipts before charging or waiving fees.</p>
+        </div>
+      ` : ''}
       <p><strong>Customer:</strong> ${escapeHtml(request.customer_name || '')}</p>
-      <p><strong>Phone:</strong> ${escapeHtml(request.customer_phone || 'Not provided')}${request.customer_email ? ` | ${escapeHtml(request.customer_email)}` : ''}</p>
+      <p><strong>Phone:</strong> ${request.customer_phone ? escapeHtml(formatPhone(request.customer_phone)) : 'Not provided'}${request.customer_email ? ` | ${escapeHtml(request.customer_email)}` : ''}</p>
       <p><strong>Service address:</strong> ${escapeHtml(adminFormatAddress(request))}</p>
       <p><strong>Parking:</strong> ${[request.parking_location, request.parking_spot ? `spot ${request.parking_spot}` : ''].filter(Boolean).map(escapeHtml).join(', ') || 'Not provided'}</p>
       ${request.key_handoff_details ? `<p><strong>Key handoff:</strong> ${escapeHtml(request.key_handoff_details)}</p>` : ''}
@@ -520,7 +808,7 @@ function requestCardDetails(request) {
       ${hasPayment ? `<hr class="details-divider">` : ''}
       ${hasPayment ? `<p><strong>Estimated total:</strong> ${money(request.estimated_total)} | <strong>Final total:</strong> ${request.final_total == null ? 'Not recorded' : money(request.final_total)}</p>` : ''}
       ${(receiptTotals.fuel || receiptTotals.wash) ? `<p><strong>Receipt totals:</strong> Fuel ${money(receiptTotals.fuel)} | Car wash ${money(receiptTotals.wash)}</p>` : ''}
-      ${hasPayment ? `<p><strong>Fees:</strong> Fuel convenience ${money(fees.fuel)} | Wash convenience ${money(fees.wash)} | Inspection ${money(fees.inspection)}</p>` : ''}
+      ${hasPayment ? `<p><strong>Service fees:</strong> Fuel service ${money(fees.fuel)} | Car wash service ${money(fees.wash)} | Quick inspection ${money(fees.inspection)}</p>` : ''}
       ${request.payment_intent_id ? `<hr class="details-divider">
       <p><strong>Payment status:</strong> ${paymentStatusLabel(request)}</p>
       ${request.auto_reversed_at ? `<p><strong>Auto-reversed:</strong> ${formatTimestamp(request.auto_reversed_at)} — service was not completed on the scheduled date.</p>` : ''}
@@ -576,7 +864,7 @@ function renderWorkerAssignment(request) {
       <div>
         <p class="eyebrow">Assigned worker</p>
         <h4>${assignedName ? escapeHtml(assignedName) : 'Choose who is working on this car'}</h4>
-        ${assignedPhone ? `<p class="field-help">Customer contact: ${escapeHtml(assignedPhone)}</p>` : '<p class="field-help">Assign a worker after accepting the request.</p>'}
+        ${assignedPhone ? `<p class="field-help">Worker phone: ${escapeHtml(formatPhone(assignedPhone))}</p>` : '<p class="field-help">Assign a worker after accepting the request.</p>'}
         ${(assignedName && !selectedId) ? `<p class="field-help" style="color:#b35900">⚠ Assigned by name only — worker ID missing.</p>` : ''}
       </div>
       ${photoFrame}
@@ -659,7 +947,10 @@ function renderActions(request) {
   let activePanel = '';
   let nextAction = '';
 
-  if (request.status === 'request_received') {
+  if (request.return_requested_at && request.status !== 'canceled_return_completed') {
+    nextAction = 'Customer requested return after service started. Review completed receipts before charging or waiving fees.';
+    activePanel = renderReturnRequestPanel(request);
+  } else if (request.status === 'request_received') {
     nextAction = 'Review the request and accept it to begin service.';
     actions.push(primaryStatusButton(request, 'Accept', 'accepted'));
   } else if (request.status === 'accepted') {
@@ -925,7 +1216,7 @@ function renderReceiptPanel(request, mode = 'all') {
     ? 'Upload the fuel receipt and enter the fuel total. The app will keep this total for final confirmation.'
     : isWashMode
       ? 'Upload the car wash receipt and enter the car wash total. The app will keep this total for final confirmation.'
-      : 'Upload each receipt and enter each total. The app adds the correct convenience fees.';
+      : 'Upload each receipt and enter each total. The app adds the correct service totals.';
 
   return `
     <div class="receipt-panel" data-receipt-for="${request.id}">
@@ -965,8 +1256,8 @@ function renderReturnLocationPanel(request) {
 }
 
 function renderCompletePanel(request) {
-  const fees = feeSummary(request);
   const receiptTotals = receiptTotalsFromNotes(request);
+  const fees = feeSummary(request, receiptTotals);
   const expectedFinalTotal = finalTotalFromSavedReceipts(request, receiptTotals);
   const alreadyCaptured = request.payment_status === 'captured';
   const hasPi = !!request.payment_intent_id;
@@ -985,8 +1276,8 @@ function renderCompletePanel(request) {
       <h4>Confirm before ${hasPi && !alreadyCaptured ? 'capturing payment' : 'completing'}</h4>
       <p class="field-help">Confirm these totals are correct before ${hasPi && !alreadyCaptured ? 'capturing the payment' : 'proceeding to key return'}.</p>
       <div class="request-details">
-        ${serviceNeedsFuel(request) ? `<p><strong>Fuel:</strong> ${money(receiptTotals.fuel)} receipt + ${money(fees.fuel)} convenience fee.</p>` : ''}
-        ${serviceNeedsWash(request) ? `<p><strong>Car wash:</strong> ${money(receiptTotals.wash)} receipt + ${money(fees.wash)} convenience fee.</p>` : ''}
+        ${serviceNeedsFuel(request) ? `<p><strong>Fuel:</strong> ${money(receiptTotals.fuel)} receipt + ${money(fees.fuel)} service.</p>` : ''}
+        ${serviceNeedsWash(request) ? `<p><strong>Car wash:</strong> ${money(receiptTotals.wash)} receipt + ${money(fees.wash)} service.</p>` : ''}
         ${request.quick_inspection ? `<p><strong>Quick inspection:</strong> ${money(fees.inspection)}</p>` : ''}
         <p><strong>Final total currently saved:</strong> ${request.final_total == null ? 'Not recorded' : money(request.final_total)}</p>
         <p><strong>Expected total from saved receipts:</strong> ${money(expectedFinalTotal)}</p>
@@ -995,7 +1286,7 @@ function renderCompletePanel(request) {
       </div>
       <label class="checkbox-label">
         <input class="confirm-complete-totals" type="checkbox">
-        <span>I confirm the saved receipt totals and convenience fees are correct.</span>
+        <span>I confirm the saved receipt totals and service totals are correct.</span>
       </label>
       <div class="admin-button-row">
         ${primaryBtn}
@@ -1053,13 +1344,23 @@ function renderReturnRequestPanel(request) {
   const requestedAt = request.return_requested_at
     ? new Date(request.return_requested_at).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' })
     : '';
+  const charge = returnRequestChargeSummary(request);
+  const receiptLine = charge.hasReceipts
+    ? `Completed receipts: fuel ${money(charge.fuel)}, car wash ${money(charge.wash)}.`
+    : 'No completed receipts recorded yet.';
+  const chargeSummary = `
+      <div class="return-charge-summary">
+        <p><strong>Charge amount if approved:</strong> ${money(charge.total)}</p>
+        <p class="field-help">${receiptLine} Includes ${money(charge.cancellationFee)} cancellation/service fee, ${money(charge.recovery)} payment/operating recovery, rounded up to the nearest whole dollar.</p>
+      </div>`;
   return `
     <div class="return-request-banner">
       <h4>⚠ Customer requested cancellation/return after key receipt</h4>
-      <p class="field-help">${requestedAt ? `Requested ${escapeHtml(requestedAt)}. ` : ''}A $15 cancellation/service fee may apply.</p>
+      <p class="field-help">${requestedAt ? `Requested ${escapeHtml(requestedAt)}. ` : ''}Customer requested return after service started. Review completed receipts before charging or waiving fees.</p>
+      ${chargeSummary}
       <div class="admin-button-row">
         <button class="button secondary waive-return-fee" data-id="${escapeHtml(request.id)}" type="button">Waive fee &amp; release hold</button>
-        <button class="button primary charge-return-fee" data-id="${escapeHtml(request.id)}" type="button">Charge $15 cancellation/service fee</button>
+        <button class="button primary charge-return-fee" data-id="${escapeHtml(request.id)}" type="button">Charge ${money(charge.total)} cancellation/service amount</button>
         <button class="button secondary continue-return-service" data-id="${escapeHtml(request.id)}" type="button">Continue normal service</button>
       </div>
       <p class="return-request-status form-status"></p>
@@ -1094,7 +1395,7 @@ function renderEditPanel(request) {
           <input class="edit-customer-name" type="text" value="${escapeHtml(request.customer_name || '')}">
         </label>
         <label>Phone
-          <input class="edit-customer-phone" type="tel" value="${escapeHtml(request.customer_phone || '')}">
+          <input class="edit-customer-phone" type="tel" value="${escapeHtml(formatPhone(request.customer_phone || ''))}">
         </label>
         <label>Email
           <input class="edit-customer-email" type="email" value="${escapeHtml(request.customer_email || '')}">
@@ -1462,7 +1763,7 @@ function renderWorkerProfiles() {
           <input class="admin-worker-code" type="text" value="${escapeHtml(employee.employee_code || '')}" readonly>
         </label>
         <label>Phone
-          <input class="admin-worker-phone" type="tel" value="${escapeHtml(employee.phone || '')}">
+          <input class="admin-worker-phone" type="tel" value="${escapeHtml(formatPhone(employee.phone || ''))}">
         </label>
         <label>Email
           <input class="admin-worker-email" type="email" value="${escapeHtml(employee.email || '')}">
@@ -1783,18 +2084,17 @@ async function deleteOldAdminWorkerPhotos(oldOriginalUrl, oldCroppedUrl) {
 
 async function validateUniqueWorkerPhone(employeeId, phone) {
   if (!phone) return;
+  const phoneDigits = normalizePhone(phone);
 
   const { data, error } = await db
     .from('employees_public')
     .select('id,full_name,employee_code')
-    .eq('phone', phone)
     .eq('active', true)
-    .neq('id', employeeId)
-    .limit(1);
+    .neq('id', employeeId);
 
   if (error) throw error;
 
-  const conflict = data?.[0];
+  const conflict = (data || []).find((employee) => normalizePhone(employee.phone) === phoneDigits);
   if (conflict) {
     throw new Error(`Phone number is already used by ${conflict.full_name} (${conflict.employee_code}).`);
   }
@@ -1809,7 +2109,8 @@ async function saveAdminWorkerProfile(button) {
   if (status) status.textContent = 'Saving worker profile...';
 
   // Validate phone uniqueness BEFORE uploading photo so a conflict never orphans an upload.
-  const phone = card?.querySelector('.admin-worker-phone')?.value.trim() || null;
+  const phoneInputValue = card?.querySelector('.admin-worker-phone')?.value.trim() || null;
+  const phone = phoneInputValue ? formatPhone(phoneInputValue) : null;
   await validateUniqueWorkerPhone(employeeId, phone);
 
   // Resolve photo URLs: delete → clear both; new upload → upload original + canvas-crop;
@@ -2071,7 +2372,7 @@ function renderReviews(reviews, requestMap = new Map(), starFilter = null) {
         </div>
         <div class="request-details">
           <p><strong>Worker:</strong> ${escapeHtml(request.assigned_worker_name || 'Not assigned')}</p>
-          <p><strong>Customer:</strong> ${escapeHtml(review.customer_name || 'Unknown')} ${review.customer_phone ? `| ${escapeHtml(review.customer_phone)}` : ''} ${review.customer_email ? `| ${escapeHtml(review.customer_email)}` : ''}</p>
+          <p><strong>Customer:</strong> ${escapeHtml(review.customer_name || 'Unknown')} ${review.customer_phone ? `| ${escapeHtml(formatPhone(review.customer_phone))}` : ''} ${review.customer_email ? `| ${escapeHtml(review.customer_email)}` : ''}</p>
           ${review.comments ? `<p><strong>Comments:</strong> ${escapeHtml(review.comments)}</p>` : '<p><strong>Comments:</strong> No comments provided.</p>'}
         </div>
       </article>
@@ -2146,7 +2447,7 @@ function renderApplicants(applicants) {
         </label>
       </div>
       <div class="request-details">
-        <p><strong>Phone:</strong> ${escapeHtml(applicant.phone || 'Not provided')}</p>
+        <p><strong>Phone:</strong> ${applicant.phone ? escapeHtml(formatPhone(applicant.phone)) : 'Not provided'}</p>
         <p><strong>Email:</strong> ${escapeHtml(applicant.email || 'Not provided')}</p>
         <p><strong>Availability:</strong> ${escapeHtml(applicant.availability || 'Not provided')}</p>
         <p><strong>Notes:</strong> ${escapeHtml(applicant.notes || 'No notes provided.')}</p>
@@ -2426,7 +2727,7 @@ async function updateWorkerAssignment(requestId, employeeId) {
     ? {
         assigned_employee_id: employee.id,
         assigned_worker_name: employee.full_name,
-        assigned_worker_phone: employee.phone || null,
+        assigned_worker_phone: employee.phone ? formatPhone(employee.phone) : null,
         assigned_worker_photo_url: employee.cropped_photo_url || employee.photo_url || null,
         assigned_worker_original_photo_url: employee.original_photo_url || null,
       }
@@ -2509,11 +2810,11 @@ async function saveFinalTotal(button) {
     return;
   }
 
-  const fees = feeSummary(request);
   const newReceiptTotals = {
     fuel: receiptMode === 'fuel' || receiptMode === 'all' ? numberFromInput(fuelReceipt) : savedTotals.fuel,
     wash: receiptMode === 'wash' || receiptMode === 'all' ? numberFromInput(washReceipt) : savedTotals.wash,
   };
+  const fees = feeSummary(request, newReceiptTotals);
   const finalTotal = finalTotalFromSavedReceipts(request, newReceiptTotals);
 
   const serviceNote = receiptMode === 'fuel'
@@ -2521,7 +2822,7 @@ async function saveFinalTotal(button) {
     : receiptMode === 'wash'
       ? `Car wash receipt recorded: ${money(newReceiptTotals.wash)}.`
       : `Receipt totals recorded: fuel ${money(newReceiptTotals.fuel)}, wash ${money(newReceiptTotals.wash)}.`;
-  const note = `${serviceNote} [receipt_totals fuel=${newReceiptTotals.fuel.toFixed(2)} wash=${newReceiptTotals.wash.toFixed(2)}] Fees: fuel convenience ${money(fees.fuel)}, wash convenience ${money(fees.wash)}, inspection ${money(fees.inspection)}. Final total ${money(finalTotal)}.`;
+  const note = `${serviceNote} [receipt_totals fuel=${newReceiptTotals.fuel.toFixed(2)} wash=${newReceiptTotals.wash.toFixed(2)}] Service totals: fuel ${money(fees.fuel)}, car wash ${money(fees.wash)}, inspection ${money(fees.inspection)}. Payment/operating recovery ${money(fees.recovery)}. Final total ${money(finalTotal)}.`;
   const notes = request.notes ? `${request.notes}\n${note}` : note;
 
   button.disabled = true;
@@ -2806,9 +3107,9 @@ async function saveTotalEdit(button) {
     fuel: type === 'fuel' ? value : receiptTotals.fuel,
     wash: type === 'wash' ? value : receiptTotals.wash,
   };
-  const fees = feeSummary(request);
+  const fees = feeSummary(request, newReceiptTotals);
   const finalTotal = finalTotalFromSavedReceipts(request, newReceiptTotals);
-  const note = `Corrected ${type === 'fuel' ? 'fuel' : 'car wash'} total: ${money(value)}. [receipt_totals fuel=${newReceiptTotals.fuel.toFixed(2)} wash=${newReceiptTotals.wash.toFixed(2)}] Fees: fuel convenience ${money(fees.fuel)}, wash convenience ${money(fees.wash)}, inspection ${money(fees.inspection)}. Final total ${money(finalTotal)}.`;
+  const note = `Corrected ${type === 'fuel' ? 'fuel' : 'car wash'} total: ${money(value)}. [receipt_totals fuel=${newReceiptTotals.fuel.toFixed(2)} wash=${newReceiptTotals.wash.toFixed(2)}] Service totals: fuel ${money(fees.fuel)}, car wash ${money(fees.wash)}, inspection ${money(fees.inspection)}. Payment/operating recovery ${money(fees.recovery)}. Final total ${money(finalTotal)}.`;
   const notes = request.notes ? `${request.notes}\n${note}` : note;
 
   button.disabled = true;
@@ -3177,13 +3478,14 @@ async function saveEdit(button) {
 
   const setText  = (key, cls) => { const v = val(cls); if (v !== '') updates[key] = v; };
   const setOrNull = (key, cls) => { updates[key] = val(cls) || null; }; // nullable text — always include
+  const setPhone = (key, cls) => { const v = val(cls); updates[key] = v ? formatPhone(v) : null; };
   const setNum   = (key, cls) => { const v = val(cls); if (v !== '') { const n = Number(v); if (!isNaN(n)) updates[key] = n; } };
   const setDate  = (key, cls) => { const v = val(cls); if (v !== '') updates[key] = v; };
   const setTime  = (key, cls) => { const v = val(cls); if (v !== '') updates[key] = v; };
 
   // Text fields — always include (nullable columns, empty string means clear)
   setOrNull('customer_name',          '.edit-customer-name');
-  setOrNull('customer_phone',         '.edit-customer-phone');
+  setPhone('customer_phone',          '.edit-customer-phone');
   setOrNull('customer_email',         '.edit-customer-email');
   setOrNull('address_street',         '.edit-address-street');
   setOrNull('address_apt',            '.edit-address-apt');
@@ -3335,7 +3637,7 @@ async function uploadPhotoSet(button) {
 
 function renderEditTotalPanel(request) {
   const receiptTotals = receiptTotalsFromNotes(request);
-  const fees = feeSummary(request);
+  const fees = feeSummary(request, receiptTotals);
   return `
     <div class="edit-total-charge-form" data-request-id="${escapeHtml(request.id)}">
       <h4 class="edit-total-charge-title">Change Charged Amount</h4>
@@ -3712,7 +4014,13 @@ requestList.addEventListener('change', (event) => {
   if (event.target.classList.contains('key-returned-to-type')) {
     const panel = event.target.closest('.keys-returned-panel');
     const otherWrap = panel?.querySelector('.key-returned-other-wrap');
-    if (otherWrap) otherWrap.hidden = event.target.value !== 'other';
+    const otherInput = panel?.querySelector('.key-returned-other-name');
+    const isOther = event.target.value === 'other';
+    if (otherWrap) otherWrap.hidden = !isOther;
+    if (otherInput) {
+      otherInput.required = isOther;
+      if (!isOther) otherInput.value = '';
+    }
     return;
   }
   if (event.target.classList.contains('assign-worker-select')) {
@@ -3821,6 +4129,10 @@ function switchAdminTab(tab) {
 adminPageTabs.forEach((btn) => {
   btn.addEventListener('click', () => switchPageTab(btn.dataset.page));
 });
+adminRefreshBtn?.addEventListener('click', () => refreshAdminView(adminRefreshBtn));
+adminWorkersRefreshBtn?.addEventListener('click', () => refreshAdminView(adminWorkersRefreshBtn));
+adminReviewsRefreshBtn?.addEventListener('click', () => refreshAdminView(adminReviewsRefreshBtn));
+adminApplicantsRefreshBtn?.addEventListener('click', () => refreshAdminView(adminApplicantsRefreshBtn));
 
 // Find Tickets modal
 findTicketsBtn?.addEventListener('click', openFindTicketsModal);
@@ -3845,6 +4157,74 @@ function closeFindTicketsModal() {
 
 function normalizePhone(s) {
   return String(s || '').replace(/\D/g, '');
+}
+
+function formatPhone(value) {
+  let digits = normalizePhone(value);
+  if (digits.length === 11 && digits[0] === '1') digits = digits.slice(1);
+  if (digits.length !== 10) return value || '';
+  return `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`;
+}
+
+// Reformats a phone <input> live as the admin types, preserving cursor
+// position by digit count. Safe to call more than once on the same element.
+function attachPhoneInputFormatting(input) {
+  if (!input || input.dataset.phoneFormatBound) return;
+  input.dataset.phoneFormatBound = '1';
+  input.addEventListener('input', () => {
+    const digitsBeforeCursor = normalizePhone(input.value.slice(0, input.selectionStart || 0)).length;
+    const digits = normalizePhone(input.value).slice(0, 10);
+    let formatted = digits;
+    if (digits.length > 6) formatted = `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`;
+    else if (digits.length > 3) formatted = `(${digits.slice(0, 3)}) ${digits.slice(3)}`;
+    else if (digits.length > 0) formatted = `(${digits}`;
+    input.value = formatted;
+
+    let pos = 0;
+    let seen = 0;
+    while (pos < formatted.length && seen < digitsBeforeCursor) {
+      if (/\d/.test(formatted[pos])) seen += 1;
+      pos += 1;
+    }
+    input.setSelectionRange(pos, pos);
+  });
+}
+
+document.addEventListener('focusin', (event) => {
+  if (event.target.matches('input[type="tel"], .edit-customer-phone, .admin-worker-phone')) {
+    attachPhoneInputFormatting(event.target);
+  }
+});
+
+document.querySelectorAll('input[type="tel"], .edit-customer-phone, .admin-worker-phone')
+  .forEach(attachPhoneInputFormatting);
+
+async function refreshAdminView(button = null) {
+  const originalText = button?.textContent;
+  if (button) {
+    button.disabled = true;
+    button.textContent = 'Refreshing...';
+  }
+
+  try {
+    if (currentPageTab === 'workers') {
+      await loadEmployees();
+      await loadRequests();
+      return;
+    }
+
+    await Promise.all([
+      loadEmployees(),
+      loadRequests(),
+      loadReviews(),
+      loadApplicants(),
+    ]);
+  } finally {
+    if (button) {
+      button.disabled = false;
+      button.textContent = originalText;
+    }
+  }
 }
 
 function fuzzyMatch(haystack, needle) {
@@ -3915,7 +4295,7 @@ function renderSearchResults(results, sortOrder = 'newest') {
         <span class="find-ticket-name">${escapeHtml(r.customer_name || 'Customer')}</span>
         <span class="status-pill">${escapeHtml(statusLabels[r.status] || r.status)}</span>
       </div>
-      <span class="find-ticket-meta">${escapeHtml(r.customer_phone || 'No phone')} &middot; ${escapeHtml(r.customer_email || 'No email')}</span>
+      <span class="find-ticket-meta">${r.customer_phone ? escapeHtml(formatPhone(r.customer_phone)) : 'No phone'} &middot; ${escapeHtml(r.customer_email || 'No email')}</span>
       <span class="find-ticket-meta">
         ${escapeHtml(r.service_date || 'Date not set')}
         ${r.vehicle_year || r.vehicle_make || r.vehicle_model
@@ -4532,10 +4912,32 @@ document.querySelector('#admin-create-request-form')?.addEventListener('submit',
   const submitBtn = form.querySelector('[type="submit"]');
 
   const val = (id) => (document.getElementById(id)?.value || '').trim();
+  const serviceTypeValue = val('cr-service-type');
+  const needsFuel = serviceTypeValue === 'fuel' || serviceTypeValue === 'car-wash-fuel';
+  const needsWash = serviceTypeValue === 'car-wash' || serviceTypeValue === 'car-wash-fuel';
+  const washPackage = CR_WASH_PACKAGES.find((item) => item.value === val('cr-wash-package')) || null;
+  const fuelEstimate = CR_FUEL_ESTIMATE_RANGES.find((item) => item.value === val('cr-fuel-estimate')) || null;
+  const fuelTypeValue = val('cr-fuel-type');
+  const quickInspection = !!document.getElementById('cr-quick-inspection')?.checked;
+  const pricePerGallon = CR_AVG_FUEL_PRICES[fuelTypeValue] || CR_AVG_FUEL_PRICES.Regular;
+  const estimatedGallons = needsFuel && fuelEstimate ? fuelEstimate.gallons : null;
+  const estimatedFuelAmount = estimatedGallons ? estimatedGallons * pricePerGallon : 0;
+  const washFee = needsWash && washPackage ? washPackage.price : 0;
+  const pricing = estimatePricingSummary({
+    needsFuel,
+    needsWash: needsWash && !!washPackage,
+    fuelAmount: estimatedFuelAmount,
+    washAmount: washFee,
+    quickInspection,
+  });
+  const fuelConvenienceFee = pricing.fuel;
+  const washConvenienceFee = pricing.wash;
+  const quickInspectionFee = pricing.inspection;
+  const estimatedTotal = pricing.total;
 
   const data = {
     customer_name:       val('cr-customer-name'),
-    customer_phone:      val('cr-customer-phone'),
+    customer_phone:      formatPhone(val('cr-customer-phone')),
     customer_email:      val('cr-customer-email'),
     address_street:      val('cr-address-street'),
     address_apt:         val('cr-address-apt'),
@@ -4544,9 +4946,22 @@ document.querySelector('#admin-create-request-form')?.addEventListener('submit',
     address_zip:         val('cr-address-zip'),
     parking_location:    val('cr-parking-location'),
     key_handoff_details: val('cr-key-handoff'),
-    service_type:        val('cr-service-type'),
+    service_type:        serviceTypeValue,
+    service_label:       serviceTypeValue ? (serviceTypeValue === 'fuel' ? 'Fuel only' : serviceTypeValue === 'car-wash' ? 'Car wash only' : 'Car wash + Fuel') : '',
     service_date:        val('cr-service-date'),
     desired_return_time: val('cr-return-time'),
+    fuel_type:           needsFuel ? fuelTypeValue : '',
+    estimated_gallons:   estimatedGallons,
+    price_per_gallon:    needsFuel ? pricePerGallon : null,
+    estimated_fuel_amount: needsFuel ? estimatedFuelAmount : null,
+    fuel_convenience_fee: needsFuel ? fuelConvenienceFee : 0,
+    wash_package:        needsWash ? val('cr-wash-package') : '',
+    wash_package_label:  needsWash ? (washPackage?.label || '') : '',
+    wash_fee:            needsWash ? washFee : 0,
+    wash_convenience_fee: needsWash ? washConvenienceFee : 0,
+    quick_inspection:    quickInspection,
+    quick_inspection_fee: quickInspectionFee,
+    estimated_total:     estimatedTotal || null,
     vehicle_year:        val('cr-vehicle-year'),
     vehicle_make:        val('cr-vehicle-make'),
     vehicle_model:       val('cr-vehicle-model'),
@@ -4572,6 +4987,7 @@ document.querySelector('#admin-create-request-form')?.addEventListener('submit',
     if (error) throw error;
 
     form.reset();
+    updateAdminCreateServiceControls();
     if (statusEl) {
       const id = result?.id ? ` (ID: ${result.id})` : '';
       statusEl.textContent = `Request created${id}. The customer will see it on the Track page.`;

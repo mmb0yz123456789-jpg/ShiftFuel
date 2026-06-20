@@ -106,6 +106,23 @@ request lands in the admin queue as `request_received` / `authorized`.
 
 ---
 
+## 12. `supabase-returning-saved-options.sql`
+Run after step 11. Creates soft-delete-only saved service address and saved
+vehicle tables for returning customers, backfills them from historical
+`service_requests` snapshots, and adds RPCs used by Book Now:
+- `public_returning_customer_options(phone, email)`
+- `public_add_saved_address(phone, email, data)`
+- `public_add_saved_vehicle(phone, email, data)`
+- `public_soft_delete_saved_address(address_id, phone, email)`
+- `public_soft_delete_saved_vehicle(vehicle_id, phone, email)`
+- `public_update_saved_address(address_id, phone, email, data)`
+- `public_update_saved_vehicle(vehicle_id, phone, email, data)`
+
+Deleting a saved option only sets `is_active = false` and `deleted_at = now()`;
+it never modifies historical `service_requests`.
+
+---
+
 ## Post-deploy verification
 
 **Employees / security**

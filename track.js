@@ -4,6 +4,7 @@ const trackingPhone = document.querySelector("#tracking-phone");
 const trackingEmail = document.querySelector("#tracking-email");
 const trackMessage = document.querySelector("#track-message");
 const trackingResult = document.querySelector("#tracking-result");
+const refreshStatusBtn = document.querySelector("#refresh-status-btn");
 
 const shiftFuelDb = window.ShiftFuelSupabase;
 const TRACK_LOCK_KEY = "shiftfuel_track_locked_until";
@@ -147,6 +148,30 @@ function cleanPhone(value) {
   return String(value || "").replace(/\D/g, "");
 }
 
+function attachPhoneInputFormatting(input) {
+  if (!input || input.dataset.phoneFormatBound) return;
+  input.dataset.phoneFormatBound = "1";
+  input.addEventListener("input", () => {
+    const digitsBeforeCursor = cleanPhone(input.value.slice(0, input.selectionStart || 0)).length;
+    const digits = cleanPhone(input.value).slice(0, 10);
+    let formatted = digits;
+    if (digits.length > 6) formatted = `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`;
+    else if (digits.length > 3) formatted = `(${digits.slice(0, 3)}) ${digits.slice(3)}`;
+    else if (digits.length > 0) formatted = `(${digits}`;
+    input.value = formatted;
+
+    let pos = 0;
+    let seen = 0;
+    while (pos < formatted.length && seen < digitsBeforeCursor) {
+      if (/\d/.test(formatted[pos])) seen += 1;
+      pos += 1;
+    }
+    input.setSelectionRange(pos, pos);
+  });
+}
+
+attachPhoneInputFormatting(trackingPhone);
+
 function trackLockedUntil() {
   return Number(localStorage.getItem(TRACK_LOCK_KEY) || 0);
 }
@@ -208,8 +233,66 @@ function canFreeCancelRequest(request) {
   return freeCancelStatuses.includes(request.status);
 }
 
+async function submitCustomerReturnRequest(requestId, button = null) {
+  const originalText = button?.textContent;
+  if (button) {
+    button.disabled = true;
+    button.textContent = "Submitting...";
+  }
+  trackMessage.textContent = "";
+
+  try {
+    const res = await fetch('/api/payments', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'customer_request_return',
+        request_id: requestId,
+        phone: verifiedTrackingContact.phone,
+        email: verifiedTrackingContact.email,
+      }),
+    });
+    const result = await res.json().catch(() => ({}));
+
+    if (!res.ok) {
+      console.error('[track] Return request failed:', result.error);
+      trackMessage.textContent = result.error || "Could not submit your return request. Please contact ShiftFuel.";
+      if (button) {
+        button.disabled = false;
+        button.textContent = originalText || "Request vehicle return";
+      }
+      return;
+    }
+  } catch (err) {
+    console.error('[track] Return request network error:', err);
+    trackMessage.textContent = "Network error. Please try again or contact ShiftFuel.";
+    if (button) {
+      button.disabled = false;
+      button.textContent = originalText || "Request vehicle return";
+    }
+    return;
+  }
+
+  const { data: refreshed } = await shiftFuelDb.rpc("public_track_request", {
+    p_request_id: requestId,
+    p_phone: verifiedTrackingContact.phone,
+    p_email: verifiedTrackingContact.email,
+  });
+
+  const data = refreshed?.[0] || null;
+  trackMessage.textContent = "Your return request was received. Because service had already started, completed receipt totals and a $15 cancellation/service fee may apply.";
+
+  if (data) {
+    const photos = await loadRequestPhotos(data.id);
+    const review = await loadRequestReview(data.id);
+    renderRequest(data, photos, review);
+  }
+}
+
 function cancellationReasonForDisplay(request) {
-  const reason = String(request.cancellation_reason || "").trim();
+  const notes = String(request.notes || "");
+  const noteReason = notes.match(/\[denied[^\]]*\]\s*Admin denial reason:\s*([^\n]+)/i)?.[1] || "";
+  const reason = String(request.cancellation_reason || noteReason || "").trim();
 
   if (!reason || !["denied", "customer_canceled"].includes(request.status)) {
     return "";
@@ -222,6 +305,52 @@ function cancellationReasonForDisplay(request) {
   }
 
   return reason;
+}
+
+function friendlyStatusLabel(status) {
+  return statusLabels[status] || "Status update";
+}
+
+function importantPaymentLabel(request) {
+  const status = request.payment_status || "";
+  if (request.status === "payment_issue" || status === "capture_failed") return "Payment issue";
+  if (request.status === "authorization_too_low") return "Authorization issue";
+  if (request.status === "pending_customer_payment") return "Payment needed";
+  if (status === "payment_release_failed") return "Payment review needed";
+  return "";
+}
+
+function sortTrackedRequests(requests) {
+  return [...(requests || [])].sort((a, b) => {
+    const ad = new Date(a.updated_at || a.created_at || 0).getTime();
+    const bd = new Date(b.updated_at || b.created_at || 0).getTime();
+    return bd - ad;
+  });
+}
+
+function requestSummaryHtml(request, options = {}) {
+  const vehicle = [request.vehicle_year, request.vehicle_make, request.vehicle_model].filter(Boolean).join(" ") || "Vehicle details pending";
+  const serviceDate = request.service_date
+    ? new Date(request.service_date + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
+    : "";
+  const service = request.service_label || serviceLabelFromType(request.service_type) || request.service_type || "";
+  const status = options.statusLabel || friendlyStatusLabel(request.status);
+  const payment = importantPaymentLabel(request);
+  const statusClass = options.statusClass || "";
+
+  return `
+    <summary class="track-request-summary">
+      <div class="track-request-summary-main">
+        <span class="track-request-vehicle">${escapeHtml(vehicle)}</span>
+        <span class="track-request-meta">
+          ${serviceDate ? `<span>${escapeHtml(serviceDate)}</span>` : ""}
+          ${service ? `<span>${escapeHtml(service)}</span>` : ""}
+          ${payment ? `<span>${escapeHtml(payment)}</span>` : ""}
+        </span>
+      </div>
+      <span class="status-pill ${escapeHtml(statusClass)}">${escapeHtml(status)}</span>
+    </summary>
+  `;
 }
 
 function savedFeeOrDefault(value, fallback) {
@@ -244,6 +373,47 @@ function receiptTotalsFromNotes(request) {
   return {
     fuel: latest ? Number(latest[1]) || 0 : 0,
     wash: latest ? Number(latest[2]) || 0 : 0,
+  };
+}
+
+const PAYMENT_RECOVERY_RATE = 0.029;
+const PAYMENT_RECOVERY_FIXED = 0.30;
+const BASE_FUEL_SERVICE_FEE = 15;
+const BASE_WASH_SERVICE_FEE = 15;
+const BASE_QUICK_INSPECTION_FEE = 5;
+
+function roundMoneyValue(value) {
+  return Math.round((Number(value) || 0) * 100) / 100;
+}
+
+function transactionPricingSummary(request, receiptTotals = { fuel: 0, wash: 0 }) {
+  const fuelBase = requestNeedsFuel(request) && Number(receiptTotals.fuel || 0) > 0 ? BASE_FUEL_SERVICE_FEE : 0;
+  const washBase = requestNeedsWash(request) && Number(receiptTotals.wash || 0) > 0 ? BASE_WASH_SERVICE_FEE : 0;
+  const inspection = request.quick_inspection ? BASE_QUICK_INSPECTION_FEE : 0;
+  const netTarget = roundMoneyValue(Number(receiptTotals.fuel || 0) + Number(receiptTotals.wash || 0) + fuelBase + washBase + inspection);
+  const roundedTotal = netTarget > 0
+    ? Math.ceil((netTarget + PAYMENT_RECOVERY_FIXED) / (1 - PAYMENT_RECOVERY_RATE))
+    : 0;
+  const recovery = roundMoneyValue(roundedTotal - netTarget);
+  const recoveryCents = Math.round(recovery * 100);
+  let fuelRecovery = 0;
+  let washRecovery = 0;
+
+  if (fuelBase && washBase) {
+    fuelRecovery = Math.floor(recoveryCents / 2) / 100;
+    washRecovery = (recoveryCents - Math.floor(recoveryCents / 2)) / 100;
+  } else if (fuelBase) {
+    fuelRecovery = recovery;
+  } else if (washBase) {
+    washRecovery = recovery;
+  }
+
+  return {
+    fuel: roundMoneyValue(fuelBase + fuelRecovery),
+    wash: roundMoneyValue(washBase + washRecovery),
+    inspection,
+    recovery,
+    total: roundedTotal,
   };
 }
 
@@ -391,8 +561,8 @@ function isStepDone(stepKey, request) {
 
   switch (stepKey) {
     case 'request_received':
+      return s !== 'request_received' && s !== 'pending_review';
     case 'accepted':
-      // Both become ✓ at the same time — once status moves past pending/review/accepted
       return !['request_received', 'pending_review', 'accepted'].includes(s);
     case 'key_received':
       return AT_OR_AFTER_KEY_RECEIVED.has(s);
@@ -767,25 +937,23 @@ function inspectionSummaryFromNotes(request) {
 function serviceSummaryFromRequest(request) {
   const receiptTotals = receiptTotalsFromNotes(request);
   const unableReasons = serviceUnableReasonsFromNotes(request);
-  const fuelFee = requestNeedsFuel(request) && receiptTotals.fuel > 0 ? savedFeeOrDefault(request.fuel_convenience_fee, 15) : 0;
-  const washFee = requestNeedsWash(request) && receiptTotals.wash > 0 ? savedFeeOrDefault(request.wash_convenience_fee, 15) : 0;
-  const inspectionFee = request.quick_inspection ? savedFeeOrDefault(request.quick_inspection_fee, 5) : 0;
+  const fees = transactionPricingSummary(request, receiptTotals);
   const lines = [];
 
   if (requestNeedsFuel(request)) {
     lines.push(unableReasons.fuel
       ? `<p><strong>Fuel:</strong> Not completed. ${escapeHtml(unableReasons.fuel)}</p>`
-      : `<p><strong>Fuel:</strong> ${formatCurrency(receiptTotals.fuel)} receipt + ${formatCurrency(fuelFee)} convenience fee.</p>`);
+      : `<p><strong>Fuel:</strong> ${formatCurrency(receiptTotals.fuel)} receipt + ${formatCurrency(fees.fuel)} service.</p>`);
   }
 
   if (requestNeedsWash(request)) {
     lines.push(unableReasons.wash
       ? `<p><strong>Car wash:</strong> Not completed. ${escapeHtml(unableReasons.wash)}</p>`
-      : `<p><strong>Car wash:</strong> ${formatCurrency(receiptTotals.wash)} receipt + ${formatCurrency(washFee)} convenience fee.</p>`);
+      : `<p><strong>Car wash:</strong> ${formatCurrency(receiptTotals.wash)} receipt + ${formatCurrency(fees.wash)} service.</p>`);
   }
 
   if (request.quick_inspection) {
-    lines.push(`<p><strong>Quick inspection:</strong> ${formatCurrency(inspectionFee)}</p>`);
+    lines.push(`<p><strong>Quick inspection:</strong> ${formatCurrency(fees.inspection)}</p>`);
   }
 
   if (!lines.length && request.final_total == null) {
@@ -796,6 +964,7 @@ function serviceSummaryFromRequest(request) {
     <section class="inspection-summary">
       <h3>Service summary</h3>
       ${lines.join("")}
+      <p class="field-help">Service prices include payment and operating costs. Final fuel cost is based on the actual receipt. Final totals are rounded up to the nearest dollar.</p>
       <p><strong>Final total:</strong> ${formatCurrency(request.final_total)}</p>
     </section>
   `;
@@ -1042,6 +1211,37 @@ const CB_FALLBACK_MODELS = {
 const CB_AVG_FUEL_PRICES = { Regular: 3.792, 'Mid-grade': 4.411, Premium: 4.701, Diesel: 4.967 };
 const CB_FEES = { fuelConvenience: 15, washConvenience: 15, quickInspection: 5 };
 
+function cbServicePricingParts({ needsFuel, needsWash, fuelAmount = 0, washAmount = 0, quickInspection = false }) {
+  const fuelBase = needsFuel ? CB_FEES.fuelConvenience : 0;
+  const washBase = needsWash ? CB_FEES.washConvenience : 0;
+  const inspection = quickInspection ? CB_FEES.quickInspection : 0;
+  const netTarget = roundMoneyValue(fuelAmount + washAmount + fuelBase + washBase + inspection);
+  const roundedTotal = netTarget > 0
+    ? Math.ceil((netTarget + PAYMENT_RECOVERY_FIXED) / (1 - PAYMENT_RECOVERY_RATE))
+    : 0;
+  const recovery = roundMoneyValue(roundedTotal - netTarget);
+  const recoveryCents = Math.round(recovery * 100);
+  let fuelRecovery = 0;
+  let washRecovery = 0;
+
+  if (needsFuel && needsWash) {
+    fuelRecovery = Math.floor(recoveryCents / 2) / 100;
+    washRecovery = (recoveryCents - Math.floor(recoveryCents / 2)) / 100;
+  } else if (needsFuel) {
+    fuelRecovery = recovery;
+  } else if (needsWash) {
+    washRecovery = recovery;
+  }
+
+  return {
+    fuelService: roundMoneyValue(fuelBase + fuelRecovery),
+    washService: roundMoneyValue(washBase + washRecovery),
+    inspection,
+    recovery,
+    total: roundedTotal,
+  };
+}
+
 // ── Completion-form utility functions ─────────────────────────────────────────
 function cbFormatCurrency(v) {
   return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(v);
@@ -1068,6 +1268,28 @@ function cbFutureSlotsForDate(slots, dateValue) {
   if (dateValue !== todayStr) return slots;
   const nowMin = today.getHours() * 60 + today.getMinutes();
   return slots.filter((s) => cbMinutesFromSlot(s) > nowMin);
+}
+function cbIsMissingRpcError(error) {
+  const message = String(error?.message || '').toLowerCase();
+  return ['PGRST202', 'PGRST204', '42883'].includes(error?.code)
+    || message.includes('could not find the function')
+    || (message.includes('function') && message.includes('does not exist'));
+}
+async function cbLoadWorkerAvailabilitySlots(dateValue) {
+  if (!dateValue || !shiftFuelDb) return null;
+  const { data, error } = await shiftFuelDb.rpc('public_worker_availability_slots', {
+    p_service_date: dateValue,
+    p_hospital: '',
+  });
+  if (!error) {
+    return (data || []).map((row) => String(row.slot || '').slice(0, 5)).filter(Boolean);
+  }
+  if (!cbIsMissingRpcError(error)) {
+    console.warn('Completion form worker availability lookup blocked:', error);
+    return [];
+  }
+  console.warn('Worker availability RPC unavailable for completion form:', error);
+  return null;
 }
 function cbFormatTimeLabel(v) {
   const [hStr, m] = v.split(':');
@@ -1151,16 +1373,22 @@ async function cbLoadModels(form) {
 }
 
 // ── Return time dropdown ───────────────────────────────────────────────────────
-function cbFillReturnSelect(select, slots, bookedSlots, placeholder) {
+function cbFillReturnSelect(select, slots, bookedSlots, placeholder, preferredSlot = '') {
   const prev = select.value;
+  const preferred = String(preferredSlot || '').slice(0, 5);
+  const allSlots = preferred && !slots.includes(preferred)
+    ? [...slots, preferred].sort((a, b) => cbMinutesFromSlot(a) - cbMinutesFromSlot(b))
+    : slots;
   select.innerHTML = '';
   const blank = document.createElement('option'); blank.value = ''; blank.textContent = placeholder; select.append(blank);
-  slots.forEach((slot) => {
+  allSlots.forEach((slot) => {
     const opt = document.createElement('option'); opt.value = slot; opt.textContent = cbFormatTimeLabel(slot);
-    if (bookedSlots.has(slot)) { opt.disabled = true; opt.textContent += ' — booked'; }
+    if (bookedSlots.has(slot) && slot !== preferred) { opt.disabled = true; opt.textContent += ' — booked'; }
+    if (slot === preferred) opt.textContent += ' — currently selected';
     select.append(opt);
   });
-  if (slots.includes(prev) && !bookedSlots.has(prev)) select.value = prev;
+  if (preferred) select.value = preferred;
+  else if (slots.includes(prev) && !bookedSlots.has(prev)) select.value = prev;
 }
 
 async function cbRefreshReturnTimes(form) {
@@ -1169,6 +1397,8 @@ async function cbRefreshReturnTimes(form) {
   const dateValue = (form.querySelector('.cb-service-date')?.value || '').trim();
   const svcType   = form.querySelector('.cb-service-type')?.value || '';
   const needsWash = svcType === 'car-wash' || svcType === 'car-wash-fuel';
+  const preferredDate = timeSel?.dataset.preferredServiceDate || '';
+  const preferredSlot = preferredDate && preferredDate === dateValue ? (timeSel?.dataset.preferredReturnTime || '') : '';
   if (!timeSel) return;
   if (!dateValue) { timeSel.innerHTML = '<option value="">Select a date first</option>'; return; }
 
@@ -1179,15 +1409,22 @@ async function cbRefreshReturnTimes(form) {
   } catch (e) { console.warn('cbRefreshReturnTimes:', e); }
 
   const rawSlots = needsWash ? cbTimeSlots(9, 18) : cbTimeSlots(7, 22);
-  const slots    = cbFutureSlotsForDate(rawSlots, dateValue);
+  let slots      = cbFutureSlotsForDate(rawSlots, dateValue);
+  const availabilitySlots = await cbLoadWorkerAvailabilitySlots(dateValue);
+  if (Array.isArray(availabilitySlots)) {
+    slots = slots.filter((slot) => availabilitySlots.includes(slot));
+  }
   const placeholder = needsWash
     ? (slots.length ? 'Select car wash return time' : 'No car wash times left today')
     : (slots.length ? 'Select return time' : 'No return times left today');
-  cbFillReturnSelect(timeSel, slots, bookedSlots, placeholder);
+  cbFillReturnSelect(timeSel, slots, bookedSlots, placeholder, preferredSlot);
   if (timeHelp) {
+    const availabilitySuffix = Array.isArray(availabilitySlots) && availabilitySlots.length === 0
+      ? ' No worker availability is saved for this date.'
+      : '';
     timeHelp.textContent = needsWash
-      ? (slots.length ? 'Car wash service selected. Return times are limited to 9:00 AM through 6:00 PM.' : 'No more car wash return times are available today. Choose tomorrow or another future date.')
-      : (slots.length ? 'Choose the time you want your vehicle returned.' : 'No more return times are available today. Choose tomorrow or another future date.');
+      ? (slots.length ? `Car wash service selected. Return times are limited to 9:00 AM through 6:00 PM.${availabilitySuffix}` : `No more car wash return times are available today. Choose tomorrow or another future date.${availabilitySuffix}`)
+      : (slots.length ? `Choose the time you want your vehicle returned.${availabilitySuffix}` : `No more return times are available today. Choose tomorrow or another future date.${availabilitySuffix}`);
   }
 }
 
@@ -1207,10 +1444,13 @@ function cbUpdateEstimate(form) {
   const ppg       = CB_AVG_FUEL_PRICES[fuelTypeVal] || CB_AVG_FUEL_PRICES.Regular;
   const fuelAmt   = gallons * ppg;
   const washFee   = needsWash && washPkg ? washPkg.price : 0;
-  const washConv  = needsWash && washPkg ? CB_FEES.washConvenience : 0;
-  const fuelConv  = needsFuel ? CB_FEES.fuelConvenience : 0;
-  const inspFee   = insp ? CB_FEES.quickInspection : 0;
-  const total     = fuelAmt + washFee + washConv + fuelConv + inspFee;
+  const pricing   = cbServicePricingParts({
+    needsFuel,
+    needsWash: needsWash && !!washPkg,
+    fuelAmount: fuelAmt,
+    washAmount: washFee,
+    quickInspection: insp,
+  });
 
   const qHide = (cls, h) => { const el = form.querySelector(`.${cls}`); if (el) el.hidden = h; };
   const qText = (cls, t) => { const el = form.querySelector(`.${cls}`); if (el) el.textContent = t; };
@@ -1223,14 +1463,14 @@ function cbUpdateEstimate(form) {
   qHide('cb-payment-inspection-row', !insp);
 
   qText('cb-estimated-wash',  washPkg ? `${washPkg.label} — ${cbFormatCurrency(washFee)}` : '$0.00');
-  qText('cb-wash-conv-fee',   cbFormatCurrency(washConv));
+  qText('cb-wash-conv-fee',   cbFormatCurrency(pricing.washService));
   qText('cb-average-price',   cbFormatPricePerGallon(ppg));
   qText('cb-estimated-fuel',  needsFuel
     ? `${fuelRange?.label || '0 gallons'} estimated at ${gallons} gallons × ${cbFormatPricePerGallon(ppg)} = ${cbFormatCurrency(fuelAmt)}`
     : cbFormatCurrency(fuelAmt));
-  qText('cb-fuel-conv-fee',   cbFormatCurrency(fuelConv));
-  qText('cb-inspection-fee',  cbFormatCurrency(inspFee));
-  qText('cb-estimated-total', cbFormatCurrency(total));
+  qText('cb-fuel-conv-fee',   cbFormatCurrency(pricing.fuelService));
+  qText('cb-inspection-fee',  cbFormatCurrency(pricing.inspection));
+  qText('cb-estimated-total', cbFormatCurrency(pricing.total));
 }
 
 // ── Service details panel ──────────────────────────────────────────────────────
@@ -1258,9 +1498,7 @@ function cbUpdateServiceDetails(form) {
   }
   if (needsWash && washPkg) details.push(...washPkg.includes);
   else if (needsWash)       details.push('Select a wash package to see what is included.');
-  if (needsFuel && needsWash) details.push('$30 car wash + fuel convenience fee added.');
-  else if (needsFuel)         details.push('$15 fuel convenience fee added.');
-  else if (needsWash)         details.push('$15 car wash convenience fee added.');
+  details.push('Service prices include payment and operating costs. Final fuel cost is based on the actual receipt. Final totals are rounded up to the nearest dollar.');
   if (form.querySelector('.cb-quick-inspection')?.checked) details.push('Quick vehicle inspection add-on.');
 
   panel.innerHTML = `
@@ -1283,9 +1521,13 @@ async function cbInitForm(form, request) {
   await cbLoadModels(form);
 
   // Return time dropdown
+  const timeSel = form.querySelector('.cb-return-time');
+  if (timeSel && request?.desired_return_time) {
+    timeSel.dataset.preferredReturnTime = String(request.desired_return_time).slice(0, 5);
+    timeSel.dataset.preferredServiceDate = request.service_date || '';
+  }
   await cbRefreshReturnTimes(form);
   // Restore pre-selected return time if it survived the refresh
-  const timeSel = form.querySelector('.cb-return-time');
   if (timeSel && request?.desired_return_time) {
     const slot = String(request.desired_return_time).slice(0, 5);
     const opt = Array.from(timeSel.options).find((o) => o.value === slot && !o.disabled);
@@ -1366,10 +1608,13 @@ function renderPendingCompletionCard(request) {
 
   return `
     <article class="track-request-card pending-completion-card" data-request-id="${rid}">
-      <div class="pending-action-banner">
-        <span class="pending-action-icon">&#9888;</span>
-        Action required — Complete your booking to enter the service queue
-      </div>
+      <details class="track-request-details">
+        ${requestSummaryHtml(request, { statusLabel: "Action required" })}
+        <div class="track-request-body">
+          <div class="pending-action-banner">
+            <span class="pending-action-icon">&#9888;</span>
+            Action required — Complete your booking to enter the service queue
+          </div>
 
       <form class="booking-form complete-booking-form" data-request-id="${rid}">
         <p class="form-note"><span class="required-mark">Required</span> fields must be completed before submitting. Optional fields can be skipped.</p>
@@ -1385,7 +1630,7 @@ function renderPendingCompletionCard(request) {
             <label>
               <span>Phone number <span class="required-mark">Required</span></span>
               <input class="cb-customer-phone" type="tel"
-                value="${escapeHtml(verifiedTrackingContact.phone || request.customer_phone || '')}" readonly>
+                value="${escapeHtml(formatPhone(verifiedTrackingContact.phone || request.customer_phone || ''))}" readonly>
             </label>
             <label>
               <span>Email <span class="required-mark">Required</span></span>
@@ -1569,14 +1814,14 @@ function renderPendingCompletionCard(request) {
         <fieldset>
           <legend>Payment authorization</legend>
           <div class="payment-box">
-            <p>Your card will be authorized for the estimated service total. No charge is collected until service is complete. The final amount may vary based on actual fuel cost.</p>
+            <p>Service prices include payment and operating costs. Final fuel cost is based on the actual receipt. Final totals are rounded up to the nearest dollar.</p>
             <dl>
               <div class="cb-payment-wash-row" hidden>
                 <dt>Car wash package</dt>
                 <dd class="cb-estimated-wash">$0.00</dd>
               </div>
               <div class="cb-payment-wash-conv-row" hidden>
-                <dt>Car wash convenience fee</dt>
+                <dt>Car wash service</dt>
                 <dd class="cb-wash-conv-fee">$0.00</dd>
               </div>
               <div class="cb-payment-price-row" hidden>
@@ -1588,7 +1833,7 @@ function renderPendingCompletionCard(request) {
                 <dd class="cb-estimated-fuel">$0.00</dd>
               </div>
               <div class="cb-payment-fuel-conv-row" hidden>
-                <dt>Fuel convenience fee</dt>
+                <dt>Fuel service</dt>
                 <dd class="cb-fuel-conv-fee">$0.00</dd>
               </div>
               <div class="cb-payment-inspection-row" hidden>
@@ -1627,6 +1872,8 @@ function renderPendingCompletionCard(request) {
           <button class="button cb-back-btn" type="button">Keep request</button>
         </div>
       </div>
+        </div>
+      </details>
     </article>
   `;
 }
@@ -1690,12 +1937,10 @@ function renderPendingPaymentCard(request) {
 
   return `
     <article class="track-request-card track-payment-card" data-request-id="${escapeHtml(request.id)}">
-      ${needsAction ? `<div class="action-required-banner"><strong>⚡ Action required — Final payment needed</strong></div>` : ''}
-      <div class="track-card-meta">
-        <span class="status-pill status-pill-payment">${needsAction ? 'Awaiting your payment' : 'Service complete'}</span>
-        ${vehicle ? `<span class="track-vehicle">${escapeHtml(vehicle)}</span>` : ''}
-        ${serviceDate ? `<span class="track-date">${escapeHtml(serviceDate)}</span>` : ''}
-      </div>
+      <details class="track-request-details">
+        ${requestSummaryHtml(request, { statusLabel: needsAction ? "Awaiting your payment" : friendlyStatusLabel(request.status), statusClass: "status-pill-payment" })}
+        <div class="track-request-body">
+          ${needsAction ? `<div class="action-required-banner"><strong>⚡ Action required — Final payment needed</strong></div>` : ''}
 
       <p class="track-payment-intro">Your ShiftFuel service is complete!${needsAction ? ' Please review the details below and confirm your final payment.' : ''}</p>
 
@@ -1709,6 +1954,8 @@ function renderPendingPaymentCard(request) {
       ${paymentSection}
 
       ${renderTimeline(request)}
+        </div>
+      </details>
     </article>
   `;
 }
@@ -1739,14 +1986,13 @@ function renderReturnRequestedCard(request) {
 
   return `
     <article class="track-request-card" data-request-id="${escapeHtml(request.id)}">
-      <div class="track-card-meta">
-        <span class="status-pill">Return requested</span>
-        ${vehicle ? `<span class="track-vehicle">${escapeHtml(vehicle)}</span>` : ''}
-        ${serviceDate ? `<span class="track-date">${escapeHtml(serviceDate)}</span>` : ''}
-      </div>
-      <p class="track-payment-intro"><strong>Return requested</strong></p>
-      <p>A ShiftFuel team member has been notified and will return your vehicle as soon as safely possible.</p>
-      <p class="field-help">A $15 cancellation/service fee may apply because service had already started. ShiftFuel will confirm whether this fee applies.</p>
+      <details class="track-request-details">
+        ${requestSummaryHtml(request, { statusLabel: "Return requested" })}
+        <div class="track-request-body">
+          <p class="track-payment-intro"><strong>Return requested</strong></p>
+          <p>Your return request was received. Because service had already started, completed receipt totals and a $15 cancellation/service fee may apply.</p>
+        </div>
+      </details>
     </article>
   `;
 }
@@ -1761,7 +2007,7 @@ function renderRequestCard(request, photos = [], review = null) {
   if (request.status === 'return_requested' || request.status === 'customer_return_requested') {
     return renderReturnRequestedCard(request);
   }
-  const statusLabel = statusLabels[request.status] || request.status;
+  const statusLabel = friendlyStatusLabel(request.status);
   const cancellationReason = cancellationReasonForDisplay(request);
   const vehicle = [request.vehicle_year, request.vehicle_make, request.vehicle_model].filter(Boolean).join(' ');
   const serviceDate = request.service_date
@@ -1774,18 +2020,8 @@ function renderRequestCard(request, photos = [], review = null) {
 
   return `
     <article class="track-request-card" data-request-id="${escapeHtml(request.id)}">
-      <details class="track-request-details" open>
-        <summary class="track-request-summary">
-          <div class="track-request-summary-main">
-            <span class="track-request-vehicle">${escapeHtml(vehicle)}</span>
-            <span class="track-request-meta">
-              ${serviceDate ? `<span>${escapeHtml(serviceDate)}</span>` : ''}
-              ${request.service_label || request.service_type ? `<span>${escapeHtml(request.service_label || request.service_type)}</span>` : ''}
-              ${returnTime ? `<span>Return by: ${escapeHtml(returnTime)}</span>` : ''}
-            </span>
-          </div>
-          <span class="status-pill">${escapeHtml(statusLabel)}</span>
-        </summary>
+      <details class="track-request-details">
+        ${requestSummaryHtml(request, { statusLabel })}
 
         <div class="track-request-body">
           ${renderEstimatedTotalCard(request)}
@@ -1828,8 +2064,8 @@ function renderRequestCard(request, photos = [], review = null) {
               <button class="button danger show-cancel-request" type="button">Cancel request</button>
             </div>
             <div class="cancel-panel" hidden>
-              <h4>Cancellation unavailable</h4>
-              <p class="field-help">Your vehicle is already in service, so this request cannot be canceled from the app at this stage. A ShiftFuel team member has been notified and will return your vehicle as soon as safely possible. A $15 cancellation/service fee may apply because service had already started.</p>
+              <h4>Request vehicle return</h4>
+              <p class="field-help">Because service has already started, this request cannot be directly canceled. You can request vehicle return, and completed receipt totals plus a $15 cancellation/service fee may apply.</p>
               <div class="admin-button-row">
                 <button class="button secondary keep-request" type="button">Keep request</button>
                 <button class="button danger confirm-request-return" data-request-id="${escapeHtml(request.id)}" type="button">Request vehicle return</button>
@@ -1914,13 +2150,18 @@ async function renderAllRequests(requests, phone, email) {
   html += `</div>`;
   trackingResult.innerHTML = html;
 
-  // Mount Stripe card elements for any request awaiting a customer card entry —
-  // either no pre-auth exists yet, or the automatic capture on an existing
-  // pre-auth failed and the customer needs to provide a new payment method.
-  requests
-    .filter(r => ['pending_customer_payment', 'payment_issue', 'authorization_too_low'].includes(r.status)
-      && (!r.payment_intent_id || r.payment_status === 'capture_failed'))
-    .forEach(r => mountCustomerPayCard(r.id));
+  trackingResult.querySelectorAll('.track-request-details').forEach((details) => {
+    details.addEventListener('toggle', () => {
+      if (details.open) mountVisibleCustomerPayCards(details);
+    });
+  });
+}
+
+function mountVisibleCustomerPayCards(root = trackingResult) {
+  root.querySelectorAll('.track-request-details[open] .customer-payment-section').forEach((section) => {
+    const requestId = section.id.replace('customer-payment-section-', '');
+    if (requestId) mountCustomerPayCard(requestId);
+  });
 }
 
 function renderDeniedCard(request) {
@@ -1932,20 +2173,12 @@ function renderDeniedCard(request) {
     ? new Date(request.updated_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
     : '';
   const reason = cancellationReasonForDisplay(request);
+  const statusLabel = reason ? `Denied — ${reason}` : 'Denied';
 
   return `
     <article class="track-request-card track-denied-card" data-request-id="${escapeHtml(request.id)}">
       <details class="track-request-details">
-        <summary class="track-request-summary">
-          <div class="track-request-summary-main">
-            <span class="track-request-vehicle">${escapeHtml(vehicle || 'Unknown vehicle')}</span>
-            <span class="track-request-meta">
-              ${serviceDate ? `<span>${escapeHtml(serviceDate)}</span>` : ''}
-              ${request.service_label || request.service_type ? `<span>${escapeHtml(request.service_label || request.service_type)}</span>` : ''}
-            </span>
-          </div>
-          <span class="status-pill status-pill-denied">Denied</span>
-        </summary>
+        ${requestSummaryHtml(request, { statusLabel, statusClass: 'status-pill-denied' })}
         <div class="track-request-body">
           <div class="request-details">
             <p><strong>Request ID:</strong> <span class="track-request-id-text">${escapeHtml(request.id)}</span></p>
@@ -2000,7 +2233,7 @@ trackForm.addEventListener("submit", async (event) => {
     });
 
   if (!rpcError) {
-    matchedRequests = rpcData || [];
+    matchedRequests = sortTrackedRequests(rpcData || []);
   } else {
     if (!isMissingRpcError(rpcError)) {
       console.warn("Track lookup blocked:", rpcError);
@@ -2031,11 +2264,11 @@ trackForm.addEventListener("submit", async (event) => {
       return;
     }
 
-    matchedRequests = (data || []).filter((request) => {
+    matchedRequests = sortTrackedRequests((data || []).filter((request) => {
       const phoneMatches = phone && cleanPhone(request.customer_phone) === phone;
       const emailMatches = email && String(request.customer_email || "").toLowerCase() === email;
       return id ? (phoneMatches || emailMatches) : (phoneMatches && emailMatches);
-    });
+    }));
   }
 
   if (matchedRequests.length === 0) {
@@ -2047,8 +2280,18 @@ trackForm.addEventListener("submit", async (event) => {
   clearTrackAttempts();
   verifiedTrackingContact = { phone, email };
   trackMessage.textContent = "";
+  if (refreshStatusBtn) refreshStatusBtn.hidden = false;
   window._trackingRequests = matchedRequests;
   await renderAllRequests(matchedRequests, phone, email);
+});
+
+refreshStatusBtn?.addEventListener("click", () => {
+  if (!verifiedTrackingContact.phone && !verifiedTrackingContact.email && !trackingId.value.trim()) {
+    return;
+  }
+  trackMessage.textContent = "Refreshing status...";
+  window._trackingRequests = [];
+  trackForm.requestSubmit();
 });
 
 // ── Completion-form change delegation ────────────────────────────────────────
@@ -2262,52 +2505,7 @@ trackingResult.addEventListener("click", async (event) => {
   const confirmRequestReturnButton = event.target.closest(".confirm-request-return");
   if (confirmRequestReturnButton) {
     const requestId = confirmRequestReturnButton.dataset.requestId;
-    confirmRequestReturnButton.disabled = true;
-    confirmRequestReturnButton.textContent = "Submitting...";
-    trackMessage.textContent = "";
-
-    try {
-      const res = await fetch('/api/payments', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          action: 'customer_request_return',
-          request_id: requestId,
-          phone: verifiedTrackingContact.phone,
-          email: verifiedTrackingContact.email,
-        }),
-      });
-      const result = await res.json().catch(() => ({}));
-
-      if (!res.ok) {
-        console.error('[track] Return request failed:', result.error);
-        trackMessage.textContent = result.error || "Could not submit your return request. Please contact ShiftFuel.";
-        confirmRequestReturnButton.disabled = false;
-        confirmRequestReturnButton.textContent = "Request vehicle return";
-        return;
-      }
-    } catch (err) {
-      console.error('[track] Return request network error:', err);
-      trackMessage.textContent = "Network error. Please try again or contact ShiftFuel.";
-      confirmRequestReturnButton.disabled = false;
-      confirmRequestReturnButton.textContent = "Request vehicle return";
-      return;
-    }
-
-    const { data: refreshed, error: refreshError } = await shiftFuelDb.rpc("public_track_request", {
-      p_request_id: requestId,
-      p_phone: verifiedTrackingContact.phone,
-      p_email: verifiedTrackingContact.email,
-    });
-
-    const data = refreshed?.[0] || null;
-    trackMessage.textContent = "Return requested. A ShiftFuel team member has been notified and will return your vehicle as soon as safely possible.";
-
-    if (data) {
-      const photos = await loadRequestPhotos(data.id);
-      const review = await loadRequestReview(data.id);
-      renderRequest(data, photos, review);
-    }
+    await submitCustomerReturnRequest(requestId, confirmRequestReturnButton);
     return;
   }
 
@@ -2355,6 +2553,10 @@ trackingResult.addEventListener("click", async (event) => {
 
     if (!res.ok) {
       console.error('[track] Customer cancellation failed:', result.error);
+      if (String(result.error || '').toLowerCase().includes('request vehicle return')) {
+        await submitCustomerReturnRequest(requestId, confirmCancelButton);
+        return;
+      }
       trackMessage.textContent = result.error || "Could not cancel this request. Please contact ShiftFuel.";
       confirmCancelButton.textContent = "Confirm cancellation";
       confirmCancelButton.disabled = false;
@@ -2793,10 +2995,17 @@ trackingResult.addEventListener('submit', async (event) => {
   const ppg            = CB_AVG_FUEL_PRICES[fuelType] || CB_AVG_FUEL_PRICES.Regular;
   const fuelAmt        = gallons * ppg;
   const washFee        = needsWash && washPkg ? washPkg.price : 0;
-  const washConvFee    = needsWash && washPkg ? CB_FEES.washConvenience : 0;
-  const fuelConvFee    = needsFuel ? CB_FEES.fuelConvenience : 0;
-  const inspFee        = quickInspection ? CB_FEES.quickInspection : 0;
-  const estimatedTotal = (fuelAmt + washFee + washConvFee + fuelConvFee + inspFee) || null;
+  const pricing        = cbServicePricingParts({
+    needsFuel,
+    needsWash: needsWash && !!washPkg,
+    fuelAmount: fuelAmt,
+    washAmount: washFee,
+    quickInspection,
+  });
+  const washConvFee    = pricing.washService;
+  const fuelConvFee    = pricing.fuelService;
+  const inspFee        = pricing.inspection;
+  const estimatedTotal = pricing.total || null;
   const authAmountCents = Math.max(Math.round((estimatedTotal || 1) * 100), 50);
 
   const requestData = (window._trackingRequests || []).find((r) => r.id === requestId);

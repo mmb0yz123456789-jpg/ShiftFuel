@@ -16,7 +16,7 @@
  *   refund                   – Admin: refund a captured payment
  *   mark_keys_returned       – Admin/worker: record key hand-back and complete the request
  *   customer_request_return  – Customer: request the vehicle be returned after key receipt (no free cancel)
- *   resolve_return_request   – Admin: waive fee / charge $15 fee / continue service for a return request
+ *   resolve_return_request   – Admin: waive fee / charge return-service amount / continue service for a return request
  */
 
 const Stripe = require('stripe');
@@ -31,6 +31,63 @@ function cleanPhone(value) {
 function getStripe() {
   if (!process.env.STRIPE_SECRET_KEY) throw new Error('STRIPE_SECRET_KEY not configured');
   return new Stripe(process.env.STRIPE_SECRET_KEY);
+}
+
+const RETURN_CANCELLATION_FEE = 15;
+const RETURN_RECOVERY_RATE = 0.029;
+const RETURN_RECOVERY_FIXED = 0.30;
+
+function roundMoney(value) {
+  return Math.round((Number(value) || 0) * 100) / 100;
+}
+
+function receiptTotalsFromNotes(notes) {
+  const matches = Array.from(String(notes || '').matchAll(/\[receipt_totals fuel=([0-9.]+) wash=([0-9.]+)\]/g));
+  const latest = matches.at(-1);
+
+  return {
+    fuel: latest ? Number(latest[1]) || 0 : 0,
+    wash: latest ? Number(latest[2]) || 0 : 0,
+  };
+}
+
+function savedVehiclePlateKey(value) {
+  return String(value || '').trim().toUpperCase().replace(/[\s-]+/g, '');
+}
+
+function savedVehicleColorKey(value) {
+  return String(value || '').trim().toLowerCase();
+}
+
+function savedAddressTextKey(value) {
+  return String(value || '').trim().replace(/\s+/g, ' ').toLowerCase();
+}
+
+function savedAddressStateKey(value) {
+  return String(value || '').trim().toUpperCase();
+}
+
+function savedAddressZipKey(value) {
+  return String(value || '').replace(/\D/g, '');
+}
+
+function returnRequestChargeFromNotes(notes) {
+  const receipts = receiptTotalsFromNotes(notes);
+  const subtotal = roundMoney(receipts.fuel + receipts.wash + RETURN_CANCELLATION_FEE);
+  const total = subtotal > 0
+    ? Math.ceil((subtotal + RETURN_RECOVERY_FIXED) / (1 - RETURN_RECOVERY_RATE))
+    : 0;
+  const recovery = roundMoney(total - subtotal);
+
+  return {
+    fuel: roundMoney(receipts.fuel),
+    wash: roundMoney(receipts.wash),
+    cancellation_fee: RETURN_CANCELLATION_FEE,
+    recovery,
+    subtotal,
+    total,
+    amount_cents: total * 100,
+  };
 }
 
 async function markRequestComplete(db, requestId, paymentIntentId) {
@@ -109,6 +166,102 @@ const ALLOWED_BOOKING_FIELDS = [
 
 const ALLOWED_SERVICE_TYPES = ['fuel', 'car-wash', 'car-wash-fuel', 'fuel-only', 'wash-only'];
 
+async function saveReusableBookingSnapshots(db, row) {
+  const customerPhone = row.customer_phone || '';
+  const customerEmail = row.customer_email || '';
+  if (!cleanPhone(customerPhone) || !String(customerEmail || '').trim()) return;
+
+  const addressPayload = {
+    customer_phone: customerPhone,
+    customer_email: customerEmail,
+    customer_name: row.customer_name || null,
+    hospital: row.hospital || null,
+    address_street: row.address_street || null,
+    address_apt: row.address_apt || null,
+    address_city: row.address_city || null,
+    address_state: row.address_state || null,
+    address_zip: row.address_zip || null,
+    parking_location: row.parking_location || null,
+    parking_spot: row.parking_spot || null,
+    parking_map_url: row.parking_map_url || null,
+    key_handoff_details: row.key_handoff_details || null,
+    service_area_valid: true,
+    is_active: true,
+    deleted_at: null,
+    updated_at: new Date().toISOString(),
+  };
+
+  if (addressPayload.address_street || addressPayload.hospital) {
+    try {
+      const { data: existingAddress, error: addressLookupError } = await db
+        .from('saved_service_addresses')
+        .select('id,address_street,hospital,address_apt,address_city,address_state,address_zip')
+        .eq('customer_phone', customerPhone)
+        .ilike('customer_email', customerEmail)
+        .eq('is_active', true)
+        .is('deleted_at', null);
+
+      if (!addressLookupError) {
+        const duplicate = (existingAddress || []).find((address) => {
+          return savedAddressTextKey(address.address_street || address.hospital) === savedAddressTextKey(addressPayload.address_street || addressPayload.hospital)
+            && savedAddressTextKey(address.address_apt) === savedAddressTextKey(addressPayload.address_apt)
+            && savedAddressTextKey(address.address_city) === savedAddressTextKey(addressPayload.address_city)
+            && savedAddressStateKey(address.address_state) === savedAddressStateKey(addressPayload.address_state)
+            && savedAddressZipKey(address.address_zip) === savedAddressZipKey(addressPayload.address_zip);
+        });
+        if (duplicate?.id) {
+          await db.from('saved_service_addresses').update(addressPayload).eq('id', duplicate.id);
+        } else {
+          await db.from('saved_service_addresses').insert(addressPayload);
+        }
+      }
+    } catch (err) {
+      console.warn('[payments/create_authorized_booking] Saved address snapshot skipped:', err.message);
+    }
+  }
+
+  const vehiclePayload = {
+    customer_phone: customerPhone,
+    customer_email: customerEmail,
+    customer_name: row.customer_name || null,
+    vehicle_year: row.vehicle_year || null,
+    vehicle_make: row.vehicle_make || null,
+    vehicle_model: row.vehicle_model || null,
+    vehicle_color: row.vehicle_color || null,
+    license_plate: row.license_plate || null,
+    fuel_type: row.fuel_type || null,
+    is_active: true,
+    deleted_at: null,
+    updated_at: new Date().toISOString(),
+  };
+
+  if (vehiclePayload.vehicle_make || vehiclePayload.vehicle_model || vehiclePayload.license_plate) {
+    try {
+      const { data: existingVehicle, error: vehicleLookupError } = await db
+        .from('saved_customer_vehicles')
+        .select('id,license_plate,vehicle_color')
+        .eq('customer_phone', customerPhone)
+        .ilike('customer_email', customerEmail)
+        .eq('is_active', true)
+        .is('deleted_at', null);
+
+      if (!vehicleLookupError) {
+        const duplicate = (existingVehicle || []).find((vehicle) => {
+          return savedVehiclePlateKey(vehicle.license_plate) === savedVehiclePlateKey(vehiclePayload.license_plate)
+            && savedVehicleColorKey(vehicle.vehicle_color) === savedVehicleColorKey(vehiclePayload.vehicle_color);
+        });
+        if (duplicate?.id) {
+          await db.from('saved_customer_vehicles').update(vehiclePayload).eq('id', duplicate.id);
+        } else {
+          await db.from('saved_customer_vehicles').insert(vehiclePayload);
+        }
+      }
+    } catch (err) {
+      console.warn('[payments/create_authorized_booking] Saved vehicle snapshot skipped:', err.message);
+    }
+  }
+}
+
 async function handleCreateAuthorizedBooking(body, res) {
   const { payment_intent_id, amount_cents, ...rawFields } = body;
 
@@ -179,6 +332,7 @@ async function handleCreateAuthorizedBooking(body, res) {
     const { data, error } = await db.from('service_requests').insert(row).select().maybeSingle();
 
     if (!error) {
+      await saveReusableBookingSnapshots(db, row);
       console.log('[payments/create_authorized_booking] Created request', data?.id, 'for PI', intent.id);
       return res.status(200).json({ id: data?.id, status: 'request_received', payment_status: 'authorized' });
     }
@@ -679,14 +833,17 @@ async function handleMarkKeysReturned(body, res) {
   const authorized = await verifyAnyStaffToken(caller_token);
   if (!authorized) return res.status(403).json({ error: 'Session expired or invalid. Please log in again.' });
 
-  if (!request_id || !key_returned_to_type || !key_returned_to_name_or_location) {
-    return res.status(400).json({ error: 'request_id, key_returned_to_type, and key_returned_to_name_or_location are required' });
+  if (!request_id || !key_returned_to_type) {
+    return res.status(400).json({ error: 'request_id and key_returned_to_type are required' });
+  }
+  if (!['customer', 'other'].includes(key_returned_to_type)) {
+    return res.status(400).json({ error: 'Invalid key return recipient' });
   }
 
   const db = getSupabaseAdmin();
   const { data: request, error: reqErr } = await db
     .from('service_requests')
-    .select('id, status')
+    .select('id, status, customer_name')
     .eq('id', request_id)
     .maybeSingle();
 
@@ -695,10 +852,17 @@ async function handleMarkKeysReturned(body, res) {
     return res.status(400).json({ error: 'Request is not awaiting key return' });
   }
 
+  const returnedToName = key_returned_to_type === 'customer'
+    ? (request.customer_name || 'Customer')
+    : String(key_returned_to_name_or_location || '').trim();
+  if (key_returned_to_type === 'other' && !returnedToName) {
+    return res.status(400).json({ error: 'Enter the name or location keys were returned to.' });
+  }
+
   const { error: updateErr } = await db.from('service_requests').update({
     status: 'complete',
     key_returned_to_type,
-    key_returned_to_name_or_location,
+    key_returned_to_name_or_location: returnedToName,
     key_returned_at: new Date().toISOString(),
     key_returned_by: key_returned_by || null,
     updated_at: new Date().toISOString(),
@@ -723,7 +887,7 @@ async function handleCustomerRequestReturn(body, res) {
   const db = getSupabaseAdmin();
   const { data: request, error: reqErr } = await db
     .from('service_requests')
-    .select('id, status, customer_phone, customer_email')
+    .select('id, status, customer_phone, customer_email, notes')
     .eq('id', request_id)
     .maybeSingle();
 
@@ -746,12 +910,15 @@ async function handleCustomerRequestReturn(body, res) {
   }
 
   const timestamp = new Date().toISOString();
+  const adminNote = '[customer_return_requested] Customer requested return after service started. Review completed receipts before charging or waiving fees.';
+  const notes = request.notes ? `${request.notes}\n${adminNote}` : adminNote;
   const { error: updateErr } = await db.from('service_requests').update({
-    status: 'return_requested',
+    status: 'customer_return_requested',
     pre_return_request_status: request.status,
     return_requested_at: timestamp,
     return_requested_by: 'customer',
     return_request_reason: 'customer_requested_after_key_receipt',
+    notes,
     updated_at: timestamp,
   }).eq('id', request_id);
 
@@ -761,7 +928,7 @@ async function handleCustomerRequestReturn(body, res) {
   }
 
   console.log('[payments/customer_request_return] Return requested for request', request_id);
-  return res.status(200).json({ success: true, status: 'return_requested' });
+  return res.status(200).json({ success: true, status: 'customer_return_requested' });
 }
 
 async function handleResolveReturnRequest(body, res) {
@@ -781,12 +948,12 @@ async function handleResolveReturnRequest(body, res) {
   const db = getSupabaseAdmin();
   const { data: request, error: reqErr } = await db
     .from('service_requests')
-    .select('id, status, payment_intent_id, payment_status, pre_return_request_status')
+    .select('id, status, payment_intent_id, payment_status, pre_return_request_status, return_requested_at, notes')
     .eq('id', request_id)
     .maybeSingle();
 
   if (reqErr || !request) return res.status(404).json({ error: 'Request not found' });
-  if (request.status !== 'return_requested') {
+  if (!request.return_requested_at && !['return_requested', 'customer_return_requested'].includes(request.status)) {
     return res.status(400).json({ error: 'Request is not awaiting a return-request decision' });
   }
 
@@ -855,18 +1022,32 @@ async function handleResolveReturnRequest(body, res) {
 
   try {
     const stripe = getStripe();
-    const intent = await stripe.paymentIntents.capture(request.payment_intent_id, { amount_to_capture: 1500 });
-    console.log('[payments/resolve_return_request] Captured $15 fee for request', request_id);
+    const charge = returnRequestChargeFromNotes(request.notes);
+    const currentIntent = await stripe.paymentIntents.retrieve(request.payment_intent_id);
+
+    if (currentIntent.amount_capturable != null && currentIntent.amount_capturable < charge.amount_cents) {
+      return res.status(400).json({
+        error: `The authorized amount ($${(currentIntent.amount_capturable / 100).toFixed(2)}) is less than the return charge amount ($${charge.total.toFixed(2)}). Review the hold or waive the fee.`,
+      });
+    }
+
+    const intent = await stripe.paymentIntents.capture(request.payment_intent_id, { amount_to_capture: charge.amount_cents });
+    console.log('[payments/resolve_return_request] Captured return-service amount for request', request_id, charge);
+
+    const chargeNote = `[return_fee_charge ${timestamp}] Fuel receipts $${charge.fuel.toFixed(2)}, car wash receipts $${charge.wash.toFixed(2)}, cancellation/service fee $${charge.cancellation_fee.toFixed(2)}, payment/operating recovery $${charge.recovery.toFixed(2)}, rounded total $${charge.total.toFixed(2)}.`;
+    const notes = request.notes ? `${request.notes}\n${chargeNote}` : chargeNote;
 
     const { error: updateErr } = await db.from('service_requests').update({
       status: 'canceled_return_completed',
       payment_status: 'cancellation_fee_paid',
-      captured_amount: 15.00,
+      captured_amount: charge.total,
       cancellation_fee_applied: true,
-      cancellation_fee_amount: 15.00,
+      cancellation_fee_amount: RETURN_CANCELLATION_FEE,
       cancellation_fee_waived: false,
       cancellation_fee_decision_by: 'admin',
       cancellation_fee_decision_at: timestamp,
+      final_total: charge.total,
+      notes,
       updated_at: timestamp,
     }).eq('id', request_id);
 
@@ -874,7 +1055,7 @@ async function handleResolveReturnRequest(body, res) {
       console.error('[payments/resolve_return_request] DB update failed after charge:', updateErr.message);
       return res.status(200).json({ success: true, warning: 'Fee charged in Stripe but database update failed. Contact support.' });
     }
-    return res.status(200).json({ success: true, status: 'canceled_return_completed', amount_captured: intent.amount_captured });
+    return res.status(200).json({ success: true, status: 'canceled_return_completed', amount_captured: intent.amount_captured, charge_breakdown: charge });
   } catch (err) {
     console.error('[payments/resolve_return_request] Fee capture failed:', err.message);
     return res.status(500).json({ error: 'Cancellation fee could not be processed. Please review payment status.' });

@@ -22,6 +22,42 @@ async function uploadApplicantResume(file, applicantName) {
 
 const applicantForm = document.querySelector('#applicant-form');
 const applicantStatus = document.querySelector('#applicant-status');
+const applicantPhoneInput = applicantForm?.querySelector('input[name="applicantPhone"]');
+
+function normalizePhone(value) {
+  return String(value || '').replace(/\D/g, '');
+}
+
+function formatPhone(value) {
+  let digits = normalizePhone(value);
+  if (digits.length === 11 && digits[0] === '1') digits = digits.slice(1);
+  if (digits.length !== 10) return value || '';
+  return `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`;
+}
+
+function attachPhoneInputFormatting(input) {
+  if (!input || input.dataset.phoneFormatBound) return;
+  input.dataset.phoneFormatBound = '1';
+  input.addEventListener('input', () => {
+    const digitsBeforeCursor = normalizePhone(input.value.slice(0, input.selectionStart || 0)).length;
+    const digits = normalizePhone(input.value).slice(0, 10);
+    let formatted = digits;
+    if (digits.length > 6) formatted = `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`;
+    else if (digits.length > 3) formatted = `(${digits.slice(0, 3)}) ${digits.slice(3)}`;
+    else if (digits.length > 0) formatted = `(${digits}`;
+    input.value = formatted;
+
+    let pos = 0;
+    let seen = 0;
+    while (pos < formatted.length && seen < digitsBeforeCursor) {
+      if (/\d/.test(formatted[pos])) seen += 1;
+      pos += 1;
+    }
+    input.setSelectionRange(pos, pos);
+  });
+}
+
+attachPhoneInputFormatting(applicantPhoneInput);
 
 applicantForm?.addEventListener('submit', async (event) => {
   event.preventDefault();
@@ -29,7 +65,7 @@ applicantForm?.addEventListener('submit', async (event) => {
   const data = new FormData(applicantForm);
   const applicantName = String(data.get('applicantName') || '').trim();
   const applicantEmail = String(data.get('applicantEmail') || '').trim();
-  const applicantPhone = String(data.get('applicantPhone') || '').trim();
+  const applicantPhone = formatPhone(String(data.get('applicantPhone') || '').trim());
   const applicantResume = data.get('applicantResume');
 
   if (!applicantName || !applicantEmail || !applicantPhone) {

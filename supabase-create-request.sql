@@ -48,6 +48,17 @@ BEGIN
     service_label,
     service_date,
     desired_return_time,
+    fuel_type,
+    estimated_gallons,
+    price_per_gallon,
+    estimated_fuel_amount,
+    fuel_convenience_fee,
+    wash_package,
+    wash_package_label,
+    wash_fee,
+    wash_convenience_fee,
+    quick_inspection,
+    quick_inspection_fee,
     vehicle_year,
     vehicle_make,
     vehicle_model,
@@ -76,6 +87,24 @@ BEGIN
          THEN (p_data->>'service_date')::date ELSE NULL END,
     CASE WHEN (p_data->>'desired_return_time') NOT IN ('', 'null') AND p_data->>'desired_return_time' IS NOT NULL
          THEN (p_data->>'desired_return_time')::time ELSE NULL END,
+    NULLIF(p_data->>'fuel_type', ''),
+    CASE WHEN (p_data->>'estimated_gallons') NOT IN ('', 'null') AND p_data->>'estimated_gallons' IS NOT NULL
+         THEN (p_data->>'estimated_gallons')::int ELSE 0 END,
+    CASE WHEN (p_data->>'price_per_gallon') NOT IN ('', 'null') AND p_data->>'price_per_gallon' IS NOT NULL
+         THEN (p_data->>'price_per_gallon')::numeric ELSE NULL END,
+    CASE WHEN (p_data->>'estimated_fuel_amount') NOT IN ('', 'null') AND p_data->>'estimated_fuel_amount' IS NOT NULL
+         THEN (p_data->>'estimated_fuel_amount')::numeric ELSE 0 END,
+    CASE WHEN (p_data->>'fuel_convenience_fee') NOT IN ('', 'null') AND p_data->>'fuel_convenience_fee' IS NOT NULL
+         THEN (p_data->>'fuel_convenience_fee')::numeric ELSE 0 END,
+    NULLIF(p_data->>'wash_package', ''),
+    NULLIF(p_data->>'wash_package_label', ''),
+    CASE WHEN (p_data->>'wash_fee') NOT IN ('', 'null') AND p_data->>'wash_fee' IS NOT NULL
+         THEN (p_data->>'wash_fee')::numeric ELSE 0 END,
+    CASE WHEN (p_data->>'wash_convenience_fee') NOT IN ('', 'null') AND p_data->>'wash_convenience_fee' IS NOT NULL
+         THEN (p_data->>'wash_convenience_fee')::numeric ELSE 0 END,
+    COALESCE((p_data->>'quick_inspection')::boolean, false),
+    CASE WHEN (p_data->>'quick_inspection_fee') NOT IN ('', 'null') AND p_data->>'quick_inspection_fee' IS NOT NULL
+         THEN (p_data->>'quick_inspection_fee')::numeric ELSE 0 END,
     NULLIF(p_data->>'vehicle_year',         ''),
     NULLIF(p_data->>'vehicle_make',         ''),
     NULLIF(p_data->>'vehicle_model',        ''),
