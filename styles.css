@@ -358,6 +358,12 @@ h3 {
   font-weight: 800;
 }
 
+.service-fee-helper {
+  margin: -4px 0 14px;
+  font-size: 0.84rem;
+  line-height: 1.45;
+}
+
 .price-card.featured {
   border-color: rgba(8, 113, 95, 0.55);
   box-shadow: 0 20px 55px rgba(8, 113, 95, 0.16);

@@ -118,9 +118,8 @@ let workerPhotoDisplayDrag = null;
 
 // Unified active/open status list — keep in sync with admin.js, track.js,
 // and the SQL active-status list in supabase-production-rls-lockdown.sql
-// (worker_list_open_requests). This array is no longer used to filter the
-// DB query itself (that now happens server-side in the RPC) — it documents
-// the same list for the dev-only diagnostic log below.
+// (worker_list_open_requests). The RPC filters server-side too, but the
+// client keeps this guard so stale SQL cannot show closed requests.
 const workerOpenStatuses = [
   'pending',
   'request_received',
@@ -155,6 +154,37 @@ function normalizeName(value) {
 
 function normalizePhone(value) {
   return String(value || '').replace(/\D/g, '');
+}
+
+function normalizeId(value) {
+  return String(value || '').trim().toLowerCase();
+}
+
+function isWorkerOpenStatus(status) {
+  return workerOpenStatuses.includes(String(status || ''));
+}
+
+function workerJobBelongsToCurrentEmployee(job) {
+  if (!currentEmployee) return false;
+
+  const assignedEmployeeId = normalizeId(job.assigned_employee_id);
+  const currentEmployeeId = normalizeId(currentEmployee.id);
+  const normalizedWorkerName = normalizeName(currentEmployee.full_name);
+  const normalizedWorkerPhone = normalizePhone(currentEmployee.phone);
+  const normalizedJobWorkerName = normalizeName(job.assigned_worker_name);
+  const normalizedJobWorkerPhone = normalizePhone(job.assigned_worker_phone);
+
+  if (assignedEmployeeId && currentEmployeeId && assignedEmployeeId === currentEmployeeId) return true;
+
+  return !assignedEmployeeId
+    && (
+      (normalizedJobWorkerName && normalizedJobWorkerName === normalizedWorkerName)
+      || (normalizedJobWorkerPhone && normalizedJobWorkerPhone === normalizedWorkerPhone)
+    );
+}
+
+function workerJobHasAssignedFallback(job) {
+  return !!normalizeName(job.assigned_worker_name) || !!normalizePhone(job.assigned_worker_phone);
 }
 
 function formatPhone(value) {
@@ -388,13 +418,16 @@ function transactionPricingSummary(request, receiptTotals = { fuel: 0, wash: 0 }
     ? Math.ceil((netTarget + PAYMENT_RECOVERY_FIXED) / (1 - PAYMENT_RECOVERY_RATE))
     : 0;
   const recovery = roundMoneyValue(roundedTotal - netTarget);
-  const recoveryCents = Math.round(recovery * 100);
   let fuelRecovery = 0;
   let washRecovery = 0;
 
   if (fuelBase && washBase) {
-    fuelRecovery = Math.floor(recoveryCents / 2) / 100;
-    washRecovery = (recoveryCents - Math.floor(recoveryCents / 2)) / 100;
+    // The whole recovery amount goes to whichever service cost more —
+    // not split evenly.
+    const fuelSide = Number(receiptTotals.fuel || 0) + fuelBase;
+    const washSide = Number(receiptTotals.wash || 0) + washBase;
+    if (fuelSide >= washSide) fuelRecovery = recovery;
+    else washRecovery = recovery;
   } else if (fuelBase) {
     fuelRecovery = recovery;
   } else if (washBase) {
@@ -1145,7 +1178,7 @@ function renderWorkerJobCard(request, mode) {
           <p class="eyebrow">${escapeHtml(formatWorkerJobTime(request))}</p>
           <h3>${escapeHtml(request.customer_name || 'Customer')}</h3>
         </div>
-        <span class="status-pill">${escapeHtml(request.status || '')}</span>
+        <span class="status-pill">${escapeHtml(workerStatusLabels[request.status] || request.status || '')}</span>
       </div>
       ${(mode === 'mine' && request.assigned_worker_name && !request.assigned_employee_id) ? `
         <p class="field-help" style="color:#b35900">⚠ Assigned by name only — worker ID missing.</p>
@@ -1620,29 +1653,18 @@ async function loadWorkerJobs() {
   workerJobList.innerHTML = '<div class="empty-state"><p>Loading jobs...</p></div>';
 
   const { data, error } = await workerDb
-    .rpc('worker_list_open_requests', { p_token: SESSION_WORKER_TOKEN })
-    .select('id,customer_name,customer_phone,customer_email,vehicle_year,vehicle_make,vehicle_model,vehicle_color,license_plate,service_type,service_label,hospital,address_street,address_apt,address_city,address_state,address_zip,parking_location,parking_spot,parking_map_url,key_handoff_details,service_date,desired_return_time,status,assigned_employee_id,assigned_worker_name,assigned_worker_phone,fuel_type,wash_package_label,estimated_fuel_range,quick_inspection,notes,return_parking_location,return_parking_spot,return_parking_map_url,return_requested_at,final_total,payment_intent_id,payment_status');
+    .rpc('worker_list_open_requests', { p_token: SESSION_WORKER_TOKEN });
 
   if (error) {
-    console.warn('Could not load worker jobs:', error);
-    workerJobList.innerHTML = '<div class="empty-state"><p>Could not load jobs.</p></div>';
+    console.error('Could not load worker jobs:', error);
+    workerJobList.innerHTML = '<div class="empty-state"><p>Could not load jobs. Please refresh or contact an admin.</p></div>';
     return;
   }
 
-  const jobs = data || [];
+  const jobs = (data || []).filter((job) => isWorkerOpenStatus(job.status));
   allWorkerJobs = jobs;
 
-  const normalizedWorkerName = normalizeName(currentEmployee.full_name);
-  const normalizedWorkerPhone = normalizePhone(currentEmployee.phone);
-
-  const myJobs = jobs.filter((job) => {
-    const normalizedJobWorkerName = normalizeName(job.assigned_worker_name);
-    const normalizedJobWorkerPhone = normalizePhone(job.assigned_worker_phone);
-
-    return job.assigned_employee_id === currentEmployee.id
-      || (!job.assigned_employee_id && normalizedJobWorkerName && normalizedJobWorkerName === normalizedWorkerName)
-      || (!job.assigned_employee_id && normalizedJobWorkerPhone && normalizedJobWorkerPhone === normalizedWorkerPhone);
-  });
+  const myJobs = jobs.filter(workerJobBelongsToCurrentEmployee);
 
   if (typeof window !== 'undefined' && ['localhost', '127.0.0.1'].includes(window.location.hostname)) {
     console.log('[worker jobs]', {
@@ -1656,7 +1678,8 @@ async function loadWorkerJobs() {
 
   const workerZone = currentEmployee.home_location || DEFAULT_WORK_LOCATION;
   const availableJobs = jobs.filter((job) => {
-    return !job.assigned_employee_id
+    return !normalizeId(job.assigned_employee_id)
+      && !workerJobHasAssignedFallback(job)
       && !myJobs.includes(job)
       && ['request_received', 'accepted'].includes(job.status);
   });
