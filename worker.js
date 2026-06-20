@@ -171,6 +171,14 @@ function hasCustomerReturnRequestAlert(request) {
     || String(request?.notes || '').includes('[customer_return_requested]');
 }
 
+function hasPickupPhotoSet(request) {
+  return String(request?.notes || '').includes('[pickup_time');
+}
+
+function hasDropoffPhotoSet(request) {
+  return String(request?.notes || '').includes('[dropoff_time');
+}
+
 function isActiveCustomerReturnWorkflow(request) {
   return hasCustomerReturnRequestAlert(request)
     && !['awaiting_key_return', 'keys_returned', 'complete', 'canceled_return_completed'].includes(request?.status);
@@ -1313,13 +1321,21 @@ function renderWorkerJobActions(request) {
         <p class="field-help">Return vehicle as soon as safely possible.</p>
       </div>
     `;
-    if (request.status === 'fueling_complete') {
+    if (!hasPickupPhotoSet(request)) {
+      nextAction = 'Upload pickup photos if you reached the vehicle, or bypass them if you never got to the car.';
+      activePanel = returnBanner + renderWorkerPhotoPanel(request, 'pickup') + renderWorkerPickupBypassPanel(request);
+    } else if (request.status === 'fueling_complete') {
       nextAction = `Finish recording the fuel receipt, then return the vehicle.`;
       activePanel = returnBanner + renderWorkerReceiptPanel(request, 'fuel');
     } else if (request.status === 'car_wash_complete') {
       nextAction = `Finish recording the car wash receipt, then return the vehicle.`;
       activePanel = returnBanner + renderWorkerReceiptPanel(request, 'wash');
-    } else if (request.status === 'vehicle_returned' || String(request.notes || '').includes('[dropoff_time')) {
+    } else if (hasPickupPhotoSet(request) && !hasDropoffPhotoSet(request) && request.status !== 'vehicle_returned') {
+      nextAction = 'Pickup photos were taken. Record where the vehicle was returned, then upload return photos.';
+      activePanel = returnBanner + (request.return_parking_location
+        ? renderWorkerPhotoPanel(request, 'dropoff')
+        : renderWorkerReturnLocationPanel(request));
+    } else if (request.status === 'vehicle_returned' || hasDropoffPhotoSet(request)) {
       nextAction = 'Confirm saved totals, then proceed to key return. The return charge is processed when keys are marked returned.';
       activePanel = returnBanner + renderWorkerCompletePanel(request);
     } else {
@@ -1498,6 +1514,17 @@ function renderWorkerPhotoPanel(request, stage = 'pickup') {
       </div>
       <p class="field-help duplicate-photo-warning" data-warning-for="${escapeHtml(request.id)}"></p>
       <button class="button primary upload-action-button upload-photo-set" data-id="${escapeHtml(request.id)}" type="button">Upload photo set</button>
+    </div>
+  `;
+}
+
+function renderWorkerPickupBypassPanel(request) {
+  return `
+    <div class="return-request-banner pickup-bypass-panel" data-bypass-pickup-for="${escapeHtml(request.id)}">
+      <h4>Cannot take pickup photos?</h4>
+      <p class="field-help">Use this only if you never reached the vehicle. The request will move to key return without pickup or return photos.</p>
+      <button class="button secondary bypass-pickup-photos" data-id="${escapeHtml(request.id)}" type="button">Bypass pickup photos - never reached vehicle</button>
+      <p class="pickup-bypass-status form-status"></p>
     </div>
   `;
 }
@@ -2010,6 +2037,40 @@ async function saveWorkerReturnLocation(button) {
   await loadWorkerJobs();
 }
 
+async function bypassWorkerPickupPhotos(button) {
+  const id = button.dataset.id;
+  const request = allWorkerJobs.find((item) => item.id === id);
+  const panel = button.closest('.pickup-bypass-panel');
+  const statusEl = panel?.querySelector('.pickup-bypass-status');
+
+  if (!request) return;
+
+  button.disabled = true;
+  button.textContent = 'Saving...';
+  if (statusEl) statusEl.textContent = '';
+
+  const timestamp = new Date().toISOString();
+  const note = `[pickup_photos_bypassed ${timestamp}] Worker never reached the vehicle; pickup and return photos were not available before customer return.`;
+  const notes = request.notes ? `${request.notes}\n${note}` : note;
+
+  const { error } = await workerDb.rpc('worker_update_request', {
+    p_token: SESSION_WORKER_TOKEN,
+    p_request_id: id,
+    p_data: { status: 'awaiting_key_return', notes, updated_at: timestamp },
+  });
+
+  if (error) {
+    console.error('[pickup bypass] Failed to bypass pickup photos:', error);
+    button.disabled = false;
+    button.textContent = 'Bypass pickup photos - never reached vehicle';
+    if (statusEl) statusEl.textContent = 'Could not bypass pickup photos. Please try again.';
+    return;
+  }
+
+  await loadWorkerJobs();
+  await loadWorkerReviews();
+}
+
 async function saveWorkerInspection(button) {
   const id = button.dataset.id;
   const request = allWorkerJobs.find((item) => item.id === id);
@@ -2310,6 +2371,11 @@ workerJobList?.addEventListener('click', async (event) => {
 
     if (button.classList.contains('save-return-location')) {
       await saveWorkerReturnLocation(button);
+      return;
+    }
+
+    if (button.classList.contains('bypass-pickup-photos')) {
+      await bypassWorkerPickupPhotos(button);
       return;
     }
 
