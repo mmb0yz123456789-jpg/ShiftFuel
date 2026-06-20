@@ -1313,11 +1313,17 @@ function renderWorkerJobActions(request) {
         <p class="field-help">Return vehicle as soon as safely possible.</p>
       </div>
     `;
-    nextAction = 'Return vehicle as soon as safely possible.';
-    if (request.status === 'vehicle_returned' || String(request.notes || '').includes('[dropoff_time')) {
-      nextAction = 'Proceed to key return without capturing payment. Admin will review completed receipts before charging or waiving fees.';
+    if (request.status === 'fueling_complete') {
+      nextAction = `Finish recording the fuel receipt, then return the vehicle.`;
+      activePanel = returnBanner + renderWorkerReceiptPanel(request, 'fuel');
+    } else if (request.status === 'car_wash_complete') {
+      nextAction = `Finish recording the car wash receipt, then return the vehicle.`;
+      activePanel = returnBanner + renderWorkerReceiptPanel(request, 'wash');
+    } else if (request.status === 'vehicle_returned' || String(request.notes || '').includes('[dropoff_time')) {
+      nextAction = 'Confirm saved totals, then proceed to key return. The return charge is processed when keys are marked returned.';
       activePanel = returnBanner + renderWorkerCompletePanel(request);
     } else {
+      nextAction = 'Return vehicle as soon as safely possible.';
       activePanel = returnBanner + (request.return_parking_location
         ? renderWorkerPhotoPanel(request, 'dropoff')
         : renderWorkerReturnLocationPanel(request));
@@ -1635,8 +1641,8 @@ function renderWorkerCompletePanel(request) {
     ? hasReceiptTotals ? 'Confirm totals & proceed to key return' : 'Proceed to key return'
     : needsPaymentCapture ? 'Complete & Capture Payment' : 'Complete request';
   const returnWorkflowHelp = hasReceiptTotals
-    ? 'Customer requested vehicle return. Confirm the saved receipt totals here; do not capture payment. Admin will review completed receipts before charging or waiving fees.'
-    : 'Customer requested vehicle return. No receipts are recorded; do not capture payment here. Admin will review before charging or waiving fees.';
+    ? 'Customer requested vehicle return. Confirm the saved receipt totals here; the return charge is processed when keys are marked returned.'
+    : 'Customer requested vehicle return. No receipts are recorded; the $15 cancellation/service amount is processed when keys are marked returned.';
 
   return `
     <div class="complete-panel" data-complete-for="${escapeHtml(request.id)}">
@@ -2183,7 +2189,7 @@ async function completeWorkerRequest(button) {
   const finalTotal = finalTotalFromSavedReceipts(request, receiptTotals);
   const isReturnWorkflow = hasCustomerReturnRequestAlert(request);
   const returnConfirmNote = isReturnWorkflow
-    ? `[return_totals_confirmed] Worker confirmed return-request totals without capturing payment. Fuel ${money(receiptTotals.fuel)}, car wash ${money(receiptTotals.wash)}, final calculated total ${money(finalTotal)}.`
+    ? `[return_totals_confirmed] Worker confirmed return-request totals before key return. Fuel ${money(receiptTotals.fuel)}, car wash ${money(receiptTotals.wash)}, final calculated total ${money(finalTotal)}.`
     : '';
   const notes = returnConfirmNote
     ? request.notes ? `${request.notes}\n${returnConfirmNote}` : returnConfirmNote

@@ -604,10 +604,11 @@ function estimatePricingSummary({ needsFuel, needsWash, fuelAmount = 0, washAmou
 
 function returnRequestChargeSummary(request) {
   const receiptTotals = receiptTotalsFromNotes(request);
+  const hasReceipts = receiptTotals.fuel > 0 || receiptTotals.wash > 0;
   const subtotal = roundMoneyValue(receiptTotals.fuel + receiptTotals.wash + RETURN_CANCELLATION_FEE);
-  const total = subtotal > 0
+  const total = hasReceipts
     ? Math.ceil((subtotal + RETURN_RECOVERY_FIXED) / (1 - RETURN_RECOVERY_RATE))
-    : 0;
+    : RETURN_CANCELLATION_FEE;
   const recovery = roundMoneyValue(total - subtotal);
 
   return {
@@ -617,7 +618,7 @@ function returnRequestChargeSummary(request) {
     recovery,
     subtotal,
     total,
-    hasReceipts: receiptTotals.fuel > 0 || receiptTotals.wash > 0,
+    hasReceipts,
   };
 }
 
