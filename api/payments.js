@@ -73,10 +73,11 @@ function savedAddressZipKey(value) {
 
 function returnRequestChargeFromNotes(notes) {
   const receipts = receiptTotalsFromNotes(notes);
+  const hasReceipts = receipts.fuel > 0 || receipts.wash > 0;
   const subtotal = roundMoney(receipts.fuel + receipts.wash + RETURN_CANCELLATION_FEE);
-  const total = subtotal > 0
+  const total = hasReceipts
     ? Math.ceil((subtotal + RETURN_RECOVERY_FIXED) / (1 - RETURN_RECOVERY_RATE))
-    : 0;
+    : RETURN_CANCELLATION_FEE;
   const recovery = roundMoney(total - subtotal);
 
   return {
@@ -939,7 +940,7 @@ async function handleMarkKeysReturned(body, res) {
   const db = getSupabaseAdmin();
   let { data: request, error: reqErr } = await db
     .from('service_requests')
-    .select('id, status, customer_name, payment_status, return_requested_at, notes')
+    .select('id, status, customer_name, payment_intent_id, payment_status, return_requested_at, notes')
     .eq('id', request_id)
     .maybeSingle();
 
@@ -959,7 +960,7 @@ async function handleMarkKeysReturned(body, res) {
     if (missingOptionalColumn) {
       const fallback = await db
         .from('service_requests')
-        .select('id, status, customer_name, payment_status, notes')
+        .select('id, status, customer_name, payment_intent_id, payment_status, notes')
         .eq('id', request_id)
         .maybeSingle();
       request = fallback.data ? { ...fallback.data, return_requested_at: null } : null;
@@ -982,18 +983,72 @@ async function handleMarkKeysReturned(body, res) {
     return res.status(400).json({ error: 'Request is not awaiting key return' });
   }
 
-  const returnPaymentResolved = ['cancellation_fee_paid', 'authorization_released', 'voided', 'closed_no_charge'];
-  if (hasCustomerReturnRequestAlert(request) && !returnPaymentResolved.includes(request.payment_status)) {
-    return res.status(400).json({
-      error: 'Resolve the customer return request first. Charge the $15 cancellation/service amount or waive/release the hold before marking keys returned.',
-    });
-  }
-
   const returnedToName = key_returned_to_type === 'customer'
     ? (request.customer_name || 'Customer')
     : String(key_returned_to_name_or_location || '').trim();
   if (key_returned_to_type === 'other' && !returnedToName) {
     return res.status(400).json({ error: 'Enter the name or location keys were returned to.' });
+  }
+
+  const returnPaymentResolved = ['cancellation_fee_paid', 'authorization_released', 'voided', 'closed_no_charge'];
+  if (hasCustomerReturnRequestAlert(request) && !returnPaymentResolved.includes(request.payment_status)) {
+    if (!request.payment_intent_id) {
+      return res.status(400).json({ error: 'No payment authorization exists to charge the cancellation/service amount.' });
+    }
+
+    try {
+      const stripe = getStripe();
+      const charge = returnRequestChargeFromNotes(request.notes);
+      const currentIntent = await stripe.paymentIntents.retrieve(request.payment_intent_id);
+
+      if (currentIntent.status !== 'requires_capture') {
+        return res.status(400).json({ error: 'The payment authorization is not available for capture. Please contact an admin.' });
+      }
+      if (currentIntent.amount_capturable != null && currentIntent.amount_capturable < charge.amount_cents) {
+        return res.status(400).json({
+          error: `The authorized amount ($${(currentIntent.amount_capturable / 100).toFixed(2)}) is less than the return charge amount ($${charge.total.toFixed(2)}). Contact an admin.`,
+        });
+      }
+
+      const intent = await stripe.paymentIntents.capture(request.payment_intent_id, { amount_to_capture: charge.amount_cents });
+      const timestamp = new Date().toISOString();
+      const chargeNote = `[return_fee_charge ${timestamp}] Keys returned by ${key_returned_by || 'staff'}. Fuel receipts $${charge.fuel.toFixed(2)}, car wash receipts $${charge.wash.toFixed(2)}, cancellation/service fee $${charge.cancellation_fee.toFixed(2)}, payment/operating recovery $${charge.recovery.toFixed(2)}, rounded total $${charge.total.toFixed(2)}.`;
+      const notes = request.notes ? `${request.notes}\n${chargeNote}` : chargeNote;
+
+      const { error: returnUpdateErr } = await db.from('service_requests').update({
+        status: 'canceled_return_completed',
+        payment_status: 'cancellation_fee_paid',
+        captured_amount: charge.total,
+        cancellation_fee_applied: true,
+        cancellation_fee_amount: RETURN_CANCELLATION_FEE,
+        cancellation_fee_waived: false,
+        cancellation_fee_decision_by: key_returned_by || 'staff',
+        cancellation_fee_decision_at: timestamp,
+        final_total: charge.total,
+        actual_fuel_receipt_amount: charge.fuel || null,
+        actual_car_wash_receipt_amount: charge.wash || null,
+        payment_operating_recovery_amount: charge.recovery,
+        net_target_amount: charge.subtotal,
+        rounded_customer_total: charge.total,
+        key_returned_to_type,
+        key_returned_to_name_or_location: returnedToName,
+        key_returned_at: timestamp,
+        key_returned_by: key_returned_by || null,
+        notes,
+        updated_at: timestamp,
+      }).eq('id', request_id);
+
+      if (returnUpdateErr) {
+        console.error('[payments/mark_keys_returned] DB update failed after return charge:', returnUpdateErr.message);
+        return res.status(200).json({ success: true, warning: 'Return amount charged in Stripe but database update failed. Contact support.' });
+      }
+
+      console.log('[payments/mark_keys_returned] Captured return amount and closed request', request_id, charge);
+      return res.status(200).json({ status: 'canceled_return_completed', amount_captured: intent.amount_captured, charge_breakdown: charge });
+    } catch (err) {
+      console.error('[payments/mark_keys_returned] Return charge failed:', err.message);
+      return res.status(500).json({ error: 'Cancellation/service amount could not be processed. Please contact an admin.' });
+    }
   }
 
   const { error: updateErr } = await db.from('service_requests').update({
