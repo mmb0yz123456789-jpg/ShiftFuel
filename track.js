@@ -292,19 +292,12 @@ async function submitCustomerReturnRequest(requestId, button = null) {
     return;
   }
 
-  const { data: refreshed } = await shiftFuelDb.rpc("public_track_request", {
-    p_request_id: requestId,
-    p_phone: verifiedTrackingContact.phone,
-    p_email: verifiedTrackingContact.email,
-  });
-
-  const data = refreshed?.[0] || null;
   trackMessage.textContent = "Your return request has been submitted. A ShiftFuel team member will return your vehicle as soon as safely possible.";
 
-  if (data) {
-    const photos = await loadRequestPhotos(data.id);
-    const review = await loadRequestReview(data.id);
-    renderRequest(data, photos, review);
+  try {
+    await refreshTrackedRequestsAfterAction();
+  } catch (refreshError) {
+    console.error('[track] Refresh after return request failed:', refreshError);
   }
 }
 
@@ -3127,16 +3120,7 @@ trackingResult.addEventListener('submit', async (event) => {
     if (!error) {
       // Re-render the card as a normal in-progress request
       setTimeout(async () => {
-        const { data: refreshed } = await shiftFuelDb.rpc('public_track_request', {
-          p_request_id: requestId,
-          p_phone: verifiedTrackingContact.phone,
-          p_email: verifiedTrackingContact.email,
-        });
-        if (refreshed?.[0]) {
-          const photos = await loadRequestPhotos(refreshed[0].id);
-          const review = await loadRequestReview(refreshed[0].id);
-          renderRequest(refreshed[0], photos, review);
-        }
+        await refreshTrackedRequestsAfterAction();
         if (statusEl) statusEl.textContent = 'Your booking has been confirmed.';
       }, 1000);
     }
