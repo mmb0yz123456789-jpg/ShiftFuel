@@ -655,6 +655,8 @@ function updateEstimate() {
   const gallons = serviceType.needsFuel && fuelRange ? fuelRange.gallons : 0;
   const pricePerGallon = averageFuelPrices[fuelType.value] || averageFuelPrices.Regular;
   const fuelAmount = gallons * pricePerGallon;
+  const authGallons = serviceType.needsFuel ? fuelAuthorizationGallons(fuelRange) : 0;
+  const authFuelAmount = authGallons * pricePerGallon;
   const washFee = serviceType.needsWash && washPackage ? washPackage.price : 0;
   const pricing = servicePricingParts({
     needsFuel: serviceType.needsFuel,
@@ -674,7 +676,7 @@ function updateEstimate() {
   estimatedWash.textContent = washPackage ? `${washPackage.label} - ${formatCurrency(washFee)}` : "$0.00";
   washConvenienceFeeDisplay.textContent = formatCurrency(pricing.washService);
   estimatedFuel.textContent = serviceType.needsFuel
-    ? `${fuelRange?.label || "0 gallons"} estimated at ${gallons} gallons x ${formatPricePerGallon(pricePerGallon)} = ${formatCurrency(fuelAmount)}`
+    ? `${fuelRange?.label || "0 gallons"} selected. Authorization hold uses ${authGallons} gallons x ${formatPricePerGallon(pricePerGallon)} = ${formatCurrency(authFuelAmount)}. Final fuel cost is based on the actual receipt.`
     : formatCurrency(fuelAmount);
   averagePrice.textContent = formatPricePerGallon(pricePerGallon);
   fuelConvenienceFeeDisplay.textContent = formatCurrency(pricing.fuelService);
