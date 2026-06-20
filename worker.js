@@ -171,6 +171,11 @@ function hasCustomerReturnRequestAlert(request) {
     || String(request?.notes || '').includes('[customer_return_requested]');
 }
 
+function isActiveCustomerReturnWorkflow(request) {
+  return hasCustomerReturnRequestAlert(request)
+    && !['awaiting_key_return', 'keys_returned', 'complete', 'canceled_return_completed'].includes(request?.status);
+}
+
 function workerJobBelongsToCurrentEmployee(job) {
   if (!currentEmployee) return false;
 
@@ -1299,9 +1304,9 @@ function renderWorkerJobActions(request) {
   const actions = [];
   let activePanel = '';
   let nextAction = '';
-  const hasReturnRequest = !!request.return_requested_at || request.status === 'return_requested' || request.status === 'customer_return_requested';
+  const hasReturnRequest = isActiveCustomerReturnWorkflow(request);
 
-  if (hasReturnRequest && !['canceled_return_completed', 'complete'].includes(request.status)) {
+  if (hasReturnRequest) {
     const returnBanner = `
       <div class="return-request-banner">
         <h4>Customer requested vehicle return.</h4>
@@ -1309,9 +1314,9 @@ function renderWorkerJobActions(request) {
       </div>
     `;
     nextAction = 'Return vehicle as soon as safely possible.';
-    if (String(request.notes || '').includes('[dropoff_time')) {
-      nextAction = 'Vehicle return photos are recorded. Admin will review completed receipts before charging or waiving fees.';
-      activePanel = returnBanner;
+    if (request.status === 'vehicle_returned' || String(request.notes || '').includes('[dropoff_time')) {
+      nextAction = 'Proceed to key return without capturing payment. Admin will review completed receipts before charging or waiving fees.';
+      activePanel = returnBanner + renderWorkerCompletePanel(request);
     } else {
       activePanel = returnBanner + (request.return_parking_location
         ? renderWorkerPhotoPanel(request, 'dropoff')
@@ -1622,13 +1627,21 @@ function renderWorkerReceiptConfirmPanel(request) {
 function renderWorkerCompletePanel(request) {
   const receiptTotals = receiptTotalsFromNotes(request);
   const workerReceiptTotal = receiptTotals.fuel + receiptTotals.wash;
-  const needsPaymentCapture = request.payment_intent_id && request.payment_status !== 'captured';
+  const hasReceiptTotals = workerReceiptTotal > 0;
+  const isReturnWorkflow = hasCustomerReturnRequestAlert(request);
+  const needsPaymentCapture = request.payment_intent_id && request.payment_status !== 'captured' && !isReturnWorkflow;
   const primaryClass = needsPaymentCapture ? 'send-to-customer-payment' : 'complete-request';
-  const primaryLabel = needsPaymentCapture ? 'Complete & Capture Payment' : 'Complete request';
+  const primaryLabel = isReturnWorkflow
+    ? hasReceiptTotals ? 'Confirm totals & proceed to key return' : 'Proceed to key return'
+    : needsPaymentCapture ? 'Complete & Capture Payment' : 'Complete request';
+  const returnWorkflowHelp = hasReceiptTotals
+    ? 'Customer requested vehicle return. Confirm the saved receipt totals here; do not capture payment. Admin will review completed receipts before charging or waiving fees.'
+    : 'Customer requested vehicle return. No receipts are recorded; do not capture payment here. Admin will review before charging or waiving fees.';
 
   return `
     <div class="complete-panel" data-complete-for="${escapeHtml(request.id)}">
       <h4>Confirm before completing</h4>
+      ${isReturnWorkflow ? `<p class="field-help">${returnWorkflowHelp}</p>` : ''}
       <div class="request-details">
         ${serviceNeedsFuel(request) ? `<p><strong>Fuel receipt total:</strong> ${money(receiptTotals.fuel)}</p>` : ''}
         ${serviceNeedsWash(request) ? `<p><strong>Car wash receipt total:</strong> ${money(receiptTotals.wash)}</p>` : ''}
@@ -2074,12 +2087,13 @@ function workerCompleteValidation(button) {
   if (!request) return null;
 
   const receiptTotals = receiptTotalsFromNotes(request);
+  const isReturnWorkflow = hasCustomerReturnRequestAlert(request);
   // A service marked unable_to_complete has no receipt by definition — only
   // require a receipt for services that were actually performed.
   const hasReceipts = (serviceNeedsFuel(request) ? (receiptTotals.fuel > 0 || serviceUnable(request, 'fuel')) : true)
     && (serviceNeedsWash(request) ? (receiptTotals.wash > 0 || serviceUnable(request, 'wash')) : true);
 
-  if (!hasReceipts) {
+  if (!hasReceipts && !isReturnWorkflow) {
     alert('Save the receipt total before completing this request.');
     return null;
   }
@@ -2087,7 +2101,7 @@ function workerCompleteValidation(button) {
     alert('Check the confirmation box after verifying the saved totals.');
     return null;
   }
-  if (request.quick_inspection && request.status !== 'inspection_recorded') {
+  if (request.quick_inspection && request.status !== 'inspection_recorded' && !isReturnWorkflow) {
     alert('Complete the quick inspection before completing this request.');
     return null;
   }
@@ -2167,11 +2181,20 @@ async function completeWorkerRequest(button) {
   button.textContent = 'Saving...';
 
   const finalTotal = finalTotalFromSavedReceipts(request, receiptTotals);
+  const isReturnWorkflow = hasCustomerReturnRequestAlert(request);
+  const returnConfirmNote = isReturnWorkflow
+    ? `[return_totals_confirmed] Worker confirmed return-request totals without capturing payment. Fuel ${money(receiptTotals.fuel)}, car wash ${money(receiptTotals.wash)}, final calculated total ${money(finalTotal)}.`
+    : '';
+  const notes = returnConfirmNote
+    ? request.notes ? `${request.notes}\n${returnConfirmNote}` : returnConfirmNote
+    : request.notes;
+  const updates = { status: 'awaiting_key_return', final_total: finalTotal, ...pricingAuditFields(request, receiptTotals) };
+  if (returnConfirmNote) updates.notes = notes;
 
   const { error: updateErr } = await workerDb.rpc('worker_update_request', {
     p_token: SESSION_WORKER_TOKEN,
     p_request_id: id,
-    p_data: { status: 'awaiting_key_return', final_total: finalTotal, ...pricingAuditFields(request, receiptTotals) },
+    p_data: updates,
   });
 
   if (updateErr) {
