@@ -90,6 +90,13 @@ function returnRequestChargeFromNotes(notes) {
   };
 }
 
+function hasCustomerReturnRequestAlert(request) {
+  return !!request?.return_requested_at
+    || request?.status === 'return_requested'
+    || request?.status === 'customer_return_requested'
+    || String(request?.notes || '').includes('[customer_return_requested]');
+}
+
 async function markRequestComplete(db, requestId, paymentIntentId, capturedAmountDollars = null) {
   const updateData = {
     status: 'awaiting_key_return',
@@ -932,13 +939,20 @@ async function handleMarkKeysReturned(body, res) {
   const db = getSupabaseAdmin();
   const { data: request, error: reqErr } = await db
     .from('service_requests')
-    .select('id, status, customer_name')
+    .select('id, status, customer_name, payment_status, return_requested_at, notes')
     .eq('id', request_id)
     .maybeSingle();
 
   if (reqErr || !request) return res.status(404).json({ error: 'Request not found' });
   if (request.status !== 'awaiting_key_return') {
     return res.status(400).json({ error: 'Request is not awaiting key return' });
+  }
+
+  const returnPaymentResolved = ['cancellation_fee_paid', 'authorization_released', 'voided', 'closed_no_charge'];
+  if (hasCustomerReturnRequestAlert(request) && !returnPaymentResolved.includes(request.payment_status)) {
+    return res.status(400).json({
+      error: 'Resolve the customer return request first. Charge the $15 cancellation/service amount or waive/release the hold before marking keys returned.',
+    });
   }
 
   const returnedToName = key_returned_to_type === 'customer'
@@ -1072,7 +1086,7 @@ async function handleResolveReturnRequest(body, res) {
     .maybeSingle();
 
   if (reqErr || !request) return res.status(404).json({ error: 'Request not found' });
-  if (!request.return_requested_at && !['return_requested', 'customer_return_requested'].includes(request.status)) {
+  if (!hasCustomerReturnRequestAlert(request)) {
     return res.status(400).json({ error: 'Request is not awaiting a return-request decision' });
   }
 
