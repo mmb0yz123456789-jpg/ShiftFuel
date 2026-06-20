@@ -9,6 +9,14 @@ const refreshStatusBtn = document.querySelector("#refresh-status-btn");
 const shiftFuelDb = window.ShiftFuelSupabase;
 const TRACK_LOCK_KEY = "shiftfuel_track_locked_until";
 const TRACK_ATTEMPT_KEY = "shiftfuel_track_failed_attempts";
+const FUEL_AUTHORIZATION_BUFFER_GALLONS = {
+  5: 10,
+  10: 15,
+  15: 20,
+  20: 30,
+  25: 30,
+  30: 40,
+};
 let verifiedTrackingContact = { phone: "", email: "" };
 
 // Unified terminal/closed status list — keep in sync with admin.js, worker.js,
@@ -16,6 +24,31 @@ let verifiedTrackingContact = { phone: "", email: "" };
 const terminalStatuses = ["complete", "denied", "customer_canceled", "canceled", "unable_to_complete", "auto_reversed", "closed_no_charge", "canceled_return_completed"];
 const closedStatuses   = ["denied", "customer_canceled", "canceled", "unable_to_complete", "auto_reversed", "closed_no_charge", "canceled_return_completed"];
 const freeCancelStatuses = ["pending", "request_received", "accepted"];
+
+function fuelAuthorizationGallons(fuelRange) {
+  return FUEL_AUTHORIZATION_BUFFER_GALLONS[Number(fuelRange?.value || fuelRange?.gallons || 0)] || Number(fuelRange?.gallons || 0);
+}
+
+function authorizationAmountForEstimate({ needsFuel, fuelRange, pricePerGallon, washAmount = 0, needsWash = false, quickInspection = false } = {}) {
+  if (!needsFuel) {
+    return cbServicePricingParts({
+      needsFuel: false,
+      needsWash,
+      fuelAmount: 0,
+      washAmount,
+      quickInspection,
+    }).total;
+  }
+
+  const authFuelAmount = fuelAuthorizationGallons(fuelRange) * Number(pricePerGallon || 0);
+  return cbServicePricingParts({
+    needsFuel: true,
+    needsWash,
+    fuelAmount: authFuelAmount,
+    washAmount,
+    quickInspection,
+  }).total;
+}
 
 function initPhotoLightbox() {
   if (document.getElementById('photo-lightbox')) return;
@@ -594,15 +627,20 @@ function buildStatusSteps(request) {
   return steps;
 }
 
+function timelineStatus(request) {
+  return request.payment_status === 'capture_failed' ? 'payment_issue' : request.status;
+}
+
 const RETURN_STATUSES = new Set([
   'returned_location_pending', 'return_location_recorded', 'return_photos_needed',
   'dropoff_vehicle_photo_uploaded', 'dropoff_odometer_photo_uploaded',
   'vehicle_returned', 'inspection_needed', 'inspection_recorded',
-  'pending_customer_payment', 'awaiting_key_return', 'complete',
+  'pending_customer_payment', 'payment_issue', 'authorization_too_low',
+  'awaiting_key_return', 'complete',
 ]);
 
 function allReceiptsDone(request) {
-  const s = request.status;
+  const s = timelineStatus(request);
   if (RETURN_STATUSES.has(s) || s === 'receipts_recorded') return true;
   const needsFuel = requestNeedsFuel(request);
   const needsWash = requestNeedsWash(request);
@@ -615,7 +653,7 @@ function allReceiptsDone(request) {
 }
 
 function isStepDone(stepKey, request) {
-  const s = request.status;
+  const s = timelineStatus(request);
 
   const AT_OR_AFTER_KEY_RECEIVED = new Set([
     'key_received', 'pickup_vehicle_photo_uploaded', 'pickup_odometer_photo_uploaded',
@@ -696,7 +734,7 @@ function isStepDone(stepKey, request) {
 }
 
 function getStatusMessage(request) {
-  const s = request.status;
+  const s = timelineStatus(request);
   const needsFuel = requestNeedsFuel(request);
   const needsWash = requestNeedsWash(request);
 
@@ -1556,7 +1594,14 @@ function cbUpdateEstimate(form) {
     : cbFormatCurrency(fuelAmt));
   qText('cb-fuel-conv-fee',   cbFormatCurrency(pricing.fuelService));
   qText('cb-inspection-fee',  cbFormatCurrency(pricing.inspection));
-  qText('cb-estimated-total', cbFormatCurrency(pricing.total));
+  qText('cb-estimated-total', cbFormatCurrency(authorizationAmountForEstimate({
+    needsFuel,
+    fuelRange,
+    pricePerGallon: ppg,
+    needsWash: needsWash && !!washPkg,
+    washAmount: washFee,
+    quickInspection: insp,
+  })));
 }
 
 // ── Service details panel ──────────────────────────────────────────────────────
@@ -1941,6 +1986,7 @@ function renderPendingCompletionCard(request) {
             <span>I agree that ShiftFuel Concierge may pick up, service, and return my vehicle using the instructions I provided.</span>
           </label>
           <p class="field-help">By booking, you agree to provide accurate vehicle, key, parking, fuel, and service instructions. ShiftFuel documents pickup and return condition with photos and will contact you if a requested service cannot be completed.</p>
+          <p class="field-help">The amount shown before payment is an authorization hold only. ShiftFuel captures the final amount after service is completed based on actual receipts and selected services, and any unused hold is released by your card issuer. Online card authorizations are typically valid for about 7 days; after final capture or release, your bank or credit card company may take a few business days to show the final amount or released hold on your account.</p>
         </fieldset>
 
         <div class="pending-form-actions">
@@ -3086,7 +3132,15 @@ trackingResult.addEventListener('submit', async (event) => {
   const fuelConvFee    = pricing.fuelService;
   const inspFee        = pricing.inspection;
   const estimatedTotal = pricing.total || null;
-  const authAmountCents = Math.max(Math.round((estimatedTotal || 1) * 100), 50);
+  const authorizationAmount = authorizationAmountForEstimate({
+    needsFuel,
+    fuelRange: fuelEstimateRange,
+    pricePerGallon: ppg,
+    needsWash: needsWash && !!washPkg,
+    washAmount: washFee,
+    quickInspection,
+  });
+  const authAmountCents = Math.max(Math.round((authorizationAmount || 1) * 100), 50);
 
   const requestData = (window._trackingRequests || []).find((r) => r.id === requestId);
 
@@ -3120,7 +3174,7 @@ trackingResult.addEventListener('submit', async (event) => {
       p_vehicle_model:        model,
       p_vehicle_color:        color,
       p_license_plate:        plate,
-      p_estimated_total:      estimatedTotal,
+      p_estimated_total:      authorizationAmount,
       p_payment_intent_id:    paymentIntentId || null,
       p_customer_notes:       notes || null,
     });

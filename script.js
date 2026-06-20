@@ -231,6 +231,39 @@ const todayValue = formatDateInputValue(new Date());
 const maxServiceDate = new Date();
 maxServiceDate.setMonth(maxServiceDate.getMonth() + 3);
 const maxServiceDateValue = formatDateInputValue(maxServiceDate);
+const FUEL_AUTHORIZATION_BUFFER_GALLONS = {
+  5: 10,
+  10: 15,
+  15: 20,
+  20: 30,
+  25: 30,
+  30: 40,
+};
+
+function fuelAuthorizationGallons(fuelRange) {
+  return FUEL_AUTHORIZATION_BUFFER_GALLONS[Number(fuelRange?.value || fuelRange?.gallons || 0)] || Number(fuelRange?.gallons || 0);
+}
+
+function authorizationAmountForEstimate({ needsFuel, fuelRange, pricePerGallon, washAmount = 0, needsWash = false, quickInspection = false } = {}) {
+  if (!needsFuel) {
+    return servicePricingParts({
+      needsFuel: false,
+      needsWash,
+      fuelAmount: 0,
+      washAmount,
+      quickInspection,
+    }).total;
+  }
+
+  const authFuelAmount = fuelAuthorizationGallons(fuelRange) * Number(pricePerGallon || 0);
+  return servicePricingParts({
+    needsFuel: true,
+    needsWash,
+    fuelAmount: authFuelAmount,
+    washAmount,
+    quickInspection,
+  }).total;
+}
 
 const serviceDatePicker = window.ShiftFuelDatePicker?.attach(
   document.getElementById('service-date-picker'),
@@ -646,7 +679,14 @@ function updateEstimate() {
   averagePrice.textContent = formatPricePerGallon(pricePerGallon);
   fuelConvenienceFeeDisplay.textContent = formatCurrency(pricing.fuelService);
   inspectionFeeDisplay.textContent = formatCurrency(pricing.inspection);
-  estimatedTotal.textContent = formatCurrency(pricing.total);
+  estimatedTotal.textContent = formatCurrency(authorizationAmountForEstimate({
+    needsFuel: serviceType.needsFuel,
+    fuelRange,
+    pricePerGallon,
+    needsWash: serviceType.needsWash && !!washPackage,
+    washAmount: washFee,
+    quickInspection: quickInspection.checked,
+  }));
 }
 
 function formatTimeLabel(value) {
@@ -1996,6 +2036,14 @@ function getBookingPayload() {
   });
   const selectedFee = pricing.fuelService + washFee + pricing.washService + pricing.inspection;
   const estimatedTotalAmount = pricing.total;
+  const authorizationAmount = authorizationAmountForEstimate({
+    needsFuel: serviceType.needsFuel,
+    fuelRange,
+    pricePerGallon,
+    needsWash: serviceType.needsWash && !!washPackage,
+    washAmount: washFee,
+    quickInspection: data.get("quickInspection") === "yes",
+  });
 
   return {
     customer: {
@@ -2044,10 +2092,10 @@ function getBookingPayload() {
       netTargetAmount: pricing.netTarget,
       grossTotalBeforeRounding: roundMoneyValue(pricing.grossBeforeRounding),
       roundedCustomerTotal: pricing.total,
-      authorizedAmount: pricing.total,
+      authorizedAmount: authorizationAmount,
       serviceLabel: service.options[service.selectedIndex]?.textContent || selectedService,
       detailingAvailableWindow: serviceType.needsWash ? "9:00 AM - 6:00 PM" : null,
-      estimatedTotal: estimatedTotalAmount || moneyValue(estimatedTotal.textContent),
+      estimatedTotal: authorizationAmount || moneyValue(estimatedTotal.textContent),
       finalTotal: null,
       status: "request_received",
       notes: data.get("notes"),
@@ -2055,7 +2103,7 @@ function getBookingPayload() {
     photos: [],
     payment: {
       paymentIntentId: null,
-      estimatedAmount: estimatedTotalAmount,
+      estimatedAmount: authorizationAmount,
       finalAmount: null,
       paymentStatus: "not_started",
     },
