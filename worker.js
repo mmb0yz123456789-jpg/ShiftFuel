@@ -437,14 +437,38 @@ function transactionPricingSummary(request, receiptTotals = { fuel: 0, wash: 0 }
   return {
     fuel: roundMoneyValue(fuelBase + fuelRecovery),
     wash: roundMoneyValue(washBase + washRecovery),
+    fuelBase,
+    washBase,
     inspection,
     recovery,
+    netTarget,
+    grossBeforeRounding: netTarget > 0 ? (netTarget + PAYMENT_RECOVERY_FIXED) / (1 - PAYMENT_RECOVERY_RATE) : 0,
     total: roundedTotal,
   };
 }
 
 function finalTotalFromSavedReceipts(request, receiptTotals = receiptTotalsFromNotes(request)) {
   return transactionPricingSummary(request, receiptTotals).total;
+}
+
+// Builds the internal pricing-audit fields (admin/internal only — never
+// shown to the customer) to save alongside final_total.
+function pricingAuditFields(request, receiptTotals = receiptTotalsFromNotes(request)) {
+  const fees = transactionPricingSummary(request, receiptTotals);
+  return {
+    base_fuel_service_fee: fees.fuelBase || null,
+    base_car_wash_service_fee: fees.washBase || null,
+    base_inspection_fee: fees.inspection || null,
+    payment_operating_recovery_amount: fees.recovery,
+    displayed_fuel_service_fee: fees.fuel || null,
+    displayed_car_wash_service_fee: fees.wash || null,
+    displayed_inspection_fee: fees.inspection || null,
+    actual_fuel_receipt_amount: receiptTotals.fuel || null,
+    actual_car_wash_receipt_amount: receiptTotals.wash || null,
+    net_target_amount: fees.netTarget,
+    gross_total_before_rounding: roundMoneyValue(fees.grossBeforeRounding),
+    rounded_customer_total: fees.total,
+  };
 }
 
 function photoTimestampNote(stage, timestamp) {
@@ -1764,7 +1788,7 @@ async function saveWorkerServiceUnable(button) {
   const { error } = await workerDb.rpc('worker_update_request', {
     p_token: SESSION_WORKER_TOKEN,
     p_request_id: id,
-    p_data: { status: nextStatus, final_total: finalTotal, notes },
+    p_data: { status: nextStatus, final_total: finalTotal, notes, ...pricingAuditFields(request, receiptTotals) },
   });
 
   if (error) throw error;
@@ -1904,7 +1928,7 @@ async function saveWorkerFinalTotal(button) {
     await uploadWorkerJobPhotoFile(id, 'wash_receipt', washReceiptFile);
   }
 
-  const updates = { final_total: finalTotal, notes };
+  const updates = { final_total: finalTotal, notes, ...pricingAuditFields(request, newReceiptTotals) };
   if (button.dataset.nextStatus) {
     updates.status = button.dataset.nextStatus;
   }
@@ -2014,7 +2038,7 @@ async function saveWorkerTotalEdit(button) {
   const { error } = await workerDb.rpc('worker_update_request', {
     p_token: SESSION_WORKER_TOKEN,
     p_request_id: id,
-    p_data: { final_total: finalTotal, notes },
+    p_data: { final_total: finalTotal, notes, ...pricingAuditFields(request, newReceiptTotals) },
   });
 
   if (error) throw error;
@@ -2064,7 +2088,7 @@ async function sendWorkerToCustomerPayment(button) {
   const { error: updateErr } = await workerDb.rpc('worker_update_request', {
     p_token: SESSION_WORKER_TOKEN,
     p_request_id: id,
-    p_data: { final_total: finalTotal },
+    p_data: { final_total: finalTotal, ...pricingAuditFields(request, receiptTotals) },
   });
 
   if (updateErr) {
@@ -2125,7 +2149,7 @@ async function completeWorkerRequest(button) {
   const { error: updateErr } = await workerDb.rpc('worker_update_request', {
     p_token: SESSION_WORKER_TOKEN,
     p_request_id: id,
-    p_data: { status: 'awaiting_key_return', final_total: finalTotal },
+    p_data: { status: 'awaiting_key_return', final_total: finalTotal, ...pricingAuditFields(request, receiptTotals) },
   });
 
   if (updateErr) {

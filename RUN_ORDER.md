@@ -123,6 +123,24 @@ it never modifies historical `service_requests`.
 
 ---
 
+## 13. `supabase-pricing-audit-fields.sql`
+Adds the internal pricing/payment-recovery audit columns to `service_requests`
+(`base_fuel_service_fee`, `base_car_wash_service_fee`, `base_inspection_fee`,
+`payment_operating_recovery_amount`, `displayed_fuel_service_fee`,
+`displayed_car_wash_service_fee`, `displayed_inspection_fee`,
+`actual_fuel_receipt_amount`, `actual_car_wash_receipt_amount`,
+`net_target_amount`, `gross_total_before_rounding`, `rounded_customer_total`,
+`authorized_amount`) and extends `admin_update_request` / `worker_update_request`
+to accept them. These are admin-only — never shown to the customer. View them
+in the admin dashboard under each request's "Pricing audit (admin only)"
+details toggle.
+
+**After deploying:** confirm a fresh booking populates `authorized_amount` and
+that completing a receipt + capturing payment populates
+`payment_operating_recovery_amount` / `rounded_customer_total` / `captured_amount`.
+
+---
+
 ## Post-deploy verification
 
 **Employees / security**

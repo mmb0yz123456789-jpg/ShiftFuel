@@ -90,13 +90,16 @@ function returnRequestChargeFromNotes(notes) {
   };
 }
 
-async function markRequestComplete(db, requestId, paymentIntentId) {
-  const { error } = await db.from('service_requests').update({
+async function markRequestComplete(db, requestId, paymentIntentId, capturedAmountDollars = null) {
+  const updateData = {
     status: 'awaiting_key_return',
     payment_status: 'captured',
     payment_intent_id: paymentIntentId,
     updated_at: new Date().toISOString(),
-  }).eq('id', requestId);
+  };
+  if (capturedAmountDollars != null) updateData.captured_amount = capturedAmountDollars;
+
+  const { error } = await db.from('service_requests').update(updateData).eq('id', requestId);
 
   if (error) {
     console.error('[payments] markComplete DB error for request', requestId, '—', error.message);
@@ -162,6 +165,14 @@ const ALLOWED_BOOKING_FIELDS = [
   'fuel_convenience_fee', 'wash_package', 'wash_package_label', 'wash_fee', 'wash_convenience_fee',
   'quick_inspection', 'quick_inspection_fee', 'service_fee', 'detailing_available_window',
   'estimated_total', 'notes',
+  // Pricing/payment-recovery audit trail (passive record-keeping — the actual
+  // charge is independently verified against Stripe below, never trusted
+  // from these fields).
+  'base_fuel_service_fee', 'base_car_wash_service_fee', 'base_inspection_fee',
+  'payment_operating_recovery_amount', 'displayed_fuel_service_fee',
+  'displayed_car_wash_service_fee', 'displayed_inspection_fee',
+  'net_target_amount', 'gross_total_before_rounding', 'rounded_customer_total',
+  'authorized_amount',
 ];
 
 const ALLOWED_SERVICE_TYPES = ['fuel', 'car-wash', 'car-wash-fuel', 'fuel-only', 'wash-only'];
@@ -193,16 +204,20 @@ async function saveReusableBookingSnapshots(db, row) {
 
   if (addressPayload.address_street || addressPayload.hospital) {
     try {
+      // Match by email server-side, then by NORMALIZED phone in JS — an exact
+      // .eq() on customer_phone would miss matches whenever the stored phone
+      // string has different formatting (spaces/dashes/parens) than this
+      // booking's phone, which is exactly when duplicates were being created.
       const { data: existingAddress, error: addressLookupError } = await db
         .from('saved_service_addresses')
-        .select('id,address_street,hospital,address_apt,address_city,address_state,address_zip')
-        .eq('customer_phone', customerPhone)
+        .select('id,customer_phone,address_street,hospital,address_apt,address_city,address_state,address_zip')
         .ilike('customer_email', customerEmail)
         .eq('is_active', true)
         .is('deleted_at', null);
 
       if (!addressLookupError) {
-        const duplicate = (existingAddress || []).find((address) => {
+        const normalizedPhone = cleanPhone(customerPhone);
+        const duplicate = (existingAddress || []).filter((address) => cleanPhone(address.customer_phone) === normalizedPhone).find((address) => {
           return savedAddressTextKey(address.address_street || address.hospital) === savedAddressTextKey(addressPayload.address_street || addressPayload.hospital)
             && savedAddressTextKey(address.address_apt) === savedAddressTextKey(addressPayload.address_apt)
             && savedAddressTextKey(address.address_city) === savedAddressTextKey(addressPayload.address_city)
@@ -237,16 +252,18 @@ async function saveReusableBookingSnapshots(db, row) {
 
   if (vehiclePayload.vehicle_make || vehiclePayload.vehicle_model || vehiclePayload.license_plate) {
     try {
+      // Match by email server-side, then by NORMALIZED phone in JS — see the
+      // address lookup above for why an exact .eq() on customer_phone is wrong.
       const { data: existingVehicle, error: vehicleLookupError } = await db
         .from('saved_customer_vehicles')
-        .select('id,license_plate,vehicle_color')
-        .eq('customer_phone', customerPhone)
+        .select('id,customer_phone,license_plate,vehicle_color')
         .ilike('customer_email', customerEmail)
         .eq('is_active', true)
         .is('deleted_at', null);
 
       if (!vehicleLookupError) {
-        const duplicate = (existingVehicle || []).find((vehicle) => {
+        const normalizedPhone = cleanPhone(customerPhone);
+        const duplicate = (existingVehicle || []).filter((vehicle) => cleanPhone(vehicle.customer_phone) === normalizedPhone).find((vehicle) => {
           return savedVehiclePlateKey(vehicle.license_plate) === savedVehiclePlateKey(vehiclePayload.license_plate)
             && savedVehicleColorKey(vehicle.vehicle_color) === savedVehicleColorKey(vehiclePayload.vehicle_color);
         });
@@ -323,6 +340,9 @@ async function handleCreateAuthorizedBooking(body, res) {
   row.payment_intent_id = intent.id;
   row.estimated_total = expectedCents / 100;
   row.final_total = null;
+  // authorized_amount is audit-only — always the Stripe-verified amount,
+  // never trusted from the client even though it's in ALLOWED_BOOKING_FIELDS.
+  row.authorized_amount = expectedCents / 100;
 
   const db = getSupabaseAdmin();
 
@@ -332,7 +352,13 @@ async function handleCreateAuthorizedBooking(body, res) {
     const { data, error } = await db.from('service_requests').insert(row).select().maybeSingle();
 
     if (!error) {
-      await saveReusableBookingSnapshots(db, row);
+      // Best-effort — never let a snapshot-save problem block a booking that
+      // already succeeded and was already charged.
+      try {
+        await saveReusableBookingSnapshots(db, row);
+      } catch (snapshotErr) {
+        console.warn('[payments/create_authorized_booking] Snapshot save failed:', snapshotErr.message);
+      }
       console.log('[payments/create_authorized_booking] Created request', data?.id, 'for PI', intent.id);
       return res.status(200).json({ id: data?.id, status: 'request_received', payment_status: 'authorized' });
     }
@@ -474,7 +500,7 @@ async function handleCustomerCapture(body, res) {
       if (existingUse) {
         return res.status(400).json({ error: 'This payment has already been applied to another request. Please contact ShiftFuel.' });
       }
-      await markRequestComplete(db, request_id, new_payment_intent_id);
+      await markRequestComplete(db, request_id, new_payment_intent_id, request.final_total);
       console.log('[payments/customer_capture] New card payment succeeded for request', request_id);
       return res.status(200).json({ status: 'succeeded' });
     } catch (err) {
@@ -490,7 +516,7 @@ async function handleCustomerCapture(body, res) {
     return res.status(400).json({ error: 'No payment authorization found for this request' });
   }
   if (request.payment_status === 'captured') {
-    await markRequestComplete(db, request_id, request.payment_intent_id);
+    await markRequestComplete(db, request_id, request.payment_intent_id, request.final_total);
     return res.status(200).json({ status: 'succeeded', already_captured: true });
   }
   if (request.final_total == null || request.final_total <= 0) {
@@ -503,7 +529,7 @@ async function handleCustomerCapture(body, res) {
   try {
     const intent = await stripe.paymentIntents.retrieve(piId);
     if (intent.status === 'succeeded') {
-      await markRequestComplete(db, request_id, piId);
+      await markRequestComplete(db, request_id, piId, request.final_total);
       return res.status(200).json({ status: 'succeeded', already_captured: true });
     }
     if (intent.status !== 'requires_capture') {
@@ -513,7 +539,7 @@ async function handleCustomerCapture(body, res) {
       return res.status(400).json({ error: 'The authorized amount is less than the final total. Please contact ShiftFuel.' });
     }
     const intentCapture = await stripe.paymentIntents.capture(piId, { amount_to_capture: amountToCaptureInCents });
-    await markRequestComplete(db, request_id, piId);
+    await markRequestComplete(db, request_id, piId, intentCapture.amount_captured / 100);
     return res.status(200).json({ status: intentCapture.status, amount_captured: intentCapture.amount_captured });
   } catch (err) {
     if (err.message === 'DB_UPDATE_FAILED') {
@@ -523,7 +549,7 @@ async function handleCustomerCapture(body, res) {
       try {
         const check = await stripe.paymentIntents.retrieve(piId);
         if (check.status === 'succeeded') {
-          await markRequestComplete(db, request_id, piId);
+          await markRequestComplete(db, request_id, piId, request.final_total);
           return res.status(200).json({ status: 'succeeded', already_captured: true });
         }
       } catch (_) {}
@@ -652,7 +678,7 @@ async function handleWorkerCapture(body, res) {
     return res.status(400).json({ error: 'No payment authorization found for this request' });
   }
   if (request.payment_status === 'captured') {
-    await markRequestComplete(db, request_id, request.payment_intent_id);
+    await markRequestComplete(db, request_id, request.payment_intent_id, request.final_total);
     return res.status(200).json({ status: 'succeeded', already_captured: true });
   }
   if (request.final_total == null || request.final_total <= 0) {
@@ -666,7 +692,7 @@ async function handleWorkerCapture(body, res) {
   try {
     const intent = await stripe.paymentIntents.retrieve(piId);
     if (intent.status === 'succeeded') {
-      await markRequestComplete(db, request_id, piId);
+      await markRequestComplete(db, request_id, piId, request.final_total);
       return res.status(200).json({ status: 'succeeded', already_captured: true });
     }
     if (intent.status !== 'requires_capture') {
@@ -679,7 +705,7 @@ async function handleWorkerCapture(body, res) {
     }
     const captured = await stripe.paymentIntents.capture(piId, { amount_to_capture: amountToCaptureInCents });
     console.log('[payments/worker_capture] Captured', captured.id, 'for request', request_id);
-    await markRequestComplete(db, request_id, piId);
+    await markRequestComplete(db, request_id, piId, captured.amount_captured / 100);
     return res.status(200).json({ status: captured.status, amount_captured: captured.amount_captured });
   } catch (err) {
     if (err.message === 'DB_UPDATE_FAILED') {
@@ -689,7 +715,7 @@ async function handleWorkerCapture(body, res) {
       try {
         const check = await stripe.paymentIntents.retrieve(piId);
         if (check.status === 'succeeded') {
-          await markRequestComplete(db, request_id, piId);
+          await markRequestComplete(db, request_id, piId, request.final_total);
           return res.status(200).json({ status: 'succeeded', already_captured: true });
         }
       } catch (_) {}
@@ -797,7 +823,7 @@ async function handleCapturePayment(body, res) {
     console.log('[payments/capture_payment] Captured', intent.id, 'for request', request_id);
 
     // Update DB: captured payment moves request to awaiting key return.
-    await markRequestComplete(db, request_id, payment_intent_id);
+    await markRequestComplete(db, request_id, payment_intent_id, intent.amount_captured / 100);
 
     return res.status(200).json({ status: intent.status, amount_captured: intent.amount_captured });
   } catch (err) {
@@ -1070,6 +1096,11 @@ async function handleResolveReturnRequest(body, res) {
       cancellation_fee_decision_by: 'admin',
       cancellation_fee_decision_at: timestamp,
       final_total: charge.total,
+      actual_fuel_receipt_amount: charge.fuel || null,
+      actual_car_wash_receipt_amount: charge.wash || null,
+      payment_operating_recovery_amount: charge.recovery,
+      net_target_amount: charge.subtotal,
+      rounded_customer_total: charge.total,
       notes,
       updated_at: timestamp,
     }).eq('id', request_id);
