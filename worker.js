@@ -164,6 +164,13 @@ function isWorkerOpenStatus(status) {
   return workerOpenStatuses.includes(String(status || ''));
 }
 
+function hasCustomerReturnRequestAlert(request) {
+  return !!request?.return_requested_at
+    || request?.status === 'return_requested'
+    || request?.status === 'customer_return_requested'
+    || String(request?.notes || '').includes('[customer_return_requested]');
+}
+
 function workerJobBelongsToCurrentEmployee(job) {
   if (!currentEmployee) return false;
 
@@ -1199,7 +1206,7 @@ function workerFormatService(request) {
 function renderWorkerJobCard(request, mode) {
   const receiptTotals = receiptTotalsFromNotes(request);
   const workerReceiptTotal = receiptTotals.fuel + receiptTotals.wash;
-  const hasReturnRequest = !!request.return_requested_at || request.status === 'return_requested' || request.status === 'customer_return_requested';
+  const hasReturnRequest = hasCustomerReturnRequestAlert(request);
 
   return `
     <article class="request-card worker-job-card${mode === 'available' ? ' worker-job-available' : ''}">
@@ -1292,8 +1299,9 @@ function renderWorkerJobActions(request) {
   const actions = [];
   let activePanel = '';
   let nextAction = '';
+  const hasReturnRequest = !!request.return_requested_at || request.status === 'return_requested' || request.status === 'customer_return_requested';
 
-  if (request.return_requested_at && !['canceled_return_completed', 'complete'].includes(request.status)) {
+  if (hasReturnRequest && !['canceled_return_completed', 'complete'].includes(request.status)) {
     const returnBanner = `
       <div class="return-request-banner">
         <h4>Customer requested vehicle return.</h4>
@@ -1880,7 +1888,7 @@ async function uploadWorkerPhotoSet(button) {
   const timestamp = new Date().toISOString();
   const note = photoTimestampNote(panel.dataset.photoStage, timestamp);
   const notes = request.notes ? `${request.notes}\n${note}` : note;
-  const nextStatus = request.return_requested_at ? request.status : panel.dataset.nextStatus;
+  const nextStatus = panel.dataset.nextStatus;
   const { error } = await workerDb.rpc('worker_update_request', {
     p_token: SESSION_WORKER_TOKEN,
     p_request_id: id,
@@ -1973,7 +1981,7 @@ async function saveWorkerReturnLocation(button) {
       return_parking_location: returnParkingLocation,
       return_parking_spot: null,
       return_parking_map_url: null,
-      status: request.return_requested_at ? request.status : 'return_location_recorded',
+      status: 'return_location_recorded',
     },
   });
 

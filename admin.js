@@ -846,12 +846,19 @@ function adminFormatService(request) {
   return parts.filter(Boolean).join(' | ');
 }
 
+function hasCustomerReturnRequestAlert(request) {
+  return !!request?.return_requested_at
+    || request?.status === 'return_requested'
+    || request?.status === 'customer_return_requested'
+    || String(request?.notes || '').includes('[customer_return_requested]');
+}
+
 function requestCardDetails(request) {
   const receiptTotals = receiptTotalsFromNotes(request);
   const hasReceipts = Number(receiptTotals.fuel || 0) > 0 || Number(receiptTotals.wash || 0) > 0;
   const fees = hasReceipts ? feeSummary(request, receiptTotals) : feeSummary(request);
   const hasPayment = request.estimated_total != null || request.final_total != null || receiptTotals.fuel || receiptTotals.wash;
-  const hasReturnRequest = !!request.return_requested_at || request.status === 'return_requested' || request.status === 'customer_return_requested';
+  const hasReturnRequest = hasCustomerReturnRequestAlert(request);
 
   return `
     <div class="request-details">
@@ -1013,8 +1020,9 @@ function renderActions(request) {
   const actions = [];
   let activePanel = '';
   let nextAction = '';
+  const hasReturnRequest = !!request.return_requested_at || request.status === 'return_requested' || request.status === 'customer_return_requested';
 
-  if (request.return_requested_at && request.status !== 'canceled_return_completed') {
+  if (hasReturnRequest && request.status !== 'canceled_return_completed') {
     nextAction = 'Customer requested return after service started. Review completed receipts before charging or waiving fees.';
     activePanel = renderReturnRequestPanel(request);
   } else if (request.status === 'request_received') {

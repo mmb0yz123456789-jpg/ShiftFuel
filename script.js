@@ -1513,9 +1513,9 @@ function applyReturningAddress(index) {
     if (addressCity)   addressCity.value   = address.address_city   || "";
     if (addressState)  addressState.value  = address.address_state  || "DE";
     if (addressZip)    addressZip.value    = address.address_zip    || "";
-    form.elements.parkingLocation.value = [address.parking_location, address.parking_spot ? `spot ${address.parking_spot}` : ""].filter(Boolean).join(", ");
-    form.elements.parkingMapUrl.value = address.parking_map_url || "";
-    form.elements.keyHandoffDetails.value = address.key_handoff_details || "";
+    form.elements.parkingLocation.value = "";
+    form.elements.parkingMapUrl.value = "";
+    form.elements.keyHandoffDetails.value = "";
   } finally {
     isApplyingSavedAddress = false;
   }
