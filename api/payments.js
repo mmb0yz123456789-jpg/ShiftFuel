@@ -937,13 +937,47 @@ async function handleMarkKeysReturned(body, res) {
   }
 
   const db = getSupabaseAdmin();
-  const { data: request, error: reqErr } = await db
+  let { data: request, error: reqErr } = await db
     .from('service_requests')
     .select('id, status, customer_name, payment_status, return_requested_at, notes')
     .eq('id', request_id)
     .maybeSingle();
 
-  if (reqErr || !request) return res.status(404).json({ error: 'Request not found' });
+  if (reqErr) {
+    console.error('[payments/mark_keys_returned] Request lookup failed:', {
+      code: reqErr.code,
+      message: reqErr.message,
+      details: reqErr.details,
+      hint: reqErr.hint,
+      request_id,
+    });
+
+    const missingOptionalColumn = reqErr.code === 'PGRST204'
+      || reqErr.code === '42703'
+      || /column|schema cache|return_requested_at/i.test(String(reqErr.message || ''));
+
+    if (missingOptionalColumn) {
+      const fallback = await db
+        .from('service_requests')
+        .select('id, status, customer_name, payment_status, notes')
+        .eq('id', request_id)
+        .maybeSingle();
+      request = fallback.data ? { ...fallback.data, return_requested_at: null } : null;
+      reqErr = fallback.error;
+    }
+  }
+
+  if (reqErr) {
+    console.error('[payments/mark_keys_returned] Fallback request lookup failed:', {
+      code: reqErr.code,
+      message: reqErr.message,
+      details: reqErr.details,
+      hint: reqErr.hint,
+      request_id,
+    });
+    return res.status(500).json({ error: 'Could not verify this request. Please refresh and try again.' });
+  }
+  if (!request) return res.status(404).json({ error: 'Request not found. Please refresh the dashboard.' });
   if (request.status !== 'awaiting_key_return') {
     return res.status(400).json({ error: 'Request is not awaiting key return' });
   }
