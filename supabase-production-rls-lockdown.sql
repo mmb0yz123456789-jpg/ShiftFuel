@@ -227,15 +227,18 @@ BEGIN
   UPDATE service_requests sr
   SET status = 'customer_canceled',
       cancellation_reason = trim(p_reason),
+      canceled_at = now(),
+      canceled_by = 'customer',
+      payment_status = CASE
+        WHEN sr.payment_intent_id IS NULL THEN 'canceled'
+        ELSE sr.payment_status
+      END,
       updated_at = now()
   WHERE sr.id = p_request_id
     AND public.clean_phone(sr.customer_phone) = public.clean_phone(p_phone)
     AND lower(coalesce(sr.customer_email, '')) = lower(coalesce(p_email, ''))
-    AND sr.status NOT IN (
-      'complete', 'denied', 'customer_canceled', 'canceled',
-      'unable_to_complete', 'auto_reversed', 'closed_no_charge',
-      'canceled_return_completed'
-    );
+    AND sr.payment_intent_id IS NULL
+    AND sr.status IN ('pending', 'request_received', 'accepted');
 END;
 $$;
 
