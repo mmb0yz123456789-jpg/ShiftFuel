@@ -395,13 +395,16 @@ function transactionPricingSummary(request, receiptTotals = { fuel: 0, wash: 0 }
     ? Math.ceil((netTarget + PAYMENT_RECOVERY_FIXED) / (1 - PAYMENT_RECOVERY_RATE))
     : 0;
   const recovery = roundMoneyValue(roundedTotal - netTarget);
-  const recoveryCents = Math.round(recovery * 100);
   let fuelRecovery = 0;
   let washRecovery = 0;
 
   if (fuelBase && washBase) {
-    fuelRecovery = Math.floor(recoveryCents / 2) / 100;
-    washRecovery = (recoveryCents - Math.floor(recoveryCents / 2)) / 100;
+    // The whole recovery amount goes to whichever service cost more —
+    // not split evenly.
+    const fuelSide = Number(receiptTotals.fuel || 0) + fuelBase;
+    const washSide = Number(receiptTotals.wash || 0) + washBase;
+    if (fuelSide >= washSide) fuelRecovery = recovery;
+    else washRecovery = recovery;
   } else if (fuelBase) {
     fuelRecovery = recovery;
   } else if (washBase) {
@@ -1220,13 +1223,14 @@ function cbServicePricingParts({ needsFuel, needsWash, fuelAmount = 0, washAmoun
     ? Math.ceil((netTarget + PAYMENT_RECOVERY_FIXED) / (1 - PAYMENT_RECOVERY_RATE))
     : 0;
   const recovery = roundMoneyValue(roundedTotal - netTarget);
-  const recoveryCents = Math.round(recovery * 100);
   let fuelRecovery = 0;
   let washRecovery = 0;
 
   if (needsFuel && needsWash) {
-    fuelRecovery = Math.floor(recoveryCents / 2) / 100;
-    washRecovery = (recoveryCents - Math.floor(recoveryCents / 2)) / 100;
+    // The whole recovery amount goes to whichever service cost more —
+    // not split evenly.
+    if ((fuelAmount + fuelBase) >= (washAmount + washBase)) fuelRecovery = recovery;
+    else washRecovery = recovery;
   } else if (needsFuel) {
     fuelRecovery = recovery;
   } else if (needsWash) {
@@ -1821,7 +1825,7 @@ function renderPendingCompletionCard(request) {
                 <dd class="cb-estimated-wash">$0.00</dd>
               </div>
               <div class="cb-payment-wash-conv-row" hidden>
-                <dt>Car wash service</dt>
+                <dt>Car wash service fee</dt>
                 <dd class="cb-wash-conv-fee">$0.00</dd>
               </div>
               <div class="cb-payment-price-row" hidden>
@@ -1833,7 +1837,7 @@ function renderPendingCompletionCard(request) {
                 <dd class="cb-estimated-fuel">$0.00</dd>
               </div>
               <div class="cb-payment-fuel-conv-row" hidden>
-                <dt>Fuel service</dt>
+                <dt>Fuel service fee</dt>
                 <dd class="cb-fuel-conv-fee">$0.00</dd>
               </div>
               <div class="cb-payment-inspection-row" hidden>

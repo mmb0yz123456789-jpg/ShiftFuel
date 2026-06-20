@@ -573,13 +573,14 @@ function estimatePricingSummary({ needsFuel, needsWash, fuelAmount = 0, washAmou
     ? Math.ceil((netTarget + RETURN_RECOVERY_FIXED) / (1 - RETURN_RECOVERY_RATE))
     : 0;
   const recovery = roundMoneyValue(roundedTotal - netTarget);
-  const recoveryCents = Math.round(recovery * 100);
   let fuelRecovery = 0;
   let washRecovery = 0;
 
   if (needsFuel && needsWash) {
-    fuelRecovery = Math.floor(recoveryCents / 2) / 100;
-    washRecovery = (recoveryCents - Math.floor(recoveryCents / 2)) / 100;
+    // The whole recovery amount goes to whichever service cost more —
+    // not split evenly.
+    if ((fuelAmount + fuelBase) >= (washAmount + washBase)) fuelRecovery = recovery;
+    else washRecovery = recovery;
   } else if (needsFuel) {
     fuelRecovery = recovery;
   } else if (needsWash) {
@@ -625,13 +626,16 @@ function transactionPricingSummary(request, receiptTotals = { fuel: 0, wash: 0 }
     ? Math.ceil((netTarget + RETURN_RECOVERY_FIXED) / (1 - RETURN_RECOVERY_RATE))
     : 0;
   const recovery = roundMoneyValue(roundedTotal - netTarget);
-  const recoveryCents = Math.round(recovery * 100);
   let fuelRecovery = 0;
   let washRecovery = 0;
 
   if (fuelBase && washBase) {
-    fuelRecovery = Math.floor(recoveryCents / 2) / 100;
-    washRecovery = (recoveryCents - Math.floor(recoveryCents / 2)) / 100;
+    // The whole recovery amount goes to whichever service cost more —
+    // not split evenly.
+    const fuelSide = Number(receiptTotals.fuel || 0) + fuelBase;
+    const washSide = Number(receiptTotals.wash || 0) + washBase;
+    if (fuelSide >= washSide) fuelRecovery = recovery;
+    else washRecovery = recovery;
   } else if (fuelBase) {
     fuelRecovery = recovery;
   } else if (washBase) {

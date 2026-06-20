@@ -565,13 +565,14 @@ function servicePricingParts({ needsFuel, needsWash, fuelAmount = 0, washAmount 
     ? Math.ceil((netTarget + PAYMENT_RECOVERY_FIXED) / (1 - PAYMENT_RECOVERY_RATE))
     : 0;
   const recovery = roundMoneyValue(roundedTotal - netTarget);
-  const recoveryCents = Math.round(recovery * 100);
   let fuelRecovery = 0;
   let washRecovery = 0;
 
   if (needsFuel && needsWash) {
-    fuelRecovery = Math.floor(recoveryCents / 2) / 100;
-    washRecovery = (recoveryCents - Math.floor(recoveryCents / 2)) / 100;
+    // The whole recovery amount goes to whichever service cost more —
+    // not split evenly.
+    if ((fuelAmount + fuelBase) >= (washAmount + washBase)) fuelRecovery = recovery;
+    else washRecovery = recovery;
   } else if (needsFuel) {
     fuelRecovery = recovery;
   } else if (needsWash) {
@@ -1442,17 +1443,25 @@ async function lookupReturningCustomer() {
 }
 
 function showReturningConfirmation() {
-  returningCustomerNeedsConfirmation = true;
-  [
-    [returningParkingConfirmationControl, returningParkingConfirmation],
-    [returningTimeConfirmationControl, returningTimeConfirmation],
-  ].forEach(([control, checkbox]) => {
-    if (control) control.hidden = false;
+  const hasParkingAndKeys = Boolean(form.elements.parkingLocation?.value?.trim())
+    && Boolean(form.elements.keyHandoffDetails?.value?.trim());
+  const hasReturnTime = Boolean(returnTime.value);
+  const needsParkingConfirmation = !hasParkingAndKeys;
+  const needsTimeConfirmation = !hasReturnTime;
+
+  returningCustomerNeedsConfirmation = needsParkingConfirmation || needsTimeConfirmation;
+
+  const apply = (control, checkbox, shouldShow) => {
+    if (control) control.hidden = !shouldShow;
     if (checkbox) {
-      checkbox.required = true;
+      checkbox.required = shouldShow;
       checkbox.checked = false;
+      checkbox.setCustomValidity("");
     }
-  });
+  };
+
+  apply(returningParkingConfirmationControl, returningParkingConfirmation, needsParkingConfirmation);
+  apply(returningTimeConfirmationControl, returningTimeConfirmation, needsTimeConfirmation);
   updateReturningConfirmationText();
 }
 
@@ -2360,14 +2369,14 @@ function validateReturningConfirmation() {
     return true;
   }
 
-  if (!returningParkingConfirmation?.checked) {
+  if (returningParkingConfirmation?.required && !returningParkingConfirmation?.checked) {
     returningParkingConfirmation?.setCustomValidity("Confirm the parking and key location before submitting.");
     returningParkingConfirmation?.reportValidity();
     returningParkingConfirmationControl?.scrollIntoView({ behavior: "smooth", block: "center" });
     return false;
   }
 
-  if (!returningTimeConfirmation?.checked) {
+  if (returningTimeConfirmation?.required && !returningTimeConfirmation?.checked) {
     returningTimeConfirmation?.setCustomValidity("Confirm the desired return time before submitting.");
     returningTimeConfirmation?.reportValidity();
     returningTimeConfirmationControl?.scrollIntoView({ behavior: "smooth", block: "center" });
@@ -2382,6 +2391,19 @@ function validateReturningConfirmation() {
 ["parkingLocation", "parkingSpot", "parkingMapUrl", "keyHandoffDetails"].forEach((fieldName) => {
   form.elements[fieldName]?.addEventListener("input", updateReturningConfirmationText);
   form.elements[fieldName]?.addEventListener("change", updateReturningConfirmationText);
+});
+
+["parkingLocation", "keyHandoffDetails"].forEach((fieldName) => {
+  form.elements[fieldName]?.addEventListener("input", () => {
+    if (returningCustomerNeedsConfirmation) showReturningConfirmation();
+  });
+  form.elements[fieldName]?.addEventListener("change", () => {
+    if (returningCustomerNeedsConfirmation) showReturningConfirmation();
+  });
+});
+
+returnTime?.addEventListener("change", () => {
+  if (returningCustomerNeedsConfirmation) showReturningConfirmation();
 });
 
 function renderFuelPricingSummary() {
