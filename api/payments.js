@@ -955,15 +955,15 @@ async function handleMarkKeysReturned(body, res) {
 
     const missingOptionalColumn = reqErr.code === 'PGRST204'
       || reqErr.code === '42703'
-      || /column|schema cache|return_requested_at/i.test(String(reqErr.message || ''));
+      || /column|schema cache|return_requested_at|captured_amount/i.test(String(reqErr.message || ''));
 
     if (missingOptionalColumn) {
       const fallback = await db
         .from('service_requests')
-        .select('id, status, customer_name, payment_intent_id, payment_status, captured_amount, notes')
+        .select('id, status, customer_name, payment_intent_id, payment_status, notes')
         .eq('id', request_id)
         .maybeSingle();
-      request = fallback.data ? { ...fallback.data, return_requested_at: null } : null;
+      request = fallback.data ? { ...fallback.data, captured_amount: null, return_requested_at: null } : null;
       reqErr = fallback.error;
     }
   }
@@ -993,8 +993,7 @@ async function handleMarkKeysReturned(body, res) {
   async function closeReturnRequestAfterCharge({ charge, capturedAmount, note }) {
     const timestamp = new Date().toISOString();
     const notes = note ? (request.notes ? `${request.notes}\n${note}` : note) : request.notes;
-
-    return db.from('service_requests').update({
+    const fullUpdate = {
       status: 'canceled_return_completed',
       payment_status: 'cancellation_fee_paid',
       captured_amount: capturedAmount,
@@ -1015,7 +1014,44 @@ async function handleMarkKeysReturned(body, res) {
       key_returned_by: key_returned_by || null,
       notes,
       updated_at: timestamp,
-    }).eq('id', request_id);
+    };
+    const keyReturnUpdate = {
+      status: 'canceled_return_completed',
+      payment_status: 'cancellation_fee_paid',
+      final_total: charge.total,
+      key_returned_to_type,
+      key_returned_to_name_or_location: returnedToName,
+      key_returned_at: timestamp,
+      key_returned_by: key_returned_by || null,
+      notes,
+      updated_at: timestamp,
+    };
+    const minimalUpdate = {
+      status: 'canceled_return_completed',
+      payment_status: 'cancellation_fee_paid',
+      final_total: charge.total,
+      notes,
+      updated_at: timestamp,
+    };
+
+    let result = await db.from('service_requests').update(fullUpdate).eq('id', request_id);
+    const missingOptionalColumn = (error) => error && (
+      error.code === 'PGRST204'
+      || error.code === '42703'
+      || /column|schema cache|captured_amount|cancellation_fee|actual_fuel|actual_car_wash|payment_operating|net_target|rounded_customer/i.test(String(error.message || ''))
+    );
+
+    if (missingOptionalColumn(result.error)) {
+      console.warn('[payments/mark_keys_returned] Full return closeout update hit missing optional column; retrying with key-return fields:', result.error.message);
+      result = await db.from('service_requests').update(keyReturnUpdate).eq('id', request_id);
+    }
+
+    if (missingOptionalColumn(result.error) || /key_returned/i.test(String(result.error?.message || ''))) {
+      console.warn('[payments/mark_keys_returned] Key-return closeout update hit missing optional column; retrying minimal close:', result.error?.message);
+      result = await db.from('service_requests').update(minimalUpdate).eq('id', request_id);
+    }
+
+    return result;
   }
 
   const returnPaymentResolved = ['cancellation_fee_paid', 'authorization_released', 'voided', 'closed_no_charge'];
