@@ -62,6 +62,7 @@ window.ShiftFuelDatePicker = (() => {
     })();
 
     let currentValue = hiddenInput.value || options.value || '';
+    hiddenInput.value = currentValue;
 
     // Start calendar view on current value's month, or today if none
     const initP = parseYMD(currentValue) || minP || parseYMD(todayStr()) || { y: new Date().getFullYear(), m: new Date().getMonth() + 1 };
