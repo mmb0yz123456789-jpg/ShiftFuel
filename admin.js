@@ -240,7 +240,10 @@ async function refreshAdminCreateReturnTimes() {
   try {
     const { data, error } = await db.rpc('public_booked_return_slots', { p_service_date: dateValue });
     if (error) throw error;
-    bookedSlots = new Set((data || []).map((row) => crNormalizeTimeSlot(row.desired_return_time)).filter(Boolean));
+    bookedSlots = new Set((data || [])
+      .filter((row) => !terminalStatuses.includes(row.status))
+      .map((row) => crNormalizeTimeSlot(row.desired_return_time))
+      .filter(Boolean));
   } catch (error) {
     console.warn('Admin create request booked slot lookup failed:', error);
   }
