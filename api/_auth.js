@@ -1,7 +1,7 @@
 const { createClient } = require('@supabase/supabase-js');
 
-// Origins allowed to call these APIs.
-// Adjust when a custom domain is added.
+// Approved production origins allowed to call these APIs.
+// Add any custom production domain here once one is configured.
 const ALLOWED_ORIGINS = [
   'https://shift-fuel.vercel.app',
 ];
@@ -9,8 +9,12 @@ const ALLOWED_ORIGINS = [
 function getAllowedOrigin(req) {
   const origin = req.headers.origin || '';
   if (ALLOWED_ORIGINS.includes(origin)) return origin;
-  // Allow preview deployments on *.vercel.app
-  if (origin.match(/^https:\/\/[\w-]+\.vercel\.app$/)) return origin;
+  // Preview deployments (*.vercel.app) are only allowed when explicitly
+  // opted into via env var — never by default in production, since that
+  // would let any random preview URL call these APIs with production data.
+  if (process.env.ALLOW_VERCEL_PREVIEWS === 'true' && /^https:\/\/[\w-]+\.vercel\.app$/.test(origin)) {
+    return origin;
+  }
   return ALLOWED_ORIGINS[0];
 }
 

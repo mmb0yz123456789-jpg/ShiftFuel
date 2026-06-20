@@ -125,10 +125,6 @@ const returningCustomerEmail = document.querySelector("#returning-customer-email
 const returningCustomerButton = document.querySelector("#returning-customer-button");
 const returningCustomerStatus = document.querySelector("#returning-customer-status");
 const returningCustomerResults = document.querySelector("#returning-customer-results");
-const returningParkingConfirmationControl = document.querySelector("#returning-parking-confirmation-control");
-const returningParkingConfirmation = document.querySelector("#returning-parking-confirmation");
-const returningTimeConfirmationControl = document.querySelector("#returning-time-confirmation-control");
-const returningTimeConfirmation = document.querySelector("#returning-time-confirmation");
 const parkingKeyHandoffHeading = document.querySelector("#parking-key-handoff-heading");
 const RESUME_BUCKET = "applicant-resumes";
 
@@ -144,7 +140,6 @@ let workerAvailabilitySlots = null;
 let workerAvailabilityLoaded = false;
 let returningCustomerMatches = [];
 let returningCustomerSavedOptions = { addresses: [], vehicles: [], recentRequests: [] };
-let returningCustomerNeedsConfirmation = false;
 let currentlyAppliedRequestId = null;
 let currentlyAppliedSavedAddressId = null;
 let currentlyAppliedSavedVehicleId = null;
@@ -196,7 +191,13 @@ validateAddressBtn?.addEventListener('click', async () => {
   setAddressStatus('', 'Verifying address…');
   validateAddressBtn.disabled = true;
   try {
-    const result = await validateServiceArea(fullAddress);
+    const result = await validateServiceArea({
+      street: addressStreet?.value?.trim() || '',
+      apt: addressApt?.value?.trim() || '',
+      city: addressCity?.value?.trim() || '',
+      state: addressState?.value?.trim() || '',
+      zip: addressZip?.value?.trim() || '',
+    });
     if (!result.valid) {
       setAddressStatus('error', result.message);
       addressValidated = false;
@@ -569,10 +570,18 @@ function servicePricingParts({ needsFuel, needsWash, fuelAmount = 0, washAmount 
   let washRecovery = 0;
 
   if (needsFuel && needsWash) {
-    // The whole recovery amount goes to whichever service cost more —
-    // not split evenly.
-    if ((fuelAmount + fuelBase) >= (washAmount + washBase)) fuelRecovery = recovery;
-    else washRecovery = recovery;
+    // Recovery is calculated once on the whole transaction, then split
+    // proportionally by base service fee (equal split when bases are
+    // equal, which they currently always are). Any leftover penny from
+    // rounding goes to the fuel side so the two lines always sum exactly
+    // to the rounded customer total.
+    const recoveryCents = Math.round(recovery * 100);
+    const totalBase = fuelBase + washBase;
+    const fuelCents = totalBase > 0
+      ? Math.round(recoveryCents * (fuelBase / totalBase))
+      : Math.round(recoveryCents / 2);
+    fuelRecovery = fuelCents / 100;
+    washRecovery = (recoveryCents - fuelCents) / 100;
   } else if (needsFuel) {
     fuelRecovery = recovery;
   } else if (needsWash) {
@@ -705,71 +714,23 @@ function getServiceAddress() {
   ].filter(Boolean).join(', ');
 }
 
-// ── Service area geocoding ────────────────────────────────────────────────────
+// ── Service area validation ───────────────────────────────────────────────────
+// Geocoding happens server-side (api/address.js) to avoid CORS/rate-limit
+// issues with calling Nominatim directly from the browser, and to keep the
+// service-area anchor/radius defined in one place.
 
-const SERVICE_ANCHOR_LAT = 39.6789; // 132 Christiana Mall, Newark DE 19702
-const SERVICE_ANCHOR_LON = -75.6653;
-const SERVICE_MAX_MILES = 20;
-
-function haversineMiles(lat1, lon1, lat2, lon2) {
-  const R = 3958.8;
-  const toRad = (d) => (d * Math.PI) / 180;
-  const dLat = toRad(lat2 - lat1);
-  const dLon = toRad(lon2 - lon1);
-  const a =
-    Math.sin(dLat / 2) ** 2 +
-    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
-  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-}
-
-async function nominatimSearch(query) {
-  const url = `https://nominatim.openstreetmap.org/search?format=json&addressdetails=1&q=${encodeURIComponent(query)}&limit=1`;
-  const response = await fetch(url, {
-    headers: { "Accept-Language": "en", "User-Agent": "ShiftFuelConcierge/1.0" },
-  });
-  if (!response.ok) return null;
-  const results = await response.json();
-  return results?.length ? results[0] : null;
-}
-
-async function validateServiceArea(workplaceText, fallbackParts = null) {
+async function validateServiceArea({ street = '', apt = '', city = '', state = '', zip = '' } = {}) {
   try {
-    // Try the full address first; fall back to city+state+zip so that streets
-    // missing from OpenStreetMap still pass area validation.
-    let result = await nominatimSearch(workplaceText);
-
-    if (!result) {
-      const city  = fallbackParts?.city ?? addressCity?.value?.trim()  ?? '';
-      const state = fallbackParts?.state ?? addressState?.value?.trim() ?? '';
-      const zip   = fallbackParts?.zip ?? addressZip?.value?.trim()   ?? '';
-      const fallback = [city, state, zip].filter(Boolean).join(', ');
-      if (fallback) result = await nominatimSearch(fallback);
+    const res = await fetch('/api/address', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'validate_service_area', street, apt, city, state, zip }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      return { valid: false, message: data.message || 'We could not verify this address. Please check your address and try again.' };
     }
-
-    if (!result) {
-      return {
-        valid: false,
-        message: "We could not verify this address. Please check your address and try again.",
-      };
-    }
-
-    const dist = haversineMiles(
-      SERVICE_ANCHOR_LAT, SERVICE_ANCHOR_LON,
-      Number(result.lat), Number(result.lon)
-    );
-    if (dist > SERVICE_MAX_MILES) {
-      return { valid: false, message: "We currently do not serve this area." };
-    }
-
-    // Build a clean canonical address from Nominatim's structured data.
-    const a = result.address || {};
-    const canonicalParts = [
-      [a.house_number, a.road].filter(Boolean).join(' '),
-      a.city || a.town || a.village || a.county,
-      a.state,
-      a.postcode,
-    ].filter(Boolean);
-    return { valid: true, canonicalAddress: canonicalParts.join(', ') };
+    return data;
   } catch {
     return { valid: false, message: 'We could not verify this address. Please check your address and try again.' };
   }
@@ -1448,29 +1409,6 @@ async function lookupReturningCustomer() {
   }
 }
 
-function showReturningConfirmation() {
-  const hasParkingAndKeys = Boolean(form.elements.parkingLocation?.value?.trim())
-    && Boolean(form.elements.keyHandoffDetails?.value?.trim());
-  const hasReturnTime = Boolean(returnTime.value);
-  const needsParkingConfirmation = !hasParkingAndKeys;
-  const needsTimeConfirmation = !hasReturnTime;
-
-  returningCustomerNeedsConfirmation = needsParkingConfirmation || needsTimeConfirmation;
-
-  const apply = (control, checkbox, shouldShow) => {
-    if (control) control.hidden = !shouldShow;
-    if (checkbox) {
-      checkbox.required = shouldShow;
-      checkbox.checked = false;
-      checkbox.setCustomValidity("");
-    }
-  };
-
-  apply(returningParkingConfirmationControl, returningParkingConfirmation, needsParkingConfirmation);
-  apply(returningTimeConfirmationControl, returningTimeConfirmation, needsTimeConfirmation);
-  updateReturningConfirmationText();
-}
-
 function clearVehicleFields() {
   if (vehicleYear) vehicleYear.value = "";
   if (vehicleMake) vehicleMake.value = "";
@@ -1506,21 +1444,6 @@ function normalizeTextForMatch(value) {
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, " ")
     .trim();
-}
-
-function updateReturningConfirmationText() {
-  const parking = form.elements.parkingLocation?.value || "parking location not entered";
-  const keyInstructions = form.elements.keyHandoffDetails?.value || "key handoff instructions not entered";
-  const desiredTime = returnTime.value ? formatTimeLabel(returnTime.value) : "return time not selected";
-
-  const parkingLabel = returningParkingConfirmationControl?.querySelector("span");
-  const timeLabel = returningTimeConfirmationControl?.querySelector("span");
-  if (parkingLabel) {
-    parkingLabel.textContent = `Did you confirm your parking and key handoff instructions: ${parking}; ${keyInstructions}?`;
-  }
-  if (timeLabel) {
-    timeLabel.textContent = `Did you confirm your desired return time: ${desiredTime}?`;
-  }
 }
 
 function scrollToParkingVerification() {
@@ -1564,7 +1487,6 @@ async function applyReturningCustomer(index, mode = "same-car") {
   updateServiceAvailability();
   updateServiceControls();
   updateEstimate();
-  showReturningConfirmation();
   scrollToParkingVerification();
 
   returningCustomerStatus.textContent = mode === "new-car"
@@ -1602,8 +1524,6 @@ function applyReturningAddress(index) {
   addressValidated = true;
   setPostAddressSections(true);
   setAddressStatus("success", "Saved address selected. Confirm parking and key handoff before continuing.");
-  showReturningConfirmation();
-  updateReturningConfirmationText();
   renderReturningCustomerResults();
   returningCustomerStatus.textContent = "Saved address selected. Confirm parking and key handoff before continuing.";
 }
@@ -1834,10 +1754,13 @@ async function openSavedAddressModal(address = null) {
     }
     statusEl.textContent = "Verifying address...";
     statusEl.dataset.status = "";
-    const validation = await validateServiceArea(
-      [data.address_street, data.address_city, data.address_state, data.address_zip].filter(Boolean).join(", "),
-      { city: data.address_city, state: data.address_state, zip: data.address_zip }
-    );
+    const validation = await validateServiceArea({
+      street: data.address_street,
+      apt: data.address_apt,
+      city: data.address_city,
+      state: data.address_state,
+      zip: data.address_zip,
+    });
     if (!validation.valid) {
       statusEl.textContent = validation.message || "We currently do not serve this area.";
       statusEl.dataset.status = "error";
@@ -2287,7 +2210,6 @@ quickInspection.addEventListener("change", () => {
   updateEstimate();
 });
 returnTime.addEventListener("change", updateServiceAvailability);
-returnTime.addEventListener("change", updateReturningConfirmationText);
 
 // Picker enforces min/max at selection time; this listener refreshes return slots on date change.
 serviceDate.addEventListener("change", refreshBookedReturnSlots);
@@ -2362,74 +2284,6 @@ returningCustomerResults?.addEventListener("click", async (event) => {
   applyReturningCustomer(Number(button.dataset.returningIndex), button.dataset.returningMode || "same-car");
 });
 
-[
-  returningParkingConfirmation,
-  returningTimeConfirmation,
-].forEach((checkbox) => {
-  checkbox?.addEventListener("change", () => {
-    if (checkbox.checked) {
-      checkbox.setCustomValidity("");
-    }
-  });
-});
-
-function resetReturningConfirmation() {
-  returningCustomerNeedsConfirmation = false;
-  [
-    [returningParkingConfirmationControl, returningParkingConfirmation],
-    [returningTimeConfirmationControl, returningTimeConfirmation],
-  ].forEach(([control, checkbox]) => {
-    if (control) control.hidden = true;
-    if (checkbox) {
-      checkbox.required = false;
-      checkbox.checked = false;
-      checkbox.setCustomValidity("");
-    }
-  });
-}
-
-function validateReturningConfirmation() {
-  if (!returningCustomerNeedsConfirmation) {
-    return true;
-  }
-
-  if (returningParkingConfirmation?.required && !returningParkingConfirmation?.checked) {
-    returningParkingConfirmation?.setCustomValidity("Confirm the parking and key location before submitting.");
-    returningParkingConfirmation?.reportValidity();
-    returningParkingConfirmationControl?.scrollIntoView({ behavior: "smooth", block: "center" });
-    return false;
-  }
-
-  if (returningTimeConfirmation?.required && !returningTimeConfirmation?.checked) {
-    returningTimeConfirmation?.setCustomValidity("Confirm the desired return time before submitting.");
-    returningTimeConfirmation?.reportValidity();
-    returningTimeConfirmationControl?.scrollIntoView({ behavior: "smooth", block: "center" });
-    return false;
-  }
-
-  returningParkingConfirmation?.setCustomValidity("");
-  returningTimeConfirmation?.setCustomValidity("");
-  return true;
-}
-
-["parkingLocation", "parkingSpot", "parkingMapUrl", "keyHandoffDetails"].forEach((fieldName) => {
-  form.elements[fieldName]?.addEventListener("input", updateReturningConfirmationText);
-  form.elements[fieldName]?.addEventListener("change", updateReturningConfirmationText);
-});
-
-["parkingLocation", "keyHandoffDetails"].forEach((fieldName) => {
-  form.elements[fieldName]?.addEventListener("input", () => {
-    if (returningCustomerNeedsConfirmation) showReturningConfirmation();
-  });
-  form.elements[fieldName]?.addEventListener("change", () => {
-    if (returningCustomerNeedsConfirmation) showReturningConfirmation();
-  });
-});
-
-returnTime?.addEventListener("change", () => {
-  if (returningCustomerNeedsConfirmation) showReturningConfirmation();
-});
-
 function renderFuelPricingSummary() {
   const container = document.querySelector('#fuel-pricing-summary');
   if (!container) return;
@@ -2469,10 +2323,6 @@ form.addEventListener("submit", async (event) => {
 
   returnTime.setCustomValidity("");
 
-  if (!validateReturningConfirmation()) {
-    return;
-  }
-
   if (!addressValidated) {
     setAddressStatus('error', 'Please validate your service address before continuing.');
     addressStreet?.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -2484,7 +2334,13 @@ form.addEventListener("submit", async (event) => {
     setAddressStatus('success', 'Saved address selected. Confirm parking and key handoff before continuing.');
     statusMessage.textContent = '';
   } else {
-  const areaResult = await validateServiceArea(getServiceAddress());
+  const areaResult = await validateServiceArea({
+    street: addressStreet?.value?.trim() || '',
+    apt: addressApt?.value?.trim() || '',
+    city: addressCity?.value?.trim() || '',
+    state: addressState?.value?.trim() || '',
+    zip: addressZip?.value?.trim() || '',
+  });
   if (!areaResult.valid) {
     statusMessage.textContent = "";
     addressValidated = false;
@@ -2547,7 +2403,6 @@ async function saveBooking(payload) {
       returningCustomerResults.hidden = true;
       returningCustomerResults.innerHTML = "";
     }
-    resetReturningConfirmation();
     serviceDatePicker?.setValue(todayValue);
     resetModels();
     updateServiceControls();

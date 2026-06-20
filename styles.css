@@ -1585,6 +1585,39 @@ textarea:focus {
   backdrop-filter: blur(10px);
 }
 
+/* Admin login gets the same deep-navy accent as the admin dashboard so the
+   distinction starts the moment you click "Admin login" — no worker photo
+   background here, just the navy palette via the shared CSS variables. */
+.admin-login-page {
+  --brand: #1f3a8a;
+  --brand-dark: #142a63;
+  --accent: #f2994a;
+  --bg: #eef1f8;
+  --surface-soft: #e3e9f7;
+  --line: #ccd5ea;
+  background: linear-gradient(135deg, #1f3a8a 0%, #142a63 60%, #0c1d47 100%);
+}
+
+.admin-login-page .booking-form fieldset {
+  border-color: rgba(31, 58, 138, 0.18);
+  box-shadow: 0 22px 70px rgba(12, 29, 71, 0.22);
+}
+
+/* The hero text sits directly on the dark navy gradient (no light photo
+   overlay like the worker login page has), so it needs light colors —
+   the default dark --ink/--muted text would be nearly invisible here. */
+.admin-login-page .section-heading .eyebrow {
+  color: #ffd9a8;
+}
+
+.admin-login-page .section-heading h1 {
+  color: #ffffff;
+}
+
+.admin-login-page .section-heading p {
+  color: #c9d3ef;
+}
+
 .worker-portal-page {
   background:
     linear-gradient(rgba(245, 247, 244, 0.9), rgba(245, 247, 244, 0.96)),
@@ -1983,6 +2016,10 @@ textarea:focus {
     background:
       linear-gradient(rgba(245, 247, 244, 0.96), rgba(245, 247, 244, 0.92)),
       url("https://images.unsplash.com/photo-1503376780353-7e6692767b70?auto=format&fit=crop&w=1800&q=80") center / cover fixed;
+  }
+
+  .admin-login-page {
+    background: linear-gradient(135deg, #1f3a8a 0%, #142a63 60%, #0c1d47 100%);
   }
 
   .portal-login-page .admin-hero {

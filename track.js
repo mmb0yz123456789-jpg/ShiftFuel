@@ -233,6 +233,25 @@ function canFreeCancelRequest(request) {
   return freeCancelStatuses.includes(request.status);
 }
 
+// Same backend validation used by the main Book Now page — keeps the
+// service-area anchor/radius and Nominatim geocoding in one server-side place.
+async function validateCbServiceArea({ street = '', apt = '', city = '', state = '', zip = '' } = {}) {
+  try {
+    const res = await fetch('/api/address', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'validate_service_area', street, apt, city, state, zip }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      return { valid: false, message: data.message || 'We could not verify this address. Please check your address and try again.' };
+    }
+    return data;
+  } catch {
+    return { valid: false, message: 'We could not verify this address. Please check your address and try again.' };
+  }
+}
+
 async function submitCustomerReturnRequest(requestId, button = null) {
   const originalText = button?.textContent;
   if (button) {
@@ -458,12 +477,14 @@ function transactionPricingSummary(request, receiptTotals = { fuel: 0, wash: 0 }
   let washRecovery = 0;
 
   if (fuelBase && washBase) {
-    // The whole recovery amount goes to whichever service cost more —
-    // not split evenly.
-    const fuelSide = Number(receiptTotals.fuel || 0) + fuelBase;
-    const washSide = Number(receiptTotals.wash || 0) + washBase;
-    if (fuelSide >= washSide) fuelRecovery = recovery;
-    else washRecovery = recovery;
+    // Recovery is calculated once on the whole transaction, then split
+    // proportionally by base service fee (equal split when bases are
+    // equal). Leftover penny from rounding goes to the fuel side.
+    const recoveryCents = Math.round(recovery * 100);
+    const totalBase = fuelBase + washBase;
+    const fuelCents = Math.round(recoveryCents * (fuelBase / totalBase));
+    fuelRecovery = fuelCents / 100;
+    washRecovery = (recoveryCents - fuelCents) / 100;
   } else if (fuelBase) {
     fuelRecovery = recovery;
   } else if (washBase) {
@@ -1286,10 +1307,16 @@ function cbServicePricingParts({ needsFuel, needsWash, fuelAmount = 0, washAmoun
   let washRecovery = 0;
 
   if (needsFuel && needsWash) {
-    // The whole recovery amount goes to whichever service cost more —
-    // not split evenly.
-    if ((fuelAmount + fuelBase) >= (washAmount + washBase)) fuelRecovery = recovery;
-    else washRecovery = recovery;
+    // Recovery is calculated once on the whole transaction, then split
+    // proportionally by base service fee (equal split when bases are
+    // equal). Leftover penny from rounding goes to the fuel side.
+    const recoveryCents = Math.round(recovery * 100);
+    const totalBase = fuelBase + washBase;
+    const fuelCents = totalBase > 0
+      ? Math.round(recoveryCents * (fuelBase / totalBase))
+      : Math.round(recoveryCents / 2);
+    fuelRecovery = fuelCents / 100;
+    washRecovery = (recoveryCents - fuelCents) / 100;
   } else if (needsFuel) {
     fuelRecovery = recovery;
   } else if (needsWash) {
@@ -3016,6 +3043,16 @@ trackingResult.addEventListener('submit', async (event) => {
   if (!addrStreet  && fail('Please enter the street address.', '.cb-address-street')) return;
   if (!addrCity    && fail('Please enter the city.', '.cb-address-city')) return;
   if (!addrZip     && fail('Please enter the ZIP code.', '.cb-address-zip')) return;
+
+  if (statusEl) statusEl.textContent = 'Verifying service address…';
+  const areaResult = await validateCbServiceArea({ street: addrStreet, apt: addrApt, city: addrCity, state: addrState, zip: addrZip });
+  if (!areaResult.valid) {
+    if (statusEl) statusEl.textContent = areaResult.message || 'We could not verify this address. Please check your address and try again.';
+    form.querySelector('.cb-address-street')?.focus();
+    return;
+  }
+  if (statusEl) statusEl.textContent = '';
+
   if ((!year || !make || !model || !color || !plate) && fail('Please fill in all vehicle fields.', '.cb-vehicle-year')) return;
   if (!parkingLoc  && fail('Please describe where your vehicle will be parked.', '.cb-parking-location')) return;
   if (!keyHandoff  && fail('Please describe how to pick up your keys.', '.cb-key-handoff')) return;
