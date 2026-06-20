@@ -655,10 +655,40 @@ async function handleCustomerCancel(body, res) {
     payment_status: paymentStatus,
     updated_at: timestamp,
   };
+  const minimalUpdateData = {
+    status: 'customer_canceled',
+    cancellation_reason: reason.trim(),
+    payment_status: paymentStatus,
+    updated_at: timestamp,
+  };
 
-  const { error: updateErr } = await db.from('service_requests').update(updateData).eq('id', request_id);
+  let { error: updateErr } = await db.from('service_requests').update(updateData).eq('id', request_id);
+
   if (updateErr) {
-    console.error('[payments/customer_cancel] DB update failed:', updateErr.message);
+    console.error('[payments/customer_cancel] Full DB update failed:', {
+      code: updateErr.code,
+      message: updateErr.message,
+      details: updateErr.details,
+      hint: updateErr.hint,
+    });
+
+    const missingOptionalColumn = updateErr.code === 'PGRST204'
+      || updateErr.code === '42703'
+      || /column|schema cache|canceled_at|canceled_by/i.test(String(updateErr.message || ''));
+
+    if (missingOptionalColumn) {
+      const fallback = await db.from('service_requests').update(minimalUpdateData).eq('id', request_id);
+      updateErr = fallback.error;
+    }
+  }
+
+  if (updateErr) {
+    console.error('[payments/customer_cancel] DB update failed:', {
+      code: updateErr.code,
+      message: updateErr.message,
+      details: updateErr.details,
+      hint: updateErr.hint,
+    });
     return res.status(500).json({ error: 'Could not cancel the request. Please contact ShiftFuel.' });
   }
 

@@ -2476,7 +2476,7 @@ trackingResult.addEventListener("click", async (event) => {
     try {
       await cancelCustomerRequestFromTrack({ requestId, reason });
       trackMessage.textContent = 'Your request has been canceled. Your card authorization was released and you were not charged.';
-      await refreshTrackedRequestsAfterAction(requestId);
+      await refreshTrackedRequestsAfterAction();
     } catch (error) {
       console.error('[track] Customer cancellation failed for cb flow:', error.payload || error);
       if (String(error.message || '').toLowerCase().includes('request vehicle return')) {
@@ -2656,7 +2656,7 @@ trackingResult.addEventListener("click", async (event) => {
 
   trackMessage.textContent = "Your request has been canceled. Your card authorization was released and you were not charged.";
   try {
-    await refreshTrackedRequestsAfterAction(requestId);
+    await refreshTrackedRequestsAfterAction();
   } catch (refreshError) {
     console.error('[track] Refresh after cancellation failed:', refreshError);
   }
