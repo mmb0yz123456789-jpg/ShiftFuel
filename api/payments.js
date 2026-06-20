@@ -107,7 +107,19 @@ async function markRequestComplete(db, requestId, paymentIntentId, capturedAmoun
   };
   if (capturedAmountDollars != null) updateData.captured_amount = capturedAmountDollars;
 
-  const { error } = await db.from('service_requests').update(updateData).eq('id', requestId);
+  let { error } = await db.from('service_requests').update(updateData).eq('id', requestId);
+
+  if (error && updateData.captured_amount != null) {
+    const missingOptionalColumn = error.code === 'PGRST204'
+      || error.code === '42703'
+      || /column|schema cache|captured_amount/i.test(String(error.message || ''));
+
+    if (missingOptionalColumn) {
+      console.warn('[payments] captured_amount column unavailable during markComplete; retrying core update:', error.message);
+      delete updateData.captured_amount;
+      ({ error } = await db.from('service_requests').update(updateData).eq('id', requestId));
+    }
+  }
 
   if (error) {
     console.error('[payments] markComplete DB error for request', requestId, '—', error.message);
@@ -898,7 +910,7 @@ async function handleCapturePayment(body, res) {
   if (request.payment_status === 'captured') {
     return res.status(200).json({ status: 'succeeded', already_captured: true });
   }
-  if (request.payment_status !== 'authorized') {
+  if (!['authorized', 'capture_failed'].includes(request.payment_status)) {
     return res.status(400).json({ error: 'Payment is not in an authorized state' });
   }
 
