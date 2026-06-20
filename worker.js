@@ -432,12 +432,14 @@ function transactionPricingSummary(request, receiptTotals = { fuel: 0, wash: 0 }
   let washRecovery = 0;
 
   if (fuelBase && washBase) {
-    // The whole recovery amount goes to whichever service cost more —
-    // not split evenly.
-    const fuelSide = Number(receiptTotals.fuel || 0) + fuelBase;
-    const washSide = Number(receiptTotals.wash || 0) + washBase;
-    if (fuelSide >= washSide) fuelRecovery = recovery;
-    else washRecovery = recovery;
+    // Recovery is calculated once on the whole transaction, then split
+    // proportionally by base service fee (equal split when bases are
+    // equal). Leftover penny from rounding goes to the fuel side.
+    const recoveryCents = Math.round(recovery * 100);
+    const totalBase = fuelBase + washBase;
+    const fuelCents = Math.round(recoveryCents * (fuelBase / totalBase));
+    fuelRecovery = fuelCents / 100;
+    washRecovery = (recoveryCents - fuelCents) / 100;
   } else if (fuelBase) {
     fuelRecovery = recovery;
   } else if (washBase) {
