@@ -618,8 +618,11 @@ function returnRequestChargeSummary(request) {
 function transactionPricingSummary(request, receiptTotals = { fuel: 0, wash: 0 }) {
   const needsFuel = serviceNeedsFuel(request);
   const needsWash = serviceNeedsWash(request);
-  const fuelBase = needsFuel && Number(receiptTotals.fuel || 0) > 0 ? BASE_FUEL_SERVICE_FEE : 0;
-  const washBase = needsWash && Number(receiptTotals.wash || 0) > 0 ? BASE_WASH_SERVICE_FEE : 0;
+  // A service is chargeable if it was actually performed (has a receipt) or
+  // admin explicitly chose to charge the fee anyway for an unable_to_complete
+  // service. Fuel/wash cost itself is never charged without a receipt.
+  const fuelBase = needsFuel && (Number(receiptTotals.fuel || 0) > 0 || serviceUnableFeeCharged(request, 'fuel')) ? BASE_FUEL_SERVICE_FEE : 0;
+  const washBase = needsWash && (Number(receiptTotals.wash || 0) > 0 || serviceUnableFeeCharged(request, 'wash')) ? BASE_WASH_SERVICE_FEE : 0;
   const inspection = request.quick_inspection ? BASE_QUICK_INSPECTION_FEE : 0;
   const netTarget = roundMoneyValue(Number(receiptTotals.fuel || 0) + Number(receiptTotals.wash || 0) + fuelBase + washBase + inspection);
   const roundedTotal = netTarget > 0
@@ -669,6 +672,13 @@ function serviceUnableMap(request) {
 
 function serviceUnable(request, type) {
   return Boolean(serviceUnableMap(request)[type]);
+}
+
+// True only if admin explicitly chose to charge the service fee for an
+// unable_to_complete service (default is to waive it entirely).
+function serviceUnableFeeCharged(request, type) {
+  const notes = String(request.notes || '');
+  return new RegExp(`\\[service_unable_fee_charged ${type}\\]`).test(notes);
 }
 
 function serviceDoneOrUnable(request, type) {
@@ -839,8 +849,8 @@ function requestCardDetails(request) {
     <div class="request-details">
       ${hasReturnRequest ? `
         <div class="return-request-banner">
-          <h4>Customer requested return after service started</h4>
-          <p class="field-help">Review completed receipts before charging or waiving fees.</p>
+          <h4>Customer requested vehicle return.</h4>
+          <p class="field-help">Review service progress, completed receipts, and fees before closing.</p>
         </div>
       ` : ''}
       <p><strong>Customer:</strong> ${escapeHtml(request.customer_name || '')}</p>
@@ -1163,6 +1173,10 @@ function renderServiceUnablePanel(request) {
         Describe the reason
         <textarea class="service-unable-other" rows="2" placeholder="Describe the service issue."></textarea>
       </label>
+      <label class="checkbox-label">
+        <input class="service-unable-charge-fee" type="checkbox">
+        <span>Charge the service fee anyway (e.g. work was attempted). No fuel/wash cost is ever charged when there's no receipt — leave unchecked to waive the fee entirely.</span>
+      </label>
       <div class="admin-button-row">
         <button class="button danger save-service-unable" data-id="${escapeHtml(request.id)}" type="button">Save reason</button>
         <button class="button secondary cancel-service-unable" type="button">Keep service active</button>
@@ -1404,8 +1418,8 @@ function renderReturnRequestPanel(request) {
       </div>`;
   return `
     <div class="return-request-banner">
-      <h4>⚠ Customer requested cancellation/return after key receipt</h4>
-      <p class="field-help">${requestedAt ? `Requested ${escapeHtml(requestedAt)}. ` : ''}Customer requested return after service started. Review completed receipts before charging or waiving fees.</p>
+      <h4>⚠ Customer requested vehicle return.</h4>
+      <p class="field-help">${requestedAt ? `Requested ${escapeHtml(requestedAt)}. ` : ''}Review service progress, completed receipts, and fees before closing.</p>
       ${chargeSummary}
       <div class="admin-button-row">
         <button class="button secondary waive-return-fee" data-id="${escapeHtml(request.id)}" type="button">Waive fee &amp; release hold</button>
@@ -2921,10 +2935,15 @@ async function saveServiceUnable(button) {
   }
 
   const label = type === 'fuel' ? 'Fuel' : 'Car wash';
+  const chargeFeeAnyway = panel?.querySelector('.service-unable-charge-fee')?.checked || false;
   const receiptTotals = receiptTotalsFromNotes(request);
-  const finalTotal = finalTotalFromSavedReceipts(request, receiptTotals);
-  const note = `[service_unable ${type}] ${label} could not be completed: ${reason}`;
+  const note = `[service_unable ${type}] ${label} could not be completed: ${reason}`
+    + (chargeFeeAnyway ? `\n[service_unable_fee_charged ${type}]` : '');
   const notes = request.notes ? `${request.notes}\n${note}` : note;
+  // notes already include the fee-charged marker, so recompute final total
+  // against a request object that reflects it (string concat above keeps
+  // request.notes stale until the next render — pass updated notes through).
+  const finalTotal = finalTotalFromSavedReceipts({ ...request, notes }, receiptTotals);
 
   button.disabled = true;
   button.textContent = 'Saving...';
@@ -2932,7 +2951,7 @@ async function saveServiceUnable(button) {
   const { error } = await db.rpc('admin_update_request', {
     p_token: adminToken(),
     p_request_id: id,
-    p_data: { status: nextStatusAfterServiceUnable(request, type), final_total: finalTotal, notes, ...pricingAuditFields(request, receiptTotals) },
+    p_data: { status: nextStatusAfterServiceUnable(request, type), final_total: finalTotal, notes, ...pricingAuditFields({ ...request, notes }, receiptTotals) },
   });
 
   if (error) throw error;

@@ -280,7 +280,7 @@ async function submitCustomerReturnRequest(requestId, button = null) {
   });
 
   const data = refreshed?.[0] || null;
-  trackMessage.textContent = "Your return request was received. Because service had already started, completed receipt totals and a $15 cancellation/service fee may apply.";
+  trackMessage.textContent = "Your return request has been submitted. A ShiftFuel team member will return your vehicle as soon as safely possible.";
 
   if (data) {
     const photos = await loadRequestPhotos(data.id);
@@ -437,9 +437,17 @@ function roundMoneyValue(value) {
   return Math.round((Number(value) || 0) * 100) / 100;
 }
 
+// True only if admin/worker explicitly chose to charge the service fee for
+// an unable_to_complete service (default is to waive it entirely). Read-only
+// here — the customer tracker never sets this, only displays the consequence.
+function serviceUnableFeeCharged(request, type) {
+  const notes = String(request.notes || '');
+  return new RegExp(`\\[service_unable_fee_charged ${type}\\]`).test(notes);
+}
+
 function transactionPricingSummary(request, receiptTotals = { fuel: 0, wash: 0 }) {
-  const fuelBase = requestNeedsFuel(request) && Number(receiptTotals.fuel || 0) > 0 ? BASE_FUEL_SERVICE_FEE : 0;
-  const washBase = requestNeedsWash(request) && Number(receiptTotals.wash || 0) > 0 ? BASE_WASH_SERVICE_FEE : 0;
+  const fuelBase = requestNeedsFuel(request) && (Number(receiptTotals.fuel || 0) > 0 || serviceUnableFeeCharged(request, 'fuel')) ? BASE_FUEL_SERVICE_FEE : 0;
+  const washBase = requestNeedsWash(request) && (Number(receiptTotals.wash || 0) > 0 || serviceUnableFeeCharged(request, 'wash')) ? BASE_WASH_SERVICE_FEE : 0;
   const inspection = request.quick_inspection ? BASE_QUICK_INSPECTION_FEE : 0;
   const netTarget = roundMoneyValue(Number(receiptTotals.fuel || 0) + Number(receiptTotals.wash || 0) + fuelBase + washBase + inspection);
   const roundedTotal = netTarget > 0
