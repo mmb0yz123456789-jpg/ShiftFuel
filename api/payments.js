@@ -602,15 +602,28 @@ async function handleCustomerCancel(body, res) {
   const timestamp = new Date().toISOString();
   let paymentStatus = request.payment_status || 'canceled';
 
-  const releaseableStatuses = ['authorized', 'requires_capture'];
-  const alreadyReleased = ['voided', 'authorization_released', 'refunded', 'failed', 'auto_reversed', 'canceled'];
-
-  if (request.payment_intent_id && releaseableStatuses.includes(request.payment_status)) {
+  if (request.payment_intent_id) {
     try {
       const stripe = getStripe();
-      await stripe.paymentIntents.cancel(request.payment_intent_id);
-      paymentStatus = 'authorization_released';
-      console.log('[payments/customer_cancel] Voided PI', request.payment_intent_id, 'for request', request_id);
+      const intent = await stripe.paymentIntents.retrieve(request.payment_intent_id);
+
+      if (intent.status === 'requires_capture') {
+        await stripe.paymentIntents.cancel(request.payment_intent_id);
+        paymentStatus = 'authorization_released';
+        console.log('[payments/customer_cancel] Voided PI', request.payment_intent_id, 'for request', request_id);
+      } else if (intent.status === 'canceled') {
+        paymentStatus = 'authorization_released';
+        console.log('[payments/customer_cancel] PI already canceled', request.payment_intent_id, 'for request', request_id);
+      } else if (['requires_payment_method', 'requires_confirmation', 'requires_action', 'processing'].includes(intent.status)) {
+        paymentStatus = 'authorization_released';
+        console.warn('[payments/customer_cancel] PI had no capturable authorization at cancel time:', intent.status, 'request:', request_id);
+      } else if (intent.status === 'succeeded') {
+        console.error('[payments/customer_cancel] Refusing free cancel because PI already succeeded:', request.payment_intent_id, 'request:', request_id);
+        return res.status(500).json({ error: 'We could not release the authorization automatically. Please contact ShiftFuel.' });
+      } else {
+        console.error('[payments/customer_cancel] Unsupported PI status while canceling:', intent.status, 'request:', request_id);
+        return res.status(500).json({ error: 'We could not release the authorization automatically. Please contact ShiftFuel.' });
+      }
     } catch (err) {
       if (err.code === 'payment_intent_unexpected_state') {
         try {
@@ -630,9 +643,6 @@ async function handleCustomerCancel(body, res) {
         return res.status(500).json({ error: 'We could not release the authorization automatically. Please contact ShiftFuel.' });
       }
     }
-  } else if (request.payment_intent_id && !alreadyReleased.includes(request.payment_status)) {
-    console.error('[payments/customer_cancel] Payment status is not releaseable:', request.payment_status, 'request:', request_id);
-    return res.status(500).json({ error: 'We could not release the authorization automatically. Please contact ShiftFuel.' });
   } else if (!request.payment_intent_id) {
     paymentStatus = 'canceled';
   }
@@ -959,9 +969,9 @@ async function handleCustomerRequestReturn(body, res) {
   }
 
   const timestamp = new Date().toISOString();
-  const adminNote = '[customer_return_requested] Customer requested return after service started. Review completed receipts before charging or waiving fees.';
+  const adminNote = '[customer_return_requested] Customer requested vehicle return from Track.';
   const notes = request.notes ? `${request.notes}\n${adminNote}` : adminNote;
-  const { error: updateErr } = await db.from('service_requests').update({
+  const fullUpdate = {
     status: 'customer_return_requested',
     pre_return_request_status: request.status,
     return_requested_at: timestamp,
@@ -969,10 +979,40 @@ async function handleCustomerRequestReturn(body, res) {
     return_request_reason: 'customer_requested_after_key_receipt',
     notes,
     updated_at: timestamp,
-  }).eq('id', request_id);
+  };
+  const minimalUpdate = {
+    status: 'customer_return_requested',
+    notes,
+    updated_at: timestamp,
+  };
+
+  let { error: updateErr } = await db.from('service_requests').update(fullUpdate).eq('id', request_id);
 
   if (updateErr) {
-    console.error('[payments/customer_request_return] DB update failed:', updateErr.message);
+    console.error('[payments/customer_request_return] Full DB update failed:', {
+      code: updateErr.code,
+      message: updateErr.message,
+      details: updateErr.details,
+      hint: updateErr.hint,
+    });
+
+    const missingOptionalColumn = updateErr.code === 'PGRST204'
+      || updateErr.code === '42703'
+      || /column|schema cache|pre_return_request_status|return_requested_at|return_requested_by|return_request_reason/i.test(String(updateErr.message || ''));
+
+    if (missingOptionalColumn) {
+      const fallback = await db.from('service_requests').update(minimalUpdate).eq('id', request_id);
+      updateErr = fallback.error;
+    }
+  }
+
+  if (updateErr) {
+    console.error('[payments/customer_request_return] DB update failed:', {
+      code: updateErr.code,
+      message: updateErr.message,
+      details: updateErr.details,
+      hint: updateErr.hint,
+    });
     return res.status(500).json({ error: 'Could not submit your return request. Please contact ShiftFuel.' });
   }
 
