@@ -1567,6 +1567,8 @@ function cbUpdateEstimate(form) {
   const gallons   = needsFuel && fuelRange ? fuelRange.gallons : 0;
   const ppg       = CB_AVG_FUEL_PRICES[fuelTypeVal] || CB_AVG_FUEL_PRICES.Regular;
   const fuelAmt   = gallons * ppg;
+  const authGallons = needsFuel ? fuelAuthorizationGallons(fuelRange) : 0;
+  const authFuelAmt = authGallons * ppg;
   const washFee   = needsWash && washPkg ? washPkg.price : 0;
   const pricing   = cbServicePricingParts({
     needsFuel,
@@ -1590,7 +1592,7 @@ function cbUpdateEstimate(form) {
   qText('cb-wash-conv-fee',   cbFormatCurrency(pricing.washService));
   qText('cb-average-price',   cbFormatPricePerGallon(ppg));
   qText('cb-estimated-fuel',  needsFuel
-    ? `${fuelRange?.label || '0 gallons'} estimated at ${gallons} gallons × ${cbFormatPricePerGallon(ppg)} = ${cbFormatCurrency(fuelAmt)}`
+    ? `${fuelRange?.label || '0 gallons'} selected. Authorization hold uses ${authGallons} gallons x ${cbFormatPricePerGallon(ppg)} = ${cbFormatCurrency(authFuelAmt)}. Final fuel cost is based on the actual receipt.`
     : cbFormatCurrency(fuelAmt));
   qText('cb-fuel-conv-fee',   cbFormatCurrency(pricing.fuelService));
   qText('cb-inspection-fee',  cbFormatCurrency(pricing.inspection));
