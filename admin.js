@@ -1020,7 +1020,7 @@ function renderActions(request) {
   const actions = [];
   let activePanel = '';
   let nextAction = '';
-  const hasReturnRequest = !!request.return_requested_at || request.status === 'return_requested' || request.status === 'customer_return_requested';
+  const hasReturnRequest = hasCustomerReturnRequestAlert(request);
 
   if (hasReturnRequest && request.status !== 'canceled_return_completed') {
     nextAction = 'Customer requested return after service started. Review completed receipts before charging or waiving fees.';
