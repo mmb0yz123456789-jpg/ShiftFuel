@@ -1,6 +1,7 @@
 // Booking flow UI cleanup fixes.
-// Keeps returning-customer saved options from showing duplicate cards and
-// scrolls newly opened accordion steps high enough that the question/header is visible.
+// Keeps returning-customer saved options from showing duplicate cards,
+// hides unavailable return times, and scrolls newly opened accordion steps
+// high enough that the question/header is visible.
 (function () {
   const SELECTORS = {
     flow: "[data-booking-flow]",
@@ -8,6 +9,7 @@
     card: ".returning-option-card",
     addressArea: "[data-returning-service-area]",
     vehicleArea: "[data-returning-vehicles]",
+    returnTime: "select[data-return-time]",
   };
 
   function normalizeText(value) {
@@ -57,6 +59,25 @@
     });
   }
 
+  function hideUnavailableReturnTimes(root = document) {
+    root.querySelectorAll(SELECTORS.returnTime).forEach((select) => {
+      const selectedValue = select.value;
+      Array.from(select.options).forEach((option) => {
+        if (option.value && option.disabled) {
+          option.remove();
+        }
+      });
+      if (selectedValue && Array.from(select.options).some((option) => option.value === selectedValue)) {
+        select.value = selectedValue;
+      }
+    });
+  }
+
+  function cleanupFlow(root = document) {
+    cleanReturningOptions(root);
+    hideUnavailableReturnTimes(root);
+  }
+
   function scrollActiveStepIntoView() {
     const active = document.querySelector(SELECTORS.activeCard);
     if (!active) return;
@@ -76,16 +97,23 @@
     const flow = document.querySelector(SELECTORS.flow);
     if (!flow) return;
 
-    cleanReturningOptions(flow);
+    cleanupFlow(flow);
 
     flow.addEventListener("click", (event) => {
       if (event.target.closest("[data-continue], [data-back], [data-step-header]")) {
         scheduleScroll();
+        window.setTimeout(() => cleanupFlow(flow), 100);
+      }
+    }, true);
+
+    flow.addEventListener("change", (event) => {
+      if (event.target.matches('[name="serviceDate"], [name="serviceType"]')) {
+        window.setTimeout(() => hideUnavailableReturnTimes(flow), 80);
       }
     }, true);
 
     new MutationObserver(() => {
-      cleanReturningOptions(flow);
+      cleanupFlow(flow);
     }).observe(flow, { childList: true, subtree: true });
   }
 
