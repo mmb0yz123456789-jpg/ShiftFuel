@@ -17,11 +17,12 @@
         <span aria-hidden="true">&#9776;</span>
       </button>
       <nav id="site-nav" class="nav" data-nav aria-label="Main navigation">
-        <a class="nav-cta" href="book.html#book">Book Now</a>
-        <a class="nav-outline" href="track.html">Track My Vehicle</a>
-        <a href="returning.html">Returning Customer</a>
         <a href="#how">How It Works</a>
-        <a href="#services">Services</a>
+        <a href="#services">Services &amp; Pricing</a>
+        <a href="#trust">Safety &amp; Trust</a>
+        <a class="nav-cta" href="book.html#book">Book Now</a>
+        <a class="nav-returning" href="returning.html">Returning Customer</a>
+        <a class="nav-outline" href="track.html">Track My Vehicle</a>
       </nav>
     </header>
 
@@ -30,11 +31,16 @@
         <div class="landing-hero-copy">
           <p class="eyebrow">Workday vehicle services</p>
           <h1>Workday vehicle services, handled for you.</h1>
-          <p class="hero-copy">Fuel fill-ups, car wash services, and quick vehicle care from your workplace or approved service location.</p>
+          <p class="hero-copy">Fuel fill-ups, car wash service, and quick vehicle checks&mdash;delivered while you focus on your work.</p>
           <div class="landing-actions" aria-label="Primary actions">
             <a class="button primary" href="book.html#book">Book Now</a>
-            <a class="button secondary" href="track.html">Track My Vehicle</a>
-            <a class="button tertiary" href="returning.html">Returning Customer</a>
+            <a class="button returning" href="returning.html">Returning Customer</a>
+            <a class="button tertiary" href="track.html">Track My Vehicle</a>
+          </div>
+          <div class="hero-trust-row">
+            <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="8" r="3.4"/><path d="M5 20c0-3.3 3.1-6 7-6s7 2.7 7 6"/></svg>Trusted professionals</span>
+            <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3l7 3v6c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6l7-3z"/></svg>Premium experience</span>
+            <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="8.5"/><path d="M12 7v5l3.5 2"/></svg>Real-time updates</span>
           </div>
         </div>
         <figure class="landing-hero-image">
@@ -42,102 +48,139 @@
         </figure>
       </section>
 
-      <section class="trust-service-bar" aria-label="Service trust highlights">
-        <div><strong>Trusted workers</strong><span>Verified service team</span></div>
-        <div><strong>Secure payments</strong><span>Authorized before service</span></div>
-        <div><strong>Photo updates</strong><span>Pickup and return records</span></div>
-        <div><strong>Real-time tracking</strong><span>Status updates online</span></div>
-      </section>
-
       <section id="how" class="landing-section">
-        <div class="section-heading">
-          <p class="eyebrow">How It Works</p>
-          <h2>Simple from booking to return.</h2>
+        <div class="section-heading center">
+          <h2>How it works</h2>
         </div>
-        <ol class="landing-step-grid">
-          <li><span>1</span><strong>Book your service</strong></li>
-          <li><span>2</span><strong>Share parking and key details</strong></li>
-          <li><span>3</span><strong>We service your vehicle</strong></li>
-          <li><span>4</span><strong>Track every step online</strong></li>
+        <ol class="how-it-works-grid">
+          <li>
+            <span class="step-number">1</span>
+            <span class="step-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3.5" y="5" width="17" height="16" rx="2"/><path d="M3.5 9.5h17M8 3v4M16 3v4"/></svg></span>
+            <strong>Book</strong>
+            <p>Choose a service, date, and time that works for you.</p>
+          </li>
+          <li>
+            <span class="step-number">2</span>
+            <span class="step-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 21s7-5.5 7-11.5A7 7 0 0 0 5 9.5C5 15.5 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.3"/></svg></span>
+            <strong>We come to you</strong>
+            <p>Our professional arrives at your workplace parking lot.</p>
+          </li>
+          <li>
+            <span class="step-number">3</span>
+            <span class="step-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 16l1.5-5a2 2 0 0 1 1.9-1.4h9.2A2 2 0 0 1 18.5 11L20 16"/><rect x="3" y="16" width="18" height="4" rx="1.4"/><circle cx="7.5" cy="20" r="1.1"/><circle cx="16.5" cy="20" r="1.1"/></svg></span>
+            <strong>We take care of it</strong>
+            <p>We deliver premium service while you stay focused on your day.</p>
+          </li>
+          <li>
+            <span class="step-number">4</span>
+            <span class="step-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3l7 3v6c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6l7-3z"/><path d="M9 12l2 2 4-4"/></svg></span>
+            <strong>You're all set</strong>
+            <p>Get real-time updates and photos when the service is complete.</p>
+          </li>
         </ol>
       </section>
 
       <section id="services" class="landing-section">
-        <div class="section-heading">
-          <p class="eyebrow">Services</p>
-          <h2>Services and Pricing</h2>
-          <p>Choose the option that fits your day. Final authorization is shown before payment.</p>
+        <div class="section-heading center">
+          <h2>Services &amp; Pricing</h2>
         </div>
-        <div class="landing-card-grid">
-          <article class="landing-card">
-            <p class="plan">Fuel Fill-Up</p>
-            <h3>Fuel delivered into your workday</h3>
-            <p>We pick up, fuel, document the receipt, and return your vehicle.</p>
+        <div class="pricing-card-grid">
+          <article class="pricing-card">
+            <span class="pricing-icon pricing-icon-fuel"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="3" width="9" height="18" rx="1.4"/><path d="M4 10h9M7.5 3v0"/><path d="M13 8h2.5a2 2 0 0 1 2 2v6.5a1.5 1.5 0 0 0 3 0V8.5L18 6"/></svg></span>
+            <h3>Fuel Concierge</h3>
+            <p>We fuel your vehicle with quality fuel&mdash;so you don't have to leave work.</p>
+            <p class="pricing-from">$15 <span>service fee</span> + fuel cost at the pump price</p>
+            <ul class="pricing-package-list" id="fuel-price-list" data-fuel-prices>
+              <li><span>Loading current prices&hellip;</span></li>
+            </ul>
+            <ul class="pricing-includes">
+              <li>Pickup at your service address</li>
+              <li>Fill-up with your selected fuel type</li>
+              <li>Receipt documentation</li>
+              <li>Return to your parking spot</li>
+            </ul>
+            <a class="button pricing-button pricing-button-fuel" href="book.html#book">Book This Service</a>
           </article>
-          <article class="landing-card">
-            <p class="plan">Car Wash</p>
-            <h3>A cleaner car without the extra trip</h3>
-            <p>Select a wash package and track pickup, wash, receipt, and return.</p>
+          <article class="pricing-card">
+            <span class="pricing-icon pricing-icon-wash"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 16l1.5-5a2 2 0 0 1 1.9-1.4h9.2A2 2 0 0 1 18.5 11L20 16"/><rect x="3" y="16" width="18" height="4" rx="1.4"/><circle cx="7.5" cy="20" r="1.1"/><circle cx="16.5" cy="20" r="1.1"/><path d="M8 5.5c.7-1 .7-1.8 0-2.8M12 5.5c.7-1 .7-1.8 0-2.8M16 5.5c.7-1 .7-1.8 0-2.8"/></svg></span>
+            <h3>Car Wash</h3>
+            <p>Premium exterior wash. Because first impressions matter.</p>
+            <ul class="pricing-package-list">
+              <li><span>Double Wash</span><strong>$12</strong></li>
+              <li><span>Shine</span><strong>$16</strong></li>
+              <li><span>Shine &amp; Protect</span><strong>$20</strong></li>
+              <li><span>Buff &amp; Shine</span><strong>$27</strong></li>
+            </ul>
+            <p class="pricing-note">Double Wash: pre-soak, wheel cleaning, drying agent, spot-free rinse. Shine adds a tri-foam wash and clear coat. Shine &amp; Protect adds Instant Shine and Salt Shield protection. Buff &amp; Shine adds a fire bath and ceramic finish.</p>
+            <p class="pricing-warning">Exterior wash only&mdash;we do not offer interior cleaning. Performed at our partner location, <a href="https://www.thecarspade.com/" target="_blank" rel="noopener">The Car Spade</a>, 602 Main St, Wilmington, DE 19804.</p>
+            <a class="button pricing-button pricing-button-wash" href="book.html#book">Book This Service</a>
           </article>
-          <article class="landing-card">
-            <p class="plan">Fuel + Car Wash</p>
-            <h3>Two errands handled in one request</h3>
-            <p>Bundle fuel and wash service with one booking and one status tracker.</p>
-          </article>
-          <article class="landing-card">
-            <p class="plan">Quick Vehicle Care</p>
-            <h3>Small checks that save time</h3>
-            <p>Add a quick vehicle care check during booking when available.</p>
+          <article class="pricing-card">
+            <span class="pricing-icon pricing-icon-inspect"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="5" y="4" width="14" height="17" rx="1.6"/><path d="M9 3.5h6v2H9z"/><path d="M9 11l1.8 1.8L15 9"/></svg></span>
+            <h3>Quick Vehicle Care</h3>
+            <p>An optional add-on you can attach to any fuel or car wash request.</p>
+            <p class="pricing-from">$5 <span>add-on</span></p>
+            <ul class="pricing-includes">
+              <li>Tire pressure check</li>
+              <li>Washer fluid top-off if needed</li>
+              <li>Quick visible vehicle check</li>
+            </ul>
+            <p class="pricing-warning">This is not a mechanical inspection.</p>
+            <a class="button pricing-button pricing-button-inspect" href="book.html#book">Book This Service</a>
           </article>
         </div>
-      </section>
-
-      <section class="returning-shortcut">
-        <div>
-          <p class="eyebrow">Returning Customer</p>
-          <h2>Already booked before?</h2>
-          <p>Save time by verifying your information, selecting a saved service area, choosing your vehicle, and booking your next service faster.</p>
-        </div>
-        <a class="button primary" href="returning.html">Continue as Returning Customer</a>
+        <p class="pricing-disclaimer">Service prices include payment and operating costs. Final fuel cost is based on the actual receipt. Final totals are rounded up to the nearest dollar.</p>
       </section>
 
       <section id="trust" class="landing-section">
-        <div class="section-heading">
-          <p class="eyebrow">Safety and Trust</p>
-          <h2>Clear records from pickup through return.</h2>
+        <div class="section-heading center">
+          <h2>Safety &amp; Trust</h2>
         </div>
-        <div class="landing-card-grid safety-grid">
-          <article class="landing-card"><strong>Verified workers</strong></article>
-          <article class="landing-card"><strong>Secure payment authorization</strong></article>
-          <article class="landing-card"><strong>Pickup and return photo documentation</strong></article>
-          <article class="landing-card"><strong>Uploaded receipts</strong></article>
-          <article class="landing-card"><strong>Online request tracking</strong></article>
+        <div class="safety-row">
+          <div>
+            <span class="safety-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="8" r="3.4"/><path d="M5 20c0-3.3 3.1-6 7-6s7 2.7 7 6"/></svg></span>
+            <strong>Verified professionals</strong>
+            <p>Background-checked, trained, and insured.</p>
+          </div>
+          <div>
+            <span class="safety-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="5" y="10.5" width="14" height="9.5" rx="1.6"/><path d="M8 10.5V8a4 4 0 0 1 8 0v2.5"/></svg></span>
+            <strong>Secure &amp; protected</strong>
+            <p>Safe, encrypted transactions and data.</p>
+          </div>
+          <div>
+            <span class="safety-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 8.5A1.5 1.5 0 0 1 5.5 7h2l1-2h7l1 2h2A1.5 1.5 0 0 1 20 8.5v9A1.5 1.5 0 0 1 18.5 19h-13A1.5 1.5 0 0 1 4 17.5z"/><circle cx="12" cy="12.5" r="3.2"/></svg></span>
+            <strong>Photo documentation</strong>
+            <p>Before &amp; after photos with every service.</p>
+          </div>
+          <div>
+            <span class="safety-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="8.5"/><path d="M12 7v5l3.5 2"/></svg></span>
+            <strong>Real-time updates</strong>
+            <p>Live status so you're always in the know.</p>
+          </div>
         </div>
-      </section>
-
-      <section class="availability-section">
-        <p class="eyebrow">Service Availability</p>
-        <p>Service availability is confirmed during booking. Enter your service address and we'll let you know if ShiftFuel Concierge is currently available in your area.</p>
       </section>
 
       <section class="landing-final-cta">
-        <h2>Ready to save time?</h2>
-        <div class="landing-actions">
-          <a class="button primary" href="book.html#book">Book Now</a>
-          <a class="button secondary" href="track.html">Track My Vehicle</a>
-          <a class="button tertiary" href="returning.html">Returning Customer</a>
+        <div class="final-cta-main">
+          <span class="final-cta-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M12 3l7 3v6c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6l7-3z"/><path d="M9 12l2 2 4-4"/></svg></span>
+          <div>
+            <strong>Your vehicle, our priority.</strong>
+            <p>Premium workday vehicle services you can count on.</p>
+          </div>
+        </div>
+        <div class="final-cta-portals">
+          <a class="button portal-button" href="hiring.html"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 21s7-5.5 7-11.5A7 7 0 0 0 5 9.5C5 15.5 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.3"/></svg>Join the Team</a>
+          <a class="button portal-button" href="worker-login.html"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="8" r="3.4"/><path d="M5 20c0-3.3 3.1-6 7-6s7 2.7 7 6"/></svg>Worker Portal</a>
+          <a class="button portal-button" href="admin-login.html"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="3"/><path d="M19.4 13.5a7.6 7.6 0 0 0 0-3l1.9-1.3-2-3.4-2.2.7a7.6 7.6 0 0 0-2.6-1.5L14 2.5h-4l-.5 2.5a7.6 7.6 0 0 0-2.6 1.5l-2.2-.7-2 3.4 1.9 1.3a7.6 7.6 0 0 0 0 3l-1.9 1.3 2 3.4 2.2-.7a7.6 7.6 0 0 0 2.6 1.5l.5 2.5h4l.5-2.5a7.6 7.6 0 0 0 2.6-1.5l2.2.7 2-3.4z"/></svg>Admin Portal</a>
         </div>
       </section>
     </main>
 
     <footer class="site-footer">
-      <p>&copy; <span id="year"></span> ShiftFuel Concierge. All rights reserved.</p>
-      <nav aria-label="Footer navigation">
-        <a href="book.html#book">Book Now</a>
-        <a href="track.html">Track My Vehicle</a>
-        <a href="returning.html">Returning Customer</a>
-      </nav>
+      <p class="footer-copy">&copy; <span id="year"></span> ShiftFuel Concierge. All rights reserved.</p>
     </footer>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="supabase-client.js"></script>
     <script src="landing.js"></script>
   </body>
 </html>

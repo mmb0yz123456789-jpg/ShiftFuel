@@ -21,9 +21,11 @@ let verifiedTrackingContact = { phone: "", email: "" };
 
 // Unified terminal/closed status list — keep in sync with admin.js, worker.js,
 // and the SQL terminal-status list in supabase-production-rls-lockdown.sql.
-const terminalStatuses = ["complete", "denied", "customer_canceled", "canceled", "unable_to_complete", "auto_reversed", "closed_no_charge", "canceled_return_completed"];
-const closedStatuses   = ["denied", "customer_canceled", "canceled", "unable_to_complete", "auto_reversed", "closed_no_charge", "canceled_return_completed"];
-const freeCancelStatuses = ["pending", "request_received", "accepted"];
+const terminalStatuses = ["complete", "denied", "customer_canceled", "canceled", "cancelled", "unable_to_complete", "auto_reversed", "closed_no_charge", "canceled_return_completed"];
+const closedStatuses   = ["denied", "customer_canceled", "canceled", "cancelled", "unable_to_complete", "auto_reversed", "closed_no_charge", "canceled_return_completed"];
+// cancelled_pending_key_return is deliberately NOT terminal/closed — the
+// request stays in the in-progress section until the worker confirms the
+// key/vehicle has been returned (status then flips to "cancelled").
 const slotHoldingStatuses = new Set([
   "accepted", "key_received",
   "pickup_vehicle_photo_uploaded", "pickup_odometer_photo_uploaded", "pickup_fuel_gauge_photo_uploaded",
@@ -158,6 +160,7 @@ const statusLabels = {
   final_payment_processed: "Final payment processed",
   awaiting_key_return: "Awaiting key return",
   keys_returned: "Keys returned",
+  partial_service_complete: "Partial service complete",
   complete: "Complete",
   denied: "Denied",
   customer_canceled: "Canceled by customer",
@@ -172,6 +175,8 @@ const statusLabels = {
   payment_issue: "Payment issue",
   authorization_too_low: "Authorization issue",
   canceled_return_completed: "Return completed",
+  cancelled: "Cancelled",
+  cancelled_pending_key_return: "Cancellation received — awaiting key/vehicle return",
 };
 
 // statusSteps is now dynamic — see buildStatusSteps(request)
@@ -272,14 +277,46 @@ function hoursSince(value) {
   return (Date.now() - time) / (1000 * 60 * 60);
 }
 
-function canCustomerCancel(request) {
-  return !terminalStatuses.includes(request.status)
-    && request.status !== 'return_requested'
-    && request.status !== 'customer_return_requested';
+// Cancellation tiers — keep this in sync with cancellationOutcomeForStatus()
+// in api/payments.js. The customer must see the exact fee story they'll be
+// charged before confirming.
+const CANCELLATION_MODAL_COPY = {
+  request_received: "Are you sure you want to cancel this request? No cancellation fee will be charged.",
+  pending: "Are you sure you want to cancel this request? No cancellation fee will be charged.",
+  accepted: "Are you sure you want to cancel this request? No cancellation fee will be charged.",
+  key_received: "Are you sure you want to cancel this request? A $15 cancellation fee applies because your key has already been received.",
+};
+const CANCELLATION_MODAL_COPY_SERVICE_STARTED = "Are you sure you want to cancel this request? A $15 cancellation fee, Stripe processing fee, and any submitted receipt totals for services already started or completed may apply.";
+const CANCELLATION_SERVICE_STARTED_STATUSES = new Set([
+  'vehicle_picked_up', 'fueling_in_progress', 'car_wash_in_progress', 'service_in_progress',
+  'partial_service_complete', 'pickup_vehicle_photo_uploaded', 'pickup_odometer_photo_uploaded',
+  'pickup_fuel_gauge_photo_uploaded', 'fueling_complete', 'fuel_receipt_uploaded',
+  'car_wash_complete', 'wash_receipt_uploaded', 'car_wash_after_fuel_in_progress',
+  'fueling_after_wash_in_progress', 'wash_receipt_after_fuel_uploaded', 'fuel_receipt_after_wash_uploaded',
+  'service_complete', 'receipts_recorded',
+]);
+const CANCELLATION_BLOCKED_MESSAGES = {
+  vehicle_returned: "This request can no longer be cancelled because the vehicle has already been returned.",
+  complete: "This request is already complete.",
+  denied: "This request has already been denied.",
+  cancelled: "This request has already been cancelled.",
+  cancelled_pending_key_return: "This request has already been cancelled.",
+  customer_canceled: "This request has already been cancelled.",
+  canceled: "This request has already been cancelled.",
+};
+
+function cancellationModalTextForStatus(status) {
+  if (CANCELLATION_MODAL_COPY[status]) return CANCELLATION_MODAL_COPY[status];
+  if (CANCELLATION_SERVICE_STARTED_STATUSES.has(status)) return CANCELLATION_MODAL_COPY_SERVICE_STARTED;
+  return "Are you sure you want to cancel this request? A cancellation fee may apply.";
 }
 
-function canFreeCancelRequest(request) {
-  return freeCancelStatuses.includes(request.status);
+function canCustomerCancel(request) {
+  return !CANCELLATION_BLOCKED_MESSAGES[request.status]
+    && request.status !== 'return_requested'
+    && request.status !== 'customer_return_requested'
+    && (Object.prototype.hasOwnProperty.call(CANCELLATION_MODAL_COPY, request.status)
+      || CANCELLATION_SERVICE_STARTED_STATUSES.has(request.status));
 }
 
 // Same backend validation used by the main Book Now page — keeps the
@@ -406,7 +443,7 @@ function cancellationReasonForDisplay(request) {
   const noteReason = notes.match(/\[denied[^\]]*\]\s*Admin denial reason:\s*([^\n]+)/i)?.[1] || "";
   const reason = String(request.cancellation_reason || noteReason || "").trim();
 
-  if (!reason || !["denied", "customer_canceled"].includes(request.status)) {
+  if (!reason || !["denied", "customer_canceled", "cancelled", "cancelled_pending_key_return"].includes(request.status)) {
     return "";
   }
 
@@ -417,6 +454,10 @@ function cancellationReasonForDisplay(request) {
   }
 
   return reason;
+}
+
+function trackRequestNumber(id) {
+  return `SF-${String(id || "").slice(0, 8).toUpperCase()}`;
 }
 
 function friendlyStatusLabel(status) {
@@ -453,6 +494,7 @@ function requestSummaryHtml(request, options = {}) {
   return `
     <summary class="track-request-summary">
       <div class="track-request-summary-main">
+        <span class="track-request-number">${escapeHtml(trackRequestNumber(request.id))}</span>
         <span class="track-request-vehicle">${escapeHtml(vehicle)}</span>
         <span class="track-request-meta">
           ${serviceDate ? `<span>${escapeHtml(serviceDate)}</span>` : ""}
@@ -817,6 +859,9 @@ function getStatusMessage(request) {
 function renderTimeline(request) {
   // No timeline for closed/terminal non-complete statuses
   if (closedStatuses.includes(request.status)) return '';
+  if (request.status === 'cancelled_pending_key_return') {
+    return `<p class="timeline-status-message">Cancellation received. Your request will remain visible until your key or vehicle is returned.</p>`;
+  }
 
   const steps = buildStatusSteps(request);
 
@@ -2173,10 +2218,16 @@ function renderRequestCard(request, photos = [], review = null) {
     'return_photos_needed','dropoff_vehicle_photo_uploaded','dropoff_odometer_photo_uploaded',
     'inspection_needed','inspection_recorded','awaiting_key_return','complete'].includes(request.status);
 
+  const serviceArea = [request.address_street || request.hospital, request.address_city, request.address_state]
+    .filter(Boolean).join(', ');
+  const lastUpdated = request.updated_at
+    ? new Date(request.updated_at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
+    : '';
+
   return `
     <article class="track-request-card" data-request-id="${escapeHtml(request.id)}">
       <details class="track-request-details">
-        ${requestSummaryHtml(request, { statusLabel })}
+        ${requestSummaryHtml(request, { statusLabel, statusClass: request.status === 'complete' ? 'status-pill-complete' : '' })}
 
         <div class="track-request-body">
           ${renderEstimatedTotalCard(request)}
@@ -2187,7 +2238,9 @@ function renderRequestCard(request, photos = [], review = null) {
             ${returnTime ? `<p><strong>Return by:</strong> ${escapeHtml(returnTime)}</p>` : ''}
             <p><strong>Vehicle:</strong> ${escapeHtml(vehicle)}${request.vehicle_color ? ', ' + escapeHtml(request.vehicle_color) : ''}</p>
             <p><strong>Service:</strong> ${escapeHtml(request.service_label || request.service_type || '')}</p>
+            ${serviceArea ? `<p><strong>Service area:</strong> ${escapeHtml(serviceArea)}</p>` : ''}
             <p><strong>Parking:</strong> ${[request.parking_location, request.parking_spot ? 'spot ' + request.parking_spot : ''].filter(Boolean).map(escapeHtml).join(', ')}</p>
+            ${lastUpdated ? `<p><strong>Last updated:</strong> ${escapeHtml(lastUpdated)}</p>` : ''}
             ${cancellationReason ? `<p><strong>Reason:</strong> ${escapeHtml(cancellationReason)}</p>` : ''}
             ${request.status === 'auto_reversed' ? `<p class="track-auto-reversed-note">Your service was not completed on the scheduled date, so your payment has been reversed.</p>` : ''}
           </div>
@@ -2200,33 +2253,24 @@ function renderRequestCard(request, photos = [], review = null) {
           ${request.status === 'complete' ? serviceSummaryFromRequest(request) : ''}
           ${renderPhotos(request, photos)}
           ${renderReviewPrompt(request, review)}
-          ${canCustomerCancel(request) ? (canFreeCancelRequest(request) ? `
+          ${canCustomerCancel(request) ? `
             <div class="tracking-actions">
               <button class="button danger show-cancel-request" type="button">Cancel request</button>
             </div>
             <div class="cancel-panel" hidden>
-              <p class="field-help">You may cancel for free before your keys are received. After your keys are received, service has started and cancellation may no longer be available from the app.</p>
+              <p class="field-help">${escapeHtml(cancellationModalTextForStatus(request.status))}</p>
               <label>
-                Reason for cancellation
+                Reason for cancellation (optional)
                 <textarea class="customer-cancel-reason" rows="3" placeholder="Example: I no longer need service today."></textarea>
               </label>
-              <button class="button danger confirm-cancel-request" data-request-id="${escapeHtml(request.id)}" type="button">
-                Confirm cancellation
-              </button>
-            </div>
-          ` : `
-            <div class="tracking-actions">
-              <button class="button danger show-cancel-request" type="button">Cancel request</button>
-            </div>
-            <div class="cancel-panel" hidden>
-              <h4>Request vehicle return</h4>
-              <p class="field-help">Because service has already started, this request cannot be directly canceled. You can request vehicle return, and completed receipt totals plus a $15 cancellation/service fee may apply.</p>
               <div class="admin-button-row">
                 <button class="button secondary keep-request" type="button">Keep request</button>
-                <button class="button danger confirm-request-return" data-request-id="${escapeHtml(request.id)}" type="button">Request vehicle return</button>
+                <button class="button danger confirm-cancel-request" data-request-id="${escapeHtml(request.id)}" type="button">
+                  Confirm cancellation
+                </button>
               </div>
             </div>
-          `) : ''}
+          ` : (CANCELLATION_BLOCKED_MESSAGES[request.status] ? `<p class="field-help">${escapeHtml(CANCELLATION_BLOCKED_MESSAGES[request.status])}</p>` : '')}
         </div>
       </details>
     </article>
@@ -2234,14 +2278,12 @@ function renderRequestCard(request, photos = [], review = null) {
 }
 
 async function renderAllRequests(requests, phone, email) {
-  const now = Date.now();
-  const TWENTY_FOUR_HOURS = 24 * 60 * 60 * 1000;
-
   const inProgress = requests.filter(r => !terminalStatuses.includes(r.status));
-  const completed  = requests.filter(r => r.status === 'complete'
-    && (now - new Date(r.updated_at || r.created_at).getTime()) <= TWENTY_FOUR_HOURS);
-  const denied     = requests.filter(r => r.status === 'denied');
-  const canceledClosed = requests.filter(r => closedStatuses.includes(r.status) && r.status !== 'denied');
+  const completed  = requests.filter(r => r.status === 'complete');
+  // Denied Requests section covers denied + every cancellation/closed-without-charge
+  // status per the Track My Vehicle spec (cancelled, denied, and similar terminal
+  // non-complete outcomes all land here so nothing falls through the cracks).
+  const denied = requests.filter(r => closedStatuses.includes(r.status));
 
   let html = `<div class="track-sections">`;
 
@@ -2285,27 +2327,7 @@ async function renderAllRequests(requests, phone, email) {
   }
   html += `</div></details>`;
 
-  // Canceled / closed section
-  html += `
-    <details class="track-section">
-      <summary class="track-section-header">
-        Canceled / closed requests
-        <span class="track-section-count">${canceledClosed.length}</span>
-      </summary>
-      <div class="track-section-body">
-  `;
-  if (canceledClosed.length === 0) {
-    html += `<p class="track-empty-msg">No canceled or closed requests found.</p>`;
-  } else {
-    for (const request of canceledClosed) {
-      const photos = await loadRequestPhotos(request.id, phone, email);
-      const review = await loadRequestReview(request.id, phone, email);
-      html += renderRequestCard(request, photos, review);
-    }
-  }
-  html += `</div></details>`;
-
-  // Denied section
+  // Denied / cancelled section
   html += `
     <details class="track-section">
       <summary class="track-section-header">
@@ -2315,7 +2337,7 @@ async function renderAllRequests(requests, phone, email) {
       <div class="track-section-body">
   `;
   if (denied.length === 0) {
-    html += `<p class="track-empty-msg">No denied requests found.</p>`;
+    html += `<p class="track-empty-msg">No denied or cancelled requests found.</p>`;
   } else {
     for (const request of denied) {
       html += renderDeniedCard(request);
@@ -2340,29 +2362,34 @@ function mountVisibleCustomerPayCards(root = trackingResult) {
   });
 }
 
+const HARD_DENIED_STATUSES = new Set(['denied', 'customer_canceled', 'canceled', 'cancelled']);
+
 function renderDeniedCard(request) {
   const vehicle = [request.vehicle_year, request.vehicle_make, request.vehicle_model].filter(Boolean).join(' ');
   const serviceDate = request.service_date
     ? new Date(request.service_date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
     : '';
-  const deniedAt = request.updated_at
+  const closedAt = request.updated_at
     ? new Date(request.updated_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
     : '';
   const reason = cancellationReasonForDisplay(request);
-  const statusLabel = reason ? `Denied — ${reason}` : 'Denied';
+  const baseLabel = friendlyStatusLabel(request.status);
+  const statusLabel = reason ? `${baseLabel} — ${reason}` : baseLabel;
+  // Spec: only red badges for denied/cancelled/error states — other closed
+  // statuses (auto-reversed, closed with no charge, etc.) stay neutral.
+  const statusClass = HARD_DENIED_STATUSES.has(request.status) ? 'status-pill-denied' : '';
 
   return `
     <article class="track-request-card track-denied-card" data-request-id="${escapeHtml(request.id)}">
       <details class="track-request-details">
-        ${requestSummaryHtml(request, { statusLabel, statusClass: 'status-pill-denied' })}
+        ${requestSummaryHtml(request, { statusLabel, statusClass })}
         <div class="track-request-body">
           <div class="request-details">
-            <p><strong>Request ID:</strong> <span class="track-request-id-text">${escapeHtml(request.id)}</span></p>
             ${serviceDate ? `<p><strong>Service date:</strong> ${escapeHtml(serviceDate)}</p>` : ''}
             ${vehicle ? `<p><strong>Vehicle:</strong> ${escapeHtml(vehicle)}${request.vehicle_color ? ', ' + escapeHtml(request.vehicle_color) : ''}</p>` : ''}
             ${request.service_label || request.service_type ? `<p><strong>Service:</strong> ${escapeHtml(request.service_label || request.service_type)}</p>` : ''}
-            ${deniedAt ? `<p><strong>Denied on:</strong> ${escapeHtml(deniedAt)}</p>` : ''}
-            ${reason ? `<p><strong>Reason:</strong> ${escapeHtml(reason)}</p>` : ''}
+            ${closedAt ? `<p><strong>Updated:</strong> ${escapeHtml(closedAt)}</p>` : ''}
+            <p><strong>Reason:</strong> ${escapeHtml(reason || 'This request could not be completed.')}</p>
           </div>
         </div>
       </details>
@@ -2385,80 +2412,87 @@ trackForm.addEventListener("submit", async (event) => {
 
   trackingResult.innerHTML = "";
 
-  if (!id && (!phone || !email)) {
-    trackMessage.textContent = "Enter both phone number and email address, or enter a request ID with one matching contact detail.";
-    trackingPhone.focus();
-    return;
-  }
-
-  if (id && !phone && !email) {
-    trackMessage.textContent = "For security, enter the request ID plus the phone number or email used to book.";
+  if (!id && !phone && !email) {
+    trackMessage.textContent = "Enter your phone number, email address, or request number to search.";
     trackingPhone.focus();
     return;
   }
 
   trackMessage.textContent = "Looking up requests...";
+  const submitButton = trackForm.querySelector('button[type="submit"]');
+  const originalSubmitText = submitButton?.textContent;
+  if (submitButton) {
+    submitButton.disabled = true;
+    submitButton.textContent = "Searching...";
+  }
 
   let matchedRequests = [];
-  const rpcRequestId = id || null;
-  const { data: rpcData, error: rpcError } = await shiftFuelDb
-    .rpc("public_track_request", {
-      p_request_id: rpcRequestId,
-      p_phone: phone,
-      p_email: email,
-    });
+  try {
+    const rpcRequestId = id || null;
+    const { data: rpcData, error: rpcError } = await shiftFuelDb
+      .rpc("public_track_request", {
+        p_request_id: rpcRequestId,
+        p_phone: phone,
+        p_email: email,
+      });
 
-  if (!rpcError) {
-    matchedRequests = sortTrackedRequests(rpcData || []);
-  } else {
-    if (!isMissingRpcError(rpcError)) {
-      console.warn("Track lookup blocked:", rpcError);
+    if (!rpcError) {
+      matchedRequests = sortTrackedRequests(rpcData || []);
+    } else {
+      if (!isMissingRpcError(rpcError)) {
+        console.warn("Track lookup blocked:", rpcError);
+        recordTrackFailedAttempt();
+        trackMessage.textContent = "Unable to look up your request. Please try again.";
+        return;
+      }
+
+      console.warn("Track RPC unavailable, falling back to direct lookup:", rpcError);
+
+      let query = shiftFuelDb
+        .from("service_requests")
+        .select("*")
+        .order("created_at", { ascending: false });
+
+      if (id) {
+        query = query.eq("id", id);
+      } else if (email) {
+        query = query.ilike("customer_email", email);
+      }
+
+      const { data, error } = await query;
+
+      if (error) {
+        console.error("Tracking lookup error:", error);
+        recordTrackFailedAttempt();
+        trackMessage.textContent = "Unable to look up your request. Please try again.";
+        return;
+      }
+
+      matchedRequests = sortTrackedRequests((data || []).filter((request) => {
+        const phoneMatches = !phone || cleanPhone(request.customer_phone) === phone;
+        const emailMatches = !email || String(request.customer_email || "").toLowerCase() === email;
+        return phoneMatches && emailMatches;
+      }));
+    }
+
+    if (matchedRequests.length === 0) {
       recordTrackFailedAttempt();
-      trackMessage.textContent = "Unable to look up your request. Please try again.";
+      trackMessage.textContent = "We could not find a matching request. Please check your phone number, email, or request number and try again.";
       return;
     }
 
-    console.warn("Track RPC unavailable, falling back to direct lookup:", rpcError);
-
-    let query = shiftFuelDb
-      .from("service_requests")
-      .select("*")
-      .order("created_at", { ascending: false });
-
-    if (id) {
-      query = query.eq("id", id);
-    } else if (email) {
-      query = query.ilike("customer_email", email);
+    clearTrackAttempts();
+    verifiedTrackingContact = { phone, email };
+    trackMessage.textContent = "";
+    if (refreshStatusBtn) refreshStatusBtn.hidden = false;
+    window._trackingRequests = matchedRequests;
+    await renderAllRequests(matchedRequests, phone, email);
+  } finally {
+    if (submitButton) {
+      submitButton.disabled = false;
+      submitButton.textContent = originalSubmitText || "Track Request";
     }
-
-    const { data, error } = await query;
-
-    if (error) {
-      console.error("Tracking lookup error:", error);
-      recordTrackFailedAttempt();
-      trackMessage.textContent = "Unable to look up your request. Please try again.";
-      return;
-    }
-
-    matchedRequests = sortTrackedRequests((data || []).filter((request) => {
-      const phoneMatches = phone && cleanPhone(request.customer_phone) === phone;
-      const emailMatches = email && String(request.customer_email || "").toLowerCase() === email;
-      return id ? (phoneMatches || emailMatches) : (phoneMatches && emailMatches);
-    }));
   }
-
-  if (matchedRequests.length === 0) {
-    recordTrackFailedAttempt();
-    trackMessage.textContent = "No requests found matching that information. Please check your phone number and email, then try again.";
-    return;
-  }
-
-  clearTrackAttempts();
-  verifiedTrackingContact = { phone, email };
-  trackMessage.textContent = "";
-  if (refreshStatusBtn) refreshStatusBtn.hidden = false;
-  window._trackingRequests = matchedRequests;
-  await renderAllRequests(matchedRequests, phone, email);
 });
 
 refreshStatusBtn?.addEventListener("click", () => {
@@ -2669,13 +2703,6 @@ trackingResult.addEventListener("click", async (event) => {
     return;
   }
 
-  const confirmRequestReturnButton = event.target.closest(".confirm-request-return");
-  if (confirmRequestReturnButton) {
-    const requestId = confirmRequestReturnButton.dataset.requestId;
-    await submitCustomerReturnRequest(requestId, confirmRequestReturnButton);
-    return;
-  }
-
   // ── Confirm and Pay (pending_customer_payment) ───────────────────────────
   const confirmPayBtn = event.target.closest('.confirm-and-pay');
   if (confirmPayBtn && !confirmPayBtn.disabled) {
@@ -2692,34 +2719,24 @@ trackingResult.addEventListener("click", async (event) => {
   const reasonInput = card.querySelector(".customer-cancel-reason");
   const reason = reasonInput?.value.trim() || "";
 
-  if (!reason) {
-    trackMessage.textContent = "Please add a reason before canceling.";
-    reasonInput?.focus();
-    return;
-  }
-
   confirmCancelButton.textContent = "Canceling...";
   confirmCancelButton.disabled = true;
   trackMessage.textContent = "";
 
+  let result;
   try {
-    await cancelCustomerRequestFromTrack({ requestId, reason });
-
+    result = await cancelCustomerRequestFromTrack({ requestId, reason });
   } catch (err) {
     console.error('[track] Customer cancellation failed:', err.payload || err);
-    if (String(err.message || '').toLowerCase().includes('request vehicle return')) {
-      await submitCustomerReturnRequest(requestId, confirmCancelButton);
-      return;
-    }
-    trackMessage.textContent = String(err.message || '').includes('release the authorization')
-      ? "We could not release the authorization automatically. Please contact ShiftFuel."
-      : (err.message || "Network error. Please try again or contact ShiftFuel.");
+    trackMessage.textContent = err.message || "Network error. Please try again or contact ShiftFuel.";
     confirmCancelButton.textContent = "Confirm cancellation";
     confirmCancelButton.disabled = false;
     return;
   }
 
-  trackMessage.textContent = "Your request has been canceled. Your card authorization was released and you were not charged.";
+  trackMessage.textContent = result.status === 'cancelled_pending_key_return'
+    ? "Cancellation received. Your request will remain visible until your key or vehicle is returned."
+    : "Your request has been cancelled.";
   try {
     await refreshTrackedRequestsAfterAction();
   } catch (refreshError) {

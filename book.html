@@ -17,27 +17,42 @@
         <span aria-hidden="true">&#9776;</span>
       </button>
       <nav id="site-nav" class="nav" data-nav aria-label="Main navigation">
+        <a href="index.html#how">How It Works</a>
+        <a href="index.html#services">Services &amp; Pricing</a>
+        <a href="index.html#trust">Safety &amp; Trust</a>
         <a class="nav-cta" href="book.html" aria-current="page">Book Now</a>
         <a class="nav-outline" href="track.html">Track My Vehicle</a>
-        <a href="returning.html">Returning Customer</a>
-        <a href="index.html#how">How It Works</a>
-        <a href="index.html#services">Services</a>
+        <a class="nav-returning" href="returning.html">Returning Customer</a>
       </nav>
     </header>
 
     <main class="booking-flow-shell">
       <section class="booking-flow-hero">
-        <p class="eyebrow">Book Now</p>
-        <h1>Book your ShiftFuel service.</h1>
-        <p>Start with customer information, then move step by step through address, vehicle, service, schedule, handoff, payment, and review.</p>
+        <div class="booking-flow-hero-copy">
+          <p class="eyebrow">Book in minutes, we handle the rest</p>
+          <h1>Book your ShiftFuel service.</h1>
+          <p>We make it easy. Follow the simple steps below and we'll take care of the fuel fill-up, car wash, or inspection while you focus on what matters.</p>
+          <div class="hero-trust-row">
+            <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="8" r="3.4"/><path d="M5 20c0-3.3 3.1-6 7-6s7 2.7 7 6"/></svg>Trusted professionals</span>
+            <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3l7 3v6c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6l7-3z"/></svg>Premium experience</span>
+            <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="8.5"/><path d="M12 7v5l3.5 2"/></svg>Real-time updates</span>
+            <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="5" y="10.5" width="14" height="9.5" rx="1.6"/><path d="M8 10.5V8a4 4 0 0 1 8 0v2.5"/></svg>Secure &amp; protected</span>
+          </div>
+        </div>
+        <figure class="booking-flow-hero-image">
+          <img src="https://images.unsplash.com/photo-1560179707-f14e90ef3623?auto=format&fit=crop&w=1200&q=80" alt="Professional vehicle handoff near a workplace parking area">
+        </figure>
       </section>
 
       <section id="booking-flow" class="booking-flow" data-booking-flow="book-now" aria-label="Book Now flow"></section>
     </main>
 
     <footer class="site-footer">
-      <p>&copy; <span id="year"></span> ShiftFuel Concierge. All rights reserved.</p>
+      <p class="footer-copy">&copy; <span id="year"></span> ShiftFuel Concierge. All rights reserved.</p>
     </footer>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="supabase-client.js"></script>
+    <script src="https://js.stripe.com/v3/"></script>
     <script src="booking-flow.js"></script>
   </body>
 </html>

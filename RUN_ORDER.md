@@ -141,6 +141,38 @@ that completing a receipt + capturing payment populates
 
 ---
 
+## 14. `supabase-track-single-field-search.sql`
+Run after step 13. Updates `public_track_request` so Track My Vehicle search
+accepts phone-only, email-only, or request/ticket-number-only lookups
+(previously required phone+email together, or a request ID plus one matching
+contact field).
+
+**After deploying:** confirm tracking by phone number alone, by email alone,
+and by request number alone each return the correct request(s).
+
+---
+
+## 15. `supabase-customer-cancellation-v2.sql`
+Run after step 14. Adds the columns the new status-aware customer cancellation
+workflow writes to: `cancellation_requested_at`, `cancelled_at`,
+`cancellation_stripe_fee_amount`, `cancellation_receipt_total`,
+`cancellation_total_charged`, `cancellation_status`,
+`cancellation_requires_key_return`, `cancellation_key_returned_at`,
+`cancellation_worker_notified_at`. Introduces two new status values used by
+`/api/payments` `customer_cancel` and the new `worker_confirm_cancellation_return`
+action: `cancelled` and `cancelled_pending_key_return` (plain text status
+column — no constraint changes needed).
+
+**After deploying:** cancel a test request at each of the 12 spec statuses
+(request_received, accepted, key_received, vehicle_picked_up,
+fueling_in_progress, car_wash_in_progress, service_in_progress,
+partial_service_complete, vehicle_returned, complete, denied, cancelled) from
+Track My Vehicle and confirm the fee/charge/status matches the spec, and that
+a worker can confirm key/vehicle return on a `cancelled_pending_key_return`
+job to flip it to `cancelled`.
+
+---
+
 ## Post-deploy verification
 
 **Employees / security**

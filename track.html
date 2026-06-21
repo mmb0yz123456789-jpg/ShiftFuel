@@ -3,83 +3,98 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Track Request | ShiftFuel Concierge</title>
+  <title>Track My Vehicle | ShiftFuel Concierge</title>
   <link rel="stylesheet" href="styles.css">
 </head>
 <body class="track-page">
-	<header class="site-header">
+	<header class="site-header landing-header">
 		<a class="logo" href="index.html" aria-label="ShiftFuel Concierge home">
       <span class="logo-mark">S</span>
       <span>ShiftFuel Concierge</span>
     </a>
-		<nav class="nav" aria-label="Main navigation">
+    <button class="mobile-menu-button" type="button" data-nav-toggle aria-expanded="false" aria-controls="site-nav">
+      <span>Menu</span>
+      <span aria-hidden="true">&#9776;</span>
+    </button>
+		<nav id="site-nav" class="nav" data-nav aria-label="Main navigation">
+      <a href="index.html#how">How It Works</a>
+      <a href="index.html#services">Services &amp; Pricing</a>
+      <a href="index.html#trust">Safety &amp; Trust</a>
 			<a class="nav-cta" href="book.html#book">Book Now</a>
-			<a class="nav-outline" href="track.html">Track My Vehicle</a>
-			<a href="returning.html">Returning Customer</a>
-			<a href="index.html#how">How It Works</a>
-			<a href="index.html#services">Services</a>
+			<a class="nav-outline" href="track.html" aria-current="page">Track My Vehicle</a>
+			<a class="nav-returning" href="returning.html">Returning Customer</a>
 		</nav>
 	</header>
 
-  <main>
-    <section class="section admin-hero">
-      <div class="section-heading">
-        <p class="eyebrow">Customer tracking</p>
-        <h1>Track your vehicle service</h1>
-        <p>
-          Enter your phone number, email address, or request ID to view your current service status.
-        </p>
+  <main class="booking-flow-shell track-shell">
+    <section class="booking-flow-hero">
+      <div class="booking-flow-hero-copy">
+        <p class="eyebrow">Track your request</p>
+        <h1>Track My Vehicle</h1>
+        <p>Enter your phone number, email address, or request number to find your request and get real-time updates.</p>
       </div>
+      <figure class="booking-flow-hero-image">
+        <img src="https://images.unsplash.com/photo-1560179707-f14e90ef3623?auto=format&fit=crop&w=1200&q=80" alt="Professional vehicle handoff near a workplace parking area">
+      </figure>
+    </section>
 
-      <form id="track-form" class="booking-form">
-        <fieldset>
-          <legend>Find request</legend>
-
-          <label>
-            Phone Number
-            <input id="tracking-phone" type="tel" placeholder="(302) 555-1234">
-          </label>
-
-          <label>
-            Email Address
-            <input id="tracking-email" type="email" placeholder="name@email.com">
-          </label>
-
-          <label>
-            Request ID (Optional)
-            <input id="tracking-id" type="text" placeholder="Paste request ID">
-          </label>
-
-          <div class="admin-button-row">
-            <button class="button primary" type="submit">Track Request</button>
-            <button id="refresh-status-btn" class="button secondary" type="button" hidden>Refresh status</button>
+    <section class="track-search-card">
+      <form id="track-form" class="track-search-form">
+        <div class="track-search-heading">
+          <span class="track-search-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="11" cy="11" r="6.5"/><path d="M20 20l-4.5-4.5"/></svg></span>
+          <div>
+            <h2>Find your request</h2>
+            <p>Use any of the options below to look up your request.</p>
           </div>
-        </fieldset>
+        </div>
+
+        <div class="track-field-grid">
+          <label>
+            Phone number
+            <input id="tracking-phone" type="tel" placeholder="(555) 123-4567">
+          </label>
+
+          <label>
+            Email address
+            <input id="tracking-email" type="email" placeholder="you@example.com">
+          </label>
+
+          <label>
+            Request / Ticket Number
+            <input id="tracking-id" type="text" placeholder="SF-123456">
+          </label>
+
+          <div class="track-search-actions">
+            <button class="button primary" type="submit">Track Request</button>
+            <button id="refresh-status-btn" class="button secondary" type="button" hidden>Refresh Status</button>
+          </div>
+        </div>
+
+        <p class="track-search-note"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="5" y="10.5" width="14" height="9.5" rx="1.6"/><path d="M8 10.5V8a4 4 0 0 1 8 0v2.5"/></svg>Your information is secure and used only to retrieve your request.</p>
       </form>
 
       <p id="track-message" class="form-status"></p>
     </section>
 
-    <section class="section">
-      <div id="tracking-result"></div>
-    </section>
+    <div id="tracking-result"></div>
   </main>
 
-  <footer class="site-footer">
-    <div class="footer-main">
-      <p class="footer-copy">&copy; <span id="year"></span> ShiftFuel Concierge. Serving workplaces in Delaware.</p>
-      <div class="footer-groups">
-        <div class="footer-group">
-          <p class="footer-group-label">Company</p>
-          <a href="hiring.html">Join the team</a>
-        </div>
-        <div class="footer-group">
-          <p class="footer-group-label">Staff</p>
-          <a href="worker-login.html">Worker login</a>
-          <a href="admin-login.html">Admin login</a>
-        </div>
+  <section class="portal-closing-banner">
+    <div class="final-cta-main">
+      <span class="final-cta-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M12 3l7 3v6c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6l7-3z"/><path d="M9 12l2 2 4-4"/></svg></span>
+      <div>
+        <strong>Your vehicle, our priority.</strong>
+        <p>Premium workday vehicle services you can count on.</p>
       </div>
     </div>
+    <div class="final-cta-portals">
+      <a class="button portal-button" href="worker-login.html"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="8" r="3.4"/><path d="M5 20c0-3.3 3.1-6 7-6s7 2.7 7 6"/></svg>Worker Portal</a>
+      <a class="button portal-button" href="admin-login.html"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="3"/><path d="M19.4 13.5a7.6 7.6 0 0 0 0-3l1.9-1.3-2-3.4-2.2.7a7.6 7.6 0 0 0-2.6-1.5L14 2.5h-4l-.5 2.5a7.6 7.6 0 0 0-2.6 1.5l-2.2-.7-2 3.4 1.9 1.3a7.6 7.6 0 0 0 0 3l-1.9 1.3 2 3.4 2.2-.7a7.6 7.6 0 0 0 2.6 1.5l.5 2.5h4l.5-2.5a7.6 7.6 0 0 0 2.6-1.5l2.2.7 2-3.4z"/></svg>Admin Portal</a>
+    </div>
+  </section>
+
+  <footer class="site-footer">
+    <p class="footer-copy">&copy; <span id="year"></span> ShiftFuel Concierge. All rights reserved.</p>
   </footer>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -90,6 +105,17 @@
   <script src="photo-utils.js"></script>
   <script src="date-picker.js"></script>
   <script src="track.js"></script>
+  <script>
+    const trackYear = document.querySelector("#year");
+    if (trackYear) trackYear.textContent = new Date().getFullYear();
+    const trackNavToggle = document.querySelector("[data-nav-toggle]");
+    const trackNav = document.querySelector("[data-nav]");
+    trackNavToggle?.addEventListener("click", () => {
+      const isOpen = trackNavToggle.getAttribute("aria-expanded") === "true";
+      trackNavToggle.setAttribute("aria-expanded", String(!isOpen));
+      trackNav?.classList.toggle("is-open", !isOpen);
+    });
+  </script>
   <script defer src="/_vercel/insights/script.js"></script>
   <script defer src="/_vercel/speed-insights/script.js"></script>
 </body>

@@ -28,6 +28,11 @@ const closeTicketDetailBtn = document.querySelector('#close-ticket-detail');
 const ticketDetailBody = document.querySelector('#ticket-detail-body');
 const adminPageTabs = document.querySelectorAll('.admin-page-tab');
 const workerCountBadge = document.querySelector('#worker-count-badge');
+const statOpenRequests = document.querySelector('#stat-open-requests');
+const statInProgress = document.querySelector('#stat-in-progress');
+const statCompletedToday = document.querySelector('#stat-completed-today');
+const statActiveWorkers = document.querySelector('#stat-active-workers');
+const statRevenueToday = document.querySelector('#stat-revenue-today');
 const findTicketsGoBtn = document.querySelector('#find-tickets-go');
 const findTicketsSortBar = document.querySelector('#find-tickets-sort-bar');
 const findTicketsSortSelect = document.querySelector('#find-tickets-sort');
@@ -1587,6 +1592,33 @@ function renderEditPanel(request) {
   `;
 }
 
+function isSameLocalDay(isoString, reference) {
+  if (!isoString) return false;
+  const d = new Date(isoString);
+  return d.getFullYear() === reference.getFullYear()
+    && d.getMonth() === reference.getMonth()
+    && d.getDate() === reference.getDate();
+}
+
+function updateDashboardStatCards() {
+  const today = new Date();
+  const unassignedStatuses = ['pending', 'request_received'];
+
+  const openCount = allRequests.filter((r) => unassignedStatuses.includes(r.status)).length;
+  const inProgressCount = allRequests.filter((r) => isOpen(r) && !unassignedStatuses.includes(r.status)).length;
+  const completedTodayCount = allRequests.filter((r) => r.status === 'complete' && isSameLocalDay(r.updated_at || r.created_at, today)).length;
+  const activeWorkerCount = allEmployees.filter((e) => e.active).length;
+  const revenueToday = allRequests
+    .filter((r) => r.payment_status === 'captured' && isSameLocalDay(r.updated_at || r.created_at, today))
+    .reduce((sum, r) => sum + Number(r.captured_amount ?? r.final_total ?? 0), 0);
+
+  if (statOpenRequests) statOpenRequests.textContent = openCount;
+  if (statInProgress) statInProgress.textContent = inProgressCount;
+  if (statCompletedToday) statCompletedToday.textContent = completedTodayCount;
+  if (statActiveWorkers) statActiveWorkers.textContent = activeWorkerCount;
+  if (statRevenueToday) statRevenueToday.textContent = `$${revenueToday.toFixed(2)}`;
+}
+
 function renderRequests() {
   const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
 
@@ -1617,6 +1649,8 @@ function renderRequests() {
 
   // Update hero completed count
   if (adminCompletedCount) adminCompletedCount.textContent = completeCount;
+
+  updateDashboardStatCards();
 
   // Update heading and show-all button
   const headings = { open: 'Open requests', complete: 'Completed requests', closed: 'Closed requests' };
@@ -1747,6 +1781,7 @@ async function loadEmployees() {
     if (workerCountBadge) workerCountBadge.textContent = allEmployees.filter((e) => e.active).length;
     renderWorkerSelect();
     renderWorkerProfiles();
+    updateDashboardStatCards();
   } catch (error) {
     console.warn('Could not load employees:', error);
     allEmployees = [

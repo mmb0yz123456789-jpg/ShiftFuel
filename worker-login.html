@@ -6,36 +6,45 @@
   <title>Worker Login | ShiftFuel Concierge</title>
   <link rel="stylesheet" href="styles.css">
 </head>
-<body class="portal-login-page worker-login-page">
-  <header class="portal-header">
-    <a class="logo" href="index.html">ShiftFuel Concierge</a>
-    <a class="portal-back-link" href="index.html">← Back to home</a>
+<body class="landing-page portal-login-page worker-login-page">
+  <header class="site-header landing-header">
+    <a class="logo" href="index.html" aria-label="ShiftFuel Concierge home">
+      <span class="logo-mark">S</span>
+      <span>ShiftFuel Concierge</span>
+    </a>
+    <button class="mobile-menu-button" type="button" data-nav-toggle aria-expanded="false" aria-controls="site-nav">
+      <span>Menu</span>
+      <span aria-hidden="true">&#9776;</span>
+    </button>
+    <nav id="site-nav" class="nav" data-nav aria-label="Main navigation">
+      <a href="index.html#how">How It Works</a>
+      <a href="index.html#services">Services &amp; Pricing</a>
+      <a href="index.html#trust">Safety &amp; Trust</a>
+      <a class="nav-cta" href="book.html#book">Book Now</a>
+      <a class="nav-outline" href="track.html">Track My Vehicle</a>
+      <a class="nav-returning" href="returning.html">Returning Customer</a>
+    </nav>
   </header>
 
-  <main>
-    <section class="section admin-hero">
-      <div class="section-heading">
-        <p class="eyebrow">Worker Access</p>
-        <h1>ShiftFuel Worker Portal</h1>
-        <p>Sign in to access your worker portal.</p>
-      </div>
+  <main class="portal-login-shell">
+    <section class="portal-login-card">
+      <span class="portal-login-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="8" r="3.4"/><path d="M5 20c0-3.3 3.1-6 7-6s7 2.7 7 6"/></svg></span>
+      <p class="eyebrow">Worker Access</p>
+      <h1>ShiftFuel Worker Portal</h1>
+      <p class="portal-login-intro">Sign in to access your worker portal.</p>
 
       <form id="worker-login-form" class="booking-form">
-        <fieldset>
-          <legend>Worker Login</legend>
+        <label>
+          Worker name or phone
+          <input id="worker-login-name" type="text" placeholder="Enter worker name or phone" autocomplete="username" required>
+        </label>
 
-          <label>
-            Worker name or phone
-            <input id="worker-login-name" type="text" placeholder="Enter worker name or phone" autocomplete="username" required>
-          </label>
+        <label>
+          Password
+          <input id="worker-password" type="password" placeholder="Enter worker password" required>
+        </label>
 
-          <label>
-            Password
-            <input id="worker-password" type="password" placeholder="Enter worker password" required>
-          </label>
-
-          <button class="button primary" type="submit">Sign In</button>
-        </fieldset>
+        <button class="button primary" type="submit">Sign In</button>
       </form>
 
       <p id="worker-login-message" class="form-status"></p>
@@ -119,6 +128,15 @@
   </script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="supabase-client.js"></script>
+  <script>
+    const workerLoginNavToggle = document.querySelector("[data-nav-toggle]");
+    const workerLoginNav = document.querySelector("[data-nav]");
+    workerLoginNavToggle?.addEventListener("click", () => {
+      const isOpen = workerLoginNavToggle.getAttribute("aria-expanded") === "true";
+      workerLoginNavToggle.setAttribute("aria-expanded", String(!isOpen));
+      workerLoginNav?.classList.toggle("is-open", !isOpen);
+    });
+  </script>
   <script defer src="/_vercel/insights/script.js"></script>
   <script defer src="/_vercel/speed-insights/script.js"></script>
 </body>

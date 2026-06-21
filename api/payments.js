@@ -210,14 +210,18 @@ async function handleCreateIntent(body, res) {
 // server-side below, never taken from the request body.
 const ALLOWED_BOOKING_FIELDS = [
   'customer_name', 'customer_phone', 'customer_email',
+  'customer_id',
   'vehicle_year', 'vehicle_make', 'vehicle_model', 'vehicle_color', 'license_plate',
+  'vehicle_id',
   'hospital', 'address_street', 'address_apt', 'address_city', 'address_state', 'address_zip',
+  'address_validation_status',
   'parking_location', 'parking_spot', 'parking_map_url', 'key_handoff_details',
+  'special_instructions',
   'service_type', 'service_label', 'service_date', 'desired_return_time',
   'fuel_type', 'estimated_fuel_range', 'estimated_gallons', 'price_per_gallon', 'estimated_fuel_amount',
   'fuel_convenience_fee', 'wash_package', 'wash_package_label', 'wash_fee', 'wash_convenience_fee',
   'quick_inspection', 'quick_inspection_fee', 'service_fee', 'detailing_available_window',
-  'estimated_total', 'notes',
+  'estimated_total', 'notes', 'booking_source',
   // Pricing/payment-recovery audit trail (passive record-keeping — the actual
   // charge is independently verified against Stripe below, never trusted
   // from these fields).
@@ -611,20 +615,88 @@ async function handleCustomerCapture(body, res) {
     return res.status(500).json({ error: 'Payment capture failed. Please contact ShiftFuel.' });
   }
 }
+const CANCELLATION_BASE_FEE = 15;
+
+// Status -> cancellation outcome. Keep in sync with the confirmation-modal
+// copy in track.js — the customer must see the same fee story they're charged.
+function cancellationOutcomeForStatus(status) {
+  const noFeeStatuses = ['pending', 'request_received', 'accepted'];
+  const flatFeeStatuses = ['key_received'];
+  const feePlusCostsStatuses = [
+    'vehicle_picked_up', 'fueling_in_progress', 'car_wash_in_progress',
+    'service_in_progress', 'partial_service_complete',
+    // Existing pickup/fueling/wash sub-statuses also mean service has started.
+    'pickup_vehicle_photo_uploaded', 'pickup_odometer_photo_uploaded', 'pickup_fuel_gauge_photo_uploaded',
+    'fueling_complete', 'fuel_receipt_uploaded', 'car_wash_complete', 'wash_receipt_uploaded',
+    'car_wash_after_fuel_in_progress', 'fueling_after_wash_in_progress',
+    'wash_receipt_after_fuel_uploaded', 'fuel_receipt_after_wash_uploaded',
+    'service_complete', 'receipts_recorded',
+  ];
+  const blockedMessages = {
+    vehicle_returned: 'This request can no longer be cancelled because the vehicle has already been returned.',
+    returned_location_pending: 'This request can no longer be cancelled because the vehicle has already been returned.',
+    return_location_recorded: 'This request can no longer be cancelled because the vehicle has already been returned.',
+    return_photos_needed: 'This request can no longer be cancelled because the vehicle has already been returned.',
+    dropoff_vehicle_photo_uploaded: 'This request can no longer be cancelled because the vehicle has already been returned.',
+    dropoff_odometer_photo_uploaded: 'This request can no longer be cancelled because the vehicle has already been returned.',
+    inspection_needed: 'This request can no longer be cancelled because the vehicle has already been returned.',
+    inspection_recorded: 'This request can no longer be cancelled because the vehicle has already been returned.',
+    awaiting_key_return: 'This request can no longer be cancelled because the vehicle has already been returned.',
+    keys_returned: 'This request can no longer be cancelled because the vehicle has already been returned.',
+    final_payment_processed: 'This request can no longer be cancelled because the vehicle has already been returned.',
+    complete: 'This request is already complete.',
+    denied: 'This request has already been denied.',
+    cancelled: 'This request has already been cancelled.',
+    cancelled_pending_key_return: 'This request has already been cancelled.',
+    customer_canceled: 'This request has already been cancelled.',
+    canceled: 'This request has already been cancelled.',
+    canceled_return_completed: 'This request has already been cancelled.',
+    customer_return_requested: 'This request has already been cancelled.',
+    return_requested: 'This request has already been cancelled.',
+  };
+
+  if (blockedMessages[status]) {
+    return { cancelable: false, message: blockedMessages[status] };
+  }
+  if (noFeeStatuses.includes(status)) {
+    return { cancelable: true, tier: 'none', requiresKeyReturn: false, newStatus: 'cancelled' };
+  }
+  if (flatFeeStatuses.includes(status)) {
+    return { cancelable: true, tier: 'flat_fee', requiresKeyReturn: true, newStatus: 'cancelled_pending_key_return' };
+  }
+  if (feePlusCostsStatuses.includes(status)) {
+    return { cancelable: true, tier: 'fee_plus_costs', requiresKeyReturn: true, newStatus: 'cancelled_pending_key_return' };
+  }
+  return { cancelable: false, message: 'This request cannot be cancelled from Track right now. Please contact ShiftFuel.' };
+}
+
+// Single shared place the Stripe-fee-covering markup is computed for
+// cancellations — never hard-code this math per call site.
+function cancellationChargeForTier(tier, receiptTotals) {
+  if (tier === 'none') {
+    return { feeAmount: 0, stripeFee: 0, receiptTotal: 0, totalCharged: 0 };
+  }
+  if (tier === 'flat_fee') {
+    return { feeAmount: CANCELLATION_BASE_FEE, stripeFee: 0, receiptTotal: 0, totalCharged: CANCELLATION_BASE_FEE };
+  }
+  const receiptTotal = roundMoney((receiptTotals.fuel || 0) + (receiptTotals.wash || 0));
+  const subtotal = roundMoney(CANCELLATION_BASE_FEE + receiptTotal);
+  const totalCharged = Math.ceil((subtotal + RETURN_RECOVERY_FIXED) / (1 - RETURN_RECOVERY_RATE));
+  const stripeFee = roundMoney(totalCharged - subtotal);
+  return { feeAmount: CANCELLATION_BASE_FEE, stripeFee, receiptTotal, totalCharged };
+}
+
 async function handleCustomerCancel(body, res) {
   const { request_id, phone, email, reason } = body;
 
   if (!request_id || (!phone && !email)) {
     return res.status(400).json({ error: 'request_id and phone or email are required' });
   }
-  if (!reason || !reason.trim()) {
-    return res.status(400).json({ error: 'A cancellation reason is required' });
-  }
 
   const db = getSupabaseAdmin();
   const { data: request, error: reqErr } = await db
     .from('service_requests')
-    .select('id, payment_intent_id, payment_status, status, customer_phone, customer_email')
+    .select('id, payment_intent_id, payment_status, status, customer_phone, customer_email, notes, assigned_employee_id')
     .eq('id', request_id)
     .maybeSingle();
 
@@ -636,81 +708,107 @@ async function handleCustomerCancel(body, res) {
     return res.status(403).json({ error: 'Contact details do not match this request' });
   }
 
-  const cancelableStatuses = ['pending', 'request_received', 'accepted'];
-  if (!cancelableStatuses.includes(request.status)) {
-    const serviceStartedStatuses = [
-      'key_received', 'vehicle_picked_up', 'service_in_progress', 'fueling_complete',
-      'fuel_receipt_uploaded', 'car_wash_complete', 'wash_receipt_uploaded',
-      'service_complete', 'receipts_recorded', 'returned_location_pending',
-      'return_location_recorded', 'return_photos_needed', 'vehicle_returned',
-      'inspection_needed', 'inspection_recorded', 'final_payment_processed',
-      'awaiting_key_return', 'keys_returned', 'complete',
-    ];
-    if (serviceStartedStatuses.includes(request.status)) {
-      return res.status(400).json({ error: 'This request cannot be canceled for free. Use the Request vehicle return option instead.' });
-    }
-    return res.status(400).json({ error: 'This request cannot be canceled from Track. Please contact ShiftFuel.' });
+  const outcome = cancellationOutcomeForStatus(request.status);
+  if (!outcome.cancelable) {
+    return res.status(400).json({ error: outcome.message });
   }
 
   const timestamp = new Date().toISOString();
+  const receiptTotals = receiptTotalsFromNotes(request.notes);
+  const charge = cancellationChargeForTier(outcome.tier, receiptTotals);
   let paymentStatus = request.payment_status || 'canceled';
 
-  if (request.payment_intent_id) {
-    try {
-      const stripe = getStripe();
-      const intent = await stripe.paymentIntents.retrieve(request.payment_intent_id);
-
-      if (intent.status === 'requires_capture') {
-        await stripe.paymentIntents.cancel(request.payment_intent_id);
-        paymentStatus = 'authorization_released';
-        console.log('[payments/customer_cancel] Voided PI', request.payment_intent_id, 'for request', request_id);
-      } else if (intent.status === 'canceled') {
-        paymentStatus = 'authorization_released';
-        console.log('[payments/customer_cancel] PI already canceled', request.payment_intent_id, 'for request', request_id);
-      } else if (['requires_payment_method', 'requires_confirmation', 'requires_action', 'processing'].includes(intent.status)) {
-        paymentStatus = 'authorization_released';
-        console.warn('[payments/customer_cancel] PI had no capturable authorization at cancel time:', intent.status, 'request:', request_id);
-      } else if (intent.status === 'succeeded') {
-        console.error('[payments/customer_cancel] Refusing free cancel because PI already succeeded:', request.payment_intent_id, 'request:', request_id);
-        return res.status(500).json({ error: 'We could not release the authorization automatically. Please contact ShiftFuel.' });
-      } else {
-        console.error('[payments/customer_cancel] Unsupported PI status while canceling:', intent.status, 'request:', request_id);
-        return res.status(500).json({ error: 'We could not release the authorization automatically. Please contact ShiftFuel.' });
-      }
-    } catch (err) {
-      if (err.code === 'payment_intent_unexpected_state') {
-        try {
-          const intent = await getStripe().paymentIntents.retrieve(request.payment_intent_id);
-          if (intent.status === 'canceled') {
-            paymentStatus = 'authorization_released';
-          } else {
-            console.error('[payments/customer_cancel] PI unexpected state while canceling:', intent.status);
-            return res.status(500).json({ error: 'We could not release the authorization automatically. Please contact ShiftFuel.' });
-          }
-        } catch (retrieveErr) {
-          console.error('[payments/customer_cancel] Failed to verify PI after unexpected state:', retrieveErr.message);
+  try {
+    if (charge.totalCharged <= 0) {
+      // No-fee tier: void the authorization entirely, nothing is captured.
+      if (request.payment_intent_id) {
+        const stripe = getStripe();
+        const intent = await stripe.paymentIntents.retrieve(request.payment_intent_id);
+        if (intent.status === 'requires_capture') {
+          await stripe.paymentIntents.cancel(request.payment_intent_id);
+          paymentStatus = 'authorization_released';
+        } else if (intent.status === 'canceled') {
+          paymentStatus = 'authorization_released';
+        } else if (['requires_payment_method', 'requires_confirmation', 'requires_action', 'processing'].includes(intent.status)) {
+          paymentStatus = 'authorization_released';
+        } else {
+          console.error('[payments/customer_cancel] Cannot void PI in status', intent.status, 'for request', request_id);
           return res.status(500).json({ error: 'We could not release the authorization automatically. Please contact ShiftFuel.' });
         }
       } else {
-        console.error('[payments/customer_cancel] Failed to void PI:', err.message);
-        return res.status(500).json({ error: 'We could not release the authorization automatically. Please contact ShiftFuel.' });
+        paymentStatus = 'canceled';
       }
+    } else {
+      // Fee tier: capture only the cancellation charge amount, never the full
+      // original authorization unless receipts/completed costs justify it.
+      if (!request.payment_intent_id) {
+        return res.status(400).json({ error: 'No payment authorization exists to charge the cancellation fee against.' });
+      }
+      const stripe = getStripe();
+      const amountToCaptureInCents = Math.round(charge.totalCharged * 100);
+      let intent = await stripe.paymentIntents.retrieve(request.payment_intent_id);
+
+      if (intent.status === 'succeeded') {
+        return res.status(400).json({ error: 'This request has already been charged. Please contact ShiftFuel.' });
+      }
+      if (intent.status !== 'requires_capture') {
+        return res.status(500).json({ error: 'Your payment authorization is no longer valid. Please contact ShiftFuel.' });
+      }
+      if (intent.amount_capturable < amountToCaptureInCents) {
+        const increment = await tryIncrementAuthorization(stripe, request.payment_intent_id, amountToCaptureInCents);
+        if (increment.intent) intent = increment.intent;
+      }
+      if (intent.amount_capturable < amountToCaptureInCents) {
+        return res.status(400).json({ error: 'We could not process the cancellation fee automatically. Please contact ShiftFuel.' });
+      }
+
+      const captured = await stripe.paymentIntents.capture(request.payment_intent_id, { amount_to_capture: amountToCaptureInCents });
+      paymentStatus = 'cancellation_fee_paid';
+      console.log('[payments/customer_cancel] Captured cancellation charge', captured.amount_captured, 'for request', request_id);
     }
-  } else if (!request.payment_intent_id) {
-    paymentStatus = 'canceled';
+  } catch (err) {
+    if (err.code === 'payment_intent_unexpected_state') {
+      try {
+        const intent = await getStripe().paymentIntents.retrieve(request.payment_intent_id);
+        if (intent.status === 'canceled' && charge.totalCharged <= 0) {
+          paymentStatus = 'authorization_released';
+        } else {
+          console.error('[payments/customer_cancel] PI unexpected state:', intent.status);
+          return res.status(500).json({ error: 'We could not process this cancellation automatically. Please contact ShiftFuel.' });
+        }
+      } catch (retrieveErr) {
+        console.error('[payments/customer_cancel] Failed to verify PI after unexpected state:', retrieveErr.message);
+        return res.status(500).json({ error: 'We could not process this cancellation automatically. Please contact ShiftFuel.' });
+      }
+    } else {
+      console.error('[payments/customer_cancel] Stripe error:', err.message);
+      return res.status(500).json({ error: 'We could not process this cancellation automatically. Please contact ShiftFuel.' });
+    }
   }
 
+  const trimmedReason = reason && reason.trim() ? reason.trim() : null;
   const updateData = {
-    status: 'customer_canceled',
-    cancellation_reason: reason.trim(),
+    status: outcome.newStatus,
+    cancellation_reason: trimmedReason,
     canceled_at: timestamp,
     canceled_by: 'customer',
+    cancellation_requested_at: timestamp,
+    cancelled_at: outcome.newStatus === 'cancelled' ? timestamp : null,
+    cancellation_fee_amount: charge.feeAmount,
+    cancellation_stripe_fee_amount: charge.stripeFee,
+    cancellation_receipt_total: charge.receiptTotal,
+    cancellation_total_charged: charge.totalCharged,
+    cancellation_status: outcome.newStatus,
+    cancellation_requires_key_return: outcome.requiresKeyReturn,
+    cancellation_worker_notified_at: request.assigned_employee_id ? timestamp : null,
     payment_status: paymentStatus,
     updated_at: timestamp,
   };
   const minimalUpdateData = {
-    status: 'customer_canceled',
-    cancellation_reason: reason.trim(),
+    status: outcome.newStatus,
+    cancellation_reason: trimmedReason,
+    canceled_at: timestamp,
+    canceled_by: 'customer',
     payment_status: paymentStatus,
     updated_at: timestamp,
   };
@@ -727,7 +825,7 @@ async function handleCustomerCancel(body, res) {
 
     const missingOptionalColumn = updateErr.code === 'PGRST204'
       || updateErr.code === '42703'
-      || /column|schema cache|canceled_at|canceled_by/i.test(String(updateErr.message || ''));
+      || /column|schema cache/i.test(String(updateErr.message || ''));
 
     if (missingOptionalColumn) {
       const fallback = await db.from('service_requests').update(minimalUpdateData).eq('id', request_id);
@@ -742,11 +840,55 @@ async function handleCustomerCancel(body, res) {
       details: updateErr.details,
       hint: updateErr.hint,
     });
-    return res.status(500).json({ error: 'Could not cancel the request. Please contact ShiftFuel.' });
+    return res.status(500).json({ error: `Your cancellation was processed but we could not update the request. Contact ShiftFuel and reference request ${request_id}.` });
   }
 
-  console.log('[payments/customer_cancel] Request', request_id, 'canceled. payment_status:', paymentStatus);
-  return res.status(200).json({ success: true, payment_status: paymentStatus });
+  console.log('[payments/customer_cancel] Request', request_id, 'status ->', outcome.newStatus, 'payment_status:', paymentStatus);
+  return res.status(200).json({
+    success: true,
+    status: outcome.newStatus,
+    payment_status: paymentStatus,
+    charge: { fee_amount: charge.feeAmount, stripe_fee: charge.stripeFee, receipt_total: charge.receiptTotal, total_charged: charge.totalCharged },
+  });
+}
+
+async function handleWorkerConfirmCancellationReturn(body, res) {
+  const { worker_token, request_id } = body;
+
+  if (!worker_token || !request_id) {
+    return res.status(400).json({ error: 'worker_token and request_id are required' });
+  }
+
+  const employeeId = await verifyWorkerToken(worker_token);
+  if (!employeeId) return res.status(401).json({ error: 'Invalid or expired worker session' });
+
+  const db = getSupabaseAdmin();
+  const { data: request, error: reqErr } = await db
+    .from('service_requests')
+    .select('id, status')
+    .eq('id', request_id)
+    .maybeSingle();
+
+  if (reqErr || !request) return res.status(404).json({ error: 'Request not found' });
+  if (request.status !== 'cancelled_pending_key_return') {
+    return res.status(400).json({ error: 'This request is not awaiting a key/vehicle return.' });
+  }
+
+  const timestamp = new Date().toISOString();
+  const { error: updateErr } = await db.from('service_requests').update({
+    status: 'cancelled',
+    cancelled_at: timestamp,
+    cancellation_key_returned_at: timestamp,
+    cancellation_status: 'cancelled',
+    updated_at: timestamp,
+  }).eq('id', request_id);
+
+  if (updateErr) {
+    console.error('[payments/worker_confirm_cancellation_return] DB update failed:', updateErr.message);
+    return res.status(500).json({ error: 'Could not update the request. Please try again.' });
+  }
+
+  return res.status(200).json({ success: true, status: 'cancelled' });
 }
 
 async function handleWorkerCapture(body, res) {
@@ -1433,6 +1575,7 @@ const HANDLERS = {
   create_customer_final: handleCreateCustomerFinal,
   customer_capture:      handleCustomerCapture,
   customer_cancel:       handleCustomerCancel,
+  worker_confirm_cancellation_return: handleWorkerConfirmCancellationReturn,
   worker_capture:        handleWorkerCapture,
   cancel_payment:        handleCancelPayment,
   capture_payment:       handleCapturePayment,

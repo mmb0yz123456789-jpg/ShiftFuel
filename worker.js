@@ -274,6 +274,8 @@ const workerStatusLabels = {
   auto_reversed: 'Missed — auto-reversed',
   closed_no_charge: 'Closed — no charge',
   canceled_return_completed: 'Return completed',
+  cancelled: 'Cancelled',
+  cancelled_pending_key_return: 'Cancelled — key/vehicle return needed',
 };
 
 function escapeHtml(value) {
@@ -1137,6 +1139,20 @@ async function saveWorkerDaysOff() {
   setScheduleStatus('Days off saved and marked unbookable.');
 }
 
+function updateWorkerStatCards(requests) {
+  const todayEl = document.querySelector('#worker-stat-jobs-today');
+  const completedEl = document.querySelector('#worker-stat-jobs-completed');
+  if (!todayEl && !completedEl) return;
+
+  const today = new Date().toISOString().slice(0, 10);
+  if (todayEl) {
+    todayEl.textContent = requests.filter((r) => r.service_date === today).length;
+  }
+  if (completedEl) {
+    completedEl.textContent = requests.filter((r) => r.status === 'complete').length;
+  }
+}
+
 async function loadWorkerReviews() {
   if (!workerReviewList || !currentEmployee) return;
 
@@ -1144,13 +1160,15 @@ async function loadWorkerReviews() {
 
   const { data: requests, error: requestError } = await workerDb
     .rpc('worker_list_my_requests', { p_token: SESSION_WORKER_TOKEN })
-    .select('id,customer_name,vehicle_year,vehicle_make,vehicle_model');
+    .select('id,customer_name,vehicle_year,vehicle_make,vehicle_model,status,service_date');
 
   if (requestError) {
     console.warn('Could not load assigned requests:', requestError);
     workerReviewList.innerHTML = '<div class="empty-state"><p>Could not load assigned requests.</p></div>';
     return;
   }
+
+  updateWorkerStatCards(requests || []);
 
   const requestMap = new Map((requests || []).map((request) => [request.id, request]));
   const requestIds = Array.from(requestMap.keys());
@@ -1170,6 +1188,13 @@ async function loadWorkerReviews() {
     console.warn('Could not load worker reviews:', reviewError);
     workerReviewList.innerHTML = '<div class="empty-state"><p>Could not load reviews. Run supabase-service-reviews.sql in Supabase.</p></div>';
     return;
+  }
+
+  const ratingStatEl = document.querySelector('#worker-stat-rating');
+  if (ratingStatEl) {
+    ratingStatEl.textContent = reviews?.length
+      ? (reviews.reduce((sum, r) => sum + Number(r.rating || 0), 0) / reviews.length).toFixed(1)
+      : '—';
   }
 
   if (!reviews?.length) {
@@ -1420,6 +1445,9 @@ function renderWorkerJobActions(request) {
     activePanel = renderWorkerKeysReturnedPanel(request);
   } else if (request.status === 'payment_issue' || request.status === 'authorization_too_low') {
     nextAction = 'The customer is updating their payment method. No action needed from you right now.';
+  } else if (request.status === 'cancelled_pending_key_return') {
+    nextAction = 'Customer cancelled this request. Return the key/vehicle before closing this request.';
+    actions.push(`<button class="button primary confirm-cancellation-return" data-id="${escapeHtml(request.id)}" type="button">Confirm key/vehicle returned</button>`);
   }
 
   const back = workerBackButton(request);
@@ -2356,6 +2384,26 @@ workerJobList?.addEventListener('click', async (event) => {
       }
       button.disabled = true;
       await updateWorkerJobStatus(button.dataset.id, button.dataset.status);
+      return;
+    }
+
+    if (button.classList.contains('confirm-cancellation-return')) {
+      if (!confirm('Confirm the key/vehicle has been returned to the customer? This will close out the cancelled request.')) return;
+      button.disabled = true;
+      button.textContent = 'Confirming...';
+      const res = await fetch('/api/payments', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'worker_confirm_cancellation_return', worker_token: SESSION_WORKER_TOKEN, request_id: button.dataset.id }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        button.disabled = false;
+        button.textContent = 'Confirm key/vehicle returned';
+        alert(data.error || 'Could not confirm the return. Please try again.');
+        return;
+      }
+      await loadWorkerJobs();
       return;
     }
 
