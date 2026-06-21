@@ -21,8 +21,8 @@ let verifiedTrackingContact = { phone: "", email: "" };
 
 // Unified terminal/closed status list — keep in sync with admin.js, worker.js,
 // and the SQL terminal-status list in supabase-production-rls-lockdown.sql.
-const terminalStatuses = ["complete", "denied", "customer_canceled", "canceled", "cancelled", "unable_to_complete", "auto_reversed", "closed_no_charge", "canceled_return_completed"];
-const closedStatuses   = ["denied", "customer_canceled", "canceled", "cancelled", "unable_to_complete", "auto_reversed", "closed_no_charge", "canceled_return_completed"];
+const terminalStatuses = ["complete", "denied", "customer_cancelled", "cancelled", "cancelled", "unable_to_complete", "auto_reversed", "closed_no_charge", "cancelled_return_completed"];
+const closedStatuses   = ["denied", "customer_cancelled", "cancelled", "cancelled", "unable_to_complete", "auto_reversed", "closed_no_charge", "cancelled_return_completed"];
 // cancelled_pending_key_return is deliberately NOT terminal/closed — the
 // request stays in the in-progress section until the worker confirms the
 // key/vehicle has been returned (status then flips to "cancelled").
