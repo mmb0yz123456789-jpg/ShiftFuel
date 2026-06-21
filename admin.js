@@ -424,6 +424,7 @@ const PAYMENT_STATUS_LABELS = {
   not_started:            'Not started',
   authorized:             'Authorized (hold on card)',
   captured:               'Captured (charged)',
+  cancellation_fee_paid:  'Cancellation fee paid',
   voided:                 'Authorization released — customer was not charged',
   authorization_released: 'Authorization released — customer was not charged',
   refunded:               'Refunded',
