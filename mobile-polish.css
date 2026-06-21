@@ -1,4 +1,4 @@
-/* ShiftFuel mobile polish pass 1: phone-first header, booking, returning, and shared layout fixes. */
+/* ShiftFuel mobile polish pass 2: phone-first header, booking, returning, track, and shared layout fixes. */
 
 @media (max-width: 760px) {
   :root {
@@ -16,6 +16,7 @@
     background:
       radial-gradient(circle at top left, rgba(167, 191, 166, 0.2), transparent 22rem),
       var(--sf-off-white);
+    -webkit-text-size-adjust: 100%;
   }
 
   .sf-container,
@@ -27,9 +28,11 @@
   .landing-final-cta,
   .returning-flow-shell,
   .booking-flow-shell,
+  .track-shell,
   .site-footer,
   .portal-closing-banner {
     width: calc(100% - var(--sf-mobile-gutter) * 2) !important;
+    max-width: none !important;
   }
 
   .site-header,
@@ -101,11 +104,13 @@
     text-align: center;
   }
 
-  .booking-flow-shell {
+  .booking-flow-shell,
+  .track-shell {
     margin-top: 12px;
   }
 
   .booking-flow-hero,
+  .track-hero-redesign,
   .landing-hero,
   .returning-flow-hero {
     grid-template-columns: 1fr !important;
@@ -123,14 +128,14 @@
   .booking-flow-hero-image,
   .landing-hero-image,
   .returning-flow-hero-image {
-    min-height: 190px !important;
+    min-height: 170px !important;
   }
 
   .booking-flow-hero-image img,
   .landing-hero-image img,
   .returning-flow-hero-image img {
-    min-height: 190px !important;
-    height: 190px !important;
+    min-height: 170px !important;
+    height: 170px !important;
     object-fit: cover;
   }
 
@@ -149,6 +154,39 @@
 
   .hero-trust-row span {
     width: 100%;
+  }
+
+  .landing-actions,
+  .final-cta-portals {
+    display: grid !important;
+    grid-template-columns: 1fr !important;
+    gap: 10px !important;
+    width: 100%;
+  }
+
+  .landing-actions .button,
+  .pricing-button {
+    width: 100%;
+  }
+
+  .how-it-works-grid,
+  .pricing-card-grid,
+  .safety-row {
+    grid-template-columns: 1fr !important;
+    gap: 14px !important;
+  }
+
+  .landing-section,
+  .section {
+    padding: 44px 18px !important;
+    border-radius: 18px;
+  }
+
+  .pricing-card,
+  .safety-row,
+  .wash-summary-item {
+    padding: 18px !important;
+    border-radius: 16px !important;
   }
 
   .booking-flow {
@@ -194,17 +232,21 @@
 
   .booking-field-grid,
   .track-field-grid,
+  .track-search-form,
   .returning-options-grid,
   .returning-saved-grid,
   .service-choice-grid,
   .service-detail-grid,
   .review-grid,
-  .payment-grid {
+  .payment-grid,
+  .vehicle-grid,
+  .address-grid {
     grid-template-columns: 1fr !important;
     gap: 12px !important;
   }
 
   .returning-option-card,
+  .track-search-card,
   .payment-placeholder,
   .review-summary-list > div,
   .service-details-panel,
@@ -214,6 +256,21 @@
     border-radius: 14px !important;
   }
 
+  .track-search-card {
+    margin-top: 14px !important;
+  }
+
+  .track-search-heading {
+    align-items: flex-start !important;
+    gap: 12px !important;
+  }
+
+  .track-search-icon {
+    width: 42px !important;
+    height: 42px !important;
+    flex: 0 0 42px;
+  }
+
   input,
   select,
   textarea,
@@ -221,6 +278,10 @@
     min-height: 50px;
     font-size: 16px;
     border-radius: 12px;
+  }
+
+  textarea {
+    min-height: 110px;
   }
 
   .button,
@@ -236,7 +297,8 @@
   .form-actions,
   .returning-customer-actions,
   .track-search-actions,
-  .final-cta-portals {
+  .request-actions,
+  .status-actions {
     display: grid !important;
     grid-template-columns: 1fr !important;
     gap: 10px !important;
@@ -258,7 +320,8 @@
 
   .placeholder-note,
   .field-help,
-  .booking-note {
+  .booking-note,
+  .form-status {
     font-size: 0.92rem !important;
     line-height: 1.55;
   }
@@ -271,6 +334,35 @@
     display: grid !important;
     grid-template-columns: 1fr !important;
     gap: 4px;
+  }
+
+  .timeline,
+  .status-timeline {
+    overflow-x: auto;
+    padding-bottom: 8px;
+  }
+
+  .tracking-result-card,
+  .status-panel,
+  .request-card,
+  .track-request-card {
+    border-radius: 16px !important;
+    padding: 16px !important;
+  }
+
+  .photo-grid,
+  .receipt-grid,
+  .gallery-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 8px !important;
+  }
+
+  .photo-grid img,
+  .receipt-grid img,
+  .gallery-grid img {
+    min-height: 118px !important;
+    border-radius: 12px !important;
+    object-fit: cover;
   }
 
   .site-footer {
@@ -292,6 +384,7 @@
   .final-cta-icon {
     width: 46px;
     height: 46px;
+    flex: 0 0 46px;
   }
 }
 
@@ -325,5 +418,11 @@
   .booking-panel,
   .booking-step-content {
     padding-inline: 14px !important;
+  }
+
+  .photo-grid,
+  .receipt-grid,
+  .gallery-grid {
+    grid-template-columns: 1fr !important;
   }
 }
