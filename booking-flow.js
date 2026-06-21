@@ -2,6 +2,21 @@ const flowRoot = document.querySelector("[data-booking-flow]");
 const navToggle = document.querySelector("[data-nav-toggle]");
 const nav = document.querySelector("[data-nav]");
 const year = document.querySelector("#year");
+const STRIPE_PUBLISHABLE_KEY = "pk_test_51Tinn8H7KLNRhY3F757Dwev2OIk1CWs0ExzSQwvX9gvzo7ubsXnYbZKl9qVLoIWYOpF6OkzVkIA9kAtkx7i1c1HG00sCPnNo59";
+const stripe = window.Stripe ? window.Stripe(STRIPE_PUBLISHABLE_KEY) : null;
+const stripeElements = stripe ? stripe.elements() : null;
+const cardElement = stripeElements ? stripeElements.create("card", {
+  style: {
+    base: {
+      fontSize: "16px",
+      color: "#1a1a1a",
+      fontFamily: "system-ui, sans-serif",
+      "::placeholder": { color: "#9ca3af" },
+    },
+    invalid: { color: "#b42318" },
+  },
+}) : null;
+let cardMounted = false;
 
 if (year) year.textContent = new Date().getFullYear();
 
@@ -11,10 +26,46 @@ navToggle?.addEventListener("click", () => {
   nav?.classList.toggle("is-open", !isOpen);
 });
 
-const sharedSteps = ["Vehicle", "Service", "Schedule", "Handoff", "Payment", "Review"];
+const sharedSteps = ["Vehicle", "Service", "Service Details", "Schedule", "Handoff", "Payment", "Review"];
 const flows = {
   "book-now": ["Customer", "Address", ...sharedSteps],
   returning: ["Verify", "Service Area", ...sharedSteps],
+};
+
+const bookingState = {
+  values: {},
+  address: {
+    validated: false,
+    status: "warning",
+    message: "Please validate your service address before continuing.",
+  },
+  returning: {
+    verified: false,
+    status: "",
+    statusType: "",
+    requests: [],
+    addresses: [],
+    vehicles: [],
+    selectedAddressId: null,
+    selectedVehicleId: null,
+    addressMode: "",
+    vehicleMode: "",
+    stagedAddress: null,
+    stagedVehicle: null,
+    addressValidated: false,
+    addressStatusType: "warning",
+    addressStatus: "",
+  },
+  payment: {
+    authorized: false,
+    paymentIntentId: "",
+    clientSecret: "",
+    status: "",
+    statusType: "",
+  },
+  submitted: false,
+  submitting: false,
+  submittedRequestNumber: "",
 };
 
 const stepCopy = {
@@ -23,90 +74,106 @@ const stepCopy = {
     intro: "Tell us who is booking the service.",
     fields: `
       <div class="booking-field-grid">
-        <label><span>Full name</span><input data-required name="customerName" type="text" placeholder="Jordan Smith"></label>
-        <label><span>Phone number</span><input data-required name="customerPhone" type="tel" placeholder="(302) 555-0100"></label>
-        <label><span>Email</span><input data-required name="customerEmail" type="email" placeholder="jordan@example.com"></label>
+        <label><span>First name <span class="required-mark">Required</span></span><input data-required name="firstName" type="text" autocomplete="given-name" placeholder="Jordan"></label>
+        <label><span>Last name <span class="required-mark">Required</span></span><input data-required name="lastName" type="text" autocomplete="family-name" placeholder="Smith"></label>
+        <label><span>Phone number <span class="required-mark">Required</span></span><input data-required data-phone name="customerPhone" type="tel" autocomplete="tel" placeholder="(302) 555-0100"></label>
+        <label><span>Email address <span class="required-mark">Required</span></span><input data-required data-email name="customerEmail" type="email" autocomplete="email" placeholder="jordan@example.com"></label>
       </div>
     `,
   },
   Address: {
     title: "Service Address",
-    intro: "Add the workplace or approved service location. Full address validation will be connected later.",
+    intro: "Add the workplace or approved service location where the vehicle will be serviced.",
     fields: `
       <div class="booking-field-grid">
-        <label class="span-2"><span>Street address</span><input data-required name="street" type="text" placeholder="123 Main Street"></label>
-        <label><span>Apt / Suite / Unit</span><input name="apt" type="text" placeholder="Optional"></label>
-        <label><span>City</span><input data-required name="city" type="text" placeholder="Wilmington"></label>
-        <label><span>State</span><input data-required name="state" type="text" placeholder="DE" value="DE"></label>
-        <label><span>ZIP</span><input data-required name="zip" type="text" placeholder="19804"></label>
+        <label class="span-2"><span>Street address <span class="required-mark">Required</span></span><input data-required data-address-field name="street" type="text" autocomplete="address-line1" placeholder="123 Main Street"></label>
+        <label><span>Unit/suite/apartment</span><input data-address-field name="unit" type="text" autocomplete="address-line2" placeholder="Optional"></label>
+        <label><span>City <span class="required-mark">Required</span></span><input data-required data-address-field name="city" type="text" autocomplete="address-level2" placeholder="Wilmington"></label>
+        <label><span>State <span class="required-mark">Required</span></span><input data-required data-address-field name="state" type="text" autocomplete="address-level1" placeholder="DE" value="DE"></label>
+        <label><span>ZIP code <span class="required-mark">Required</span></span><input data-required data-address-field name="zip" type="text" autocomplete="postal-code" inputmode="numeric" placeholder="19804"></label>
       </div>
-      <div class="placeholder-note">Address validation placeholder. The final flow will validate service availability before continuing.</div>
+      <div class="address-validation-panel">
+        <button class="button secondary" type="button" data-validate-address>Validate Address</button>
+        <p class="booking-validation-message" data-address-status data-status="warning">Please validate your service address before continuing.</p>
+      </div>
     `,
   },
   Verify: {
-    title: "Verify This Is You",
+    title: "Verify this is you",
     intro: "Enter your phone number, email, ticket number, or any combination of these so we can find your previous booking information.",
     fields: `
       <div class="booking-field-grid">
-        <label><span>Phone number</span><input name="verifyPhone" type="tel" placeholder="(302) 555-0100" data-any-required="verify"></label>
-        <label><span>Email address</span><input name="verifyEmail" type="email" placeholder="email@example.com" data-any-required="verify"></label>
+        <label><span>Phone number</span><input name="verifyPhone" type="tel" placeholder="(302) 555-0100" data-any-required="verify" data-phone></label>
+        <label><span>Email address</span><input name="verifyEmail" type="email" placeholder="email@example.com" data-any-required="verify" data-email-optional></label>
         <label><span>Ticket/request number</span><input name="verifyTicket" type="text" placeholder="Request number" data-any-required="verify"></label>
       </div>
-      <div class="placeholder-note">Verification lookup placeholder. After verification, the flow continues into the shared booking steps.</div>
+      <div class="address-validation-panel">
+        <button class="button secondary" type="button" data-verify-returning>Verify customer</button>
+        <p class="booking-validation-message" data-returning-status></p>
+      </div>
     `,
   },
   "Service Area": {
-    title: "Validated Service Area",
-    intro: "Choose a saved validated service area or add a new address. New or edited addresses must be validated before continuing.",
-    fields: `
-      <div class="choice-grid">
-        <label class="choice-card"><input data-required type="radio" name="serviceArea" value="saved"><span><strong>Use saved service area</strong><small>1702 Saint Mihiel Ave, Wilmington, DE 19804</small></span></label>
-        <label class="choice-card"><input data-required type="radio" name="serviceArea" value="new"><span><strong>Add new service address</strong><small>Validate a new approved service location.</small></span></label>
-      </div>
-    `,
+    title: "Pick your validated service area",
+    intro: "Reuse a saved validated service area or add a new address. New and edited addresses must be validated before continuing.",
+    fields: `<div data-returning-service-area></div>`,
   },
   Vehicle: {
-    title: "Vehicle",
-    intro: "Choose a saved vehicle or enter vehicle details for this booking.",
+    title: "Vehicle Details",
+    intro: "Enter the vehicle details for this booking.",
     fields: `
       <div class="booking-field-grid">
-        <label><span>Year</span><input data-required name="vehicleYear" type="text" placeholder="2020"></label>
-        <label><span>Make</span><input data-required name="vehicleMake" type="text" placeholder="Honda"></label>
-        <label><span>Model</span><input data-required name="vehicleModel" type="text" placeholder="Fit"></label>
-        <label><span>Color</span><input name="vehicleColor" type="text" placeholder="Blue"></label>
-        <label><span>Plate number</span><input name="licensePlate" type="text" placeholder="TEST"></label>
+        <label><span>Year <span class="required-mark">Required</span></span><input data-required name="vehicleYear" type="text" inputmode="numeric" placeholder="2020"></label>
+        <label><span>Make <span class="required-mark">Required</span></span><input data-required name="vehicleMake" type="text" placeholder="Honda"></label>
+        <label><span>Model <span class="required-mark">Required</span></span><input data-required name="vehicleModel" type="text" placeholder="Fit"></label>
+        <label><span>Color <span class="required-mark">Required</span></span><input data-required name="vehicleColor" type="text" placeholder="Blue"></label>
+        <label><span>License plate <span class="required-mark">Required</span></span><input data-required name="licensePlate" type="text" placeholder="TEST"></label>
       </div>
-      <div class="placeholder-note">Saved vehicle picker placeholder. The same vehicle step is shared by Book Now and Returning Customer.</div>
     `,
   },
+  "Returning Vehicle": {
+    title: "Pick your vehicle",
+    intro: "Choose a saved vehicle, add a new vehicle, or delete a saved vehicle from future options.",
+    fields: `<div data-returning-vehicles></div>`,
+  },
   Service: {
-    title: "Service",
-    intro: "Select the service and add-ons for this request.",
+    title: "Service Selection",
+    intro: "Select the service and optional add-on for this request.",
     fields: `
       <div class="choice-grid">
         <label class="choice-card"><input data-required type="radio" name="serviceType" value="fuel"><span><strong>Fuel Fill-Up</strong><small>Fuel service only.</small></span></label>
         <label class="choice-card"><input data-required type="radio" name="serviceType" value="wash"><span><strong>Car Wash</strong><small>Car wash service only.</small></span></label>
         <label class="choice-card"><input data-required type="radio" name="serviceType" value="fuel_wash"><span><strong>Fuel + Car Wash</strong><small>Bundle both services.</small></span></label>
-        <label class="choice-card"><input type="checkbox" name="quickCare" value="quick-care"><span><strong>Quick Vehicle Care</strong><small>Optional add-on.</small></span></label>
       </div>
+      <label class="choice-card booking-addon-card">
+        <input type="checkbox" name="quickCare" value="quick-care">
+        <span>
+          <strong>Quick Vehicle Care</strong>
+          <small>Optional add-on</small>
+          <details>
+            <summary>What is included?</summary>
+            <p>Includes a tire pressure check, washer fluid top-off if needed, and a quick visible vehicle check. This is not a mechanical inspection.</p>
+          </details>
+        </span>
+      </label>
     `,
+  },
+  "Service Details": {
+    title: "Service Details",
+    intro: "Add the details needed for the selected service.",
+    fields: `<div data-service-details></div>`,
   },
   Schedule: {
     title: "Schedule",
     intro: "Pick the service date and desired return time.",
     fields: `
       <div class="booking-field-grid">
-        <label><span>Service date</span><input data-required name="serviceDate" type="date"></label>
-        <label><span>Desired return time</span><select data-required name="returnTime">
+        <label><span>Service date <span class="required-mark">Required</span></span><input data-required name="serviceDate" type="date"></label>
+        <label><span>Desired return time <span class="required-mark">Required</span></span><select data-required name="returnTime" data-return-time>
           <option value="">Select return time</option>
-          <option>9:00 AM</option>
-          <option>9:30 AM</option>
-          <option>10:00 AM</option>
-          <option>10:30 AM</option>
-          <option>11:00 AM</option>
         </select></label>
       </div>
-      <div class="placeholder-note">Availability and booked-slot checks will be connected later.</div>
+      <p class="field-help">Return times are shown in 30-minute increments. Unavailable and fully booked times are not selectable.</p>
     `,
   },
   Handoff: {
@@ -114,35 +181,265 @@ const stepCopy = {
     intro: "Tell the worker where the vehicle is parked and how keys will be handled for this request.",
     fields: `
       <div class="booking-field-grid">
-        <label class="span-2"><span>Parking location</span><textarea data-required name="parking" rows="4" placeholder="Lot, row, spot, or nearby landmark"></textarea></label>
-        <label class="span-2"><span>Key handoff details</span><textarea data-required name="handoff" rows="4" placeholder="How should the worker receive the keys?"></textarea></label>
+        <label class="span-2"><span>Parking location <span class="required-mark">Required</span></span><textarea data-required name="parking" rows="4" placeholder="Example: Main lot, row C, space 12"></textarea></label>
+        <label class="span-2"><span>Key handoff details <span class="required-mark">Required</span></span><textarea data-required name="handoff" rows="4" placeholder="Example: front desk, security desk, main entrance, or meet at vehicle"></textarea></label>
+        <label class="span-2"><span>Special instructions</span><textarea name="specialInstructions" rows="3" placeholder="Optional"></textarea></label>
       </div>
     `,
   },
   Payment: {
     title: "Payment Authorization",
-    intro: "Review the payment authorization language. Payment capture will be connected later.",
+    intro: "Authorize your payment method now. You will only be charged after your service is completed.",
     fields: `
-      <div class="payment-placeholder">
-        <strong>Payment placeholder</strong>
-        <p>Service prices include payment and operating costs. Final fuel cost is based on the actual receipt. Final totals are rounded up to the nearest dollar.</p>
+      <div class="payment-placeholder" data-payment-summary></div>
+      <div class="payment-card-box">
+        <label><span>Card information</span><div id="booking-card-element" class="booking-card-element"></div></label>
+        <p id="booking-card-errors" class="booking-validation-message" data-status="error"></p>
       </div>
-      <label class="booking-check"><input data-required type="checkbox" name="paymentReady"><span>I understand payment authorization will be completed before booking.</span></label>
+      <p class="payment-notice">Your payment method will be authorized now. You will only be charged after your service is completed.</p>
+      <p class="field-help">Do not capture payment at booking. Do not capture payment when worker clicks Return Vehicle. Capture payment only when service is confirmed complete. Void authorization if the request is denied or cancelled.</p>
+      <button class="button secondary" type="button" data-authorize-payment>Authorize payment</button>
+      <p class="booking-validation-message" data-payment-status></p>
     `,
   },
   Review: {
-    title: "Review",
-    intro: "Confirm the booking details before submission. Final submission logic will be connected later.",
+    title: "Review and Submit",
+    intro: "Confirm the booking details before submitting your request.",
     fields: `
-      <div class="review-placeholder">
-        <strong>Review placeholder</strong>
-        <p>This step will summarize customer, address/service area, vehicle, service, schedule, handoff, and payment authorization details.</p>
+      <div class="review-placeholder" data-review-summary>
+        <strong>Review summary</strong>
       </div>
+      <label class="booking-check"><input data-required type="checkbox" name="reviewConfirmed"><span>I confirm that the information above is accurate and authorize ShiftFuel Concierge to pick up, service, and return my vehicle using the instructions provided.</span></label>
+      <button class="button primary" type="button" data-submit-booking>Submit Booking</button>
+      <p class="booking-validation-message" data-submit-status></p>
     `,
   },
 };
 
+function normalizePhone(value) {
+  return String(value || "").replace(/\D/g, "");
+}
+
+function formatPhone(value) {
+  const digits = normalizePhone(value).slice(0, 10);
+  if (digits.length <= 3) return digits;
+  if (digits.length <= 6) return `(${digits.slice(0, 3)}) ${digits.slice(3)}`;
+  return `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`;
+}
+
+function isValidEmail(value) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value || "").trim());
+}
+
+const PRICE_PER_GALLON = 3.799;
+const FUEL_SERVICE_FEE = 15;
+const CAR_WASH_SERVICE_FEE = 15;
+const QUICK_CARE_FEE = 5;
+const WASH_PACKAGES = [
+  { value: "buff-shine", label: "Buff & Shine", price: 27 },
+  { value: "shine-protect", label: "Shine & Protect", price: 20 },
+  { value: "shine", label: "Shine", price: 16 },
+  { value: "double-wash", label: "Double Wash", price: 12 },
+];
+const FUEL_RANGES = {
+  "0-5": 5,
+  "5-10": 10,
+  "10-15": 15,
+  "15-20": 20,
+  "20-25": 25,
+  "25+": 40,
+};
+const slotHoldingStatuses = new Set([
+  "accepted", "key_received", "vehicle_picked_up", "service_in_progress",
+  "fueling_complete", "fuel_receipt_uploaded", "car_wash_complete", "wash_receipt_uploaded",
+  "service_complete", "receipts_recorded", "returned_location_pending", "return_location_recorded",
+  "return_photos_needed", "vehicle_returned", "inspection_needed", "inspection_recorded",
+  "final_payment_processed", "awaiting_key_return", "keys_returned", "return_requested",
+  "customer_return_requested", "payment_issue", "authorization_too_low", "pending_customer_payment",
+]);
+
+function formatMoney(value) {
+  return `$${(Number(value) || 0).toFixed(2)}`;
+}
+
+function todayValue() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function maxDateValue() {
+  const date = new Date();
+  date.setMonth(date.getMonth() + 3);
+  return date.toISOString().slice(0, 10);
+}
+
+function serviceNeedsFuel() {
+  return bookingState.values.serviceType === "fuel" || bookingState.values.serviceType === "fuel_wash";
+}
+
+function serviceNeedsWash() {
+  return bookingState.values.serviceType === "wash" || bookingState.values.serviceType === "fuel_wash";
+}
+
+function selectedWashPackage() {
+  return WASH_PACKAGES.find((item) => item.value === bookingState.values.washPackage) || null;
+}
+
+function calculateTotals() {
+  const fuelGallons = serviceNeedsFuel() ? FUEL_RANGES[bookingState.values.fuelPreference] || 0 : 0;
+  const fuelEstimate = fuelGallons * PRICE_PER_GALLON;
+  const washPackage = serviceNeedsWash() ? selectedWashPackage() : null;
+  const washAmount = washPackage ? washPackage.price : 0;
+  const fuelFee = serviceNeedsFuel() ? FUEL_SERVICE_FEE : 0;
+  const washFee = serviceNeedsWash() ? CAR_WASH_SERVICE_FEE : 0;
+  const quickFee = bookingState.values.quickCare ? QUICK_CARE_FEE : 0;
+  const estimatedTotal = Math.ceil(fuelEstimate + washAmount + fuelFee + washFee + quickFee);
+  return { fuelGallons, fuelEstimate, washPackage, washAmount, fuelFee, washFee, quickFee, estimatedTotal };
+}
+
+function timeLabel(hour, minute) {
+  const suffix = hour >= 12 ? "PM" : "AM";
+  const normalizedHour = hour % 12 || 12;
+  return `${normalizedHour}:${String(minute).padStart(2, "0")} ${suffix}`;
+}
+
+function timeValue(hour, minute) {
+  return `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
+}
+
+function availableTimeOptions() {
+  const selectedDate = bookingState.values.serviceDate || "";
+  const now = new Date();
+  const isToday = selectedDate === todayValue();
+  const bookedSlots = bookingState.bookedSlots || new Set();
+  const options = [];
+  for (let hour = 9; hour <= 18; hour += 1) {
+    for (const minute of [0, 30]) {
+      if (hour === 18 && minute > 0) continue;
+      const value = timeValue(hour, minute);
+      const optionDate = new Date(`${selectedDate || todayValue()}T${value}:00`);
+      const past = isToday && optionDate <= now;
+      const booked = bookedSlots.has(value);
+      options.push({ value, label: timeLabel(hour, minute), disabled: past || booked });
+    }
+  }
+  return options;
+}
+
+async function loadBookedSlots() {
+  bookingState.bookedSlots = new Set();
+  if (!window.ShiftFuelSupabase || !bookingState.values.serviceDate) return;
+  try {
+    const { data, error } = await window.ShiftFuelSupabase.rpc("public_booked_return_slots", {
+      p_service_date: bookingState.values.serviceDate,
+    });
+    if (error) throw error;
+    (data || []).forEach((row) => {
+      if (slotHoldingStatuses.has(row.status) && row.desired_return_time) {
+        bookingState.bookedSlots.add(String(row.desired_return_time).slice(0, 5));
+      }
+    });
+  } catch (error) {
+    console.warn("Could not load booked return slots:", error);
+  }
+}
+
+function mountCardIfNeeded() {
+  if (!cardElement || cardMounted) return;
+  const container = document.querySelector("#booking-card-element");
+  if (!container) return;
+  cardElement.mount("#booking-card-element");
+  cardMounted = true;
+  cardElement.on("change", (event) => {
+    const display = document.querySelector("#booking-card-errors");
+    if (display) display.textContent = event.error ? event.error.message : "";
+  });
+}
+
+function escapeHtml(value) {
+  return String(value || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
+function compactKey(parts) {
+  return parts.map((part) => String(part || "").toLowerCase().replace(/\s+/g, " ").trim()).join("|");
+}
+
+function isActiveRecord(record) {
+  return record?.is_active !== false && !record?.deleted_at;
+}
+
+function isValidatedAddress(record) {
+  return isActiveRecord(record)
+    && record?.outside_service_area !== true
+    && record?.is_outside_service_area !== true
+    && record?.service_area_valid !== false
+    && record?.is_validated !== false;
+}
+
+function inputValue(input) {
+  if (input.type === "checkbox") return input.checked;
+  if (input.type === "radio") return input.checked ? input.value : bookingState.values[input.name];
+  return input.value;
+}
+
+function invalidatePaymentAuthorization() {
+  if (!bookingState.payment.authorized) return;
+  bookingState.payment.authorized = false;
+  bookingState.payment.statusType = "warning";
+  bookingState.payment.status = "Booking details changed. Please authorize payment again.";
+  bookingState.payment.paymentIntentId = "";
+  bookingState.payment.clientSecret = "";
+}
+
+function savePanelValues(panel) {
+  panel.querySelectorAll("input, select, textarea").forEach((input) => {
+    if (input.type === "radio" && !input.checked) return;
+    bookingState.values[input.name] = inputValue(input);
+  });
+}
+
+function restorePanelValues(panel) {
+  panel.querySelectorAll("input, select, textarea").forEach((input) => {
+    const value = bookingState.values[input.name];
+    if (value === undefined || value === null) return;
+    if (input.type === "checkbox") {
+      input.checked = Boolean(value);
+    } else if (input.type === "radio") {
+      input.checked = input.value === value;
+    } else {
+      input.value = value;
+    }
+  });
+
+  const status = panel.querySelector("[data-address-status]");
+  if (status) {
+    status.textContent = bookingState.address.message;
+    status.dataset.status = bookingState.address.status;
+  }
+  const returningStatus = panel.querySelector("[data-returning-status]");
+  if (returningStatus) {
+    returningStatus.textContent = bookingState.returning.status;
+    returningStatus.dataset.status = bookingState.returning.statusType;
+  }
+}
+
+function requiredInputsComplete(panel) {
+  const required = Array.from(panel.querySelectorAll("[data-required]"));
+  return required.every((input) => {
+    if (input.type === "radio") return Boolean(panel.querySelector(`input[name="${input.name}"]:checked`));
+    if (input.type === "checkbox") return input.checked;
+    return Boolean(input.value.trim());
+  });
+}
+
 function stepIsComplete(panel) {
+  const step = panel.dataset.currentStep;
+  const flowName = panel.dataset.flowName;
+
   const anyGroups = new Map();
   panel.querySelectorAll("[data-any-required]").forEach((input) => {
     const key = input.dataset.anyRequired;
@@ -152,76 +449,1233 @@ function stepIsComplete(panel) {
     if (!complete) return false;
   }
 
-  const required = Array.from(panel.querySelectorAll("[data-required]"));
-  return required.every((input) => {
-    if (input.type === "radio") {
-      return Boolean(panel.querySelector(`input[name="${input.name}"]:checked`));
-    }
-    if (input.type === "checkbox") return input.checked;
-    return Boolean(input.value.trim());
-  });
+  if (panel.querySelector("[data-email]") && !isValidEmail(panel.querySelector("[data-email]").value)) return false;
+  for (const optionalEmail of panel.querySelectorAll("[data-email-optional]")) {
+    if (optionalEmail.value.trim() && !isValidEmail(optionalEmail.value)) return false;
+  }
+  for (const phone of panel.querySelectorAll("[data-phone]")) {
+    const digits = normalizePhone(phone.value);
+    if (phone.dataset.required !== undefined && digits.length !== 10) return false;
+    if (digits.length > 0 && digits.length !== 10) return false;
+  }
+
+  if (step === "Verify") return bookingState.returning.verified;
+  if (step === "Service Area") return Boolean(bookingState.returning.selectedAddressId || bookingState.returning.stagedAddress);
+  if (step === "Vehicle" && flowName === "returning") {
+    return Boolean(bookingState.returning.selectedVehicleId || bookingState.returning.stagedVehicle);
+  }
+  if (step === "Service Details") {
+    if (serviceNeedsFuel() && (!bookingState.values.fuelType || !bookingState.values.fuelPreference)) return false;
+    if (serviceNeedsWash() && !bookingState.values.washPackage) return false;
+  }
+  if (step === "Schedule") {
+    const date = bookingState.values.serviceDate || "";
+    if (!date || date < todayValue() || date > maxDateValue()) return false;
+    if (!bookingState.values.returnTime) return false;
+  }
+  if (step === "Payment") return bookingState.payment.authorized;
+  if (step === "Review") return Boolean(bookingState.values.reviewConfirmed);
+
+  if (!requiredInputsComplete(panel)) return false;
+  if (step === "Address") return bookingState.address.validated;
+  return true;
 }
 
-function createProgress(steps, currentIndex) {
+const STEP_ICONS = {
+  Customer: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="8" r="3.4"/><path d="M5 20c0-3.3 3.1-6 7-6s7 2.7 7 6"/></svg>`,
+  Address: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 21s7-5.5 7-11.5A7 7 0 0 0 5 9.5C5 15.5 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.3"/></svg>`,
+  Verify: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="5" y="10.5" width="14" height="9.5" rx="1.6"/><path d="M8 10.5V8a4 4 0 0 1 8 0v2.5"/></svg>`,
+  "Service Area": `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 21s7-5.5 7-11.5A7 7 0 0 0 5 9.5C5 15.5 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.3"/></svg>`,
+  Vehicle: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 16l1.5-5a2 2 0 0 1 1.9-1.4h9.2A2 2 0 0 1 18.5 11L20 16"/><rect x="3" y="16" width="18" height="4" rx="1.4"/><circle cx="7.5" cy="20" r="1.1"/><circle cx="16.5" cy="20" r="1.1"/></svg>`,
+  Service: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 16l1.5-5a2 2 0 0 1 1.9-1.4h9.2A2 2 0 0 1 18.5 11L20 16"/><rect x="3" y="16" width="18" height="4" rx="1.4"/><circle cx="7.5" cy="20" r="1.1"/><circle cx="16.5" cy="20" r="1.1"/><path d="M8 5.5c.7-1 .7-1.8 0-2.8M12 5.5c.7-1 .7-1.8 0-2.8M16 5.5c.7-1 .7-1.8 0-2.8"/></svg>`,
+  "Service Details": `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="5" y="4" width="14" height="17" rx="1.6"/><path d="M9 3.5h6v2H9z"/><path d="M9 11h6M9 14.5h6"/></svg>`,
+  Schedule: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3.5" y="5" width="17" height="16" rx="2"/><path d="M3.5 9.5h17M8 3v4M16 3v4"/></svg>`,
+  Handoff: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="8" cy="8" r="3"/><path d="M11 11l8 8M16 14l2.5 2.5M13.5 16.5L16 19"/></svg>`,
+  Payment: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="6" width="18" height="13" rx="2"/><path d="M3 10h18"/></svg>`,
+  Review: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="8.5"/><path d="M8.5 12.5l2.2 2.2L16 10"/></svg>`,
+};
+const CHECK_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M5 12.5l4.5 4.5L19 7"/></svg>`;
+
+function renderProgressRail(steps, unlockedIndex, openIndex) {
   return `
-    <ol class="booking-progress" aria-label="Booking progress">
-      ${steps.map((step, index) => `
-        <li class="${index === currentIndex ? "is-current" : ""} ${index < currentIndex ? "is-complete" : ""}">
-          <span>${index + 1}</span>
-          <strong>${step}</strong>
-        </li>
-      `).join("")}
+    <ol class="booking-progress-rail" aria-label="Booking progress">
+      ${steps.map((step, index) => {
+        const state = index === openIndex ? "is-active" : index < unlockedIndex ? "is-complete" : "is-locked";
+        const clickable = index <= unlockedIndex;
+        return `
+          <li class="${state}">
+            <button type="button" class="rail-step" data-rail-step="${index}" ${clickable ? "" : "disabled"} aria-label="${escapeHtml(step)}">
+              <span class="rail-number">${index + 1}</span>
+              <span class="rail-icon">${state === "is-complete" ? CHECK_ICON : (STEP_ICONS[step] || "")}</span>
+            </button>
+            <span class="rail-label">${escapeHtml(step)}</span>
+          </li>
+        `;
+      }).join("")}
     </ol>
   `;
+}
+
+function summaryRow({ label, stepName, content, unlockedIndex, steps }) {
+  const idx = steps.indexOf(stepName);
+  const reached = idx >= 0 && idx <= unlockedIndex;
+  return `
+    <div class="summary-row">
+      <span class="summary-row-icon">${STEP_ICONS[stepName] || ""}</span>
+      <span class="summary-row-body">
+        <strong>${escapeHtml(label)}</strong>
+        <span>${content || "Not entered yet"}</span>
+      </span>
+      ${reached ? `<button type="button" class="summary-edit" data-edit-step="${idx}">Edit</button>` : ""}
+    </div>
+  `;
+}
+
+function renderSummarySidebar(steps, flowName, unlockedIndex) {
+  const v = bookingState.values;
+  const totals = calculateTotals();
+  const reviewIndex = steps.indexOf("Review");
+  const reachedReview = unlockedIndex >= reviewIndex;
+  const customerStep = flowName === "returning" ? "Verify" : "Customer";
+  const addressStep = flowName === "returning" ? "Service Area" : "Address";
+
+  const customerContent = v.firstName || v.customerPhone
+    ? escapeHtml([v.firstName, v.lastName].filter(Boolean).join(" "))
+      + (v.customerPhone ? ` &bull; ${escapeHtml(v.customerPhone)}` : "")
+    : "";
+  const addressContent = v.street ? escapeHtml([v.street, v.city, v.state].filter(Boolean).join(", ")) : "";
+  const vehicleContent = v.vehicleMake || v.vehicleModel
+    ? escapeHtml([v.vehicleYear, v.vehicleMake, v.vehicleModel].filter(Boolean).join(" "))
+      + (v.licensePlate ? ` &bull; Plate: ${escapeHtml(v.licensePlate)}` : "")
+    : "";
+  const serviceContent = v.serviceType ? escapeHtml(serviceLabel()) : "";
+  const scheduleContent = v.serviceDate
+    ? escapeHtml(v.serviceDate) + (v.returnTime ? ` &bull; ${escapeHtml(v.returnTime)}` : "")
+    : "";
+  const handoffContent = v.parking || v.handoff ? "Parking and key details saved" : "";
+  const paymentContent = bookingState.payment.authorized ? "Payment method authorized" : "";
+
+  const rows = [
+    summaryRow({ label: "Customer", stepName: customerStep, content: customerContent, unlockedIndex, steps }),
+    summaryRow({ label: "Address", stepName: addressStep, content: addressContent, unlockedIndex, steps }),
+    summaryRow({ label: "Vehicle", stepName: "Vehicle", content: vehicleContent, unlockedIndex, steps }),
+    summaryRow({ label: "Service", stepName: "Service", content: serviceContent, unlockedIndex, steps }),
+    summaryRow({ label: "Schedule", stepName: "Schedule", content: scheduleContent, unlockedIndex, steps }),
+    summaryRow({ label: "Handoff", stepName: "Handoff", content: handoffContent, unlockedIndex, steps }),
+    summaryRow({ label: "Payment", stepName: "Payment", content: paymentContent, unlockedIndex, steps }),
+  ].join("");
+
+  return `
+    <aside class="booking-summary-sidebar">
+      <h3>Booking Summary</h3>
+      <p class="field-help">Review your details before continuing.</p>
+      <div class="summary-rows">${rows}</div>
+      <div class="summary-total-row">
+        <span>
+          <strong>Estimated Total</strong>
+          <small>Includes service and convenience fees.</small>
+        </span>
+        <span class="summary-total-amount">${formatMoney(totals.estimatedTotal)}</span>
+      </div>
+      <button type="button" class="button primary summary-jump-review" data-jump-review ${reachedReview ? "" : "disabled"}>Continue to Review &rarr;</button>
+      <p class="summary-secure-note">Secure, encrypted, and trusted.</p>
+    </aside>
+  `;
+}
+
+function renderStepCard(step, index, flowName, unlockedIndex, openIndex) {
+  const content = getStepContent(step, flowName);
+  const state = index === openIndex ? "is-active" : index < unlockedIndex ? "is-complete" : "is-locked";
+  return `
+    <article class="booking-accordion-card ${state}" data-step-index="${index}" data-current-step="${step}" data-flow-name="${flowName}">
+      <button type="button" class="booking-accordion-header" data-step-header="${index}" ${state === "is-locked" ? "disabled" : ""}>
+        <span class="accordion-icon">${state === "is-complete" ? CHECK_ICON : (STEP_ICONS[step] || "")}</span>
+        <span class="accordion-heading">
+          <strong>${index + 1}. ${escapeHtml(content.title)}</strong>
+          <small>${escapeHtml(content.intro)}</small>
+        </span>
+        <span class="accordion-chevron" aria-hidden="true"></span>
+      </button>
+      <div class="booking-accordion-body">
+        <div class="booking-step-fields">${content.fields}</div>
+        <div class="booking-step-actions">
+          ${index > 0 ? `<button class="button secondary" type="button" data-back>Back</button>` : ""}
+          ${step !== "Review" ? `<button class="button primary" type="button" data-continue>Continue</button>` : ""}
+        </div>
+      </div>
+    </article>
+  `;
+}
+
+function setAddressStatus(panel, status, message) {
+  bookingState.address.status = status;
+  bookingState.address.message = message;
+  const statusEl = panel.querySelector("[data-address-status]");
+  if (statusEl) {
+    statusEl.dataset.status = status;
+    statusEl.textContent = message;
+  }
+}
+
+function setReturningStatus(panel, status, message) {
+  bookingState.returning.statusType = status;
+  bookingState.returning.status = message;
+  const statusEl = panel.querySelector("[data-returning-status]");
+  if (statusEl) {
+    statusEl.dataset.status = status;
+    statusEl.textContent = message;
+  }
+}
+
+async function callAddressValidator(address) {
+  const res = await fetch("/api/address", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      action: "validate_service_area",
+      street: address.street || "",
+      apt: address.unit || "",
+      city: address.city || "",
+      state: address.state || "",
+      zip: address.zip || "",
+    }),
+  });
+  const data = await res.json().catch(() => ({}));
+  return { ok: res.ok, data };
+}
+
+async function validateAddress(panel) {
+  savePanelValues(panel);
+  if (!requiredInputsComplete(panel)) {
+    bookingState.address.validated = false;
+    setAddressStatus(panel, "error", "Please complete the required address fields before validating.");
+    return;
+  }
+
+  const button = panel.querySelector("[data-validate-address]");
+  if (button) {
+    button.disabled = true;
+    button.textContent = "Validating...";
+  }
+  setAddressStatus(panel, "warning", "Validating service address...");
+
+  try {
+    const { ok, data } = await callAddressValidator({
+      street: bookingState.values.street,
+      unit: bookingState.values.unit,
+      city: bookingState.values.city,
+      state: bookingState.values.state,
+      zip: bookingState.values.zip,
+    });
+    if (!ok || !data.valid) {
+      bookingState.address.validated = false;
+      setAddressStatus(panel, "error", data.message || "We currently do not serve this area.");
+      return;
+    }
+    bookingState.address.validated = true;
+    setAddressStatus(panel, "success", "Address verified.");
+  } catch (error) {
+    console.error("Address validation failed:", error);
+    bookingState.address.validated = false;
+    setAddressStatus(panel, "error", "We could not verify this address. Please check your address and try again.");
+  } finally {
+    if (button) {
+      button.disabled = false;
+      button.textContent = "Validate Address";
+    }
+  }
+}
+
+function requestAddressFromRecord(record) {
+  return {
+    id: record.id || record.saved_address_id || compactKey([
+      record.address_street || record.street || record.hospital,
+      record.address_apt || record.unit,
+      record.address_city || record.city,
+      record.address_state || record.state,
+      record.address_zip || record.zip,
+    ]),
+    street: record.address_street || record.street || record.hospital || "",
+    unit: record.address_apt || record.unit || "",
+    city: record.address_city || record.city || "",
+    state: record.address_state || record.state || "DE",
+    zip: record.address_zip || record.zip || "",
+    raw: record,
+  };
+}
+
+function requestVehicleFromRecord(record) {
+  return {
+    id: record.id || record.saved_vehicle_id || compactKey([
+      record.vehicle_year || record.year,
+      record.vehicle_make || record.make,
+      record.vehicle_model || record.model,
+      record.vehicle_color || record.color,
+      record.license_plate || record.plate,
+    ]),
+    year: record.vehicle_year || record.year || "",
+    make: record.vehicle_make || record.make || "",
+    model: record.vehicle_model || record.model || "",
+    color: record.vehicle_color || record.color || "",
+    license: record.license_plate || record.plate || "",
+    fuelType: record.fuel_type || record.fuelType || "",
+    raw: record,
+  };
+}
+
+function requestsToReturningOptions(requests) {
+  const addresses = [];
+  const vehicles = [];
+  const addressKeys = new Set();
+  const vehicleKeys = new Set();
+
+  (Array.isArray(requests) ? requests : []).forEach((request) => {
+    const address = requestAddressFromRecord(request);
+    const addressKey = compactKey([address.street, address.unit, address.city, address.state, address.zip]);
+    if (address.street && !addressKeys.has(addressKey) && isValidatedAddress(request)) {
+      addressKeys.add(addressKey);
+      addresses.push(address);
+    }
+
+    const vehicle = requestVehicleFromRecord(request);
+    const vehicleKey = compactKey([vehicle.year, vehicle.make, vehicle.model, vehicle.color, vehicle.license]);
+    if ((vehicle.make || vehicle.model || vehicle.license) && !vehicleKeys.has(vehicleKey) && isActiveRecord(request)) {
+      vehicleKeys.add(vehicleKey);
+      vehicles.push(vehicle);
+    }
+  });
+
+  return { addresses, vehicles };
+}
+
+function savedOptionsToReturningOptions(options) {
+  const addresses = Array.isArray(options?.addresses) ? options.addresses : Array.isArray(options?.saved_addresses) ? options.saved_addresses : [];
+  const vehicles = Array.isArray(options?.vehicles) ? options.vehicles : Array.isArray(options?.saved_vehicles) ? options.saved_vehicles : [];
+  return {
+    addresses: addresses.filter(isValidatedAddress).map(requestAddressFromRecord),
+    vehicles: vehicles.filter(isActiveRecord).map(requestVehicleFromRecord),
+  };
+}
+
+function uniqueCustomerKeys(requests) {
+  const keys = new Set();
+  (Array.isArray(requests) ? requests : []).forEach((request) => {
+    keys.add(compactKey([normalizePhone(request.customer_phone), request.customer_email]));
+  });
+  return keys;
+}
+
+function applyVerifiedCustomer(requests) {
+  const first = requests[0] || {};
+  const nameParts = String(first.customer_name || "").trim().split(/\s+/).filter(Boolean);
+  bookingState.values.firstName = bookingState.values.firstName || nameParts[0] || "";
+  bookingState.values.lastName = bookingState.values.lastName || nameParts.slice(1).join(" ") || "";
+  bookingState.values.customerPhone = formatPhone(first.customer_phone || bookingState.values.verifyPhone || "");
+  bookingState.values.customerEmail = first.customer_email || bookingState.values.verifyEmail || "";
+}
+
+async function verifyReturningCustomer(panel) {
+  savePanelValues(panel);
+  const phone = normalizePhone(bookingState.values.verifyPhone);
+  const email = String(bookingState.values.verifyEmail || "").trim().toLowerCase();
+  const ticket = String(bookingState.values.verifyTicket || "").trim();
+
+  if (!phone && !email && !ticket) {
+    bookingState.returning.verified = false;
+    setReturningStatus(panel, "error", "Enter at least one detail to verify your booking history.");
+    return;
+  }
+
+  const button = panel.querySelector("[data-verify-returning]");
+  if (button) {
+    button.disabled = true;
+    button.textContent = "Verifying...";
+  }
+  setReturningStatus(panel, "warning", "Checking previous booking information...");
+
+  try {
+    if (!window.ShiftFuelSupabase) {
+      bookingState.returning.verified = false;
+      setReturningStatus(panel, "error", "We could not verify your information right now. Please use Book Now.");
+      return;
+    }
+
+    const { data, error } = await window.ShiftFuelSupabase.rpc("public_track_request", {
+      p_request_id: ticket || null,
+      p_phone: phone || null,
+      p_email: email || null,
+    });
+    if (error) throw error;
+
+    const requests = Array.isArray(data) ? data : [];
+    if (!requests.length) {
+      bookingState.returning.verified = false;
+      setReturningStatus(panel, "error", "We could not find a previous customer with those details.");
+      return;
+    }
+
+    if (uniqueCustomerKeys(requests).size > 1) {
+      bookingState.returning.verified = false;
+      setReturningStatus(panel, "warning", "We found more than one possible match. Please enter one more detail to verify this is you.");
+      return;
+    }
+
+    bookingState.returning.requests = requests;
+    applyVerifiedCustomer(requests);
+    let options = requestsToReturningOptions(requests);
+
+    if (phone && email) {
+      const saved = await window.ShiftFuelSupabase.rpc("public_returning_customer_options", {
+        p_phone: phone,
+        p_email: email,
+      }).catch((savedError) => {
+        console.warn("Saved returning options lookup failed:", savedError);
+        return { data: null, error: savedError };
+      });
+      if (!saved.error && saved.data) {
+        const savedOptions = savedOptionsToReturningOptions(saved.data);
+        if (savedOptions.addresses.length || savedOptions.vehicles.length) options = savedOptions;
+      }
+    }
+
+    bookingState.returning.addresses = options.addresses;
+    bookingState.returning.vehicles = options.vehicles;
+    bookingState.returning.selectedAddressId = null;
+    bookingState.returning.selectedVehicleId = null;
+    bookingState.returning.stagedAddress = null;
+    bookingState.returning.stagedVehicle = null;
+    bookingState.returning.verified = true;
+    setReturningStatus(panel, "success", "Verified. Continue to pick your validated service area.");
+  } catch (error) {
+    console.error("Returning verification failed:", error);
+    bookingState.returning.verified = false;
+    const detail = error?.message || error?.code || "";
+    setReturningStatus(panel, "error", `We could not verify your information right now. Please try again.${detail ? ` (${detail})` : ""}`);
+  } finally {
+    if (button) {
+      button.disabled = false;
+      button.textContent = "Verify customer";
+    }
+  }
+}
+
+function applySelectedAddress(address) {
+  bookingState.returning.selectedAddressId = address.id;
+  bookingState.returning.stagedAddress = null;
+  bookingState.values.street = address.street;
+  bookingState.values.unit = address.unit;
+  bookingState.values.city = address.city;
+  bookingState.values.state = address.state || "DE";
+  bookingState.values.zip = address.zip;
+  bookingState.address.validated = true;
+  bookingState.address.status = "success";
+  bookingState.address.message = "Address verified.";
+}
+
+function applySelectedVehicle(vehicle) {
+  bookingState.returning.selectedVehicleId = vehicle.id;
+  bookingState.returning.stagedVehicle = null;
+  bookingState.values.vehicleYear = vehicle.year;
+  bookingState.values.vehicleMake = vehicle.make;
+  bookingState.values.vehicleModel = vehicle.model;
+  bookingState.values.vehicleColor = vehicle.color;
+  bookingState.values.licensePlate = vehicle.license;
+  bookingState.values.fuelType = vehicle.fuelType || "";
+}
+
+function addressCard(address) {
+  const selected = bookingState.returning.selectedAddressId === address.id;
+  return `
+    <article class="returning-option-card ${selected ? "is-selected" : ""}">
+      <span>${escapeHtml(address.street)}</span>
+      ${address.unit ? `<span>${escapeHtml(address.unit)}</span>` : ""}
+      <span>${escapeHtml([address.city, address.state, address.zip].filter(Boolean).join(", "))}</span>
+      <div class="returning-customer-actions">
+        <button class="button primary" type="button" data-select-returning-address="${escapeHtml(address.id)}">${selected ? "Selected" : "Use this address"}</button>
+        <button class="button secondary" type="button" data-edit-returning-address="${escapeHtml(address.id)}">Edit</button>
+      </div>
+    </article>
+  `;
+}
+
+function vehicleCard(vehicle) {
+  const selected = bookingState.returning.selectedVehicleId === vehicle.id;
+  return `
+    <article class="returning-option-card ${selected ? "is-selected" : ""}">
+      <span><strong>${escapeHtml([vehicle.year, vehicle.make, vehicle.model].filter(Boolean).join(" ") || "Saved vehicle")}</strong></span>
+      ${vehicle.color ? `<span>Color: ${escapeHtml(vehicle.color)}</span>` : ""}
+      ${vehicle.license ? `<span>Plate: ${escapeHtml(vehicle.license)}</span>` : ""}
+      <div class="returning-customer-actions">
+        <button class="button primary" type="button" data-select-returning-vehicle="${escapeHtml(vehicle.id)}">${selected ? "Selected" : "Use this vehicle"}</button>
+        <button class="button danger" type="button" data-delete-returning-vehicle="${escapeHtml(vehicle.id)}">Delete</button>
+      </div>
+    </article>
+  `;
+}
+
+function returningAddressForm(address = {}) {
+  return `
+    <div class="returning-inline-form">
+      <div class="booking-field-grid">
+        <label class="span-2"><span>Street address <span class="required-mark">Required</span></span><input data-returning-address-field name="returningStreet" type="text" value="${escapeHtml(address.street)}" placeholder="123 Main Street"></label>
+        <label><span>Unit/suite/apartment</span><input data-returning-address-field name="returningUnit" type="text" value="${escapeHtml(address.unit)}" placeholder="Optional"></label>
+        <label><span>City <span class="required-mark">Required</span></span><input data-returning-address-field name="returningCity" type="text" value="${escapeHtml(address.city)}" placeholder="Wilmington"></label>
+        <label><span>State <span class="required-mark">Required</span></span><input data-returning-address-field name="returningState" type="text" value="${escapeHtml(address.state || "DE")}"></label>
+        <label><span>ZIP code <span class="required-mark">Required</span></span><input data-returning-address-field name="returningZip" type="text" value="${escapeHtml(address.zip)}" placeholder="19804"></label>
+      </div>
+      <div class="address-validation-panel">
+        <button class="button secondary" type="button" data-validate-returning-address>Validate Address</button>
+        <p class="booking-validation-message" data-returning-address-status data-status="${escapeHtml(bookingState.returning.addressStatusType || "warning")}">${escapeHtml(bookingState.returning.addressStatus ? bookingState.returning.addressStatus : "Please validate your service address before continuing.")}</p>
+      </div>
+    </div>
+  `;
+}
+
+function returningVehicleForm() {
+  return `
+    <div class="returning-inline-form">
+      <div class="booking-field-grid">
+        <label><span>Year <span class="required-mark">Required</span></span><input data-returning-vehicle-field name="returningVehicleYear" type="text" inputmode="numeric" placeholder="2020"></label>
+        <label><span>Make <span class="required-mark">Required</span></span><input data-returning-vehicle-field name="returningVehicleMake" type="text" placeholder="Honda"></label>
+        <label><span>Model <span class="required-mark">Required</span></span><input data-returning-vehicle-field name="returningVehicleModel" type="text" placeholder="Fit"></label>
+        <label><span>Color <span class="required-mark">Required</span></span><input data-returning-vehicle-field name="returningVehicleColor" type="text" placeholder="Blue"></label>
+        <label><span>License plate <span class="required-mark">Required</span></span><input data-returning-vehicle-field name="returningLicensePlate" type="text" placeholder="TEST"></label>
+        <label><span>Fuel type</span><select data-returning-vehicle-field name="returningFuelType">
+          <option value="">Select fuel type later if needed</option>
+          <option>Regular</option>
+          <option>Midgrade</option>
+          <option>Premium</option>
+          <option>Diesel</option>
+          <option>Electric / no fuel</option>
+        </select></label>
+      </div>
+      <button class="button secondary" type="button" data-save-returning-vehicle>Use this vehicle</button>
+    </div>
+  `;
+}
+
+function renderReturningServiceArea(panel) {
+  const container = panel.querySelector("[data-returning-service-area]");
+  if (!container) return;
+  const modeAddress = bookingState.returning.addressMode === "add"
+    ? {}
+    : bookingState.returning.addresses.find((address) => address.id === bookingState.returning.addressMode) || {};
+
+  container.innerHTML = `
+    <div class="returning-option-grid">
+      ${bookingState.returning.addresses.length
+        ? bookingState.returning.addresses.map(addressCard).join("")
+        : `<p class="field-help">No saved validated service areas were found. Add a new service address below.</p>`}
+    </div>
+    <button class="button secondary" type="button" data-add-returning-address>Add new service address</button>
+    ${bookingState.returning.addressMode ? returningAddressForm(modeAddress) : ""}
+  `;
+}
+
+function renderReturningVehicles(panel) {
+  const container = panel.querySelector("[data-returning-vehicles]");
+  if (!container) return;
+  container.innerHTML = `
+    <div class="returning-option-grid">
+      ${bookingState.returning.vehicles.length
+        ? bookingState.returning.vehicles.map(vehicleCard).join("")
+        : `<p class="field-help">No saved vehicles were found. Add a new vehicle below.</p>`}
+    </div>
+    <button class="button secondary" type="button" data-add-returning-vehicle>Add new vehicle</button>
+    ${bookingState.returning.vehicleMode === "add" ? returningVehicleForm() : ""}
+  `;
+}
+
+function renderServiceDetails(panel) {
+  const container = panel.querySelector("[data-service-details]");
+  if (!container) return;
+  if (!bookingState.values.serviceType) {
+    container.innerHTML = `<p class="field-help">Select a service first.</p>`;
+    return;
+  }
+
+  const fuelFields = serviceNeedsFuel() ? `
+    <div class="booking-field-grid">
+      <label><span>Fuel type <span class="required-mark">Required</span></span><select data-required name="fuelType">
+        <option value="">Select fuel type</option>
+        <option>Regular</option>
+        <option>Midgrade</option>
+        <option>Premium</option>
+        <option>Diesel</option>
+      </select></label>
+      <label><span>Fuel preference <span class="required-mark">Required</span></span><select data-required name="fuelPreference">
+        <option value="">Select gallons</option>
+        <option value="0-5">0-5 gallons</option>
+        <option value="5-10">5-10 gallons</option>
+        <option value="10-15">10-15 gallons</option>
+        <option value="15-20">15-20 gallons</option>
+        <option value="20-25">20-25 gallons</option>
+        <option value="25+">25+ gallons</option>
+      </select></label>
+    </div>
+  ` : "";
+
+  const washFields = serviceNeedsWash() ? `
+    <div class="booking-field-grid">
+      ${WASH_PACKAGES.length === 1
+        ? `<div class="payment-placeholder"><strong>Car wash package</strong><p>${escapeHtml(WASH_PACKAGES[0].label)} - ${formatMoney(WASH_PACKAGES[0].price)}</p></div>`
+        : `<label><span>Car wash package <span class="required-mark">Required</span></span><select data-required name="washPackage">
+            <option value="">Select package</option>
+            ${WASH_PACKAGES.map((pkg) => `<option value="${pkg.value}">${escapeHtml(pkg.label)} - ${formatMoney(pkg.price)}</option>`).join("")}
+          </select></label>`}
+    </div>
+  ` : "";
+
+  container.innerHTML = `
+    ${fuelFields}
+    ${washFields}
+    <div class="placeholder-note">Only fields needed for your selected service are shown.</div>
+  `;
+  if (WASH_PACKAGES.length === 1 && serviceNeedsWash()) bookingState.values.washPackage = WASH_PACKAGES[0].value;
+  restorePanelValues(panel);
+}
+
+function renderScheduleFields(panel) {
+  const dateInput = panel.querySelector('[name="serviceDate"]');
+  const timeSelect = panel.querySelector("[data-return-time]");
+  if (!dateInput || !timeSelect) return;
+  dateInput.min = todayValue();
+  dateInput.max = maxDateValue();
+  if (bookingState.values.serviceDate) dateInput.value = bookingState.values.serviceDate;
+
+  const selectedTime = bookingState.values.returnTime || "";
+  timeSelect.innerHTML = `<option value="">Select return time</option>${availableTimeOptions().map((option) => `
+    <option value="${option.value}" ${option.disabled ? "disabled" : ""} ${option.value === selectedTime && !option.disabled ? "selected" : ""}>${option.label}${option.disabled ? " - unavailable" : ""}</option>
+  `).join("")}`;
+  if (selectedTime && !Array.from(timeSelect.options).some((option) => option.value === selectedTime && !option.disabled)) {
+    bookingState.values.returnTime = "";
+    timeSelect.value = "";
+  }
+}
+
+function renderPaymentSummary(panel) {
+  const container = panel.querySelector("[data-payment-summary]");
+  if (!container) return;
+  const totals = calculateTotals();
+  container.innerHTML = `
+    <strong>Payment authorization summary</strong>
+    <dl class="review-summary-list">
+      ${serviceNeedsFuel() ? `<div><dt>Fuel service fee</dt><dd>${formatMoney(totals.fuelFee)}</dd></div>` : ""}
+      ${serviceNeedsWash() ? `<div><dt>Car wash service fee</dt><dd>${formatMoney(totals.washFee)}</dd></div>` : ""}
+      ${bookingState.values.quickCare ? `<div><dt>Quick Vehicle Care add-on</dt><dd>${formatMoney(totals.quickFee)}</dd></div>` : ""}
+      ${serviceNeedsFuel() ? `<div><dt>Estimated fuel</dt><dd>${totals.fuelGallons} gal x ${formatMoney(PRICE_PER_GALLON)}/gal = ${formatMoney(totals.fuelEstimate)}</dd></div>` : ""}
+      ${totals.washPackage ? `<div><dt>Car wash package</dt><dd>${escapeHtml(totals.washPackage.label)} - ${formatMoney(totals.washAmount)}</dd></div>` : ""}
+      <div><dt>Estimated total</dt><dd>${formatMoney(totals.estimatedTotal)}</dd></div>
+    </dl>
+  `;
+  const status = panel.querySelector("[data-payment-status]");
+  if (status) {
+    status.dataset.status = bookingState.payment.statusType || "";
+    status.textContent = bookingState.payment.status || "";
+  }
+  mountCardIfNeeded();
+}
+
+async function authorizePayment(panel) {
+  savePanelValues(panel);
+  const status = panel.querySelector("[data-payment-status]");
+  const button = panel.querySelector("[data-authorize-payment]");
+  const setStatus = (type, message) => {
+    bookingState.payment.statusType = type;
+    bookingState.payment.status = message;
+    if (status) {
+      status.dataset.status = type;
+      status.textContent = message;
+    }
+  };
+  if (!stripe || !cardElement) {
+    setStatus("error", "Payment authorization is not available right now.");
+    return;
+  }
+  const totals = calculateTotals();
+  if (!totals.estimatedTotal) {
+    setStatus("error", "Please complete service details before authorizing payment.");
+    return;
+  }
+  if (button) {
+    button.disabled = true;
+    button.textContent = "Authorizing...";
+  }
+  setStatus("warning", "Authorizing payment method...");
+  try {
+    const createRes = await fetch("/api/payments", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        action: "create_intent",
+        amount_cents: Math.round(totals.estimatedTotal * 100),
+        customer_name: customerName(),
+        customer_email: bookingState.values.customerEmail,
+        service_label: serviceLabel(),
+      }),
+    });
+    const intent = await createRes.json().catch(() => ({}));
+    if (!createRes.ok) throw new Error(intent.error || "Could not initialize payment authorization.");
+
+    const confirmation = await stripe.confirmCardPayment(intent.client_secret, {
+      payment_method: {
+        card: cardElement,
+        billing_details: {
+          name: customerName(),
+          email: bookingState.values.customerEmail || undefined,
+          phone: normalizePhone(bookingState.values.customerPhone) || undefined,
+        },
+      },
+    });
+    if (confirmation.error) throw new Error(confirmation.error.message);
+
+    bookingState.payment.authorized = true;
+    bookingState.payment.paymentIntentId = intent.payment_intent_id;
+    bookingState.payment.clientSecret = intent.client_secret;
+    setStatus("success", "Payment authorized. You will only be charged after your service is completed.");
+  } catch (error) {
+    console.error("Payment authorization failed:", error);
+    bookingState.payment.authorized = false;
+    setStatus("error", error.message || "Could not authorize payment. Please try again.");
+  } finally {
+    if (button) {
+      button.disabled = false;
+      button.textContent = bookingState.payment.authorized ? "Payment authorized" : "Authorize payment";
+    }
+  }
+}
+
+async function validateReturningAddress(panel) {
+  const address = {
+    id: bookingState.returning.addressMode && bookingState.returning.addressMode !== "add" ? bookingState.returning.addressMode : `new-address-${Date.now()}`,
+    street: panel.querySelector('[name="returningStreet"]')?.value.trim() || "",
+    unit: panel.querySelector('[name="returningUnit"]')?.value.trim() || "",
+    city: panel.querySelector('[name="returningCity"]')?.value.trim() || "",
+    state: panel.querySelector('[name="returningState"]')?.value.trim() || "",
+    zip: panel.querySelector('[name="returningZip"]')?.value.trim() || "",
+  };
+  const statusEl = panel.querySelector("[data-returning-address-status]");
+  const setStatus = (status, message) => {
+    bookingState.returning.addressStatusType = status;
+    bookingState.returning.addressStatus = message;
+    if (statusEl) {
+      statusEl.dataset.status = status;
+      statusEl.textContent = message;
+    }
+  };
+
+  if (!address.street || !address.city || !address.state || !address.zip) {
+    setStatus("error", "Please complete the required address fields before validating.");
+    return;
+  }
+
+  const button = panel.querySelector("[data-validate-returning-address]");
+  if (button) {
+    button.disabled = true;
+    button.textContent = "Validating...";
+  }
+  setStatus("warning", "Validating service address...");
+
+  try {
+    const { ok, data } = await callAddressValidator(address);
+    if (!ok || !data.valid) {
+      setStatus("error", data.message || "We currently do not serve this area.");
+      return;
+    }
+    if (bookingState.returning.addressMode === "add") {
+      bookingState.returning.addresses.push(address);
+    } else {
+      bookingState.returning.addresses = bookingState.returning.addresses.map((item) => (
+        item.id === address.id ? address : item
+      ));
+    }
+    applySelectedAddress(address);
+    bookingState.returning.addressMode = "";
+    setStatus("success", "Address verified.");
+  } catch (error) {
+    console.error("Returning address validation failed:", error);
+    setStatus("error", "We could not verify this address. Please check your address and try again.");
+  } finally {
+    if (button) {
+      button.disabled = false;
+      button.textContent = "Validate Address";
+    }
+  }
+}
+
+function saveReturningVehicle(panel) {
+  const vehicle = {
+    id: `new-vehicle-${Date.now()}`,
+    year: panel.querySelector('[name="returningVehicleYear"]')?.value.trim() || "",
+    make: panel.querySelector('[name="returningVehicleMake"]')?.value.trim() || "",
+    model: panel.querySelector('[name="returningVehicleModel"]')?.value.trim() || "",
+    color: panel.querySelector('[name="returningVehicleColor"]')?.value.trim() || "",
+    license: panel.querySelector('[name="returningLicensePlate"]')?.value.trim() || "",
+    fuelType: panel.querySelector('[name="returningFuelType"]')?.value || "",
+  };
+  if (!vehicle.year || !vehicle.make || !vehicle.model || !vehicle.color || !vehicle.license) return false;
+  bookingState.returning.vehicles.push(vehicle);
+  applySelectedVehicle(vehicle);
+  return true;
+}
+
+async function deleteReturningVehicle(vehicleId) {
+  const vehicle = bookingState.returning.vehicles.find((item) => item.id === vehicleId);
+  if (!vehicle) return;
+  const confirmed = confirm("Delete this saved vehicle? This removes it from future booking options only. Past requests will not be changed.");
+  if (!confirmed) return;
+
+  const rpcId = vehicle.raw?.id || vehicle.raw?.saved_vehicle_id;
+  const phone = normalizePhone(bookingState.values.customerPhone);
+  const email = String(bookingState.values.customerEmail || "").toLowerCase();
+  if (window.ShiftFuelSupabase && rpcId && phone && email) {
+    const { error } = await window.ShiftFuelSupabase.rpc("public_soft_delete_saved_vehicle", {
+      p_vehicle_id: rpcId,
+      p_phone: phone,
+      p_email: email,
+    });
+    if (error) {
+      console.error("Could not delete saved vehicle:", error);
+      alert("Could not delete that saved vehicle. Please try again.");
+      return;
+    }
+  }
+
+  bookingState.returning.vehicles = bookingState.returning.vehicles.filter((item) => item.id !== vehicleId);
+  if (bookingState.returning.selectedVehicleId === vehicleId) {
+    bookingState.returning.selectedVehicleId = null;
+  }
+}
+
+function isUuid(value) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(value || ""));
+}
+
+function resolveSelectedVehicleId() {
+  const vehicle = bookingState.returning.vehicles.find((item) => item.id === bookingState.returning.selectedVehicleId);
+  const rawId = vehicle?.raw?.saved_vehicle_id || vehicle?.raw?.vehicle_id || vehicle?.raw?.id;
+  return isUuid(rawId) ? rawId : null;
+}
+
+function customerName() {
+  return [bookingState.values.firstName, bookingState.values.lastName].filter(Boolean).join(" ").trim();
+}
+
+function serviceLabel() {
+  const labels = {
+    fuel: "Fuel Fill-Up",
+    wash: "Car Wash",
+    fuel_wash: "Fuel + Car Wash",
+  };
+  return labels[bookingState.values.serviceType] || "ShiftFuel service";
+}
+
+function serviceTypeForApi() {
+  if (bookingState.values.serviceType === "wash") return "wash-only";
+  if (bookingState.values.serviceType === "fuel_wash") return "car-wash-fuel";
+  return "fuel-only";
+}
+
+function buildBookingPayload() {
+  const totals = calculateTotals();
+  const washPackage = selectedWashPackage();
+  const serviceDate = bookingState.values.serviceDate || "";
+  const returnTime = bookingState.values.returnTime || "";
+  const notes = [
+    bookingState.values.specialInstructions ? `[special_instructions] ${bookingState.values.specialInstructions}` : "",
+    "[booking_source shared_flow]",
+  ].filter(Boolean).join(" ");
+
+  return {
+    payment_intent_id: bookingState.payment.paymentIntentId,
+    amount_cents: Math.round(totals.estimatedTotal * 100),
+    customer_name: customerName(),
+    customer_id: bookingState.returning.requests[0]?.customer_id || null,
+    customer_phone: formatPhone(bookingState.values.customerPhone || ""),
+    customer_email: bookingState.values.customerEmail || "",
+    vehicle_year: bookingState.values.vehicleYear || "",
+    vehicle_id: resolveSelectedVehicleId(),
+    vehicle_make: bookingState.values.vehicleMake || "",
+    vehicle_model: bookingState.values.vehicleModel || "",
+    vehicle_color: bookingState.values.vehicleColor || "",
+    license_plate: bookingState.values.licensePlate || "",
+    hospital: [bookingState.values.street, bookingState.values.city, bookingState.values.state, bookingState.values.zip].filter(Boolean).join(", "),
+    address_street: bookingState.values.street || "",
+    address_apt: bookingState.values.unit || "",
+    address_city: bookingState.values.city || "",
+    address_state: bookingState.values.state || "",
+    address_zip: bookingState.values.zip || "",
+    address_validation_status: bookingState.address.validated ? "validated" : "not_validated",
+    parking_location: bookingState.values.parking || "",
+    key_handoff_details: bookingState.values.handoff || "",
+    special_instructions: bookingState.values.specialInstructions || "",
+    service_type: serviceTypeForApi(),
+    service_label: serviceLabel(),
+    service_date: serviceDate,
+    desired_return_time: returnTime ? `${returnTime}:00` : "",
+    fuel_type: serviceNeedsFuel() ? bookingState.values.fuelType || "" : "",
+    estimated_fuel_range: serviceNeedsFuel() ? bookingState.values.fuelPreference || "" : "",
+    estimated_gallons: totals.fuelGallons,
+    price_per_gallon: PRICE_PER_GALLON,
+    estimated_fuel_amount: totals.fuelEstimate,
+    fuel_convenience_fee: totals.fuelFee,
+    wash_package: washPackage?.value || "",
+    wash_package_label: washPackage?.label || "",
+    wash_fee: totals.washAmount,
+    wash_convenience_fee: totals.washFee,
+    quick_inspection: Boolean(bookingState.values.quickCare),
+    quick_inspection_fee: totals.quickFee,
+    service_fee: totals.fuelFee + totals.washFee,
+    estimated_total: totals.estimatedTotal,
+    authorized_amount: totals.estimatedTotal,
+    booking_source: flowRoot?.dataset.bookingFlow === "returning" ? "returning_customer" : "book_now",
+    notes,
+  };
+}
+
+function publicRequestNumber(id) {
+  return `SF-${String(id || "").slice(0, 8).toUpperCase()}`;
+}
+
+async function submitBooking(panel) {
+  if (bookingState.submitting || bookingState.submitted) return;
+  bookingState.submitting = true;
+  savePanelValues(panel);
+  const status = panel.querySelector("[data-submit-status]");
+  const setStatus = (type, message) => {
+    if (status) {
+      status.dataset.status = type;
+      status.textContent = message;
+    }
+  };
+  if (!bookingState.payment.authorized || !bookingState.payment.paymentIntentId) {
+    setStatus("error", "Please authorize payment before submitting.");
+    return;
+  }
+  if (!bookingState.values.reviewConfirmed) {
+    setStatus("error", "Please confirm the booking information before submitting.");
+    return;
+  }
+  const button = panel.querySelector("[data-submit-booking]");
+  if (button) {
+    button.disabled = true;
+    button.textContent = "Submitting...";
+  }
+  setStatus("warning", "Submitting booking...");
+  try {
+    const payload = buildBookingPayload();
+    const res = await fetch("/api/payments", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        action: "create_authorized_booking",
+        ...payload,
+      }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || "Could not submit booking.");
+    bookingState.submitted = true;
+    bookingState.submittedRequestNumber = publicRequestNumber(data.id);
+    const fields = panel.querySelector(".booking-step-fields");
+    if (fields) {
+      fields.innerHTML = `
+        <div class="submission-success">
+          <h3>Request received.</h3>
+          <p>Your request number is: <strong>${escapeHtml(bookingState.submittedRequestNumber)}</strong></p>
+          <p>Use Track My Vehicle to follow your request.</p>
+        </div>
+      `;
+    }
+    setStatus("success", "");
+    const actions = panel.querySelector(".booking-step-actions");
+    if (actions) actions.hidden = true;
+    if (button) button.hidden = true;
+  } catch (error) {
+    console.error("Booking submit failed:", error);
+    setStatus("error", error.message || "Could not submit booking. Please try again.");
+    if (button) {
+      button.disabled = false;
+      button.textContent = "Submit Booking";
+    }
+  } finally {
+    bookingState.submitting = false;
+  }
+}
+
+function renderReviewSummary(panel) {
+  const summary = panel.querySelector("[data-review-summary]");
+  if (!summary) return;
+  const values = bookingState.values;
+  const totals = calculateTotals();
+  const addOns = values.quickCare ? "Quick Vehicle Care" : "None";
+  summary.innerHTML = `
+    <strong>Final summary</strong>
+    <dl class="review-summary-list">
+      <div><dt>Customer</dt><dd>${escapeHtml([values.firstName, values.lastName].filter(Boolean).join(" ") || "Not entered")} | ${escapeHtml(values.customerPhone || "No phone")} | ${escapeHtml(values.customerEmail || "No email")}</dd></div>
+      <div><dt>Service address</dt><dd>${escapeHtml([values.street, values.unit, values.city, values.state, values.zip].filter(Boolean).join(", ") || "Not entered")}</dd></div>
+      <div><dt>Vehicle</dt><dd>${escapeHtml([values.vehicleYear, values.vehicleMake, values.vehicleModel, values.vehicleColor].filter(Boolean).join(" ") || "Not entered")}${values.licensePlate ? ` | Plate: ${escapeHtml(values.licensePlate)}` : ""}${values.fuelType ? ` | Fuel: ${escapeHtml(values.fuelType)}` : ""}</dd></div>
+      <div><dt>Selected services</dt><dd>${escapeHtml(serviceLabel())}</dd></div>
+      ${serviceNeedsFuel() ? `<div><dt>Fuel details</dt><dd>${escapeHtml(values.fuelType || "Not selected")}, ${escapeHtml(values.fuelPreference || "Not selected")} gallons</dd></div>` : ""}
+      ${totals.washPackage ? `<div><dt>Car wash package</dt><dd>${escapeHtml(totals.washPackage.label)}</dd></div>` : ""}
+      <div><dt>Add-ons</dt><dd>${escapeHtml(addOns)}</dd></div>
+      <div><dt>Service date</dt><dd>${escapeHtml(values.serviceDate || "Not selected")}</dd></div>
+      <div><dt>Desired return time</dt><dd>${escapeHtml(values.returnTime || "Not selected")}</dd></div>
+      <div><dt>Parking location</dt><dd>${escapeHtml(values.parking || "Not entered")}</dd></div>
+      <div><dt>Key handoff details</dt><dd>${escapeHtml(values.handoff || "Not entered")}</dd></div>
+      <div><dt>Special instructions</dt><dd>${escapeHtml(values.specialInstructions || "None")}</dd></div>
+      <div><dt>Payment authorization total</dt><dd>${formatMoney(totals.estimatedTotal)}</dd></div>
+    </dl>
+    <p>Request status will be created as request_received. Customer, service address, and vehicle details are saved as a snapshot on the request.</p>
+  `;
+}
+
+function getStepContent(step, flowName) {
+  if (flowName === "returning" && step === "Vehicle") return stepCopy["Returning Vehicle"];
+  return stepCopy[step];
 }
 
 function renderFlow(root) {
   const flowName = root.dataset.bookingFlow || "book-now";
   const steps = flows[flowName] || flows["book-now"];
-  let currentIndex = 0;
+  let unlockedIndex = 0;
+  let openIndex = 0;
+
+  const updateContinue = () => {
+    const activePanel = root.querySelector(".booking-accordion-card.is-active");
+    if (!activePanel) return;
+    const continueButton = activePanel.querySelector("[data-continue]");
+    if (continueButton) continueButton.disabled = !stepIsComplete(activePanel);
+    const submitButton = activePanel.querySelector("[data-submit-booking]");
+    if (submitButton && !bookingState.submitted) {
+      submitButton.disabled = !Boolean(bookingState.values.reviewConfirmed);
+    }
+  };
+
+  const scrollToActive = () => {
+    root.querySelector(".booking-accordion-card.is-active")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
 
   const render = () => {
-    const step = steps[currentIndex];
-    const content = stepCopy[step];
     root.innerHTML = `
-      ${createProgress(steps, currentIndex)}
-      <article class="booking-step-card" data-current-step="${step}">
-        <div class="booking-step-kicker">Step ${currentIndex + 1} of ${steps.length}</div>
-        <h2>${content.title}</h2>
-        <p>${content.intro}</p>
-        <div class="booking-step-fields">${content.fields}</div>
-        <div class="booking-step-actions">
-          <button class="button secondary" type="button" data-back ${currentIndex === 0 ? "disabled" : ""}>Back</button>
-          <button class="button primary" type="button" data-continue>${currentIndex === steps.length - 1 ? "Finish Review" : "Continue"}</button>
+      ${renderProgressRail(steps, unlockedIndex, openIndex)}
+      <div class="booking-layout">
+        <div class="booking-cards">
+          ${steps.map((step, index) => renderStepCard(step, index, flowName, unlockedIndex, openIndex)).join("")}
         </div>
-      </article>
+        ${renderSummarySidebar(steps, flowName, unlockedIndex)}
+      </div>
     `;
+
+    steps.forEach((step, index) => {
+      const panel = root.querySelector(`[data-step-index="${index}"]`);
+      if (!panel) return;
+      restorePanelValues(panel);
+      renderReturningServiceArea(panel);
+      renderReturningVehicles(panel);
+      renderServiceDetails(panel);
+      renderScheduleFields(panel);
+      renderPaymentSummary(panel);
+      renderReviewSummary(panel);
+    });
+
+    const activePanel = root.querySelector(".booking-accordion-card.is-active");
+    if (activePanel?.dataset.currentStep === "Schedule" && bookingState.values.serviceDate) {
+      loadBookedSlots().then(() => {
+        renderScheduleFields(activePanel);
+        updateContinue();
+      });
+    }
     updateContinue();
   };
 
-  const updateContinue = () => {
-    const panel = root.querySelector(".booking-step-card");
-    const continueButton = root.querySelector("[data-continue]");
-    if (!panel || !continueButton) return;
-    continueButton.disabled = !stepIsComplete(panel);
+  const goToStep = (index) => {
+    openIndex = Math.max(0, Math.min(steps.length - 1, index));
+    render();
+    scrollToActive();
   };
 
-  root.addEventListener("input", updateContinue);
-  root.addEventListener("change", updateContinue);
-  root.addEventListener("click", (event) => {
+  root.addEventListener("input", (event) => {
+    const panel = event.target.closest(".booking-accordion-card");
+    if (!panel) return;
+
+    if (event.target.matches("[data-phone]")) {
+      event.target.value = formatPhone(event.target.value);
+    }
+
+    if (event.target.matches("[data-address-field]")) {
+      bookingState.address.validated = false;
+      setAddressStatus(panel, "warning", "Please validate your service address before continuing.");
+    }
+
+    if (event.target.matches("[data-returning-address-field]")) {
+      bookingState.returning.stagedAddress = null;
+      bookingState.returning.selectedAddressId = null;
+      bookingState.returning.addressStatusType = "warning";
+      bookingState.returning.addressStatus = "Please validate your service address before continuing.";
+      const statusEl = panel.querySelector("[data-returning-address-status]");
+      if (statusEl) {
+        statusEl.dataset.status = "warning";
+        statusEl.textContent = "Please validate your service address before continuing.";
+      }
+    }
+
+    savePanelValues(panel);
+    if (!["Payment", "Review"].includes(panel.dataset.currentStep)) invalidatePaymentAuthorization();
+    updateContinue();
+  });
+
+  root.addEventListener("change", async (event) => {
+    const panel = event.target.closest(".booking-accordion-card");
+    if (!panel) return;
+    savePanelValues(panel);
+    if (!["Payment", "Review"].includes(panel.dataset.currentStep)) invalidatePaymentAuthorization();
+    if (event.target.matches('[name="serviceType"]')) {
+      bookingState.values.fuelPreference = "";
+      bookingState.values.washPackage = "";
+      renderServiceDetails(panel);
+    }
+    if (event.target.matches('[name="serviceDate"]')) {
+      bookingState.values.returnTime = "";
+      await loadBookedSlots();
+      renderScheduleFields(panel);
+    }
+    updateContinue();
+  });
+
+  root.addEventListener("click", async (event) => {
+    const railStep = event.target.closest("[data-rail-step]");
+    if (railStep && !railStep.disabled) {
+      goToStep(Number(railStep.dataset.railStep));
+      return;
+    }
+
+    const editStep = event.target.closest("[data-edit-step]");
+    if (editStep) {
+      goToStep(Number(editStep.dataset.editStep));
+      return;
+    }
+
+    const jumpReview = event.target.closest("[data-jump-review]");
+    if (jumpReview && !jumpReview.disabled) {
+      goToStep(steps.indexOf("Review"));
+      return;
+    }
+
+    const stepHeader = event.target.closest("[data-step-header]");
+    if (stepHeader && !stepHeader.disabled) {
+      const index = Number(stepHeader.dataset.stepHeader);
+      if (index !== openIndex) goToStep(index);
+      return;
+    }
+
+    const panel = event.target.closest(".booking-accordion-card");
+    if (!panel) return;
+
+    if (event.target.closest("[data-verify-returning]")) {
+      await verifyReturningCustomer(panel);
+      savePanelValues(panel);
+      updateContinue();
+      return;
+    }
+
+    if (event.target.closest("[data-validate-address]")) {
+      await validateAddress(panel);
+      savePanelValues(panel);
+      updateContinue();
+      return;
+    }
+
+    if (event.target.closest("[data-authorize-payment]")) {
+      await authorizePayment(panel);
+      updateContinue();
+      return;
+    }
+
+    if (event.target.closest("[data-submit-booking]")) {
+      await submitBooking(panel);
+      updateContinue();
+      return;
+    }
+
+    if (event.target.closest("[data-add-returning-address]")) {
+      bookingState.returning.addressMode = "add";
+      bookingState.returning.addressStatusType = "warning";
+      bookingState.returning.addressStatus = "Please validate your service address before continuing.";
+      renderReturningServiceArea(panel);
+      updateContinue();
+      return;
+    }
+
+    const editAddress = event.target.closest("[data-edit-returning-address]");
+    if (editAddress) {
+      bookingState.returning.addressMode = editAddress.dataset.editReturningAddress;
+      bookingState.returning.addressStatusType = "warning";
+      bookingState.returning.addressStatus = "Please validate your service address before continuing.";
+      renderReturningServiceArea(panel);
+      updateContinue();
+      return;
+    }
+
+    const selectAddress = event.target.closest("[data-select-returning-address]");
+    if (selectAddress) {
+      const address = bookingState.returning.addresses.find((item) => item.id === selectAddress.dataset.selectReturningAddress);
+      if (address) applySelectedAddress(address);
+      renderReturningServiceArea(panel);
+      updateContinue();
+      return;
+    }
+
+    if (event.target.closest("[data-validate-returning-address]")) {
+      await validateReturningAddress(panel);
+      renderReturningServiceArea(panel);
+      updateContinue();
+      return;
+    }
+
+    if (event.target.closest("[data-add-returning-vehicle]")) {
+      bookingState.returning.vehicleMode = "add";
+      renderReturningVehicles(panel);
+      updateContinue();
+      return;
+    }
+
+    const selectVehicle = event.target.closest("[data-select-returning-vehicle]");
+    if (selectVehicle) {
+      const vehicle = bookingState.returning.vehicles.find((item) => item.id === selectVehicle.dataset.selectReturningVehicle);
+      if (vehicle) applySelectedVehicle(vehicle);
+      renderReturningVehicles(panel);
+      updateContinue();
+      return;
+    }
+
+    const deleteVehicle = event.target.closest("[data-delete-returning-vehicle]");
+    if (deleteVehicle) {
+      await deleteReturningVehicle(deleteVehicle.dataset.deleteReturningVehicle);
+      renderReturningVehicles(panel);
+      updateContinue();
+      return;
+    }
+
+    if (event.target.closest("[data-save-returning-vehicle]")) {
+      if (saveReturningVehicle(panel)) {
+        bookingState.returning.vehicleMode = "";
+        renderReturningVehicles(panel);
+      }
+      updateContinue();
+      return;
+    }
+
     if (event.target.closest("[data-back]")) {
-      currentIndex = Math.max(0, currentIndex - 1);
-      render();
-      root.scrollIntoView({ behavior: "smooth", block: "start" });
+      savePanelValues(panel);
+      goToStep(openIndex - 1);
       return;
     }
 
     if (event.target.closest("[data-continue]")) {
-      const panel = root.querySelector(".booking-step-card");
-      if (!panel || !stepIsComplete(panel)) return;
-      currentIndex = Math.min(steps.length - 1, currentIndex + 1);
-      render();
-      root.scrollIntoView({ behavior: "smooth", block: "start" });
+      savePanelValues(panel);
+      if (!stepIsComplete(panel)) return;
+      unlockedIndex = Math.max(unlockedIndex, openIndex + 1);
+      goToStep(unlockedIndex);
     }
   });
 
