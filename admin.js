@@ -332,32 +332,8 @@ let adminPhotoDeleted = false; // true when admin clicks "Delete photo"
 
 // Unified terminal/closed status list — keep in sync with worker.js, track.js,
 // and the SQL terminal-status list in supabase-production-rls-lockdown.sql.
-const terminalStatuses = [
-  'complete',
-  'denied',
-  'customer_canceled',
-  'customer_cancelled',
-  'canceled',
-  'cancelled',
-  'unable_to_complete',
-  'auto_reversed',
-  'closed_no_charge',
-  'canceled_return_completed',
-  'cancelled_return_completed',
-];
-
-const closedStatuses = [
-  'denied',
-  'customer_canceled',
-  'customer_cancelled',
-  'canceled',
-  'cancelled',
-  'unable_to_complete',
-  'auto_reversed',
-  'closed_no_charge',
-  'canceled_return_completed',
-  'cancelled_return_completed',
-];
+const terminalStatuses = ['complete', 'denied', 'customer_canceled', 'canceled', 'cancelled', 'unable_to_complete', 'auto_reversed', 'closed_no_charge', 'canceled_return_completed'];
+const closedStatuses = ['denied', 'customer_canceled', 'canceled', 'cancelled', 'unable_to_complete', 'auto_reversed', 'closed_no_charge', 'canceled_return_completed'];
 
 // Friendly labels for every status — keep in sync with worker.js and track.js.
 // Raw database status strings must never be shown to a user; this map is the
@@ -397,7 +373,6 @@ const statusLabels = {
   complete: 'Complete',
   denied: 'Denied',
   customer_canceled: 'Canceled by customer',
-  customer_cancelled: 'Canceled by customer',
   canceled: 'Canceled',
   unable_to_complete: 'Unable to complete',
   auto_reversed: 'Missed — auto-reversed',
@@ -406,10 +381,9 @@ const statusLabels = {
   pending_customer_payment: 'Awaiting customer payment',
   return_requested: 'Return requested',
   customer_return_requested: 'Return requested',
-  cancelled_pending_key_return: 'Cancellation received — awaiting key/vehicle return',
-  cancelled: 'Canceled',
+  cancelled_pending_key_return: 'Cancellation received - awaiting key/vehicle return',
+  cancelled: 'Cancelled',
   canceled_return_completed: 'Return completed',
-  cancelled_return_completed: 'Return completed',
   payment_issue: 'Payment issue',
   authorization_too_low: 'Authorization issue',
 };
@@ -450,38 +424,23 @@ const PAYMENT_STATUS_LABELS = {
   not_started:            'Not started',
   authorized:             'Authorized (hold on card)',
   captured:               'Captured (charged)',
-  cancellation_fee_paid:  'Cancellation fee paid',
   voided:                 'Authorization released — customer was not charged',
   authorization_released: 'Authorization released — customer was not charged',
   refunded:               'Refunded',
-  refund_required:        'Refund required — payment was captured',
   auto_reversed:          'Auto-reversed (missed service)',
   payment_release_failed: 'Hold release failed — check Stripe',
   capture_failed:         'Capture failed — customer must repay',
 };
 
+const CLOSED_STATUSES = ['denied', 'customer_canceled', 'canceled', 'cancelled', 'unable_to_complete', 'auto_reversed', 'closed_no_charge', 'canceled_return_completed'];
+
 function paymentStatusLabel(request) {
   const label = PAYMENT_STATUS_LABELS[request.payment_status] || request.payment_status || 'Unknown';
-
-  const amount = request.payment_status === 'captured' && request.final_total != null
-    ? ` — ${money(request.final_total)}`
-    : request.payment_status === 'authorized' && request.estimated_total != null
-    ? ` — ${money(request.estimated_total)} estimated hold`
-    : request.payment_status === 'cancellation_fee_paid' && request.cancellation_total_charged != null
-    ? ` — ${money(request.cancellation_total_charged)}`
-    : '';
-
-  return `${label}${amount}`;
-}
-
-  const label = PAYMENT_STATUS_LABELS[request.payment_status] || request.payment_status || 'Unknown';
-
   const amount = request.payment_status === 'captured' && request.final_total != null
     ? ` — ${money(request.final_total)}`
     : request.payment_status === 'authorized' && request.estimated_total != null
     ? ` — ${money(request.estimated_total)} estimated hold`
     : '';
-
   return `${label}${amount}`;
 }
 
@@ -595,8 +554,7 @@ function savedFeeOrDefault(value, fallback) {
 }
 
 function isOpen(request) {
-  return !terminalStatuses.includes(request.status)
-    && !closedStatuses.includes(request.status);
+  return !terminalStatuses.includes(request.status);
 }
 
 function serviceNeedsFuel(request) {
@@ -963,14 +921,14 @@ function requestCardDetails(request) {
       ${request.payment_intent_id ? `<hr class="details-divider">
       <p><strong>Payment status:</strong> ${paymentStatusLabel(request)}</p>
       ${request.auto_reversed_at ? `<p><strong>Auto-reversed:</strong> ${formatTimestamp(request.auto_reversed_at)} — service was not completed on the scheduled date.</p>` : ''}
-      ${(closedStatuses.includes(request.status) && request.payment_status === 'payment_release_failed') ? `
+      ${(CLOSED_STATUSES.includes(request.status) && request.payment_status === 'payment_release_failed') ? `
         <div class="admin-warning-banner">
           ⚠️ Payment hold could not be released automatically. Go to the Stripe dashboard and cancel this PaymentIntent manually.
           <div class="admin-button-row" style="margin-top:8px">
             <button class="button danger retry-release-hold" data-id="${escapeHtml(request.id)}" data-pi="${escapeHtml(request.payment_intent_id)}" type="button">Retry hold release</button>
           </div>
         </div>` : ''}
-      ${(closedStatuses.includes(request.status) && request.payment_status === 'authorized') ? `
+      ${(CLOSED_STATUSES.includes(request.status) && request.payment_status === 'authorized') ? `
         <div class="admin-warning-banner">
           ⚠️ This request was closed but the card authorization was not released. Release it now.
           <div class="admin-button-row" style="margin-top:8px">
@@ -1661,12 +1619,8 @@ function updateDashboardStatCards() {
   const completedTodayCount = allRequests.filter((r) => r.status === 'complete' && isSameLocalDay(r.updated_at || r.created_at, today)).length;
   const activeWorkerCount = allEmployees.filter((e) => e.active).length;
   const revenueToday = allRequests
-    .filter((r) => (
-      r.status === 'complete'
-      && r.payment_status === 'captured'
-      && isSameLocalDay(r.updated_at || r.created_at, today)
-    ))
-    .reduce((sum, r) => sum + Number(r.final_total || 0), 0);
+    .filter((r) => r.payment_status === 'captured' && isSameLocalDay(r.updated_at || r.created_at, today))
+    .reduce((sum, r) => sum + Number(r.captured_amount ?? r.final_total ?? 0), 0);
 
   if (statOpenRequests) statOpenRequests.textContent = openCount;
   if (statInProgress) statInProgress.textContent = inProgressCount;
@@ -3277,10 +3231,6 @@ async function saveDenyReason(button) {
 
   // Deny the request regardless of whether the payment release/refund succeeded —
   // a failed Stripe call must never block the denial itself.
-  const deniedPaymentStatus = request.payment_status === 'captured'
-    ? 'refund_required'
-    : 'voided';
-  
   const { error } = await db.rpc('admin_update_request', {
     p_token: adminToken(),
     p_request_id: id,
@@ -3288,7 +3238,7 @@ async function saveDenyReason(button) {
       status: 'denied',
       cancellation_reason: reason,
       notes,
-      payment_status: deniedPaymentStatus,
+      ...(paymentStatus !== request.payment_status ? { payment_status: paymentStatus } : {}),
     },
   });
 

@@ -237,6 +237,16 @@ list, and that a deactivated worker's claim attempt is rejected.
 
 ## Before going live — replace test Stripe keys
 
-- `track.html` line 71: replace `pk_test_51Tinn8H7...` with the live publishable key
-- `script.js` line 2: replace `pk_test_51Tinn8H7...` with the live publishable key
+The active booking flow (`book.html` and `returning.html`) runs on
+`booking-flow.js`, not `script.js`. `script.js` still contains a test key but
+is not loaded by any current page — it is orphaned, not removed — so editing
+it has no effect on the live site. Update the key in the two places it's
+actually read:
+
+- `booking-flow.js` (the `STRIPE_PUBLISHABLE_KEY` constant near the top of the
+  file): replace `pk_test_51Tinn8H7...` with the live publishable key — this
+  is what `book.html` and `returning.html` both use.
+- `track.html` (the inline `window.SHIFTFUEL_STRIPE_PUBLISHABLE_KEY` script,
+  read by `track.js`): replace `pk_test_51Tinn8H7...` with the live
+  publishable key.
 - Vercel `STRIPE_SECRET_KEY`: replace with `sk_live_...`

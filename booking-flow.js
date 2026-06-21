@@ -123,9 +123,9 @@ const stepCopy = {
     intro: "Enter the vehicle details for this booking.",
     fields: `
       <div class="booking-field-grid">
-        <label><span>Year <span class="required-mark">Required</span></span><input data-required name="vehicleYear" type="text" inputmode="numeric" placeholder="2020"></label>
-        <label><span>Make <span class="required-mark">Required</span></span><input data-required name="vehicleMake" type="text" placeholder="Honda"></label>
-        <label><span>Model <span class="required-mark">Required</span></span><input data-required name="vehicleModel" type="text" placeholder="Fit"></label>
+        <label><span>Year <span class="required-mark">Required</span></span><select data-required name="vehicleYear"><option value="">Select year</option></select></label>
+        <label><span>Make <span class="required-mark">Required</span></span><select data-required name="vehicleMake"><option value="">Select make</option></select></label>
+        <label><span>Model <span class="required-mark">Required</span></span><select data-required name="vehicleModel"><option value="">Select year and make first</option></select></label>
         <label><span>Color <span class="required-mark">Required</span></span><input data-required name="vehicleColor" type="text" placeholder="Blue"></label>
         <label><span>License plate <span class="required-mark">Required</span></span><input data-required name="licensePlate" type="text" placeholder="TEST"></label>
       </div>
@@ -236,11 +236,56 @@ const FUEL_SERVICE_FEE = 15;
 const CAR_WASH_SERVICE_FEE = 15;
 const QUICK_CARE_FEE = 5;
 const WASH_PACKAGES = [
-  { value: "buff-shine", label: "Buff & Shine", price: 27 },
-  { value: "shine-protect", label: "Shine & Protect", price: 20 },
-  { value: "shine", label: "Shine", price: 16 },
-  { value: "double-wash", label: "Double Wash", price: 12 },
+  {
+    value: "buff-shine", label: "Buff & Shine", price: 27,
+    includes: ["Fire Bath", "Super Hard Shell Ceramic Finish", "Buff N' Shine", "ICE® Instant Shine", "Salt Shield", "Tire Shine", "Triple Wheel Cleaning", "Tri-Foam Conditioner", "Blazin' Glaze Clear Coat", "High pH Presoak", "Low pH Presoak", "Double Tire & Wheel Cleaning", "Drying Agent", "Spot Free Rinse"],
+  },
+  {
+    value: "shine-protect", label: "Shine & Protect", price: 20,
+    includes: ["ICE® Instant Shine", "Salt Shield", "Tire Shine", "Triple Wheel Cleaning", "Tri-Foam Conditioner", "Blazin' Glaze Clear Coat", "High pH Presoak", "Low pH Presoak", "Double Tire & Wheel Cleaning", "Drying Agent", "Spot Free Rinse"],
+  },
+  {
+    value: "shine", label: "Shine", price: 16,
+    includes: ["Tri-Foam Conditioner", "Blazin' Glaze Clear Coat", "High pH Presoak", "Low pH Presoak", "Double Tire & Wheel Cleaning", "Drying Agent", "Spot Free Rinse"],
+  },
+  {
+    value: "double-wash", label: "Double Wash", price: 12,
+    includes: ["High pH Presoak", "Low pH Presoak", "Double Tire & Wheel Cleaning", "Drying Agent", "Spot Free Rinse"],
+  },
 ];
+const VEHICLE_POPULAR_MAKES = ["Chevrolet", "Ford", "Honda", "Hyundai", "Jeep", "Kia", "Nissan", "Subaru", "Tesla", "Toyota"];
+const VEHICLE_OTHER_MAKES = ["Acura", "Alfa Romeo", "Audi", "BMW", "Buick", "Cadillac", "Chrysler", "Dodge", "Fiat", "Genesis", "GMC", "Infiniti", "Jaguar", "Land Rover", "Lexus", "Lincoln", "Mazda", "Mercedes-Benz", "Mini", "Mitsubishi", "Porsche", "Ram", "Volkswagen", "Volvo"];
+const VEHICLE_FALLBACK_MODELS = {
+  Acura: ["ILX", "Integra", "MDX", "RDX", "TLX"],
+  Audi: ["A3", "A4", "A5", "A6", "Q3", "Q5", "Q7"],
+  BMW: ["3 Series", "4 Series", "5 Series", "X1", "X3", "X5"],
+  Buick: ["Encore", "Encore GX", "Enclave", "Envision"],
+  Cadillac: ["CT4", "CT5", "Escalade", "XT4", "XT5", "XT6"],
+  Chevrolet: ["Blazer", "Colorado", "Equinox", "Malibu", "Silverado", "Suburban", "Tahoe", "Trailblazer", "Traverse"],
+  Chrysler: ["300", "Pacifica", "Voyager"],
+  Dodge: ["Challenger", "Charger", "Durango", "Hornet"],
+  Ford: ["Bronco", "Escape", "Explorer", "F-150", "Fusion", "Maverick", "Mustang", "Ranger"],
+  Genesis: ["G70", "G80", "GV70", "GV80"],
+  GMC: ["Acadia", "Canyon", "Sierra", "Terrain", "Yukon"],
+  Honda: ["Accord", "Civic", "CR-V", "HR-V", "Odyssey", "Passport", "Pilot", "Ridgeline"],
+  Hyundai: ["Elantra", "Kona", "Palisade", "Santa Fe", "Sonata", "Tucson"],
+  Infiniti: ["Q50", "QX50", "QX55", "QX60", "QX80"],
+  Jeep: ["Cherokee", "Compass", "Gladiator", "Grand Cherokee", "Renegade", "Wrangler"],
+  Kia: ["Carnival", "Forte", "K5", "Seltos", "Sorento", "Soul", "Sportage", "Telluride"],
+  Lexus: ["ES", "GX", "IS", "NX", "RX", "TX"],
+  Lincoln: ["Aviator", "Corsair", "Nautilus", "Navigator"],
+  Mazda: ["CX-30", "CX-5", "CX-50", "CX-9", "Mazda3", "Mazda6", "MX-5 Miata"],
+  "Mercedes-Benz": ["C-Class", "E-Class", "GLA", "GLC", "GLE", "S-Class"],
+  Mini: ["Clubman", "Convertible", "Cooper", "Countryman"],
+  Mitsubishi: ["Eclipse Cross", "Mirage", "Outlander", "Outlander Sport"],
+  Nissan: ["Altima", "Frontier", "Kicks", "Maxima", "Murano", "Pathfinder", "Rogue", "Sentra", "Versa"],
+  Ram: ["1500", "2500", "3500", "ProMaster"],
+  Subaru: ["Ascent", "Crosstrek", "Forester", "Impreza", "Legacy", "Outback"],
+  Tesla: ["Model 3", "Model S", "Model X", "Model Y"],
+  Toyota: ["4Runner", "Camry", "Corolla", "Highlander", "Prius", "RAV4", "Sienna", "Tacoma", "Tundra"],
+  Volkswagen: ["Atlas", "Golf", "ID.4", "Jetta", "Passat", "Taos", "Tiguan"],
+  Volvo: ["S60", "S90", "V60", "XC40", "XC60", "XC90"],
+};
 const FUEL_RANGES = {
   "0-5": 5,
   "5-10": 10,
@@ -937,9 +982,9 @@ function returningVehicleForm() {
   return `
     <div class="returning-inline-form">
       <div class="booking-field-grid">
-        <label><span>Year <span class="required-mark">Required</span></span><input data-returning-vehicle-field name="returningVehicleYear" type="text" inputmode="numeric" placeholder="2020"></label>
-        <label><span>Make <span class="required-mark">Required</span></span><input data-returning-vehicle-field name="returningVehicleMake" type="text" placeholder="Honda"></label>
-        <label><span>Model <span class="required-mark">Required</span></span><input data-returning-vehicle-field name="returningVehicleModel" type="text" placeholder="Fit"></label>
+        <label><span>Year <span class="required-mark">Required</span></span><select data-returning-vehicle-field name="returningVehicleYear"><option value="">Select year</option></select></label>
+        <label><span>Make <span class="required-mark">Required</span></span><select data-returning-vehicle-field name="returningVehicleMake"><option value="">Select make</option></select></label>
+        <label><span>Model <span class="required-mark">Required</span></span><select data-returning-vehicle-field name="returningVehicleModel"><option value="">Select year and make first</option></select></label>
         <label><span>Color <span class="required-mark">Required</span></span><input data-returning-vehicle-field name="returningVehicleColor" type="text" placeholder="Blue"></label>
         <label><span>License plate <span class="required-mark">Required</span></span><input data-returning-vehicle-field name="returningLicensePlate" type="text" placeholder="TEST"></label>
         <label><span>Fuel type</span><select data-returning-vehicle-field name="returningFuelType">
@@ -988,6 +1033,107 @@ function renderReturningVehicles(panel) {
   `;
 }
 
+function populateVehicleYearOptions(select) {
+  const maxYear = new Date().getFullYear() + 1;
+  let html = `<option value="">Select year</option>`;
+  for (let year = maxYear; year >= 1980; year -= 1) html += `<option value="${year}">${year}</option>`;
+  select.innerHTML = html;
+}
+
+function populateVehicleMakeOptions(select) {
+  const popular = VEHICLE_POPULAR_MAKES.map((make) => `<option value="${escapeHtml(make)}">${escapeHtml(make)}</option>`).join("");
+  const other = VEHICLE_OTHER_MAKES
+    .filter((make) => !VEHICLE_POPULAR_MAKES.includes(make))
+    .sort((a, b) => a.localeCompare(b))
+    .map((make) => `<option value="${escapeHtml(make)}">${escapeHtml(make)}</option>`)
+    .join("");
+  select.innerHTML = `
+    <option value="">Select make</option>
+    <optgroup label="Most common makes">${popular}</optgroup>
+    <optgroup label="Other makes">${other}</optgroup>
+  `;
+}
+
+async function loadVehicleModelOptions(yearSelect, makeSelect, modelSelect, selectedModel) {
+  if (!modelSelect) return;
+  const year = yearSelect?.value || "";
+  const make = makeSelect?.value || "";
+
+  if (!year || !make) {
+    modelSelect.innerHTML = `<option value="">Select year and make first</option>`;
+    modelSelect.disabled = true;
+    return;
+  }
+
+  modelSelect.innerHTML = `<option value="">Loading models...</option>`;
+  modelSelect.disabled = true;
+
+  try {
+    const url = `https://vpic.nhtsa.dot.gov/api/vehicles/GetModelsForMakeYear/make/${encodeURIComponent(make)}/modelyear/${year}/vehicletype/car?format=json`;
+    const res = await fetch(url);
+    if (res.ok) {
+      const data = await res.json();
+      const models = [...new Set((data.Results || []).map((row) => row.Model_Name).filter(Boolean))].sort((a, b) => a.localeCompare(b));
+      if (models.length) {
+        modelSelect.innerHTML = `<option value="">Select model</option>${models.map((model) => `<option value="${escapeHtml(model)}">${escapeHtml(model)}</option>`).join("")}`;
+        modelSelect.disabled = false;
+        if (selectedModel) {
+          if (!Array.from(modelSelect.options).some((option) => option.value === selectedModel)) {
+            modelSelect.insertAdjacentHTML("beforeend", `<option value="${escapeHtml(selectedModel)}">${escapeHtml(selectedModel)}</option>`);
+          }
+          modelSelect.value = selectedModel;
+        }
+        return;
+      }
+    }
+  } catch (error) {
+    console.warn("Could not load vehicle models from NHTSA:", error);
+  }
+
+  const fallback = VEHICLE_FALLBACK_MODELS[make] || [];
+  modelSelect.innerHTML = `<option value="">${fallback.length ? "Select model" : "No models found"}</option>${fallback.map((model) => `<option value="${escapeHtml(model)}">${escapeHtml(model)}</option>`).join("")}`;
+  modelSelect.disabled = fallback.length === 0;
+  if (selectedModel && fallback.includes(selectedModel)) modelSelect.value = selectedModel;
+}
+
+function renderVehicleFields(panel) {
+  const yearSelect = panel.querySelector('[name="vehicleYear"]');
+  const makeSelect = panel.querySelector('[name="vehicleMake"]');
+  const modelSelect = panel.querySelector('[name="vehicleModel"]');
+  if (!yearSelect || !makeSelect || !modelSelect) return;
+
+  if (!yearSelect.dataset.populated) {
+    populateVehicleYearOptions(yearSelect);
+    yearSelect.dataset.populated = "1";
+  }
+  if (!makeSelect.dataset.populated) {
+    populateVehicleMakeOptions(makeSelect);
+    makeSelect.dataset.populated = "1";
+  }
+  if (bookingState.values.vehicleYear) yearSelect.value = bookingState.values.vehicleYear;
+  if (bookingState.values.vehicleMake) makeSelect.value = bookingState.values.vehicleMake;
+
+  loadVehicleModelOptions(yearSelect, makeSelect, modelSelect, bookingState.values.vehicleModel || "");
+}
+
+function renderReturningVehicleFields(panel) {
+  const yearSelect = panel.querySelector('[name="returningVehicleYear"]');
+  const makeSelect = panel.querySelector('[name="returningVehicleMake"]');
+  const modelSelect = panel.querySelector('[name="returningVehicleModel"]');
+  if (!yearSelect || !makeSelect || !modelSelect) return;
+
+  if (!yearSelect.dataset.populated) {
+    populateVehicleYearOptions(yearSelect);
+    yearSelect.dataset.populated = "1";
+  }
+  if (!makeSelect.dataset.populated) {
+    populateVehicleMakeOptions(makeSelect);
+    makeSelect.dataset.populated = "1";
+  }
+
+  loadVehicleModelOptions(yearSelect, makeSelect, modelSelect, "");
+}
+
 function renderServiceDetails(panel) {
   const container = panel.querySelector("[data-service-details]");
   if (!container) return;
@@ -1017,6 +1163,13 @@ function renderServiceDetails(panel) {
     </div>
   ` : "";
 
+  const washPackageIncludes = (pkg) => `
+    <details class="wash-package-includes">
+      <summary>${escapeHtml(pkg.label)} - ${formatMoney(pkg.price)} &mdash; What's included?</summary>
+      <ul>${pkg.includes.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>
+    </details>
+  `;
+
   const washFields = serviceNeedsWash() ? `
     <div class="booking-field-grid">
       ${WASH_PACKAGES.length === 1
@@ -1025,6 +1178,9 @@ function renderServiceDetails(panel) {
             <option value="">Select package</option>
             ${WASH_PACKAGES.map((pkg) => `<option value="${pkg.value}">${escapeHtml(pkg.label)} - ${formatMoney(pkg.price)}</option>`).join("")}
           </select></label>`}
+    </div>
+    <div class="wash-package-includes-list">
+      ${WASH_PACKAGES.map(washPackageIncludes).join("")}
     </div>
   ` : "";
 
@@ -1474,6 +1630,8 @@ function renderFlow(root) {
       restorePanelValues(panel);
       renderReturningServiceArea(panel);
       renderReturningVehicles(panel);
+      renderVehicleFields(panel);
+      renderReturningVehicleFields(panel);
       renderServiceDetails(panel);
       renderScheduleFields(panel);
       renderPaymentSummary(panel);
@@ -1540,6 +1698,23 @@ function renderFlow(root) {
       bookingState.values.returnTime = "";
       await loadBookedSlots();
       renderScheduleFields(panel);
+    }
+    if (event.target.matches('[name="vehicleYear"], [name="vehicleMake"]')) {
+      bookingState.values.vehicleModel = "";
+      await loadVehicleModelOptions(
+        panel.querySelector('[name="vehicleYear"]'),
+        panel.querySelector('[name="vehicleMake"]'),
+        panel.querySelector('[name="vehicleModel"]'),
+        ""
+      );
+    }
+    if (event.target.matches('[name="returningVehicleYear"], [name="returningVehicleMake"]')) {
+      await loadVehicleModelOptions(
+        panel.querySelector('[name="returningVehicleYear"]'),
+        panel.querySelector('[name="returningVehicleMake"]'),
+        panel.querySelector('[name="returningVehicleModel"]'),
+        ""
+      );
     }
     updateContinue();
   });
