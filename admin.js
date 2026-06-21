@@ -123,6 +123,22 @@ const CR_FUEL_ESTIMATE_RANGES = [
 ];
 const CR_AVG_FUEL_PRICES = { Regular: 3.792, 'Mid-grade': 4.411, Premium: 4.701, Diesel: 4.967 };
 const CR_FEES = { fuelConvenience: 15, washConvenience: 15, quickInspection: 5 };
+const slotHoldingStatuses = new Set([
+  'accepted', 'key_received',
+  'pickup_vehicle_photo_uploaded', 'pickup_odometer_photo_uploaded', 'pickup_fuel_gauge_photo_uploaded',
+  'vehicle_picked_up', 'service_in_progress',
+  'fueling_in_progress', 'fueling_complete', 'fuel_receipt_uploaded',
+  'car_wash_in_progress', 'car_wash_complete', 'car_wash_after_fuel_in_progress',
+  'wash_receipt_uploaded', 'wash_receipt_after_fuel_uploaded',
+  'fueling_after_wash_in_progress', 'fuel_receipt_after_wash_uploaded', 'fuel_and_wash_complete',
+  'service_complete', 'receipts_recorded',
+  'returned_location_pending', 'return_location_recorded', 'return_photos_needed',
+  'dropoff_vehicle_photo_uploaded', 'dropoff_odometer_photo_uploaded', 'dropoff_fuel_gauge_photo_uploaded',
+  'vehicle_returned', 'inspection_needed', 'inspection_recorded',
+  'final_payment_processed', 'awaiting_key_return', 'keys_returned',
+  'return_requested', 'customer_return_requested',
+  'payment_issue', 'authorization_too_low', 'pending_customer_payment',
+]);
 
 function crNormalizeTimeSlot(value) {
   return String(value || '').slice(0, 5);
@@ -241,7 +257,7 @@ async function refreshAdminCreateReturnTimes() {
     const { data, error } = await db.rpc('public_booked_return_slots', { p_service_date: dateValue });
     if (error) throw error;
     bookedSlots = new Set((data || [])
-      .filter((row) => !terminalStatuses.includes(row.status))
+      .filter((row) => slotHoldingStatuses.has(row.status))
       .map((row) => crNormalizeTimeSlot(row.desired_return_time))
       .filter(Boolean));
   } catch (error) {

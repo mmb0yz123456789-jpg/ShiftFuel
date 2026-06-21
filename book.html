@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Book Now | ShiftFuel Concierge</title>
+    <link rel="stylesheet" href="styles.css">
+  </head>
+  <body class="landing-page booking-page">
+    <header class="site-header landing-header">
+      <a class="logo" href="index.html" aria-label="ShiftFuel Concierge home">
+        <span class="logo-mark">S</span>
+        <span>ShiftFuel Concierge</span>
+      </a>
+      <button class="mobile-menu-button" type="button" data-nav-toggle aria-expanded="false" aria-controls="site-nav">
+        <span>Menu</span>
+        <span aria-hidden="true">&#9776;</span>
+      </button>
+      <nav id="site-nav" class="nav" data-nav aria-label="Main navigation">
+        <a class="nav-cta" href="book.html" aria-current="page">Book Now</a>
+        <a class="nav-outline" href="track.html">Track My Vehicle</a>
+        <a href="returning.html">Returning Customer</a>
+        <a href="index.html#how">How It Works</a>
+        <a href="index.html#services">Services</a>
+      </nav>
+    </header>
+
+    <main class="booking-flow-shell">
+      <section class="booking-flow-hero">
+        <p class="eyebrow">Book Now</p>
+        <h1>Book your ShiftFuel service.</h1>
+        <p>Start with customer information, then move step by step through address, vehicle, service, schedule, handoff, payment, and review.</p>
+      </section>
+
+      <section id="booking-flow" class="booking-flow" data-booking-flow="book-now" aria-label="Book Now flow"></section>
+    </main>
+
+    <footer class="site-footer">
+      <p>&copy; <span id="year"></span> ShiftFuel Concierge. All rights reserved.</p>
+    </footer>
+    <script src="booking-flow.js"></script>
+  </body>
+</html>

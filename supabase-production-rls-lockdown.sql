@@ -15,7 +15,7 @@
 --      service_requests assigned to that employee (previously admin.js
 --      did this with a direct anon UPDATE on service_requests, which
 --      depended on a permissive policy we are removing in section 4).
---   3. Unified terminal/active status list used by public_booked_return_slots,
+--   3. Accepted-or-later slot status list used by public_booked_return_slots,
 --      public_cancel_request, and the one_active_request_per_slot index.
 --   4. Drop permissive anon mutation/listing policies now fully superseded
 --      by validated RPCs.
@@ -180,12 +180,9 @@ $$;
 GRANT EXECUTE ON FUNCTION public.admin_update_employee(uuid, uuid, jsonb) TO anon, authenticated;
 
 
--- ── 3. Unified terminal/active status list ──────────────────────────────────
--- Terminal/closed: complete, denied, customer_canceled, canceled,
---   unable_to_complete, auto_reversed, closed_no_charge, canceled_return_completed
--- Everything else (including return_requested, customer_return_requested,
--- payment_issue, authorization_too_low) is active and must keep holding its
--- booking slot / blocking re-booking until resolved.
+-- ── 3. Accepted-or-later slot status list ───────────────────────────────────
+-- Return slots are reserved only after admin accepts a request. request_received
+-- stays visible to admin but does not block the slot until it becomes accepted.
 
 CREATE OR REPLACE FUNCTION public.public_booked_return_slots(p_service_date date)
 RETURNS TABLE (
@@ -199,10 +196,45 @@ AS $$
   SELECT sr.desired_return_time, sr.status
   FROM service_requests sr
   WHERE sr.service_date = p_service_date
-    AND sr.status NOT IN (
-      'complete', 'denied', 'customer_canceled', 'canceled',
-      'unable_to_complete', 'auto_reversed', 'closed_no_charge',
-      'canceled_return_completed'
+    AND sr.desired_return_time IS NOT NULL
+    AND sr.status IN (
+      'accepted',
+      'key_received',
+      'pickup_vehicle_photo_uploaded',
+      'pickup_odometer_photo_uploaded',
+      'pickup_fuel_gauge_photo_uploaded',
+      'vehicle_picked_up',
+      'service_in_progress',
+      'fueling_in_progress',
+      'fueling_complete',
+      'fuel_receipt_uploaded',
+      'car_wash_in_progress',
+      'car_wash_complete',
+      'car_wash_after_fuel_in_progress',
+      'wash_receipt_uploaded',
+      'wash_receipt_after_fuel_uploaded',
+      'fueling_after_wash_in_progress',
+      'fuel_receipt_after_wash_uploaded',
+      'fuel_and_wash_complete',
+      'service_complete',
+      'receipts_recorded',
+      'returned_location_pending',
+      'return_location_recorded',
+      'return_photos_needed',
+      'dropoff_vehicle_photo_uploaded',
+      'dropoff_odometer_photo_uploaded',
+      'dropoff_fuel_gauge_photo_uploaded',
+      'vehicle_returned',
+      'inspection_needed',
+      'inspection_recorded',
+      'final_payment_processed',
+      'awaiting_key_return',
+      'keys_returned',
+      'return_requested',
+      'customer_return_requested',
+      'payment_issue',
+      'authorization_too_low',
+      'pending_customer_payment'
     );
 $$;
 
@@ -244,15 +276,51 @@ $$;
 
 GRANT EXECUTE ON FUNCTION public.public_cancel_request(uuid, text, text, text) TO anon, authenticated;
 
--- Rebuild the unique booking-slot index with the full terminal/closed list.
+-- Rebuild the unique booking-slot index so only accepted-or-later requests
+-- reserve a return-time slot.
 DROP INDEX IF EXISTS one_active_request_per_slot;
 
 CREATE UNIQUE INDEX one_active_request_per_slot
 ON service_requests (service_date, desired_return_time)
-WHERE status NOT IN (
-  'complete', 'denied', 'customer_canceled', 'canceled',
-  'unable_to_complete', 'auto_reversed', 'closed_no_charge',
-  'canceled_return_completed'
+WHERE desired_return_time IS NOT NULL
+  AND status IN (
+  'accepted',
+  'key_received',
+  'pickup_vehicle_photo_uploaded',
+  'pickup_odometer_photo_uploaded',
+  'pickup_fuel_gauge_photo_uploaded',
+  'vehicle_picked_up',
+  'service_in_progress',
+  'fueling_in_progress',
+  'fueling_complete',
+  'fuel_receipt_uploaded',
+  'car_wash_in_progress',
+  'car_wash_complete',
+  'car_wash_after_fuel_in_progress',
+  'wash_receipt_uploaded',
+  'wash_receipt_after_fuel_uploaded',
+  'fueling_after_wash_in_progress',
+  'fuel_receipt_after_wash_uploaded',
+  'fuel_and_wash_complete',
+  'service_complete',
+  'receipts_recorded',
+  'returned_location_pending',
+  'return_location_recorded',
+  'return_photos_needed',
+  'dropoff_vehicle_photo_uploaded',
+  'dropoff_odometer_photo_uploaded',
+  'dropoff_fuel_gauge_photo_uploaded',
+  'vehicle_returned',
+  'inspection_needed',
+  'inspection_recorded',
+  'final_payment_processed',
+  'awaiting_key_return',
+  'keys_returned',
+  'return_requested',
+  'customer_return_requested',
+  'payment_issue',
+  'authorization_too_low',
+  'pending_customer_payment'
 );
 
 

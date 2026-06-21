@@ -131,10 +131,24 @@ const RESUME_BUCKET = "applicant-resumes";
 year.textContent = new Date().getFullYear();
 
 
-// Unified terminal/closed status list — keep in sync with admin.js, worker.js,
-// track.js, and the SQL terminal-status list in supabase-production-rls-lockdown.sql.
-// A request in one of these statuses no longer holds its booking slot.
-const slotReleasingStatuses = new Set(["complete", "denied", "customer_canceled", "canceled", "unable_to_complete", "auto_reversed", "closed_no_charge", "canceled_return_completed"]);
+// Return slots are reserved only after an admin accepts the request.
+// New request_received bookings stay available until accepted.
+const slotHoldingStatuses = new Set([
+  "accepted", "key_received",
+  "pickup_vehicle_photo_uploaded", "pickup_odometer_photo_uploaded", "pickup_fuel_gauge_photo_uploaded",
+  "vehicle_picked_up", "service_in_progress",
+  "fueling_in_progress", "fueling_complete", "fuel_receipt_uploaded",
+  "car_wash_in_progress", "car_wash_complete", "car_wash_after_fuel_in_progress",
+  "wash_receipt_uploaded", "wash_receipt_after_fuel_uploaded",
+  "fueling_after_wash_in_progress", "fuel_receipt_after_wash_uploaded", "fuel_and_wash_complete",
+  "service_complete", "receipts_recorded",
+  "returned_location_pending", "return_location_recorded", "return_photos_needed",
+  "dropoff_vehicle_photo_uploaded", "dropoff_odometer_photo_uploaded", "dropoff_fuel_gauge_photo_uploaded",
+  "vehicle_returned", "inspection_needed", "inspection_recorded",
+  "final_payment_processed", "awaiting_key_return", "keys_returned",
+  "return_requested", "customer_return_requested",
+  "payment_issue", "authorization_too_low", "pending_customer_payment",
+]);
 let bookedReturnSlots = new Set();
 let workerAvailabilitySlots = null;
 let workerAvailabilityLoaded = false;
@@ -970,7 +984,7 @@ async function refreshBookedReturnSlots() {
   if (!rpcError) {
     bookedReturnSlots = new Set(
       (rpcSlots || [])
-        .filter((request) => !slotReleasingStatuses.has(request.status))
+        .filter((request) => slotHoldingStatuses.has(request.status))
         .map((request) => normalizeTimeSlot(request.desired_return_time))
         .filter(Boolean)
     );
@@ -1002,7 +1016,7 @@ async function refreshBookedReturnSlots() {
 
   bookedReturnSlots = new Set(
     (data || [])
-      .filter((request) => !slotReleasingStatuses.has(request.status))
+      .filter((request) => slotHoldingStatuses.has(request.status))
       .map((request) => normalizeTimeSlot(request.desired_return_time))
       .filter(Boolean)
   );
@@ -2334,6 +2348,66 @@ returningCustomerResults?.addEventListener("click", async (event) => {
   if (!button) return;
   applyReturningCustomer(Number(button.dataset.returningIndex), button.dataset.returningMode || "same-car");
 });
+
+async function applyStandaloneReturningPrefill() {
+  let prefill = null;
+  try {
+    prefill = JSON.parse(localStorage.getItem("shiftfuel_returning_prefill") || "null");
+  } catch {
+    prefill = null;
+  }
+  if (!prefill || (!prefill.address && !prefill.vehicle && !prefill.contact)) return;
+
+  localStorage.removeItem("shiftfuel_returning_prefill");
+  const address = prefill.address || {};
+  const vehicle = prefill.vehicle || {};
+  const contact = prefill.contact || {};
+
+  if (form.elements.name) form.elements.name.value = address.customer_name || vehicle.customer_name || form.elements.name.value || "";
+  if (form.elements.phone) form.elements.phone.value = formatPhone(address.customer_phone || vehicle.customer_phone || contact.phone || form.elements.phone.value || "");
+  if (form.elements.email) form.elements.email.value = (address.customer_email || vehicle.customer_email || contact.email || form.elements.email.value || "").toLowerCase();
+
+  if (prefill.address) {
+    currentlyAppliedSavedAddressId = address.id || null;
+    isApplyingSavedAddress = true;
+    try {
+      if (addressStreet) addressStreet.value = address.address_street || address.street || address.hospital || "";
+      if (addressApt) addressApt.value = address.address_apt || address.apt || "";
+      if (addressCity) addressCity.value = address.address_city || address.city || "";
+      if (addressState) addressState.value = address.address_state || address.state || "DE";
+      if (addressZip) addressZip.value = address.address_zip || address.zip || "";
+      form.elements.parkingLocation.value = "";
+      form.elements.parkingMapUrl.value = "";
+      form.elements.keyHandoffDetails.value = "";
+    } finally {
+      isApplyingSavedAddress = false;
+    }
+    isReturningCustomer = true;
+    addressValidated = true;
+    setPostAddressSections(true);
+    setAddressStatus("success", "Saved address selected. Confirm parking and key handoff before continuing.");
+  }
+
+  if (prefill.vehicle) {
+    currentlyAppliedSavedVehicleId = vehicle.id || vehicle.saved_vehicle_id || null;
+    form.elements.color.value = vehicle.vehicle_color || vehicle.color || "";
+    form.elements.license.value = vehicle.license_plate || vehicle.plate || "";
+    await setVehicleFromPrevious({
+      vehicle_year: vehicle.vehicle_year || vehicle.year,
+      vehicle_make: vehicle.vehicle_make || vehicle.make,
+      vehicle_model: vehicle.vehicle_model || vehicle.model,
+    });
+    isReturningCustomer = true;
+  }
+
+  updateServiceControls();
+  updateEstimate();
+  if (returningCustomerStatus) {
+    returningCustomerStatus.textContent = "Returning customer details were prefilled. Confirm service, date, return time, parking, key handoff, and payment authorization.";
+  }
+}
+
+applyStandaloneReturningPrefill();
 
 function renderFuelPricingSummary() {
   const container = document.querySelector('#fuel-pricing-summary');
