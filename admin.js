@@ -3235,6 +3235,10 @@ async function saveDenyReason(button) {
 
   // Deny the request regardless of whether the payment release/refund succeeded —
   // a failed Stripe call must never block the denial itself.
+  const deniedPaymentStatus = request.payment_status === 'captured'
+    ? 'refund_required'
+    : 'voided';
+  
   const { error } = await db.rpc('admin_update_request', {
     p_token: adminToken(),
     p_request_id: id,
@@ -3242,7 +3246,7 @@ async function saveDenyReason(button) {
       status: 'denied',
       cancellation_reason: reason,
       notes,
-      ...(paymentStatus !== request.payment_status ? { payment_status: paymentStatus } : {}),
+      payment_status: deniedPaymentStatus,
     },
   });
 
