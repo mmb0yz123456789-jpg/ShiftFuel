@@ -1619,8 +1619,12 @@ function updateDashboardStatCards() {
   const completedTodayCount = allRequests.filter((r) => r.status === 'complete' && isSameLocalDay(r.updated_at || r.created_at, today)).length;
   const activeWorkerCount = allEmployees.filter((e) => e.active).length;
   const revenueToday = allRequests
-    .filter((r) => r.payment_status === 'captured' && isSameLocalDay(r.updated_at || r.created_at, today))
-    .reduce((sum, r) => sum + Number(r.captured_amount ?? r.final_total ?? 0), 0);
+    .filter((r) => (
+      r.status === 'complete'
+      && r.payment_status === 'captured'
+      && isSameLocalDay(r.updated_at || r.created_at, today)
+    ))
+    .reduce((sum, r) => sum + Number(r.final_total || 0), 0);
 
   if (statOpenRequests) statOpenRequests.textContent = openCount;
   if (statInProgress) statInProgress.textContent = inProgressCount;
