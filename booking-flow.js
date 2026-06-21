@@ -1134,6 +1134,22 @@ function renderReturningVehicleFields(panel) {
   loadVehicleModelOptions(yearSelect, makeSelect, modelSelect, "");
 }
 
+function renderWashIncludes(panel) {
+  const container = panel.querySelector("[data-wash-includes]");
+  if (!container) return;
+  const pkg = selectedWashPackage();
+  if (!pkg) {
+    container.innerHTML = "";
+    return;
+  }
+  container.innerHTML = `
+    <div class="wash-package-includes">
+      <strong>${escapeHtml(pkg.label)} - ${formatMoney(pkg.price)} includes:</strong>
+      <ul>${pkg.includes.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>
+    </div>
+  `;
+}
+
 function renderServiceDetails(panel) {
   const container = panel.querySelector("[data-service-details]");
   if (!container) return;
@@ -1163,13 +1179,6 @@ function renderServiceDetails(panel) {
     </div>
   ` : "";
 
-  const washPackageIncludes = (pkg) => `
-    <details class="wash-package-includes">
-      <summary>${escapeHtml(pkg.label)} - ${formatMoney(pkg.price)} &mdash; What's included?</summary>
-      <ul>${pkg.includes.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>
-    </details>
-  `;
-
   const washFields = serviceNeedsWash() ? `
     <div class="booking-field-grid">
       ${WASH_PACKAGES.length === 1
@@ -1179,9 +1188,7 @@ function renderServiceDetails(panel) {
             ${WASH_PACKAGES.map((pkg) => `<option value="${pkg.value}">${escapeHtml(pkg.label)} - ${formatMoney(pkg.price)}</option>`).join("")}
           </select></label>`}
     </div>
-    <div class="wash-package-includes-list">
-      ${WASH_PACKAGES.map(washPackageIncludes).join("")}
-    </div>
+    <div data-wash-includes></div>
   ` : "";
 
   container.innerHTML = `
@@ -1190,6 +1197,7 @@ function renderServiceDetails(panel) {
     <div class="placeholder-note">Only fields needed for your selected service are shown.</div>
   `;
   if (WASH_PACKAGES.length === 1 && serviceNeedsWash()) bookingState.values.washPackage = WASH_PACKAGES[0].value;
+  renderWashIncludes(panel);
   restorePanelValues(panel);
 }
 
@@ -1715,6 +1723,9 @@ function renderFlow(root) {
         panel.querySelector('[name="returningVehicleModel"]'),
         ""
       );
+    }
+    if (event.target.matches('[name="washPackage"]')) {
+      renderWashIncludes(panel);
     }
     updateContinue();
   });
