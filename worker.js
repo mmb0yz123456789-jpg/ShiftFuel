@@ -288,13 +288,15 @@ const workerStatusLabels = {
   complete: 'Complete',
   denied: 'Denied',
   customer_canceled: 'Canceled by customer',
+  customer_cancelled: 'Canceled by customer',
   canceled: 'Canceled',
   unable_to_complete: 'Unable to complete',
   auto_reversed: 'Missed â€” auto-reversed',
   closed_no_charge: 'Closed â€” no charge',
   canceled_return_completed: 'Return completed',
-  cancelled: 'Cancelled',
-  cancelled_pending_key_return: 'Cancellation received - awaiting key/vehicle return',
+  cancelled_return_completed: 'Return completed',
+  cancelled: 'Canceled',
+  cancelled_pending_key_return: 'Cancellation received — awaiting key/vehicle return',
 };
 
 function escapeHtml(value) {
