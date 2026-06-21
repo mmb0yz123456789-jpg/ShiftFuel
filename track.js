@@ -486,10 +486,16 @@ function friendlyStatusLabel(status) {
 
 function importantPaymentLabel(request) {
   const status = request.payment_status || "";
+
   if (request.status === "payment_issue" || status === "capture_failed") return "Payment issue";
   if (request.status === "authorization_too_low") return "Authorization issue";
   if (request.status === "pending_customer_payment") return "Payment needed";
   if (status === "payment_release_failed") return "Payment review needed";
+  if (status === "cancellation_fee_paid") return "Cancellation fee paid";
+  if (status === "voided" || status === "authorization_released") return "No charge";
+  if (status === "refund_required") return "Refund pending";
+  if (status === "refunded") return "Refunded";
+
   return "";
 }
 
