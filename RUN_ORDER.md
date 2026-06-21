@@ -173,6 +173,22 @@ job to flip it to `cancelled`.
 
 ---
 
+## 16. `supabase-worker-job-visibility-fix.sql`
+Run after step 15. Fixes two gaps found in a worker-dashboard audit:
+`worker_list_open_requests` was missing `fueling_in_progress`,
+`car_wash_in_progress`, `partial_service_complete`,
+`cancelled_pending_key_return`, and `pending_customer_payment` from its
+server-side status whitelist, so jobs in those statuses silently vanished
+from the worker's job list. Also adds an `employees.active` check to
+`worker_claim_request` so a deactivated worker can no longer claim new jobs
+with a still-valid session token.
+
+**After deploying:** confirm a job in `cancelled_pending_key_return` (or any
+of the other previously-missing statuses) still shows up in the worker's job
+list, and that a deactivated worker's claim attempt is rejected.
+
+---
+
 ## Post-deploy verification
 
 **Employees / security**

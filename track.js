@@ -30,8 +30,9 @@ const slotHoldingStatuses = new Set([
   "accepted", "key_received",
   "pickup_vehicle_photo_uploaded", "pickup_odometer_photo_uploaded", "pickup_fuel_gauge_photo_uploaded",
   "vehicle_picked_up", "service_in_progress",
-  "fueling_in_progress", "fueling_complete", "fuel_receipt_uploaded",
-  "car_wash_in_progress", "car_wash_complete", "car_wash_after_fuel_in_progress",
+  "fueling_in_progress", "car_wash_in_progress", "partial_service_complete",
+  "fueling_complete", "fuel_receipt_uploaded",
+  "car_wash_complete", "car_wash_after_fuel_in_progress",
   "wash_receipt_uploaded", "wash_receipt_after_fuel_uploaded",
   "fueling_after_wash_in_progress", "fuel_receipt_after_wash_uploaded", "fuel_and_wash_complete",
   "service_complete", "receipts_recorded",
@@ -40,6 +41,7 @@ const slotHoldingStatuses = new Set([
   "vehicle_returned", "inspection_needed", "inspection_recorded",
   "final_payment_processed", "awaiting_key_return", "keys_returned",
   "return_requested", "customer_return_requested",
+  "cancelled_pending_key_return",
   "payment_issue", "authorization_too_low", "pending_customer_payment",
 ]);
 
@@ -189,7 +191,7 @@ const DENY_REASONS = [
   'Fuel station unavailable',
   'Keys unavailable',
   'Other',
-  'Outside service area',
+  'We currently do not serve this area.',
   'Payment authorization issue',
   'Safety concern',
   'Service location issue',
@@ -860,7 +862,7 @@ function renderTimeline(request) {
   // No timeline for closed/terminal non-complete statuses
   if (closedStatuses.includes(request.status)) return '';
   if (request.status === 'cancelled_pending_key_return') {
-    return `<p class="timeline-status-message">Cancellation received. Your request will remain visible until your key or vehicle is returned.</p>`;
+    return `<p class="timeline-status-message">Cancellation received — awaiting key/vehicle return.</p>`;
   }
 
   const steps = buildStatusSteps(request);
@@ -1913,7 +1915,7 @@ function renderPendingCompletionCard(request) {
               <span class="field-help">Tell us exactly where your vehicle will be parked.</span>
             </label>
             <label>
-              <span>Key handoff instructions <span class="required-mark">Required</span></span>
+              <span>Key handoff details <span class="required-mark">Required</span></span>
               <input class="cb-key-handoff" type="text"
                 placeholder="Example: front door to Building X, front desk, employee entrance, or meet at vehicle."
                 value="${escapeHtml(request.key_handoff_details || '')}" required>
@@ -2238,7 +2240,7 @@ function renderRequestCard(request, photos = [], review = null) {
             ${returnTime ? `<p><strong>Return by:</strong> ${escapeHtml(returnTime)}</p>` : ''}
             <p><strong>Vehicle:</strong> ${escapeHtml(vehicle)}${request.vehicle_color ? ', ' + escapeHtml(request.vehicle_color) : ''}</p>
             <p><strong>Service:</strong> ${escapeHtml(request.service_label || request.service_type || '')}</p>
-            ${serviceArea ? `<p><strong>Service area:</strong> ${escapeHtml(serviceArea)}</p>` : ''}
+            ${serviceArea ? `<p><strong>Service address:</strong> ${escapeHtml(serviceArea)}</p>` : ''}
             <p><strong>Parking:</strong> ${[request.parking_location, request.parking_spot ? 'spot ' + request.parking_spot : ''].filter(Boolean).map(escapeHtml).join(', ')}</p>
             ${lastUpdated ? `<p><strong>Last updated:</strong> ${escapeHtml(lastUpdated)}</p>` : ''}
             ${cancellationReason ? `<p><strong>Reason:</strong> ${escapeHtml(cancellationReason)}</p>` : ''}

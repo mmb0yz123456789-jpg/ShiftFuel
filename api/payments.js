@@ -99,24 +99,27 @@ function hasCustomerReturnRequestAlert(request) {
 }
 
 async function markRequestComplete(db, requestId, paymentIntentId, capturedAmountDollars = null) {
+  const timestamp = new Date().toISOString();
   const updateData = {
-    status: 'awaiting_key_return',
+    status: 'complete',
     payment_status: 'captured',
     payment_intent_id: paymentIntentId,
-    updated_at: new Date().toISOString(),
+    completed_at: timestamp,
+    updated_at: timestamp,
   };
   if (capturedAmountDollars != null) updateData.captured_amount = capturedAmountDollars;
 
   let { error } = await db.from('service_requests').update(updateData).eq('id', requestId);
 
-  if (error && updateData.captured_amount != null) {
+  if (error && (updateData.captured_amount != null || updateData.completed_at != null)) {
     const missingOptionalColumn = error.code === 'PGRST204'
       || error.code === '42703'
-      || /column|schema cache|captured_amount/i.test(String(error.message || ''));
+      || /column|schema cache|captured_amount|completed_at/i.test(String(error.message || ''));
 
     if (missingOptionalColumn) {
-      console.warn('[payments] captured_amount column unavailable during markComplete; retrying core update:', error.message);
+      console.warn('[payments] optional completion column unavailable during markComplete; retrying core update:', error.message);
       delete updateData.captured_amount;
+      delete updateData.completed_at;
       ({ error } = await db.from('service_requests').update(updateData).eq('id', requestId));
     }
   }
@@ -133,7 +136,7 @@ async function markRequestComplete(db, requestId, paymentIntentId, capturedAmoun
     .eq('id', requestId)
     .maybeSingle();
 
-  if (vErr || !verified || verified.status !== 'awaiting_key_return' || verified.payment_status !== 'captured') {
+  if (vErr || !verified || verified.status !== 'complete' || verified.payment_status !== 'captured') {
     console.error('[payments] post-write verify failed for request', requestId, JSON.stringify(verified), vErr?.message);
     throw new Error('DB_UPDATE_FAILED');
   }
@@ -1080,7 +1083,7 @@ async function handleCapturePayment(body, res) {
     const intent = await stripe.paymentIntents.capture(payment_intent_id, captureParams);
     console.log('[payments/capture_payment] Captured', intent.id, 'for request', request_id);
 
-    // Update DB: captured payment moves request to awaiting key return.
+    // Update DB: normal final capture completes the request.
     await markRequestComplete(db, request_id, payment_intent_id, intent.amount_captured / 100);
 
     return res.status(200).json({ status: intent.status, amount_captured: intent.amount_captured });

@@ -170,7 +170,7 @@ async function lookupFromTrackedRequests({ ticket, phone, email }) {
 function renderAddresses() {
   if (!addressList) return;
   if (!returningState.addresses.length) {
-    addressList.innerHTML = `<p class="field-help">No saved service areas found. Add a new service address in Book Now.</p>`;
+    addressList.innerHTML = `<p class="field-help">No saved service addresses found. Add a new service address in Book Now.</p>`;
     return;
   }
 
@@ -179,7 +179,7 @@ function renderAddresses() {
     return `
       <article class="returning-option-card ${selected ? "is-selected" : ""}">
         ${addressLabel(address).map((line) => `<span>${escapeHtml(line)}</span>`).join("")}
-        <button class="button primary" type="button" data-address-index="${index}">${selected ? "Service area selected" : "Use this service area"}</button>
+        <button class="button primary" type="button" data-address-index="${index}">${selected ? "Service address selected" : "Use this service address"}</button>
       </article>
     `;
   }).join("");
@@ -250,7 +250,7 @@ async function lookupReturningCustomer() {
     renderVehicles();
     showStep(2);
     statusEl.textContent = savedOptions.addresses.length || savedOptions.vehicles.length
-      ? "Saved information found. Pick your validated service area first."
+      ? "Saved information found. Pick your validated service address first."
       : "No saved options found yet. Continue through Book Now to add and validate your service address.";
   } catch (error) {
     console.error("Returning customer lookup failed:", error);
@@ -326,5 +326,5 @@ continueBtn?.addEventListener("click", () => {
     vehicle: returningState.selectedVehicle,
     savedAt: new Date().toISOString(),
   }));
-  window.location.href = "book.html?returning=1#book";
+  window.location.href = "book.html?returning=1#booking-flow";
 });

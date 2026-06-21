@@ -29,7 +29,7 @@ navToggle?.addEventListener("click", () => {
 const sharedSteps = ["Vehicle", "Service", "Service Details", "Schedule", "Handoff", "Payment", "Review"];
 const flows = {
   "book-now": ["Customer", "Address", ...sharedSteps],
-  returning: ["Verify", "Service Area", ...sharedSteps],
+  returning: ["Verify", "Service Address", ...sharedSteps],
 };
 
 const bookingState = {
@@ -113,9 +113,9 @@ const stepCopy = {
       </div>
     `,
   },
-  "Service Area": {
-    title: "Pick your validated service area",
-    intro: "Reuse a saved validated service area or add a new address. New and edited addresses must be validated before continuing.",
+  "Service Address": {
+    title: "Pick your validated service address",
+    intro: "Reuse a saved validated service address or add a new address. New and edited addresses must be validated before continuing.",
     fields: `<div data-returning-service-area></div>`,
   },
   Vehicle: {
@@ -251,11 +251,13 @@ const FUEL_RANGES = {
 };
 const slotHoldingStatuses = new Set([
   "accepted", "key_received", "vehicle_picked_up", "service_in_progress",
+  "fueling_in_progress", "car_wash_in_progress", "partial_service_complete",
   "fueling_complete", "fuel_receipt_uploaded", "car_wash_complete", "wash_receipt_uploaded",
   "service_complete", "receipts_recorded", "returned_location_pending", "return_location_recorded",
   "return_photos_needed", "vehicle_returned", "inspection_needed", "inspection_recorded",
   "final_payment_processed", "awaiting_key_return", "keys_returned", "return_requested",
-  "customer_return_requested", "payment_issue", "authorization_too_low", "pending_customer_payment",
+  "customer_return_requested", "cancelled_pending_key_return",
+  "payment_issue", "authorization_too_low", "pending_customer_payment",
 ]);
 
 function formatMoney(value) {
@@ -460,7 +462,7 @@ function stepIsComplete(panel) {
   }
 
   if (step === "Verify") return bookingState.returning.verified;
-  if (step === "Service Area") return Boolean(bookingState.returning.selectedAddressId || bookingState.returning.stagedAddress);
+  if (step === "Service Address") return Boolean(bookingState.returning.selectedAddressId || bookingState.returning.stagedAddress);
   if (step === "Vehicle" && flowName === "returning") {
     return Boolean(bookingState.returning.selectedVehicleId || bookingState.returning.stagedVehicle);
   }
@@ -485,7 +487,7 @@ const STEP_ICONS = {
   Customer: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="8" r="3.4"/><path d="M5 20c0-3.3 3.1-6 7-6s7 2.7 7 6"/></svg>`,
   Address: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 21s7-5.5 7-11.5A7 7 0 0 0 5 9.5C5 15.5 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.3"/></svg>`,
   Verify: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="5" y="10.5" width="14" height="9.5" rx="1.6"/><path d="M8 10.5V8a4 4 0 0 1 8 0v2.5"/></svg>`,
-  "Service Area": `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 21s7-5.5 7-11.5A7 7 0 0 0 5 9.5C5 15.5 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.3"/></svg>`,
+  "Service Address": `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 21s7-5.5 7-11.5A7 7 0 0 0 5 9.5C5 15.5 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.3"/></svg>`,
   Vehicle: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 16l1.5-5a2 2 0 0 1 1.9-1.4h9.2A2 2 0 0 1 18.5 11L20 16"/><rect x="3" y="16" width="18" height="4" rx="1.4"/><circle cx="7.5" cy="20" r="1.1"/><circle cx="16.5" cy="20" r="1.1"/></svg>`,
   Service: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 16l1.5-5a2 2 0 0 1 1.9-1.4h9.2A2 2 0 0 1 18.5 11L20 16"/><rect x="3" y="16" width="18" height="4" rx="1.4"/><circle cx="7.5" cy="20" r="1.1"/><circle cx="16.5" cy="20" r="1.1"/><path d="M8 5.5c.7-1 .7-1.8 0-2.8M12 5.5c.7-1 .7-1.8 0-2.8M16 5.5c.7-1 .7-1.8 0-2.8"/></svg>`,
   "Service Details": `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="5" y="4" width="14" height="17" rx="1.6"/><path d="M9 3.5h6v2H9z"/><path d="M9 11h6M9 14.5h6"/></svg>`,
@@ -537,7 +539,7 @@ function renderSummarySidebar(steps, flowName, unlockedIndex) {
   const reviewIndex = steps.indexOf("Review");
   const reachedReview = unlockedIndex >= reviewIndex;
   const customerStep = flowName === "returning" ? "Verify" : "Customer";
-  const addressStep = flowName === "returning" ? "Service Area" : "Address";
+  const addressStep = flowName === "returning" ? "Service Address" : "Address";
 
   const customerContent = v.firstName || v.customerPhone
     ? escapeHtml([v.firstName, v.lastName].filter(Boolean).join(" "))
@@ -845,7 +847,7 @@ async function verifyReturningCustomer(panel) {
     bookingState.returning.stagedAddress = null;
     bookingState.returning.stagedVehicle = null;
     bookingState.returning.verified = true;
-    setReturningStatus(panel, "success", "Verified. Continue to pick your validated service area.");
+    setReturningStatus(panel, "success", "Verified. Continue to pick your validated service address.");
   } catch (error) {
     console.error("Returning verification failed:", error);
     bookingState.returning.verified = false;
@@ -965,7 +967,7 @@ function renderReturningServiceArea(panel) {
     <div class="returning-option-grid">
       ${bookingState.returning.addresses.length
         ? bookingState.returning.addresses.map(addressCard).join("")
-        : `<p class="field-help">No saved validated service areas were found. Add a new service address below.</p>`}
+        : `<p class="field-help">No saved validated service addresses were found. Add a new service address below.</p>`}
     </div>
     <button class="button secondary" type="button" data-add-returning-address>Add new service address</button>
     ${bookingState.returning.addressMode ? returningAddressForm(modeAddress) : ""}
@@ -1339,7 +1341,6 @@ function publicRequestNumber(id) {
 
 async function submitBooking(panel) {
   if (bookingState.submitting || bookingState.submitted) return;
-  bookingState.submitting = true;
   savePanelValues(panel);
   const status = panel.querySelector("[data-submit-status]");
   const setStatus = (type, message) => {
@@ -1356,6 +1357,7 @@ async function submitBooking(panel) {
     setStatus("error", "Please confirm the booking information before submitting.");
     return;
   }
+  bookingState.submitting = true;
   const button = panel.querySelector("[data-submit-booking]");
   if (button) {
     button.disabled = true;

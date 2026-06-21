@@ -81,7 +81,7 @@ workerRefreshJobsBtn?.addEventListener('click', async () => {
   }
 });
 
-const SESSION_WORKER_NAME = sessionStorage.getItem('shiftfuel_worker') || 'Mark Urban';
+const SESSION_WORKER_NAME = sessionStorage.getItem('shiftfuel_worker') || 'Worker';
 const SESSION_WORKER_ID = sessionStorage.getItem('shiftfuel_worker_id') || '';
 const SESSION_WORKER_TOKEN = sessionStorage.getItem('shiftfuel_worker_token') || '';
 const SERVICE_CENTERS = [
@@ -137,6 +137,9 @@ const workerOpenStatuses = [
   'key_received',
   'vehicle_picked_up',
   'service_in_progress',
+  'fueling_in_progress',
+  'car_wash_in_progress',
+  'partial_service_complete',
   'fueling_complete',
   'car_wash_complete',
   'fuel_receipt_uploaded',
@@ -154,8 +157,10 @@ const workerOpenStatuses = [
   'keys_returned',
   'return_requested',
   'customer_return_requested',
+  'cancelled_pending_key_return',
   'payment_issue',
   'authorization_too_low',
+  'pending_customer_payment',
 ];
 
 function normalizeName(value) {
@@ -257,6 +262,9 @@ const workerStatusLabels = {
   key_received: 'Key received',
   vehicle_picked_up: 'Vehicle picked up',
   service_in_progress: 'Service in progress',
+  fueling_in_progress: 'Fueling in progress',
+  car_wash_in_progress: 'Car wash in progress',
+  partial_service_complete: 'Partial service complete',
   fueling_complete: 'Fueling complete',
   fuel_receipt_uploaded: 'Fuel receipt recorded',
   car_wash_complete: 'Vehicle cleaning complete',
@@ -276,6 +284,7 @@ const workerStatusLabels = {
   customer_return_requested: 'Return requested',
   payment_issue: 'Payment issue',
   authorization_too_low: 'Authorization issue',
+  pending_customer_payment: 'Awaiting customer payment',
   complete: 'Complete',
   denied: 'Denied',
   customer_canceled: 'Canceled by customer',
@@ -285,7 +294,7 @@ const workerStatusLabels = {
   closed_no_charge: 'Closed â€” no charge',
   canceled_return_completed: 'Return completed',
   cancelled: 'Cancelled',
-  cancelled_pending_key_return: 'Cancelled â€” key/vehicle return needed',
+  cancelled_pending_key_return: 'Cancellation received - awaiting key/vehicle return',
 };
 
 function escapeHtml(value) {
@@ -1308,7 +1317,7 @@ function renderWorkerJobCard(request, mode) {
         <p><strong>Phone:</strong> ${request.customer_phone ? escapeHtml(formatPhone(request.customer_phone)) : 'Not provided'}</p>
         <p class="worker-job-address-line"><strong>Service address:</strong> <span class="worker-job-address-value">${escapeHtml(workerFormatAddress(request))}</span></p>
         <p><strong>Parking:</strong> ${[request.parking_location, request.parking_spot ? `spot ${request.parking_spot}` : ''].filter(Boolean).map(escapeHtml).join(', ') || 'Not provided'}</p>
-        ${request.key_handoff_details ? `<p><strong>Key handoff:</strong> ${escapeHtml(request.key_handoff_details)}</p>` : ''}
+        ${(mode === 'mine' && request.key_handoff_details) ? `<p><strong>Key handoff:</strong> ${escapeHtml(request.key_handoff_details)}</p>` : ''}
         <p><strong>Service:</strong> ${escapeHtml(workerFormatService(request))}</p>
         <p><strong>Vehicle:</strong> ${escapeHtml([request.vehicle_year, request.vehicle_make, request.vehicle_model, request.vehicle_color].filter(Boolean).join(' '))}${request.license_plate ? ` | Plate: ${escapeHtml(request.license_plate)}` : ''}</p>
         ${request.return_parking_location ? `<p><strong>Car location:</strong> ${escapeHtml(request.return_parking_location)}</p>` : ''}
@@ -1480,7 +1489,7 @@ function renderWorkerJobActions(request) {
     nextAction = 'The customer is updating their payment method. No action needed from you right now.';
   } else if (request.status === 'cancelled_pending_key_return') {
     nextAction = 'Customer cancelled this request. Return the key/vehicle before closing this request.';
-    actions.push(`<button class="button primary confirm-cancellation-return" data-id="${escapeHtml(request.id)}" type="button">Confirm key/vehicle returned</button>`);
+    actions.push(`<button class="button primary confirm-cancellation-return" data-id="${escapeHtml(request.id)}" type="button">Confirm Key/Vehicle Returned</button>`);
   }
 
   const back = workerBackButton(request);
@@ -1511,7 +1520,7 @@ const WORKER_DENY_REASON_OPTIONS = [
   'Fuel station unavailable',
   'Keys unavailable',
   'Other',
-  'Outside service area',
+  'We currently do not serve this area.',
   'Payment authorization issue',
   'Safety concern',
   'Service location issue',
@@ -1830,8 +1839,11 @@ async function loadWorkerJobs() {
     return !normalizeId(job.assigned_employee_id)
       && !workerJobHasAssignedFallback(job)
       && !myJobs.includes(job)
-      && ['request_received', 'accepted'].includes(job.status);
+      && job.status === 'request_received';
   });
+
+  const cancelledReturnJobs = myJobs.filter((job) => job.status === 'cancelled_pending_key_return');
+  const claimedJobs = myJobs.filter((job) => job.status !== 'cancelled_pending_key_return');
 
   if (!myJobs.length && !availableJobs.length) {
     workerJobList.innerHTML = '<div class="empty-state"><p>No jobs available right now.</p></div>';
@@ -1839,10 +1851,14 @@ async function loadWorkerJobs() {
   }
 
   workerJobList.innerHTML = `
-    ${myJobs.length ? '<h3>Assigned to me</h3>' : ''}
-    ${myJobs.map((job) => renderWorkerJobCard(job, 'mine')).join('')}
-    ${availableJobs.length ? '<h3>Available to claim</h3>' : ''}
-    ${availableJobs.map((job) => renderWorkerJobCard(job, 'available')).join('')}
+    <h3>Available Jobs${availableJobs.length ? ` (${availableJobs.length})` : ''}</h3>
+    ${availableJobs.length ? availableJobs.map((job) => renderWorkerJobCard(job, 'available')).join('') : '<p class="field-help">No new available requests right now.</p>'}
+    <h3>My Claimed Jobs${claimedJobs.length ? ` (${claimedJobs.length})` : ''}</h3>
+    ${claimedJobs.length ? claimedJobs.map((job) => renderWorkerJobCard(job, 'mine')).join('') : '<p class="field-help">No jobs currently assigned to you.</p>'}
+    ${cancelledReturnJobs.length ? `
+      <h3>Cancelled / Return Required Jobs (${cancelledReturnJobs.length})</h3>
+      ${cancelledReturnJobs.map((job) => renderWorkerJobCard(job, 'mine')).join('')}
+    ` : ''}
   `;
 }
 
@@ -2316,14 +2332,30 @@ async function completeWorkerRequest(button) {
   const notes = returnConfirmNote
     ? request.notes ? `${request.notes}\n${returnConfirmNote}` : returnConfirmNote
     : request.notes;
-  const updates = { status: 'awaiting_key_return', final_total: finalTotal, ...pricingAuditFields(request, receiptTotals) };
+  const timestamp = new Date().toISOString();
+  const updates = {
+    status: isReturnWorkflow ? 'awaiting_key_return' : 'complete',
+    final_total: finalTotal,
+    updated_at: timestamp,
+    ...pricingAuditFields(request, receiptTotals),
+  };
+  if (!isReturnWorkflow) updates.completed_at = timestamp;
   if (returnConfirmNote) updates.notes = notes;
 
-  const { error: updateErr } = await workerDb.rpc('worker_update_request', {
+  let { error: updateErr } = await workerDb.rpc('worker_update_request', {
     p_token: SESSION_WORKER_TOKEN,
     p_request_id: id,
     p_data: updates,
   });
+
+  if (updateErr && /completed_at|schema cache|column/i.test(String(updateErr.message || ''))) {
+    delete updates.completed_at;
+    ({ error: updateErr } = await workerDb.rpc('worker_update_request', {
+      p_token: SESSION_WORKER_TOKEN,
+      p_request_id: id,
+      p_data: updates,
+    }));
+  }
 
   if (updateErr) {
     console.error('[complete] Failed to save completion:', updateErr);
@@ -2333,7 +2365,9 @@ async function completeWorkerRequest(button) {
     return;
   }
 
-  console.log('Request moved to awaiting_key_return â€” no payment hold to capture.');
+  console.log(isReturnWorkflow
+    ? 'Request moved to awaiting_key_return - return workflow will close after keys are returned.'
+    : 'Request completed - no payment hold to capture.');
 
   await loadWorkerJobs();
   await loadWorkerReviews();
@@ -2432,7 +2466,7 @@ workerJobList?.addEventListener('click', async (event) => {
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
         button.disabled = false;
-        button.textContent = 'Confirm key/vehicle returned';
+        button.textContent = 'Confirm Key/Vehicle Returned';
         alert(data.error || 'Could not confirm the return. Please try again.');
         return;
       }

@@ -565,7 +565,7 @@ const averageFuelPrices = {
   Diesel: 4.199,
 };
 let fuelPriceLastUpdated = null;
-let fuelPriceArea = 'Delaware area';
+let fuelPriceArea = 'Primary pricing area';
 
 async function loadFuelPricesFromDb() {
   try {
@@ -2454,7 +2454,7 @@ form.addEventListener("submit", async (event) => {
     return;
   }
   // Re-verify on submit — no bypass allowed
-  statusMessage.textContent = "Verifying service area…";
+  statusMessage.textContent = "Verifying service address…";
   if (currentlyAppliedSavedAddressId) {
     setAddressStatus('success', 'Saved address selected. Confirm parking and key handoff before continuing.');
     statusMessage.textContent = '';

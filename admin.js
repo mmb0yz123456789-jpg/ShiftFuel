@@ -137,8 +137,9 @@ const slotHoldingStatuses = new Set([
   'accepted', 'key_received',
   'pickup_vehicle_photo_uploaded', 'pickup_odometer_photo_uploaded', 'pickup_fuel_gauge_photo_uploaded',
   'vehicle_picked_up', 'service_in_progress',
-  'fueling_in_progress', 'fueling_complete', 'fuel_receipt_uploaded',
-  'car_wash_in_progress', 'car_wash_complete', 'car_wash_after_fuel_in_progress',
+  'fueling_in_progress', 'car_wash_in_progress', 'partial_service_complete',
+  'fueling_complete', 'fuel_receipt_uploaded',
+  'car_wash_complete', 'car_wash_after_fuel_in_progress',
   'wash_receipt_uploaded', 'wash_receipt_after_fuel_uploaded',
   'fueling_after_wash_in_progress', 'fuel_receipt_after_wash_uploaded', 'fuel_and_wash_complete',
   'service_complete', 'receipts_recorded',
@@ -147,6 +148,7 @@ const slotHoldingStatuses = new Set([
   'vehicle_returned', 'inspection_needed', 'inspection_recorded',
   'final_payment_processed', 'awaiting_key_return', 'keys_returned',
   'return_requested', 'customer_return_requested',
+  'cancelled_pending_key_return',
   'payment_issue', 'authorization_too_low', 'pending_customer_payment',
 ]);
 
@@ -330,8 +332,8 @@ let adminPhotoDeleted = false; // true when admin clicks "Delete photo"
 
 // Unified terminal/closed status list — keep in sync with worker.js, track.js,
 // and the SQL terminal-status list in supabase-production-rls-lockdown.sql.
-const terminalStatuses = ['complete', 'denied', 'customer_canceled', 'canceled', 'unable_to_complete', 'auto_reversed', 'closed_no_charge', 'canceled_return_completed'];
-const closedStatuses = ['denied', 'customer_canceled', 'canceled', 'unable_to_complete', 'auto_reversed', 'closed_no_charge', 'canceled_return_completed'];
+const terminalStatuses = ['complete', 'denied', 'customer_canceled', 'canceled', 'cancelled', 'unable_to_complete', 'auto_reversed', 'closed_no_charge', 'canceled_return_completed'];
+const closedStatuses = ['denied', 'customer_canceled', 'canceled', 'cancelled', 'unable_to_complete', 'auto_reversed', 'closed_no_charge', 'canceled_return_completed'];
 
 // Friendly labels for every status — keep in sync with worker.js and track.js.
 // Raw database status strings must never be shown to a user; this map is the
@@ -352,6 +354,7 @@ const statusLabels = {
   car_wash_in_progress: 'Car wash in progress',
   car_wash_complete: 'Vehicle cleaning complete',
   fuel_and_wash_complete: 'Fuel and wash complete',
+  partial_service_complete: 'Partial service complete',
   service_complete: 'Service complete',
   receipts_recorded: 'Receipts recorded',
   returned_location_pending: 'Vehicle return location needed',
@@ -378,6 +381,8 @@ const statusLabels = {
   pending_customer_payment: 'Awaiting customer payment',
   return_requested: 'Return requested',
   customer_return_requested: 'Return requested',
+  cancelled_pending_key_return: 'Cancellation received - awaiting key/vehicle return',
+  cancelled: 'Cancelled',
   canceled_return_completed: 'Return completed',
   payment_issue: 'Payment issue',
   authorization_too_low: 'Authorization issue',
@@ -427,7 +432,7 @@ const PAYMENT_STATUS_LABELS = {
   capture_failed:         'Capture failed — customer must repay',
 };
 
-const CLOSED_STATUSES = ['denied', 'customer_canceled', 'unable_to_complete', 'auto_reversed'];
+const CLOSED_STATUSES = ['denied', 'customer_canceled', 'canceled', 'cancelled', 'unable_to_complete', 'auto_reversed', 'closed_no_charge', 'canceled_return_completed'];
 
 function paymentStatusLabel(request) {
   const label = PAYMENT_STATUS_LABELS[request.payment_status] || request.payment_status || 'Unknown';
@@ -1161,7 +1166,7 @@ const DENY_REASON_OPTIONS = [
   'Fuel station unavailable',
   'Keys unavailable',
   'Other',
-  'Outside service area',
+  'We currently do not serve this area.',
   'Payment authorization issue',
   'Safety concern',
   'Service location issue',
@@ -1373,17 +1378,17 @@ function renderCompletePanel(request) {
 
   let primaryBtn;
   if (alreadyCaptured) {
-    primaryBtn = `<button class="button primary proceed-to-key-return" data-id="${request.id}" type="button">Proceed to key return</button>`;
+    primaryBtn = `<button class="button primary proceed-to-key-return" data-id="${request.id}" type="button">Complete request</button>`;
   } else if (hasPi) {
-    primaryBtn = `<button class="button primary capture-and-proceed" data-id="${request.id}" type="button">Capture payment &amp; proceed to key return</button>`;
+    primaryBtn = `<button class="button primary capture-and-proceed" data-id="${request.id}" type="button">Capture payment &amp; complete</button>`;
   } else {
-    primaryBtn = `<button class="button primary proceed-to-key-return" data-id="${request.id}" type="button">Proceed to key return (no payment)</button>`;
+    primaryBtn = `<button class="button primary proceed-to-key-return" data-id="${request.id}" type="button">Complete request (no payment)</button>`;
   }
 
   return `
     <div class="complete-panel" data-complete-for="${request.id}">
       <h4>Confirm before ${hasPi && !alreadyCaptured ? 'capturing payment' : 'completing'}</h4>
-      <p class="field-help">Confirm these totals are correct before ${hasPi && !alreadyCaptured ? 'capturing the payment' : 'proceeding to key return'}.</p>
+      <p class="field-help">Confirm these totals are correct before ${hasPi && !alreadyCaptured ? 'capturing the payment' : 'completing the request'}.</p>
       <div class="request-details">
         ${serviceNeedsFuel(request) ? `<p><strong>Fuel:</strong> ${money(receiptTotals.fuel)} receipt + ${money(fees.fuel)} service.</p>` : ''}
         ${serviceNeedsWash(request) ? `<p><strong>Car wash:</strong> ${money(receiptTotals.wash)} receipt + ${money(fees.wash)} service.</p>` : ''}
@@ -2846,11 +2851,24 @@ workerProfileSelectInactive?.addEventListener('change', () => {
 
 async function updateRequestStatus(id, status) {
   const request = allRequests.find(r => r.id === id);
-  const { error } = await db.rpc('admin_update_request', {
+  const payload = { status };
+  if (status === 'complete') payload.completed_at = new Date().toISOString();
+
+  let { error } = await db.rpc('admin_update_request', {
     p_token: adminToken(),
     p_request_id: id,
-    p_data: { status },
+    p_data: payload,
   });
+
+  if (error && status === 'complete' && /completed_at|schema cache|column/i.test(String(error.message || ''))) {
+    delete payload.completed_at;
+    ({ error } = await db.rpc('admin_update_request', {
+      p_token: adminToken(),
+      p_request_id: id,
+      p_data: payload,
+    }));
+  }
+
   if (error) throw error;
 
   if (status === 'accepted' && request) {
@@ -3352,18 +3370,18 @@ async function completeRequest(button) {
 
   // Only allow direct completion when payment is already captured (or no payment).
   if (request.payment_intent_id && request.payment_status !== 'captured') {
-    alert('Payment has not been captured yet. Use "Capture payment & proceed" instead.');
+    alert('Payment has not been captured yet. Use "Capture payment & complete" instead.');
     return;
   }
 
   button.disabled = true;
   button.textContent = 'Saving...';
   try {
-    await updateRequestStatus(id, 'awaiting_key_return');
+    await updateRequestStatus(id, 'complete');
   } catch (err) {
     console.error('[complete] Failed:', err.message);
     button.disabled = false;
-    button.textContent = button.dataset.originalText || 'Proceed to key return';
+    button.textContent = button.dataset.originalText || 'Complete request';
     alert('Could not update the request. Please try again.');
   }
 }
@@ -3403,14 +3421,14 @@ async function captureAndProceed(button) {
     const data = await res.json().catch(() => ({}));
     if (!res.ok) {
       button.disabled = false;
-      button.textContent = 'Capture payment & proceed to key return';
+      button.textContent = 'Capture payment & complete';
       alert(`Could not capture payment: ${data.error || 'Unknown error. Please try again.'}`);
       return;
     }
     await loadRequests();
   } catch (err) {
     button.disabled = false;
-    button.textContent = 'Capture payment & proceed to key return';
+    button.textContent = 'Capture payment & complete';
     alert('Network error. Please try again.');
   }
 }
@@ -3478,10 +3496,10 @@ async function proceedToKeyReturn(button) {
   button.disabled = true;
   button.textContent = 'Saving...';
   try {
-    await updateRequestStatus(id, 'awaiting_key_return');
+    await updateRequestStatus(id, 'complete');
   } catch (err) {
     button.disabled = false;
-    button.textContent = button.textContent.includes('no payment') ? 'Proceed to key return (no payment)' : 'Proceed to key return';
+    button.textContent = button.textContent.includes('no payment') ? 'Complete request (no payment)' : 'Complete request';
     alert('Could not update the request. Please try again.');
   }
 }
