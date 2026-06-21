@@ -336,23 +336,27 @@ const terminalStatuses = [
   'complete',
   'denied',
   'customer_canceled',
+  'customer_cancelled',
   'canceled',
   'cancelled',
   'unable_to_complete',
   'auto_reversed',
   'closed_no_charge',
   'canceled_return_completed',
+  'cancelled_return_completed',
 ];
 
 const closedStatuses = [
   'denied',
   'customer_canceled',
+  'customer_cancelled',
   'canceled',
   'cancelled',
   'unable_to_complete',
   'auto_reversed',
   'closed_no_charge',
   'canceled_return_completed',
+  'cancelled_return_completed',
 ];
 
 // Friendly labels for every status — keep in sync with worker.js and track.js.
@@ -393,6 +397,7 @@ const statusLabels = {
   complete: 'Complete',
   denied: 'Denied',
   customer_canceled: 'Canceled by customer',
+  customer_cancelled: 'Canceled by customer',
   canceled: 'Canceled',
   unable_to_complete: 'Unable to complete',
   auto_reversed: 'Missed — auto-reversed',
@@ -402,8 +407,9 @@ const statusLabels = {
   return_requested: 'Return requested',
   customer_return_requested: 'Return requested',
   cancelled_pending_key_return: 'Cancellation received — awaiting key/vehicle return',
-  cancelled: 'Cancelled',
+  cancelled: 'Canceled',
   canceled_return_completed: 'Return completed',
+  cancelled_return_completed: 'Return completed',
   payment_issue: 'Payment issue',
   authorization_too_low: 'Authorization issue',
 };
