@@ -445,12 +445,16 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 22px;
-  margin-top: 10px;
-  padding: 22px max(20px, calc((100vw - 1320px) / 2));
-  color: #fff;
-  background: linear-gradient(135deg, #073233, #021f20);
-  border-top: 1px solid rgba(255,255,255,0.1);
+  flex-wrap: wrap;
+  gap: 24px;
+  width: min(var(--sf-page-width), calc(100% - 40px));
+  margin: 56px auto 0;
+  padding: clamp(26px, 4vw, 40px);
+  color: var(--sf-white);
+  background: linear-gradient(135deg, var(--sf-teal), var(--sf-teal-dark));
+  border: 0;
+  border-radius: var(--sf-radius-md);
+  box-shadow: var(--sf-shadow-card);
 }
 
 .final-cta-main,
@@ -463,44 +467,61 @@
 .final-cta-icon {
   display: grid;
   place-items: center;
-  width: 56px;
-  height: 56px;
-  flex: 0 0 auto;
-  border: 1px solid rgba(255,255,255,0.68);
-  border-radius: 999px;
+  width: 58px;
+  height: 58px;
+  flex-shrink: 0;
+  color: var(--sf-white);
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.45);
+  border-radius: 50%;
 }
 
 .final-cta-icon svg {
-  width: 28px;
-  height: 28px;
+  width: 26px;
+  height: 26px;
 }
 
 .final-cta-main strong {
   display: block;
-  font-size: 1.15rem;
-  font-weight: 950;
+  color: var(--sf-white);
+  font-size: 1.25rem;
+  font-weight: 900;
 }
 
 .final-cta-main p {
-  margin: 0;
-  color: rgba(255,255,255,0.84);
+  margin: 2px 0 0;
+  color: rgba(255, 255, 255, 0.78);
 }
 
 .portal-closing-banner .portal-button {
   min-width: 180px;
-  color: #fff;
+  color: var(--sf-white);
   background: transparent;
-  border-color: rgba(255,255,255,0.72);
+  border-color: rgba(255, 255, 255, 0.6);
+}
+
+.portal-closing-banner .portal-button:hover {
+  color: var(--sf-teal-dark);
+  background: var(--sf-white);
+  border-color: var(--sf-white);
 }
 
 .track-page .site-footer {
-  color: rgba(255,255,255,0.86);
-  background: #021f20;
-  border-top: 1px solid rgba(255,255,255,0.1);
+  width: min(var(--sf-page-width), calc(100% - 40px));
+  margin: 0 auto 22px;
+  padding: 32px var(--sf-page-pad);
+  color: rgba(255, 255, 255, 0.8);
+  background: linear-gradient(135deg, var(--sf-teal), var(--sf-teal-dark));
+  border: 0;
+  border-radius: var(--sf-radius-sm);
+  box-shadow: var(--sf-shadow-card);
+  font-size: 0.85rem;
 }
 
 .track-page .footer-copy {
   margin: 0;
+  color: rgba(255, 255, 255, 0.78);
+  font-size: 0.85rem;
 }
 
 @media (max-width: 980px) {
