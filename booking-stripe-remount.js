@@ -1,74 +1,14 @@
-// Keeps the Stripe card Element mounted after the booking accordion re-renders.
-// booking-flow.js redraws the accordion as customers move between steps; without
-// this helper, the original Stripe Element can stay attached to a removed DOM node.
-(function () {
-  if (!window.Stripe || window.Stripe.__shiftFuelRemountPatched) return;
-
-  const originalStripe = window.Stripe;
-
-  function elementHasFrame(target) {
-    return Boolean(target && target.querySelector && target.querySelector("iframe"));
-  }
-
-  function setupCardRemount(cardElement) {
-    if (!cardElement || cardElement.__shiftFuelAutoRemount) return;
-    cardElement.__shiftFuelAutoRemount = true;
-
-    const originalMount = cardElement.mount.bind(cardElement);
-    const originalUnmount = typeof cardElement.unmount === "function" ? cardElement.unmount.bind(cardElement) : null;
-    let mounting = false;
-
-    cardElement.mount = function patchedMount(target) {
-      return originalMount(target);
-    };
-
-    function remountIfNeeded() {
-      const target = document.querySelector("#booking-card-element");
-      if (!target || mounting || elementHasFrame(target)) return;
-
-      try {
-        mounting = true;
-        if (originalUnmount) {
-          try { originalUnmount(); } catch (_) {}
-        }
-        originalMount(target);
-      } catch (error) {
-        console.warn("Stripe card remount skipped:", error);
-      } finally {
-        mounting = false;
-      }
-    }
-
-    const observer = new MutationObserver(remountIfNeeded);
-    observer.observe(document.documentElement, { childList: true, subtree: true });
-    window.setInterval(remountIfNeeded, 500);
-    window.setTimeout(remountIfNeeded, 0);
-  }
-
-  function patchedStripe(...args) {
-    const stripe = originalStripe.apply(this, args);
-    if (!stripe || stripe.__shiftFuelElementsPatched || typeof stripe.elements !== "function") return stripe;
-
-    const originalElements = stripe.elements.bind(stripe);
-    stripe.elements = function patchedElements(...elementArgs) {
-      const elements = originalElements(...elementArgs);
-      if (!elements || elements.__shiftFuelCreatePatched || typeof elements.create !== "function") return elements;
-
-      const originalCreate = elements.create.bind(elements);
-      elements.create = function patchedCreate(type, options) {
-        const element = originalCreate(type, options);
-        if (type === "card") setupCardRemount(element);
-        return element;
-      };
-      elements.__shiftFuelCreatePatched = true;
-      return elements;
-    };
-
-    stripe.__shiftFuelElementsPatched = true;
-    return stripe;
-  }
-
-  Object.assign(patchedStripe, originalStripe);
-  patchedStripe.__shiftFuelRemountPatched = true;
-  window.Stripe = patchedStripe;
+(function(){
+const K='sf_checkout_state';
+const $=(s,r=document)=>r.querySelector(s),$$=(s,r=document)=>Array.from(r.querySelectorAll(s));
+function msg(t,m){try{bookingState.payment.statusType=t;bookingState.payment.status=m;}catch(e){}$$('[data-payment-status]').forEach(x=>{x.dataset.status=t;x.textContent=m;});}
+function clean(){ $$('.payment-card-box').forEach(x=>x.remove()); $$('[data-authorize-payment]').forEach(b=>{b.textContent='Authorize payment';}); const p=$('.booking-accordion-card.is-active'); if(p&&p.dataset.currentStep==='Payment'){const n=p.querySelector('.placeholder-note'); if(n)n.textContent='Click Authorize payment to securely enter your card in Stripe. If you cancel in Stripe, no hold is placed.';}}
+function save(){sessionStorage.setItem(K,JSON.stringify({values:bookingState.values,address:bookingState.address,returning:bookingState.returning}));}
+function load(){try{return JSON.parse(sessionStorage.getItem(K)||'null');}catch(e){return null;}}
+function apply(s){if(!s)return;if(s.values)Object.assign(bookingState.values,s.values);if(s.address)Object.assign(bookingState.address,s.address);if(s.returning)Object.assign(bookingState.returning,s.returning);}
+async function start(panel,b){if(typeof savePanelValues==='function')savePanelValues(panel);const t=calculateTotals();const amount=Math.round((Number(t.estimatedTotal)||0)*100);if(!amount){msg('error','Please complete service details before authorizing payment.');return;}b.disabled=true;b.textContent='Opening Stripe...';msg('warning','Opening secure Stripe payment page...');try{save();const u=new URL(location.href);['checkout_session_id','payment_authorized','payment_canceled','payment_error'].forEach(k=>u.searchParams.delete(k));u.hash='booking-flow';const r=await fetch('/api/checkout-authorization',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'create_session',amount_cents:amount,customer_name:customerName(),customer_email:bookingState.values.customerEmail,service_label:serviceLabel(),return_url:u.href})});const d=await r.json().catch(()=>({}));if(!r.ok||!d.url)throw new Error(d.error||'Could not open Stripe.');location.assign(d.url);}catch(e){console.error(e);msg('error',e.message||'Could not open Stripe.');b.disabled=false;b.textContent='Authorize payment';}}
+function toReview(){let i=0;const id=setInterval(()=>{i++;clean();const p=$('.booking-accordion-card.is-active');if(!p||i>14){clearInterval(id);return;}if(p.dataset.currentStep==='Review'){p.scrollIntoView({behavior:'smooth',block:'start'});clearInterval(id);return;}const n=p.querySelector('[data-continue]');if(n&&!n.disabled)n.click();},180);}
+async function finish(){const q=new URLSearchParams(location.search);if(q.get('payment_canceled')==='1'){apply(load());sessionStorage.removeItem(K);history.replaceState({},document.title,location.pathname+'#booking-flow');msg('warning','Payment authorization was canceled. No hold was placed on the card.');if(typeof renderFlow==='function'&&$('[data-booking-flow]'))renderFlow($('[data-booking-flow]'));return;}const sid=q.get('checkout_session_id');if(!sid)return;apply(load());msg('warning','Confirming Stripe authorization...');try{const r=await fetch('/api/checkout-authorization',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'verify_session',session_id:sid})});const d=await r.json().catch(()=>({}));if(!r.ok||!d.authorized||!d.payment_intent_id)throw new Error(d.error||'Stripe did not confirm the authorization.');bookingState.payment.authorized=true;bookingState.payment.paymentIntentId=d.payment_intent_id;bookingState.payment.clientSecret='';sessionStorage.removeItem(K);history.replaceState({},document.title,location.pathname+'#booking-flow');msg('success','Payment authorized with Stripe. You will only be charged after your service is completed.');if(typeof renderFlow==='function'&&$('[data-booking-flow]'))renderFlow($('[data-booking-flow]'));setTimeout(toReview,300);}catch(e){console.error(e);msg('error',e.message||'Could not confirm Stripe authorization.');}}
+function bind(){let n=0;const tm=setInterval(()=>{clean();if(++n>40)clearInterval(tm);},250);document.addEventListener('click',e=>{const b=e.target.closest('[data-authorize-payment]');if(!b)return;const p=b.closest('.booking-accordion-card');if(!p)return;e.preventDefault();e.stopImmediatePropagation();start(p,b);},true);setTimeout(finish,150);}
+if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',bind);else bind();
 })();
