@@ -468,6 +468,7 @@ function cancellationReasonForDisplay(request) {
       "Vehicle not located": "This request could not be completed because the vehicle could not be located.",
       "Weather conditions": "This request could not be completed because of weather conditions.",
       "We currently do not serve this area.": "We currently do not serve this area.",
+      "Other": "This request could not be completed. Please contact ShiftFuel if you have questions.",
     };
   
     return customerSafeReasons[reason] || "This request could not be completed. Please contact ShiftFuel if you have questions.";
