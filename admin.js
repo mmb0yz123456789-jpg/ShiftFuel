@@ -424,23 +424,27 @@ const PAYMENT_STATUS_LABELS = {
   not_started:            'Not started',
   authorized:             'Authorized (hold on card)',
   captured:               'Captured (charged)',
+  cancellation_fee_paid:  'Cancellation fee paid',
   voided:                 'Authorization released — customer was not charged',
   authorization_released: 'Authorization released — customer was not charged',
   refunded:               'Refunded',
+  refund_required:        'Refund required — payment was captured',
   auto_reversed:          'Auto-reversed (missed service)',
   payment_release_failed: 'Hold release failed — check Stripe',
   capture_failed:         'Capture failed — customer must repay',
 };
 
-const CLOSED_STATUSES = ['denied', 'customer_canceled', 'canceled', 'cancelled', 'unable_to_complete', 'auto_reversed', 'closed_no_charge', 'canceled_return_completed'];
-
 function paymentStatusLabel(request) {
   const label = PAYMENT_STATUS_LABELS[request.payment_status] || request.payment_status || 'Unknown';
+
   const amount = request.payment_status === 'captured' && request.final_total != null
     ? ` — ${money(request.final_total)}`
     : request.payment_status === 'authorized' && request.estimated_total != null
     ? ` — ${money(request.estimated_total)} estimated hold`
+    : request.payment_status === 'cancellation_fee_paid' && request.cancellation_total_charged != null
+    ? ` — ${money(request.cancellation_total_charged)}`
     : '';
+
   return `${label}${amount}`;
 }
 
