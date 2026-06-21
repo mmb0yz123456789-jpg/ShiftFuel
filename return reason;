@@ -445,7 +445,7 @@ function cancellationReasonForDisplay(request) {
   const noteReason = notes.match(/\[denied[^\]]*\]\s*Admin denial reason:\s*([^\n]+)/i)?.[1] || "";
   const reason = String(request.cancellation_reason || noteReason || "").trim();
 
-  if (!reason || !["denied", "customer_canceled", "cancelled", "cancelled_pending_key_return"].includes(request.status)) {
+  if (!reason || !["denied", "customer_canceled", "canceled", "cancelled", "cancelled_pending_key_return"].includes(request.status)) {
     return "";
   }
 
@@ -454,7 +454,24 @@ function cancellationReasonForDisplay(request) {
   if (looksLikeOperationalNotes) {
     return "";
   }
-
+  if (request.status === "denied") {
+    const customerSafeReasons = {
+      "Car wash unavailable": "This request could not be completed because car wash service is unavailable.",
+      "Duplicate request": "This request was closed because it appears to be a duplicate.",
+      "Fuel door locked": "This request could not be completed because the fuel door was locked.",
+      "Fuel station unavailable": "This request could not be completed because fuel service was unavailable.",
+      "Keys unavailable": "This request could not be completed because the vehicle keys were unavailable.",
+      "Payment authorization issue": "This request could not be completed because of a payment authorization issue.",
+      "Safety concern": "This request could not be completed due to a safety concern.",
+      "Service location issue": "This request could not be completed because of a service location issue.",
+      "Vehicle inaccessible": "This request could not be completed because the vehicle was inaccessible.",
+      "Vehicle not located": "This request could not be completed because the vehicle could not be located.",
+      "Weather conditions": "This request could not be completed because of weather conditions.",
+      "We currently do not serve this area.": "We currently do not serve this area.",
+    };
+  
+    return customerSafeReasons[reason] || "This request could not be completed. Please contact ShiftFuel if you have questions.";
+  }
   return reason;
 }
 
