@@ -453,17 +453,6 @@ const PAYMENT_STATUS_LABELS = {
   capture_failed:         'Capture failed — customer must repay',
 };
 
-const CLOSED_STATUSES = [
-  'denied',
-  'customer_canceled',
-  'canceled',
-  'cancelled',
-  'unable_to_complete',
-  'auto_reversed',
-  'closed_no_charge',
-  'canceled_return_completed',
-];
-
 function paymentStatusLabel(request) {
   const PAYMENT_STATUS_LABELS = {
     not_started:            'Not started',
@@ -600,7 +589,7 @@ function savedFeeOrDefault(value, fallback) {
 
 function isOpen(request) {
   return !terminalStatuses.includes(request.status)
-    && !CLOSED_STATUSES.includes(request.status);
+    && !closedStatuses.includes(request.status);
 }
 
 function serviceNeedsFuel(request) {
@@ -967,14 +956,14 @@ function requestCardDetails(request) {
       ${request.payment_intent_id ? `<hr class="details-divider">
       <p><strong>Payment status:</strong> ${paymentStatusLabel(request)}</p>
       ${request.auto_reversed_at ? `<p><strong>Auto-reversed:</strong> ${formatTimestamp(request.auto_reversed_at)} — service was not completed on the scheduled date.</p>` : ''}
-      ${(CLOSED_STATUSES.includes(request.status) && request.payment_status === 'payment_release_failed') ? `
+      ${(closedStatuses.includes(request.status) && request.payment_status === 'payment_release_failed') ? `
         <div class="admin-warning-banner">
           ⚠️ Payment hold could not be released automatically. Go to the Stripe dashboard and cancel this PaymentIntent manually.
           <div class="admin-button-row" style="margin-top:8px">
             <button class="button danger retry-release-hold" data-id="${escapeHtml(request.id)}" data-pi="${escapeHtml(request.payment_intent_id)}" type="button">Retry hold release</button>
           </div>
         </div>` : ''}
-      ${(CLOSED_STATUSES.includes(request.status) && request.payment_status === 'authorized') ? `
+      ${(closedStatuses.includes(request.status) && request.payment_status === 'authorized') ? `
         <div class="admin-warning-banner">
           ⚠️ This request was closed but the card authorization was not released. Release it now.
           <div class="admin-button-row" style="margin-top:8px">
