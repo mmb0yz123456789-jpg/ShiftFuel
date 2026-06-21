@@ -76,11 +76,6 @@
         event.stopImmediatePropagation();
         if (message) message.textContent = "Enter a 10 digit phone number, or search by email or request number.";
         input.focus();
-        return;
-      }
-
-      if (input && digits.length === 10) {
-        input.value = formatPhone(digits);
       }
     }, true);
 
