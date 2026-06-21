@@ -3,452 +3,141 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>ShiftFuel Concierge</title>
+    <title>ShiftFuel Concierge | Workday Vehicle Services</title>
     <link rel="stylesheet" href="styles.css">
   </head>
-  <body>
-	<header class="site-header">
-		<a class="logo" href="index.html">ShiftFuel Concierge</a>
-		<nav class="nav" aria-label="Main navigation">
-			<a href="index.html#how">How it works</a>
-			<a href="index.html#services-pricing">Services &amp; Pricing</a>
-			<a href="index.html#trust">Safety &amp; Trust</a>
-			<a href="index.html#book">Book now</a>
-			<a href="track.html">Track my vehicle</a>
-		</nav>
-	</header>
+  <body class="landing-page">
+    <header class="site-header landing-header">
+      <a class="logo" href="index.html" aria-label="ShiftFuel Concierge home">
+        <span class="logo-mark">S</span>
+        <span>ShiftFuel Concierge</span>
+      </a>
+      <button class="mobile-menu-button" type="button" data-nav-toggle aria-expanded="false" aria-controls="site-nav">
+        <span>Menu</span>
+        <span aria-hidden="true">&#9776;</span>
+      </button>
+      <nav id="site-nav" class="nav" data-nav aria-label="Main navigation">
+        <a class="nav-cta" href="book.html#book">Book Now</a>
+        <a class="nav-outline" href="track.html">Track My Vehicle</a>
+        <a href="returning.html">Returning Customer</a>
+        <a href="#how">How It Works</a>
+        <a href="#services">Services</a>
+      </nav>
+    </header>
 
-    <main id="home">
-      <section class="hero">
-        <div class="hero-content">
-          <p class="eyebrow">Workplace vehicle concierge</p>
-          <h1>Your car handled while you work.</h1>
-          <p class="hero-copy">
-            ShiftFuel Concierge lets workplace employees request fuel fill-ups,
-            car wash services, and more — without leaving their shift.
-          </p>
-          <div class="actions">
-            <a class="button primary" href="#book">Book my vehicle service</a>
-		    <a class="button secondary" href="track.html">Track My Vehicle</a>
-            <a class="button secondary" href="#trust">See safety steps</a>
-          </div>
-          <div class="hero-points" aria-label="Service highlights">
-            <span>Fuel fill-ups</span>
-            <span>Car wash</span>
-            <span>Photo updates</span>
-            <span>Returned before you leave</span>
+    <main>
+      <section class="landing-hero">
+        <div class="landing-hero-copy">
+          <p class="eyebrow">Workday vehicle services</p>
+          <h1>Workday vehicle services, handled for you.</h1>
+          <p class="hero-copy">Fuel fill-ups, car wash services, and quick vehicle care from your workplace or approved service location.</p>
+          <div class="landing-actions" aria-label="Primary actions">
+            <a class="button primary" href="book.html#book">Book Now</a>
+            <a class="button secondary" href="track.html">Track My Vehicle</a>
+            <a class="button tertiary" href="returning.html">Returning Customer</a>
           </div>
         </div>
+        <figure class="landing-hero-image">
+          <img src="https://images.unsplash.com/photo-1560179707-f14e90ef3623?auto=format&fit=crop&w=1200&q=80" alt="Professional vehicle handoff near a workplace parking area">
+        </figure>
       </section>
 
-      <section id="how" class="section split">
-        <div>
-          <p class="eyebrow">How it works</p>
-          <h2>Book it, hand off your keys, and track every step.</h2>
+      <section class="trust-service-bar" aria-label="Service trust highlights">
+        <div><strong>Trusted workers</strong><span>Verified service team</span></div>
+        <div><strong>Secure payments</strong><span>Authorized before service</span></div>
+        <div><strong>Photo updates</strong><span>Pickup and return records</span></div>
+        <div><strong>Real-time tracking</strong><span>Status updates online</span></div>
+      </section>
+
+      <section id="how" class="landing-section">
+        <div class="section-heading">
+          <p class="eyebrow">How It Works</p>
+          <h2>Simple from booking to return.</h2>
         </div>
-        <ol class="steps">
-          <li>Enter your contact, vehicle, parking, key handoff, and service details.</li>
-          <li>ShiftFuel verifies the request and confirms the service instructions.</li>
-          <li>A worker documents pickup, service, receipts, and return with photos.</li>
-          <li>Your vehicle is returned and your final payment is confirmed through the tracker.</li>
+        <ol class="landing-step-grid">
+          <li><span>1</span><strong>Book your service</strong></li>
+          <li><span>2</span><strong>Share parking and key details</strong></li>
+          <li><span>3</span><strong>We service your vehicle</strong></li>
+          <li><span>4</span><strong>Track every step online</strong></li>
         </ol>
       </section>
 
-      <section id="services-pricing" class="section">
+      <section id="services" class="landing-section">
         <div class="section-heading">
-          <p class="eyebrow">Services &amp; Pricing</p>
-          <h2>Choose the service that fits your shift.</h2>
-          <p>Fuel, car wash, and quick inspection options are shown below with clear service fees before you book.</p>
+          <p class="eyebrow">Services</p>
+          <h2>Services and Pricing</h2>
+          <p>Choose the option that fits your day. Final authorization is shown before payment.</p>
         </div>
-        <div class="pricing-grid">
-          <article class="price-card featured">
-            <p class="plan">Fuel Concierge</p>
-            <h3>Fuel cost + service fee starting at $15</h3>
-            <p class="service-fee-helper">Final authorization is shown before payment. Service prices include payment and operating costs.</p>
-            <p>We pick up your vehicle, fill it with the selected fuel type, document the receipt, and return it to your workplace.</p>
-            <div id="fuel-pricing-summary" class="fuel-pricing-summary"></div>
+        <div class="landing-card-grid">
+          <article class="landing-card">
+            <p class="plan">Fuel Fill-Up</p>
+            <h3>Fuel delivered into your workday</h3>
+            <p>We pick up, fuel, document the receipt, and return your vehicle.</p>
           </article>
-          <article class="price-card quick-inspection-card">
-            <p class="plan">Quick Inspection Add-On</p>
-            <h3>$5</h3>
-            <p>Add this during booking after your service address is verified.</p>
-            <div class="inspection-pricing-details">
-              <h4>Inspection covers</h4>
-              <ul>
-                <li>Tire pressure check</li>
-                <li>Washer fluid level check</li>
-                <li>Dashboard warning light glance</li>
-              </ul>
-              <p class="inspection-disclaimer">This is not a mechanical diagnosis, repair, or state inspection.</p>
-            </div>
-          </article>
-          <article class="price-card wash-price-card">
+          <article class="landing-card">
             <p class="plan">Car Wash</p>
-            <h3>Wash package + service fee starting at $15</h3>
-            <p class="service-fee-helper">Final authorization is shown before payment. Service prices include payment and operating costs.</p>
-            <p>Choose a wash package and ShiftFuel handles pickup, wash service, receipt documentation, and return. Available 9 AM to 6 PM.</p>
-            <div class="wash-pricing-details">
-              <div class="wash-package-item">
-                <h4>Buff &amp; Shine — $27</h4>
-                <p>Fire Bath, ceramic finish, Dry N' Shine, ICE Instant Shine, Salt Shield, Tire Shine, wheel cleaning, conditioners, clear coat, presoak, drying agent, and spot-free rinse.</p>
-              </div>
-              <div class="wash-package-item">
-                <h4>Shine &amp; Protect — $20</h4>
-                <p>ICE Instant Shine, Salt Shield, Tire Shine, triple wheel cleaning, conditioners, clear coat, presoak, drying agent, and spot-free rinse.</p>
-              </div>
-              <div class="wash-package-item">
-                <h4>Shine — $16</h4>
-                <p>Tri-Foam Conditioner, clear coat, presoak, double tire and wheel cleaning, drying agent, and spot-free rinse.</p>
-              </div>
-              <div class="wash-package-item">
-                <h4>Double Wash — $12</h4>
-                <p>High pH and Low pH presoak, double tire and wheel cleaning, drying agent, and spot-free rinse.</p>
-              </div>
-              <p class="wash-provider-note">Car wash services are provided by <a href="https://www.thecarspade.com/" target="_blank" rel="noopener noreferrer">The Car Spade</a>. Package pricing and inclusions are set by the provider and may change.</p>
-            </div>
+            <h3>A cleaner car without the extra trip</h3>
+            <p>Select a wash package and track pickup, wash, receipt, and return.</p>
+          </article>
+          <article class="landing-card">
+            <p class="plan">Fuel + Car Wash</p>
+            <h3>Two errands handled in one request</h3>
+            <p>Bundle fuel and wash service with one booking and one status tracker.</p>
+          </article>
+          <article class="landing-card">
+            <p class="plan">Quick Vehicle Care</p>
+            <h3>Small checks that save time</h3>
+            <p>Add a quick vehicle care check during booking when available.</p>
           </article>
         </div>
       </section>
 
-      <section id="trust" class="section trust">
-        <div class="section-heading">
-          <p class="eyebrow">Safety &amp; Trust</p>
-          <h2>Every request is documented.</h2>
-          <p>
-            ShiftFuel uses timestamped photos and service notes so you can see what happened
-            before pickup, during service, and after your vehicle is returned.
-          </p>
-        </div>
-        <div class="proof-grid">
-          <span>Pickup odometer</span>
-          <span>Pickup fuel gauge</span>
-          <span>Exterior photos</span>
-          <span>Fuel receipt</span>
-          <span>Car wash receipt</span>
-          <span>Return odometer</span>
-          <span>Return fuel gauge</span>
-          <span>Return location</span>
-        </div>
-      </section>
-
-      <section id="book" class="section booking-section">
-        <div class="section-heading">
-          <p class="eyebrow">Book now</p>
-          <h2>Book your ShiftFuel service.</h2>
-          <p>
-            Enter your service address, vehicle details, parking instructions, and desired return time.
-            We will verify your service area before you continue.
-          </p>
-        </div>
-
-        <div class="booking-layout">
-          <form id="booking-form" class="booking-form">
-            <p class="form-note"><span class="required-mark">Required</span> fields must be completed before submitting. Optional fields can be skipped.</p>
-            <fieldset class="returning-customer-panel">
-              <legend>Returning customer</legend>
-              <p class="field-help">Enter the phone number and email from a previous booking to quickly reuse your saved vehicle and service details.</p>
-              <div class="returning-customer-lookup">
-                <label>
-                  <span>Phone used before <span class="required-mark">Required</span></span>
-                  <input id="returning-customer-search" type="tel" placeholder="(302) 555-0100">
-                </label>
-                <label>
-                  <span>Email used before <span class="required-mark">Required</span></span>
-                  <input id="returning-customer-email" type="email" placeholder="email@example.com">
-                </label>
-                <button id="returning-customer-button" class="button secondary" type="button">Find my info</button>
-              </div>
-              <p id="returning-customer-status" class="field-help" role="status"></p>
-              <div id="returning-customer-results" class="returning-customer-results" hidden></div>
-            </fieldset>
-            <fieldset>
-              <legend>Customer sign-up</legend>
-              <div class="field-grid">
-                <label>
-                  <span>Name <span class="required-mark">Required</span></span>
-                  <input name="name" type="text" placeholder="Jordan Smith" required>
-                </label>
-                <label>
-                  <span>Phone number <span class="required-mark">Required</span></span>
-                  <input name="phone" type="tel" placeholder="(555) 123-4567" required>
-                </label>
-                <label>
-                  <span>Email <span class="required-mark">Required</span></span>
-                  <input name="email" type="email" placeholder="jordan@example.com" required>
-                </label>
-              </div>
-            </fieldset>
-
-            <fieldset>
-              <legend>Service address</legend>
-              <div class="address-fields">
-                <label>
-                  <span>Street address <span class="required-mark">Required</span></span>
-                  <input id="address-street" name="addressStreet" type="text" autocomplete="address-line1" placeholder="123 Main Street" required>
-                </label>
-                <label>
-                  <span>Apt / Suite / Unit <span class="optional-mark">Optional</span></span>
-                  <input id="address-apt" name="addressApt" type="text" autocomplete="address-line2" placeholder="Suite 200, Unit B">
-                </label>
-                <div class="address-csz">
-                  <label>
-                    <span>City <span class="required-mark">Required</span></span>
-                    <input id="address-city" name="addressCity" type="text" autocomplete="address-level2" placeholder="Newark" required>
-                  </label>
-                  <label>
-                    <span>State</span>
-                    <input id="address-state" name="addressState" type="text" autocomplete="address-level1" placeholder="DE" value="DE">
-                  </label>
-                  <label>
-                    <span>ZIP <span class="required-mark">Required</span></span>
-                    <input id="address-zip" name="addressZip" type="text" autocomplete="postal-code" inputmode="numeric" placeholder="19702" required>
-                  </label>
-                </div>
-              </div>
-              <div class="address-validate-row">
-                <button id="validate-address-btn" type="button" class="button secondary">Validate Address</button>
-              </div>
-              <p id="address-area-status" class="field-help" role="status"></p>
-            </fieldset>
-
-            <fieldset id="vehicle-fieldset" hidden>
-              <legend>Vehicle</legend>
-              <div class="field-grid">
-                <label>
-                  <span>Year <span class="required-mark">Required</span></span>
-                  <select id="vehicle-year" name="year" required>
-                    <option value="">Select year</option>
-                  </select>
-                </label>
-                <label>
-                  <span>Make <span class="required-mark">Required</span></span>
-                  <select id="vehicle-make" name="make" required>
-                    <option value="">Select make</option>
-                  </select>
-                </label>
-                <label>
-                  <span>Model <span class="required-mark">Required</span></span>
-                  <select id="vehicle-model" name="model" required disabled>
-                    <option value="">Select year and make first</option>
-                  </select>
-                  <span id="model-help" class="field-help">Models load after you choose a year and make.</span>
-                </label>
-                <label>
-                  <span>Color <span class="required-mark">Required</span></span>
-                  <input name="color" type="text" placeholder="Silver" required>
-                </label>
-                <label>
-                  <span>License plate <span class="required-mark">Required</span></span>
-                  <input name="license" type="text" placeholder="ABC-1234" required>
-                </label>
-              </div>
-            </fieldset>
-
-            <fieldset id="parking-fieldset" hidden>
-              <legend id="parking-key-handoff-heading">Parking and key handoff</legend>
-              <div class="field-grid">
-                <label>
-                  <span>Car location <span class="required-mark">Required</span></span>
-                  <input id="parking-location" name="parkingLocation" type="text" placeholder="Example: on the street, Garage B Level 3 spot 142, surface lot near main entrance" required>
-                  <span class="field-help">Tell us exactly where your vehicle will be parked.</span>
-                </label>
-                <label>
-                  <span>Key handoff instructions <span class="required-mark">Required</span></span>
-                  <input name="keyHandoffDetails" type="text" placeholder="Example: front door to Building X, front desk, employee entrance, or meet at vehicle." required>
-                  <span class="field-help">Tell us exactly where and how to pick up your keys.</span>
-                </label>
-                <label>
-                  <span>Google Maps / Apple Maps link <span class="optional-mark">Optional</span></span>
-                  <input id="parking-map-url" name="parkingMapUrl" type="url" placeholder="Paste a map link to the parking location">
-                  <span class="field-help">Optional. Helps the worker find your vehicle faster.</span>
-                </label>
-              </div>
-            </fieldset>
-
-            <fieldset id="service-fieldset" hidden>
-              <legend>Service request</legend>
-              <div class="service-choice-grid">
-                <div class="service-controls">
-                  <label>
-                    <span>Service needed <span class="required-mark">Required</span></span>
-                    <select id="service" name="service" required>
-                      <option value="">Select service</option>
-                      <option value="car-wash">Car Wash</option>
-                      <option value="fuel">Fuel</option>
-                      <option value="car-wash-fuel">Car Wash + Fuel</option>
-                    </select>
-                  </label>
-                  <label class="car-wash-control conditional-control">
-                    <span>Car wash package <span class="required-mark">Required when visible</span></span>
-                    <select id="car-wash-package" name="carWashPackage">
-                      <option value="">Select wash package</option>
-                      <option value="buff-shine">Buff & Shine - $27</option>
-                      <option value="shine-protect">Shine & Protect - $20</option>
-                      <option value="shine">Shine - $16</option>
-                      <option value="double-wash">Double Wash - $12</option>
-                    </select>
-                  </label>
-                  <label class="fuel-control conditional-control">
-                    <span>Fuel type <span class="required-mark">Required when visible</span></span>
-                    <select id="fuel-type" name="fuel">
-                      <option value="">Select fuel type</option>
-                      <option>Regular</option>
-                      <option>Mid-grade</option>
-                      <option>Premium</option>
-                      <option>Diesel</option>
-                    </select>
-                  </label>
-                  <label class="fuel-control conditional-control">
-                    <span>Estimated fuel needed, in gallons <span class="required-mark">Required when visible</span></span>
-                    <select id="fuel-estimate" name="fuelEstimate">
-                      <option value="">Select fuel range</option>
-                    </select>
-                  </label>
-                  <label>
-                    <span>Service date <span class="required-mark">Required</span></span>
-                    <div id="service-date-picker" class="sfp-host">
-                      <input type="hidden" id="service-date" name="serviceDate">
-                    </div>
-                    <span class="field-help">Choose a service date within the next 3 months. Past dates are not available.</span>
-                    <span id="service-date-error" class="field-error" role="alert" aria-live="polite" hidden></span>
-                  </label>
-                  <label>
-                    <span>Desired return time <span class="required-mark">Required</span></span>
-                    <select id="return-time" name="returnTime" required>
-                      <option value="">Select return time</option>
-                    </select>
-                    <span id="time-help" class="field-help">Car wash services are available from 9:00 AM to 6:00 PM every day.</span>
-                  </label>
-                  <div class="inspection-addon-control">
-                    <label class="checkbox-label" aria-describedby="inspection-addon-details">
-                      <input id="quick-inspection" name="quickInspection" type="checkbox" value="yes">
-                      <span>Add a quick vehicle inspection for $5 <span class="optional-mark">Optional</span></span>
-                    </label>
-                    <div id="inspection-addon-details" class="inspection-addon-details" role="tooltip">
-                      <h4>Inspection covers</h4>
-                      <ul>
-                        <li>Tire pressure check</li>
-                        <li>Washer fluid level</li>
-                        <li>Dashboard warning light glance</li>
-                      </ul>
-                    </div>
-                  </div>
-                </div>
-                <aside id="service-details-panel" class="service-details-panel" aria-live="polite">
-                  <p class="eyebrow">Service details</p>
-                  <h3>Select a service</h3>
-                  <p>Choose Car Wash, Fuel, or Car Wash + Fuel to see what is included.</p>
-                </aside>
-              </div>
-              <label>
-                <span>Notes <span class="optional-mark">Optional</span></span>
-                <textarea name="notes" rows="4" placeholder="Anything we should know?"></textarea>
-              </label>
-            </fieldset>
-
-            <fieldset id="payment-fieldset" hidden>
-              <legend>Payment authorization</legend>
-              <div class="payment-box">
-                <p>Service prices include payment and operating costs. Final fuel cost is based on the actual receipt. Final totals are rounded up to the nearest dollar.</p>
-                <dl>
-                  <div id="payment-wash-row" hidden>
-                    <dt>Car wash package</dt>
-                    <dd id="estimated-wash">$0</dd>
-                  </div>
-                  <div id="payment-wash-convenience-row" hidden>
-                    <dt>Car wash service fee</dt>
-                    <dd id="wash-convenience-fee">$0</dd>
-                  </div>
-                  <div id="payment-price-row" hidden>
-                    <dt>Average price used</dt>
-                    <dd id="average-price">$0.000/gal</dd>
-                  </div>
-                  <div id="payment-fuel-row" hidden>
-                    <dt>Estimated fuel</dt>
-                    <dd id="estimated-fuel">$0</dd>
-                  </div>
-                  <div id="payment-convenience-row" hidden>
-                    <dt>Fuel service fee</dt>
-                    <dd id="fuel-convenience-fee">$0</dd>
-                  </div>
-                  <div id="payment-inspection-row" hidden>
-                    <dt>Quick inspection</dt>
-                    <dd id="inspection-fee">$0</dd>
-                  </div>
-                  <div>
-                    <dt>Estimated authorization</dt>
-                    <dd id="estimated-total">$0</dd>
-                  </div>
-                </dl>
-                <p class="field-help cancellation-policy-text">You may cancel for free before your keys are received. After your keys are received, service has started and cancellation may no longer be available from the app. If you request return after key receipt, a ShiftFuel team member will return your vehicle as soon as safely possible and a $15 cancellation/service fee may apply.</p>
-              </div>
-            </fieldset>
-
-            <fieldset id="agreement-fieldset" hidden>
-              <legend>Agreement</legend>
-              <label class="checkbox-label">
-                <input id="terms-agreement" name="termsAgreement" type="checkbox" value="yes" required>
-                <span>I agree that ShiftFuel Concierge may pick up, service, and return my vehicle using the instructions I provided.</span>
-              </label>
-              <p class="field-help">By booking, you agree to provide accurate vehicle, key, parking, fuel, and service instructions. ShiftFuel documents pickup and return condition with photos and will contact you if a requested service cannot be completed.</p>
-              <p class="field-help">The amount shown before payment is an authorization hold only. ShiftFuel captures the final amount after service is completed based on actual receipts and selected services, and any unused hold is released by your card issuer. Online card authorizations are typically valid for about 7 days; after final capture or release, your bank or credit card company may take a few business days to show the final amount or released hold on your account.</p>
-              <p class="field-help cancellation-policy-text">Cancellation policy: You may cancel for free before your keys are received. After your keys are received, service has started and cancellation may no longer be available from the app. If you request return after key receipt, a ShiftFuel team member will return your vehicle as soon as safely possible and a $15 cancellation/service fee may apply.</p>
-            </fieldset>
-
-            <button id="booking-submit-btn" class="button primary" type="submit" hidden>Submit booking request</button>
-            <p id="form-status" class="form-status" role="status"></p>
-          </form>
-        </div>
-      </section>
-      <section class="section roadmap">
+      <section class="returning-shortcut">
         <div>
-          <p class="eyebrow">Coming soon</p>
-          <h2>Automated text and email notifications coming soon.</h2>
+          <p class="eyebrow">Returning Customer</p>
+          <h2>Already booked before?</h2>
+          <p>Save time by verifying your information, selecting a saved service area, choosing your vehicle, and booking your next service faster.</p>
+        </div>
+        <a class="button primary" href="returning.html">Continue as Returning Customer</a>
+      </section>
+
+      <section id="trust" class="landing-section">
+        <div class="section-heading">
+          <p class="eyebrow">Safety and Trust</p>
+          <h2>Clear records from pickup through return.</h2>
+        </div>
+        <div class="landing-card-grid safety-grid">
+          <article class="landing-card"><strong>Verified workers</strong></article>
+          <article class="landing-card"><strong>Secure payment authorization</strong></article>
+          <article class="landing-card"><strong>Pickup and return photo documentation</strong></article>
+          <article class="landing-card"><strong>Uploaded receipts</strong></article>
+          <article class="landing-card"><strong>Online request tracking</strong></article>
+        </div>
+      </section>
+
+      <section class="availability-section">
+        <p class="eyebrow">Service Availability</p>
+        <p>Service availability is confirmed during booking. Enter your service address and we'll let you know if ShiftFuel Concierge is currently available in your area.</p>
+      </section>
+
+      <section class="landing-final-cta">
+        <h2>Ready to save time?</h2>
+        <div class="landing-actions">
+          <a class="button primary" href="book.html#book">Book Now</a>
+          <a class="button secondary" href="track.html">Track My Vehicle</a>
+          <a class="button tertiary" href="returning.html">Returning Customer</a>
         </div>
       </section>
     </main>
 
     <footer class="site-footer">
-      <div class="footer-main">
-        <p class="footer-copy">&copy; <span id="year"></span> ShiftFuel Concierge. Serving workplaces in Delaware.</p>
-        <div class="footer-groups">
-          <div class="footer-group">
-            <p class="footer-group-label">Company</p>
-            <a href="hiring.html">Join the team</a>
-          </div>
-          <div class="footer-group">
-            <p class="footer-group-label">Staff</p>
-            <a href="worker-login.html">Worker login</a>
-            <a href="admin-login.html">Admin login</a>
-          </div>
-        </div>
-      </div>
+      <p>&copy; <span id="year"></span> ShiftFuel Concierge. All rights reserved.</p>
+      <nav aria-label="Footer navigation">
+        <a href="book.html#book">Book Now</a>
+        <a href="track.html">Track My Vehicle</a>
+        <a href="returning.html">Returning Customer</a>
+      </nav>
     </footer>
-	<script src="https://js.stripe.com/v3/"></script>
-	<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-	<script src="supabase-client.js"></script>
-
-    <script src="date-picker.js"></script>
-    <script src="script.js"></script>
-    <script defer src="/_vercel/insights/script.js"></script>
-    <script defer src="/_vercel/speed-insights/script.js"></script>
-
-    <dialog id="payment-modal" class="payment-modal">
-      <div class="payment-modal-inner">
-        <h2 class="payment-modal-title">Authorize payment</h2>
-        <p class="payment-modal-desc">Your card will be authorized for the estimated amount. Your final charge may be adjusted after the service is complete.</p>
-        <p class="payment-modal-amount">Estimated: <strong id="payment-modal-amount">$0.00</strong></p>
-        <div class="payment-modal-card-wrap">
-          <label class="card-element-label">Card details
-            <div id="card-element"></div>
-          </label>
-          <p id="card-errors" class="card-errors" role="alert"></p>
-        </div>
-        <div class="payment-modal-actions">
-          <button id="payment-modal-submit" class="button primary" type="button">Authorize payment</button>
-          <button id="payment-modal-cancel" class="button" type="button">Cancel</button>
-        </div>
-      </div>
-    </dialog>
+    <script src="landing.js"></script>
   </body>
 </html>

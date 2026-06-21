@@ -24,6 +24,22 @@ let verifiedTrackingContact = { phone: "", email: "" };
 const terminalStatuses = ["complete", "denied", "customer_canceled", "canceled", "unable_to_complete", "auto_reversed", "closed_no_charge", "canceled_return_completed"];
 const closedStatuses   = ["denied", "customer_canceled", "canceled", "unable_to_complete", "auto_reversed", "closed_no_charge", "canceled_return_completed"];
 const freeCancelStatuses = ["pending", "request_received", "accepted"];
+const slotHoldingStatuses = new Set([
+  "accepted", "key_received",
+  "pickup_vehicle_photo_uploaded", "pickup_odometer_photo_uploaded", "pickup_fuel_gauge_photo_uploaded",
+  "vehicle_picked_up", "service_in_progress",
+  "fueling_in_progress", "fueling_complete", "fuel_receipt_uploaded",
+  "car_wash_in_progress", "car_wash_complete", "car_wash_after_fuel_in_progress",
+  "wash_receipt_uploaded", "wash_receipt_after_fuel_uploaded",
+  "fueling_after_wash_in_progress", "fuel_receipt_after_wash_uploaded", "fuel_and_wash_complete",
+  "service_complete", "receipts_recorded",
+  "returned_location_pending", "return_location_recorded", "return_photos_needed",
+  "dropoff_vehicle_photo_uploaded", "dropoff_odometer_photo_uploaded", "dropoff_fuel_gauge_photo_uploaded",
+  "vehicle_returned", "inspection_needed", "inspection_recorded",
+  "final_payment_processed", "awaiting_key_return", "keys_returned",
+  "return_requested", "customer_return_requested",
+  "payment_issue", "authorization_too_low", "pending_customer_payment",
+]);
 
 function fuelAuthorizationGallons(fuelRange) {
   return FUEL_AUTHORIZATION_BUFFER_GALLONS[Number(fuelRange?.value || fuelRange?.gallons || 0)] || Number(fuelRange?.gallons || 0);
@@ -1527,7 +1543,7 @@ async function cbRefreshReturnTimes(form) {
   try {
     const { data } = await shiftFuelDb.rpc('public_booked_return_slots', { p_service_date: dateValue });
     if (data) bookedSlots = new Set((data)
-      .filter((r) => !terminalStatuses.includes(r.status))
+      .filter((r) => slotHoldingStatuses.has(r.status))
       .map((r) => String(r.desired_return_time || '').slice(0, 5))
       .filter(Boolean));
   } catch (e) { console.warn('cbRefreshReturnTimes:', e); }
