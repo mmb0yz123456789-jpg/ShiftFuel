@@ -1,4 +1,4 @@
-const workerDb = window.ShiftFuelSupabase;
+﻿const workerDb = window.ShiftFuelSupabase;
 
 const workerProfileForm = document.querySelector('#worker-profile-form');
 const workerProfileName = document.querySelector('#worker-profile-name');
@@ -32,7 +32,17 @@ const wpcConfirm = document.querySelector('#wpc-confirm');
 const workerPasswordStatus = document.querySelector('#worker-password-status');
 const workerProfilePhotoPreview = document.querySelector('#worker-profile-photo-preview');
 const workerProfilePhotoPlaceholder = document.querySelector('#worker-profile-photo-placeholder');
+const workerDashboardPhoto = document.querySelector('#worker-dashboard-photo');
+const workerDashboardPhotoPlaceholder = document.querySelector('#worker-dashboard-photo-placeholder');
 const workerPortalHeading = document.querySelector('#worker-portal-heading');
+const workerHeroSubtitle = document.querySelector('#worker-hero-subtitle');
+const workerCurrentLocation = document.querySelector('#worker-current-location');
+const workerCurrentJobsToday = document.querySelector('#worker-current-jobs-today');
+const workerCurrentRating = document.querySelector('#worker-current-rating');
+const workerWorkingSince = document.querySelector('#worker-working-since');
+const workerDashboardName = document.querySelector('#worker-dashboard-name');
+const workerDashboardLocation = document.querySelector('#worker-dashboard-location');
+const workerDashboardPhone = document.querySelector('#worker-dashboard-phone');
 const workerScheduleForm = document.querySelector('#worker-schedule-form');
 const workerScheduleStatus = document.querySelector('#worker-schedule-status');
 const workerLocation = document.querySelector('#worker-location');
@@ -116,7 +126,7 @@ let workerProfilePhotoZoom = 1;
 let workerProfilePhotoPosition = { x: 0, y: 0 };
 let workerPhotoDisplayDrag = null;
 
-// Unified active/open status list — keep in sync with admin.js, track.js,
+// Unified active/open status list â€” keep in sync with admin.js, track.js,
 // and the SQL active-status list in supabase-production-rls-lockdown.sql
 // (worker_list_open_requests). The RPC filters server-side too, but the
 // client keeps this guard so stale SQL cannot show closed requests.
@@ -238,7 +248,7 @@ function attachPhoneInputFormatting(input) {
 
 attachPhoneInputFormatting(workerProfilePhone);
 
-// Friendly labels for every status — keep in sync with admin.js and track.js.
+// Friendly labels for every status â€” keep in sync with admin.js and track.js.
 // Raw database status strings must never be shown to a worker.
 const workerStatusLabels = {
   pending: 'Request received',
@@ -271,11 +281,11 @@ const workerStatusLabels = {
   customer_canceled: 'Canceled by customer',
   canceled: 'Canceled',
   unable_to_complete: 'Unable to complete',
-  auto_reversed: 'Missed — auto-reversed',
-  closed_no_charge: 'Closed — no charge',
+  auto_reversed: 'Missed â€” auto-reversed',
+  closed_no_charge: 'Closed â€” no charge',
   canceled_return_completed: 'Return completed',
   cancelled: 'Cancelled',
-  cancelled_pending_key_return: 'Cancelled — key/vehicle return needed',
+  cancelled_pending_key_return: 'Cancelled â€” key/vehicle return needed',
 };
 
 function escapeHtml(value) {
@@ -413,7 +423,7 @@ function nextStatusAfterServiceUnable(request, type) {
   const washDone = type === 'wash' || !serviceNeedsWash(request) || serviceDoneOrUnable(request, 'wash');
 
   if (fuelDone && washDone) {
-    // All services resolved — route to service_complete for receipt confirmation.
+    // All services resolved â€” route to service_complete for receipt confirmation.
     return 'service_complete';
   }
 
@@ -485,7 +495,7 @@ function finalTotalFromSavedReceipts(request, receiptTotals = receiptTotalsFromN
   return transactionPricingSummary(request, receiptTotals).total;
 }
 
-// Builds the internal pricing-audit fields (admin/internal only — never
+// Builds the internal pricing-audit fields (admin/internal only â€” never
 // shown to the customer) to save alongside final_total.
 function pricingAuditFields(request, receiptTotals = receiptTotalsFromNotes(request)) {
   const fees = transactionPricingSummary(request, receiptTotals);
@@ -610,8 +620,8 @@ function applyWorkerPhotoZoom() {
   if (workerPhotoDisplayZoom) workerPhotoDisplayZoom.value = zoom;
 }
 
-// displayUrl — shown in the circular avatar (cropped version).
-// modalUrl   — shown when the user clicks to enlarge (original version); defaults to displayUrl.
+// displayUrl â€” shown in the circular avatar (cropped version).
+// modalUrl   â€” shown when the user clicks to enlarge (original version); defaults to displayUrl.
 function showWorkerPhoto(displayUrl, modalUrl, zoom = workerProfilePhotoZoom, position = workerProfilePhotoPosition) {
   // Support legacy 3-arg call: showWorkerPhoto(url, zoom, position)
   if (typeof modalUrl === 'number' || (modalUrl && typeof modalUrl === 'object' && 'x' in modalUrl)) {
@@ -634,6 +644,17 @@ function showWorkerPhoto(displayUrl, modalUrl, zoom = workerProfilePhotoZoom, po
       workerProfilePhotoPreview.src = displayUrl;
     } else {
       workerProfilePhotoPreview.removeAttribute('src');
+    }
+  }
+  if (workerDashboardPhoto && workerDashboardPhotoPlaceholder) {
+    workerDashboardPhoto.hidden = !hasPhoto;
+    workerDashboardPhotoPlaceholder.hidden = hasPhoto;
+    workerDashboardPhoto.style.display = hasPhoto ? '' : 'none';
+    workerDashboardPhotoPlaceholder.style.display = hasPhoto ? 'none' : '';
+    if (hasPhoto) {
+      workerDashboardPhoto.src = displayUrl;
+    } else {
+      workerDashboardPhoto.removeAttribute('src');
     }
   }
   // Profile frame click-to-enlarge opens the original (modal) URL.
@@ -760,7 +781,7 @@ async function ensureWorkerProfile() {
   }
 
   // Worker not found in the database. Workers must be created by an admin before first login.
-  // Direct INSERT is blocked by RLS — throw a clear error so the user sees a helpful message.
+  // Direct INSERT is blocked by RLS â€” throw a clear error so the user sees a helpful message.
   const insertError = new Error(
     `Worker profile for "${SESSION_WORKER_NAME}" not found. Ask your admin to create your worker profile first.`
   );
@@ -938,11 +959,16 @@ async function loadWorkerProfile() {
     sessionStorage.setItem('shiftfuel_worker', workerName);
 
     if (workerPortalHeading) workerPortalHeading.textContent = workerName;
+    if (workerDashboardName) workerDashboardName.textContent = workerName;
     if (workerProfileName) workerProfileName.value = workerName;
     if (workerProfilePhone) workerProfilePhone.value = formatPhone(currentEmployee.phone || '');
     if (workerProfileLocation) workerProfileLocation.value = currentEmployee.home_location || DEFAULT_WORK_LOCATION;
     if (workerProfileStarted) workerProfileStarted.value = currentEmployee.started_at || '';
     if (workerLocation) workerLocation.value = currentEmployee.home_location || DEFAULT_WORK_LOCATION;
+    if (workerCurrentLocation) workerCurrentLocation.textContent = currentEmployee.home_location || DEFAULT_WORK_LOCATION;
+    if (workerDashboardLocation) workerDashboardLocation.textContent = currentEmployee.home_location || DEFAULT_WORK_LOCATION;
+    if (workerDashboardPhone) workerDashboardPhone.textContent = currentEmployee.phone ? formatPhone(currentEmployee.phone) : 'Not provided';
+    if (workerWorkingSince) workerWorkingSince.textContent = currentEmployee.started_at ? formatDate(currentEmployee.started_at) : 'Today';
 
     workerProfilePhotoZoom = Number(currentEmployee.photo_zoom || 1);
     workerProfilePhotoPosition = currentWorkerPhotoPositionFromEmployee();
@@ -1142,11 +1168,18 @@ async function saveWorkerDaysOff() {
 function updateWorkerStatCards(requests) {
   const todayEl = document.querySelector('#worker-stat-jobs-today');
   const completedEl = document.querySelector('#worker-stat-jobs-completed');
-  if (!todayEl && !completedEl) return;
+  if (!todayEl && !completedEl && !workerCurrentJobsToday && !workerHeroSubtitle) return;
 
   const today = new Date().toISOString().slice(0, 10);
+  const jobsToday = requests.filter((r) => r.service_date === today).length;
   if (todayEl) {
-    todayEl.textContent = requests.filter((r) => r.service_date === today).length;
+    todayEl.textContent = jobsToday;
+  }
+  if (workerCurrentJobsToday) {
+    workerCurrentJobsToday.textContent = jobsToday;
+  }
+  if (workerHeroSubtitle) {
+    workerHeroSubtitle.textContent = `You have ${jobsToday} ${jobsToday === 1 ? 'job' : 'jobs'} scheduled today.`;
   }
   if (completedEl) {
     completedEl.textContent = requests.filter((r) => r.status === 'complete').length;
@@ -1191,11 +1224,11 @@ async function loadWorkerReviews() {
   }
 
   const ratingStatEl = document.querySelector('#worker-stat-rating');
-  if (ratingStatEl) {
-    ratingStatEl.textContent = reviews?.length
-      ? (reviews.reduce((sum, r) => sum + Number(r.rating || 0), 0) / reviews.length).toFixed(1)
-      : '—';
-  }
+  const averageRating = reviews?.length
+    ? (reviews.reduce((sum, r) => sum + Number(r.rating || 0), 0) / reviews.length).toFixed(1)
+    : '-';
+  if (ratingStatEl) ratingStatEl.textContent = averageRating;
+  if (workerCurrentRating) workerCurrentRating.textContent = averageRating;
 
   if (!reviews?.length) {
     workerReviewList.innerHTML = '<div class="empty-state"><p>No reviews for this worker yet.</p></div>';
@@ -1262,7 +1295,7 @@ function renderWorkerJobCard(request, mode) {
         <span class="status-pill">${escapeHtml(workerStatusLabels[request.status] || request.status || '')}</span>
       </div>
       ${(mode === 'mine' && request.assigned_worker_name && !request.assigned_employee_id) ? `
-        <p class="field-help" style="color:#b35900">⚠ Assigned by name only — worker ID missing.</p>
+        <p class="field-help" style="color:#b35900">âš  Assigned by name only â€” worker ID missing.</p>
       ` : ''}
       ${hasReturnRequest ? `
         <div class="return-request-banner">
@@ -1387,11 +1420,11 @@ function renderWorkerJobActions(request) {
     // Worker performs the actual service. Show fuel/wash action buttons.
     nextAction = 'Complete the requested fuel or cleaning service.';
     if (serviceNeedsFuel(request) && !serviceDoneOrUnable(request, 'fuel')) {
-      actions.push(workerPrimaryStatusButton(request, `Fuel complete — ${request.fuel_type || 'fuel'}`, 'fueling_complete'));
+      actions.push(workerPrimaryStatusButton(request, `Fuel complete â€” ${request.fuel_type || 'fuel'}`, 'fueling_complete'));
       actions.push(workerServiceUnableButton(request, 'fuel'));
     }
     if (serviceNeedsWash(request) && !serviceDoneOrUnable(request, 'wash')) {
-      actions.push(workerPrimaryStatusButton(request, `Wash complete — ${request.wash_package_label || 'selected wash'}`, 'car_wash_complete'));
+      actions.push(workerPrimaryStatusButton(request, `Wash complete â€” ${request.wash_package_label || 'selected wash'}`, 'car_wash_complete'));
       actions.push(workerServiceUnableButton(request, 'wash'));
     }
   } else if (request.status === 'fueling_complete') {
@@ -1404,11 +1437,11 @@ function renderWorkerJobActions(request) {
     actions.push(workerServiceUnableButton(request, 'wash'));
   } else if (request.status === 'fuel_receipt_uploaded' && serviceNeedsWash(request) && !serviceDoneOrUnable(request, 'wash')) {
     nextAction = 'Complete the car wash service.';
-    actions.push(workerPrimaryStatusButton(request, `Wash complete — ${request.wash_package_label || 'selected wash'}`, 'car_wash_complete'));
+    actions.push(workerPrimaryStatusButton(request, `Wash complete â€” ${request.wash_package_label || 'selected wash'}`, 'car_wash_complete'));
     actions.push(workerServiceUnableButton(request, 'wash'));
   } else if (request.status === 'wash_receipt_uploaded' && serviceNeedsFuel(request) && !serviceDoneOrUnable(request, 'fuel')) {
     nextAction = 'Complete the fuel service.';
-    actions.push(workerPrimaryStatusButton(request, `Fuel complete — ${request.fuel_type || 'fuel'}`, 'fueling_complete'));
+    actions.push(workerPrimaryStatusButton(request, `Fuel complete â€” ${request.fuel_type || 'fuel'}`, 'fueling_complete'));
     actions.push(workerServiceUnableButton(request, 'fuel'));
   } else if (request.status === 'service_complete') {
     // All service and receipt entry done. Worker reviews totals and confirms before returning vehicle.
@@ -1488,7 +1521,7 @@ const WORKER_DENY_REASON_OPTIONS = [
 ];
 
 function workerDenyReasonOptionsHtml() {
-  return `<option value="">— Select a reason —</option>` +
+  return `<option value="">â€” Select a reason â€”</option>` +
     WORKER_DENY_REASON_OPTIONS.map(r => `<option value="${escapeHtml(r)}">${escapeHtml(r)}</option>`).join('');
 }
 
@@ -1509,7 +1542,7 @@ function renderWorkerServiceUnablePanel(request) {
       </label>
       <label class="checkbox-label">
         <input class="service-unable-charge-fee" type="checkbox">
-        <span>Charge the service fee anyway (e.g. work was attempted). No fuel/wash cost is ever charged when there's no receipt — leave unchecked to waive the fee entirely.</span>
+        <span>Charge the service fee anyway (e.g. work was attempted). No fuel/wash cost is ever charged when there's no receipt â€” leave unchecked to waive the fee entirely.</span>
       </label>
       <div class="admin-button-row">
         <button class="button danger save-service-unable" data-id="${escapeHtml(request.id)}" type="button">Save reason</button>
@@ -1657,8 +1690,8 @@ function renderWorkerInspectionPanel(request) {
 }
 
 // Receipt-confirmation panel shown at service_complete.
-// Worker reviews totals and clicks "Receipts recorded" → advances to receipts_recorded.
-// Does NOT capture payment — that happens later at vehicle_returned/inspection_recorded.
+// Worker reviews totals and clicks "Receipts recorded" â†’ advances to receipts_recorded.
+// Does NOT capture payment â€” that happens later at vehicle_returned/inspection_recorded.
 function renderWorkerReceiptConfirmPanel(request) {
   const receiptTotals = receiptTotalsFromNotes(request);
   const workerReceiptTotal = receiptTotals.fuel + receiptTotals.wash;
@@ -1732,7 +1765,7 @@ function renderWorkerKeysReturnedPanel(request) {
         Keys returned to
         <select class="key-returned-to-type">
           <option value="">Select recipient</option>
-          <option value="customer">Customer — ${customerName}</option>
+          <option value="customer">Customer â€” ${customerName}</option>
           <option value="other">Other person or location</option>
         </select>
       </label>
@@ -2061,7 +2094,7 @@ async function saveWorkerReturnLocation(button) {
 
   if (error) throw error;
 
-  console.log('Vehicle Returned clicked — location saved, advancing workflow only. No payment capture here.');
+  console.log('Vehicle Returned clicked â€” location saved, advancing workflow only. No payment capture here.');
   await loadWorkerJobs();
 }
 
@@ -2183,7 +2216,7 @@ function workerCompleteValidation(button) {
 
   const receiptTotals = receiptTotalsFromNotes(request);
   const isReturnWorkflow = hasCustomerReturnRequestAlert(request);
-  // A service marked unable_to_complete has no receipt by definition — only
+  // A service marked unable_to_complete has no receipt by definition â€” only
   // require a receipt for services that were actually performed.
   const hasReceipts = (serviceNeedsFuel(request) ? (receiptTotals.fuel > 0 || serviceUnable(request, 'fuel')) : true)
     && (serviceNeedsWash(request) ? (receiptTotals.wash > 0 || serviceUnable(request, 'wash')) : true);
@@ -2204,7 +2237,7 @@ function workerCompleteValidation(button) {
   return { id, request, receiptTotals };
 }
 
-// Worker completes a pre-authorized request — captures the Stripe payment automatically.
+// Worker completes a pre-authorized request â€” captures the Stripe payment automatically.
 async function sendWorkerToCustomerPayment(button) {
   const validated = workerCompleteValidation(button);
   if (!validated) return;
@@ -2243,7 +2276,7 @@ async function sendWorkerToCustomerPayment(button) {
       button.disabled = false;
       button.textContent = 'Complete & Capture Payment';
       if (data.capture_failed) {
-        // PI expired or amount mismatch — customer has been flagged to re-pay.
+        // PI expired or amount mismatch â€” customer has been flagged to re-pay.
         alert(`Payment capture issue: ${data.error}\n\nThe customer's tracking page will prompt them to update their payment method.`);
       } else {
         alert(`Could not capture payment: ${data.error || 'Unknown error. Please try again.'}`);
@@ -2253,7 +2286,7 @@ async function sendWorkerToCustomerPayment(button) {
       return;
     }
 
-    console.log('[complete] Payment captured — request marked complete:', id);
+    console.log('[complete] Payment captured â€” request marked complete:', id);
   } catch (err) {
     console.error('[complete] worker-capture network error:', err);
     button.disabled = false;
@@ -2300,7 +2333,7 @@ async function completeWorkerRequest(button) {
     return;
   }
 
-  console.log('Request moved to awaiting_key_return — no payment hold to capture.');
+  console.log('Request moved to awaiting_key_return â€” no payment hold to capture.');
 
   await loadWorkerJobs();
   await loadWorkerReviews();
@@ -2607,7 +2640,7 @@ workerProfileForm?.addEventListener('submit', async (event) => {
         croppedPhotoUrl = originalPhotoUrl;
       }
     } else if (workerPhotoBoundaryImage?.naturalWidth && workerPhotoBoundaryImage.getAttribute('src')) {
-      // Edit framing only — regenerate crop without re-uploading original.
+      // Edit framing only â€” regenerate crop without re-uploading original.
       // Delete old cropped file only (original stays the same)
       await deleteOldWorkerPhotos(null, currentEmployee.cropped_photo_url);
       const croppedFile = await window.ShiftFuelPhoto?.cropToBlobFromBoundaryEditor(
@@ -2997,3 +3030,4 @@ renderWorkerDaysGrid([]);
 renderWorkerDaysOffCalendar();
 window.ShiftFuelPhoto?.initPhotoModal();
 loadVehiclePsiGuides().finally(loadWorkerProfile);
+
