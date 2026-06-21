@@ -649,12 +649,13 @@ function cancellationOutcomeForStatus(status) {
     final_payment_processed: 'This request can no longer be cancelled because the vehicle has already been returned.',
     complete: 'This request is already complete.',
     denied: 'This request has already been denied.',
-    cancelled: 'This request has already been cancelled.',
-    cancelled_pending_key_return: 'This request has already been cancelled.',
-    customer_canceled: 'This request has already been cancelled.',
-    canceled: 'This request has already been cancelled.',
-    canceled_return_completed: 'This request has already been cancelled.',
-    customer_return_requested: 'This request has already been cancelled.',
+    cancelled: 'This request has already been canceled.',
+    cancelled_pending_key_return: 'This request has already been canceled.',
+    customer_canceled: 'This request has already been canceled.',
+    customer_cancelled: 'This request has already been canceled.',
+    canceled: 'This request has already been canceled.',
+    canceled_return_completed: 'This request has already been canceled.',
+    cancelled_return_completed: 'This request has already been canceled.',
     return_requested: 'This request has already been cancelled.',
   };
 
@@ -739,7 +740,7 @@ async function handleCustomerCancel(body, res) {
           return res.status(500).json({ error: 'We could not release the authorization automatically. Please contact ShiftFuel.' });
         }
       } else {
-        paymentStatus = 'canceled';
+        paymentStatus = 'authorization_released';
       }
     } else {
       // Fee tier: capture only the cancellation charge amount, never the full
@@ -879,10 +880,10 @@ async function handleWorkerConfirmCancellationReturn(body, res) {
 
   const timestamp = new Date().toISOString();
   const { error: updateErr } = await db.from('service_requests').update({
-    status: 'cancelled',
+    status: 'cancelled_return_completed',
     cancelled_at: timestamp,
     cancellation_key_returned_at: timestamp,
-    cancellation_status: 'cancelled',
+    cancellation_status: 'cancelled_return_completed',
     updated_at: timestamp,
   }).eq('id', request_id);
 
@@ -891,7 +892,7 @@ async function handleWorkerConfirmCancellationReturn(body, res) {
     return res.status(500).json({ error: 'Could not update the request. Please try again.' });
   }
 
-  return res.status(200).json({ success: true, status: 'cancelled' });
+  return res.status(200).json({ success: true, status: 'cancelled_return_completed' });
 }
 
 async function handleWorkerCapture(body, res) {
