@@ -1,3 +1,9 @@
+const mobilePolish = document.createElement("link");
+mobilePolish.rel = "stylesheet";
+mobilePolish.href = "mobile-polish.css";
+mobilePolish.dataset.mobilePolish = "1";
+document.head.appendChild(mobilePolish);
+
 const navToggle = document.querySelector("[data-nav-toggle]");
 const nav = document.querySelector("[data-nav]");
 const year = document.querySelector("#year");
