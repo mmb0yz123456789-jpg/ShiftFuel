@@ -25,24 +25,29 @@ const terminalStatuses = [
   "complete",
   "denied",
   "customer_canceled",
+  "customer_cancelled",
   "canceled",
   "cancelled",
   "unable_to_complete",
   "auto_reversed",
   "closed_no_charge",
   "canceled_return_completed",
+  "cancelled_return_completed",
 ];
 
 const closedStatuses = [
   "denied",
   "customer_canceled",
+  "customer_cancelled",
   "canceled",
   "cancelled",
   "unable_to_complete",
   "auto_reversed",
   "closed_no_charge",
   "canceled_return_completed",
+  "cancelled_return_completed",
 ];
+
 // cancelled_pending_key_return is deliberately NOT terminal/closed — the
 // request stays in the in-progress section until the worker confirms the
 // key/vehicle has been returned (status then flips to "cancelled").
@@ -326,7 +331,10 @@ const CANCELLATION_BLOCKED_MESSAGES = {
   cancelled: "This request has already been canceled.",
   cancelled_pending_key_return: "This request has already been canceled.",
   customer_canceled: "This request has already been canceled.",
+  customer_cancelled: "This request has already been canceled.",
   canceled: "This request has already been canceled.",
+  canceled_return_completed: "This request has already been canceled.",
+  cancelled_return_completed: "This request has already been canceled.",
 };
 
 function cancellationModalTextForStatus(status) {
@@ -467,7 +475,16 @@ function cancellationReasonForDisplay(request) {
   const noteReason = notes.match(/\[denied[^\]]*\]\s*Admin denial reason:\s*([^\n]+)/i)?.[1] || "";
   const reason = String(request.cancellation_reason || noteReason || "").trim();
 
-  if (!reason || !["denied", "customer_canceled", "canceled", "cancelled", "cancelled_pending_key_return"].includes(request.status)) {
+  if (!reason || ![
+    "denied",
+    "customer_canceled",
+    "customer_cancelled",
+    "canceled",
+    "cancelled",
+    "cancelled_pending_key_return",
+    "canceled_return_completed",
+    "cancelled_return_completed",
+  ].includes(request.status)) {
     return "";
   }
 
@@ -1013,7 +1030,7 @@ function renderServicePackageDetails(request) {
   return `<section class="service-package-details">${parts.join('')}</section>`;
 }
 
-const PAYMENT_RELEASED_STATUSES = ['voided', 'authorization_released', 'refunded', 'auto_reversed'];
+const PAYMENT_RELEASED_STATUSES = ['voided', 'authorization_released', 'auto_reversed'];
 
 function renderEstimatedTotalCard(request) {
   if (request.estimated_total == null && request.final_total == null) return '';
@@ -1029,6 +1046,28 @@ function renderEstimatedTotalCard(request) {
         <span class="estimated-total-label">Cancellation fee paid</span>
         <span class="estimated-total-amount">${formatCurrency(amount)}</span>
         <p class="estimated-total-note">Your cancellation was processed and the applicable fee was charged.</p>
+      </div>
+    `;
+  }
+
+  if (request.payment_status === 'refunded') {
+    const amount = request.final_total != null ? request.final_total : (request.estimated_total || 0);
+    return `
+      <div class="estimated-total-card estimated-total-released">
+        <span class="estimated-total-label">Refunded</span>
+        <span class="estimated-total-amount">${formatCurrency(amount)}</span>
+        <p class="estimated-total-note">Your payment was refunded. Your bank may take a few business days to post it.</p>
+      </div>
+    `;
+  }
+
+  if (request.payment_status === 'refund_required') {
+    const amount = request.final_total != null ? request.final_total : (request.estimated_total || 0);
+    return `
+      <div class="estimated-total-card">
+        <span class="estimated-total-label">Refund pending</span>
+        <span class="estimated-total-amount">${formatCurrency(amount)}</span>
+        <p class="estimated-total-note">This request was closed after payment was captured. A refund still needs to be processed.</p>
       </div>
     `;
   }
@@ -2219,15 +2258,21 @@ function renderPendingPaymentCard(request) {
 }
 
 function renderReturnCompletedNotice(request) {
-  if (request.status !== 'canceled_return_completed') return '';
-  if (request.cancellation_fee_applied) {
+  if (!['canceled_return_completed', 'cancelled_return_completed'].includes(request.status)) return '';
+
+  const feePaid = request.payment_status === 'cancellation_fee_paid'
+    || Number(request.cancellation_total_charged || 0) > 0
+    || Number(request.cancellation_fee_amount || 0) > 0;
+
+  if (feePaid) {
     return `
       <div class="estimated-total-card">
         <span class="estimated-total-label">Vehicle returned</span>
-        <p class="estimated-total-note">Your vehicle was returned. A $15 cancellation/service fee was charged because service had already started.</p>
+        <p class="estimated-total-note">Your vehicle was returned. The applicable cancellation/service fee was charged because service had already started.</p>
       </div>
     `;
   }
+
   return `
     <div class="estimated-total-card estimated-total-released">
       <span class="estimated-total-label">Vehicle returned</span>
@@ -2395,7 +2440,7 @@ async function renderAllRequests(requests, phone, email) {
   html += `
     <details class="track-section">
       <summary class="track-section-header">
-        Denied requests
+        Denied / canceled requests
         <span class="track-section-count">${denied.length}</span>
       </summary>
       <div class="track-section-body">
