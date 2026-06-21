@@ -4,6 +4,11 @@ mobilePolish.href = "mobile-polish.css";
 mobilePolish.dataset.mobilePolish = "1";
 document.head.appendChild(mobilePolish);
 
+const pricingPolish = document.createElement("script");
+pricingPolish.src = "pricing-fee-polish.js";
+pricingPolish.defer = true;
+document.head.appendChild(pricingPolish);
+
 const navToggle = document.querySelector("[data-nav-toggle]");
 const nav = document.querySelector("[data-nav]");
 const year = document.querySelector("#year");
