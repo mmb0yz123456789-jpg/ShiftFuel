@@ -636,28 +636,26 @@ function cancellationOutcomeForStatus(status) {
     'service_complete', 'receipts_recorded',
   ];
   const blockedMessages = {
-    vehicle_returned: 'This request can no longer be canceled because the vehicle has already been returned.',
-    returned_location_pending: 'This request can no longer be canceled because the vehicle has already been returned.',
-    return_location_recorded: 'This request can no longer be canceled because the vehicle has already been returned.',
-    return_photos_needed: 'This request can no longer be canceled because the vehicle has already been returned.',
-    dropoff_vehicle_photo_uploaded: 'This request can no longer be canceled because the vehicle has already been returned.',
-    dropoff_odometer_photo_uploaded: 'This request can no longer be canceled because the vehicle has already been returned.',
-    inspection_needed: 'This request can no longer be canceled because the vehicle has already been returned.',
-    inspection_recorded: 'This request can no longer be canceled because the vehicle has already been returned.',
-    awaiting_key_return: 'This request can no longer be canceled because the vehicle has already been returned.',
-    keys_returned: 'This request can no longer be canceled because the vehicle has already been returned.',
-    final_payment_processed: 'This request can no longer be canceled because the vehicle has already been returned.',
+    vehicle_returned: 'This request can no longer be cancelled because the vehicle has already been returned.',
+    returned_location_pending: 'This request can no longer be cancelled because the vehicle has already been returned.',
+    return_location_recorded: 'This request can no longer be cancelled because the vehicle has already been returned.',
+    return_photos_needed: 'This request can no longer be cancelled because the vehicle has already been returned.',
+    dropoff_vehicle_photo_uploaded: 'This request can no longer be cancelled because the vehicle has already been returned.',
+    dropoff_odometer_photo_uploaded: 'This request can no longer be cancelled because the vehicle has already been returned.',
+    inspection_needed: 'This request can no longer be cancelled because the vehicle has already been returned.',
+    inspection_recorded: 'This request can no longer be cancelled because the vehicle has already been returned.',
+    awaiting_key_return: 'This request can no longer be cancelled because the vehicle has already been returned.',
+    keys_returned: 'This request can no longer be cancelled because the vehicle has already been returned.',
+    final_payment_processed: 'This request can no longer be cancelled because the vehicle has already been returned.',
     complete: 'This request is already complete.',
     denied: 'This request has already been denied.',
-    cancelled: 'This request has already been canceled.',
-    cancelled_pending_key_return: 'This request has already been canceled.',
-    customer_canceled: 'This request has already been canceled.',
-    canceled: 'This request has already been canceled.',
-    canceled_return_completed: 'This request has already been canceled.',
-    customer_return_requested: 'This request has already been canceled.',
-    return_requested: 'This request has already been canceled.',
-    customer_cancelled: 'This request has already been canceled.',
-    cancelled_return_completed: 'This request has already been canceled.',
+    cancelled: 'This request has already been cancelled.',
+    cancelled_pending_key_return: 'This request has already been cancelled.',
+    customer_canceled: 'This request has already been cancelled.',
+    canceled: 'This request has already been cancelled.',
+    canceled_return_completed: 'This request has already been cancelled.',
+    customer_return_requested: 'This request has already been cancelled.',
+    return_requested: 'This request has already been cancelled.',
   };
 
   if (blockedMessages[status]) {
@@ -740,9 +738,9 @@ async function handleCustomerCancel(body, res) {
           console.error('[payments/customer_cancel] Cannot void PI in status', intent.status, 'for request', request_id);
           return res.status(500).json({ error: 'We could not release the authorization automatically. Please contact ShiftFuel.' });
         }
-    } else {
-      paymentStatus = 'authorization_released';
-    }
+      } else {
+        paymentStatus = 'canceled';
+      }
     } else {
       // Fee tier: capture only the cancellation charge amount, never the full
       // original authorization unless receipts/completed costs justify it.

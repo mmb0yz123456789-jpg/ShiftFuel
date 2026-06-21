@@ -1938,14 +1938,29 @@ font-size: 0.85rem;
   gap: 12px;
   align-items: flex-start;
   padding: 18px;
-  background: var(--surface-soft);
+  background: #ffffff;
   border: 1px solid rgba(0, 59, 59, 0.12);
   border-radius: 10px;
   cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease;
 }
 
-.choice-card input {
-  margin-top: 4px;
+.choice-card:hover {
+  border-color: rgba(0, 119, 102, 0.35);
+}
+
+.choice-card:has(input:checked) {
+  background: var(--surface-soft);
+  border-color: var(--brand);
+}
+
+.choice-card input[type="radio"],
+.choice-card input[type="checkbox"] {
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+  margin: 2px 0 0;
+  accent-color: var(--brand);
 }
 
 .choice-card span {
@@ -2047,6 +2062,36 @@ font-size: 0.85rem;
   color: var(--brand);
   cursor: pointer;
   font-weight: 900;
+}
+
+.wash-package-includes-list {
+  display: grid;
+  gap: 8px;
+}
+
+.wash-package-includes {
+  padding: 10px 14px;
+  background: var(--surface-soft);
+  border: 1px solid rgba(0, 59, 59, 0.1);
+  border-radius: 8px;
+}
+
+.wash-package-includes summary {
+  color: var(--brand-dark);
+  cursor: pointer;
+  font-weight: 800;
+  font-size: 0.9rem;
+}
+
+.wash-package-includes ul {
+  margin: 8px 0 0;
+  padding-left: 18px;
+  color: var(--muted);
+  font-size: 0.86rem;
+}
+
+.wash-package-includes li {
+  margin-bottom: 2px;
 }
 
 .payment-card-box {

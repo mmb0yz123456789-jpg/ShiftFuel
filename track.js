@@ -21,33 +21,8 @@ let verifiedTrackingContact = { phone: "", email: "" };
 
 // Unified terminal/closed status list — keep in sync with admin.js, worker.js,
 // and the SQL terminal-status list in supabase-production-rls-lockdown.sql.
-const terminalStatuses = [
-  "complete",
-  "denied",
-  "customer_canceled",
-  "customer_cancelled",
-  "canceled",
-  "cancelled",
-  "unable_to_complete",
-  "auto_reversed",
-  "closed_no_charge",
-  "canceled_return_completed",
-  "cancelled_return_completed",
-];
-
-const closedStatuses = [
-  "denied",
-  "customer_canceled",
-  "customer_cancelled",
-  "canceled",
-  "cancelled",
-  "unable_to_complete",
-  "auto_reversed",
-  "closed_no_charge",
-  "canceled_return_completed",
-  "cancelled_return_completed",
-];
-
+const terminalStatuses = ["complete", "denied", "customer_canceled", "canceled", "cancelled", "unable_to_complete", "auto_reversed", "closed_no_charge", "canceled_return_completed"];
+const closedStatuses   = ["denied", "customer_canceled", "canceled", "cancelled", "unable_to_complete", "auto_reversed", "closed_no_charge", "canceled_return_completed"];
 // cancelled_pending_key_return is deliberately NOT terminal/closed — the
 // request stays in the in-progress section until the worker confirms the
 // key/vehicle has been returned (status then flips to "cancelled").
@@ -191,7 +166,6 @@ const statusLabels = {
   complete: "Complete",
   denied: "Denied",
   customer_canceled: "Canceled by customer",
-  customer_cancelled: "Canceled by customer",
   canceled: "Canceled",
   unable_to_complete: "Unable to complete",
   auto_reversed: "Missed — auto-reversed",
@@ -203,8 +177,7 @@ const statusLabels = {
   payment_issue: "Payment issue",
   authorization_too_low: "Authorization issue",
   canceled_return_completed: "Return completed",
-  cancelled_return_completed: "Return completed",
-  cancelled: "Canceled",
+  cancelled: "Cancelled",
   cancelled_pending_key_return: "Cancellation received — awaiting key/vehicle return",
 };
 
@@ -325,16 +298,13 @@ const CANCELLATION_SERVICE_STARTED_STATUSES = new Set([
   'service_complete', 'receipts_recorded',
 ]);
 const CANCELLATION_BLOCKED_MESSAGES = {
-  vehicle_returned: "This request can no longer be canceled because the vehicle has already been returned.",
+  vehicle_returned: "This request can no longer be cancelled because the vehicle has already been returned.",
   complete: "This request is already complete.",
   denied: "This request has already been denied.",
-  cancelled: "This request has already been canceled.",
-  cancelled_pending_key_return: "This request has already been canceled.",
-  customer_canceled: "This request has already been canceled.",
-  customer_cancelled: "This request has already been canceled.",
-  canceled: "This request has already been canceled.",
-  canceled_return_completed: "This request has already been canceled.",
-  cancelled_return_completed: "This request has already been canceled.",
+  cancelled: "This request has already been cancelled.",
+  cancelled_pending_key_return: "This request has already been cancelled.",
+  customer_canceled: "This request has already been cancelled.",
+  canceled: "This request has already been cancelled.",
 };
 
 function cancellationModalTextForStatus(status) {
@@ -475,16 +445,7 @@ function cancellationReasonForDisplay(request) {
   const noteReason = notes.match(/\[denied[^\]]*\]\s*Admin denial reason:\s*([^\n]+)/i)?.[1] || "";
   const reason = String(request.cancellation_reason || noteReason || "").trim();
 
-  if (!reason || ![
-    "denied",
-    "customer_canceled",
-    "customer_cancelled",
-    "canceled",
-    "cancelled",
-    "cancelled_pending_key_return",
-    "canceled_return_completed",
-    "cancelled_return_completed",
-  ].includes(request.status)) {
+  if (!reason || !["denied", "customer_canceled", "cancelled", "cancelled_pending_key_return"].includes(request.status)) {
     return "";
   }
 
@@ -493,25 +454,7 @@ function cancellationReasonForDisplay(request) {
   if (looksLikeOperationalNotes) {
     return "";
   }
-  if (request.status === "denied") {
-    const customerSafeReasons = {
-      "Car wash unavailable": "This request could not be completed because car wash service is unavailable.",
-      "Duplicate request": "This request was closed because it appears to be a duplicate.",
-      "Fuel door locked": "This request could not be completed because the fuel door was locked.",
-      "Fuel station unavailable": "This request could not be completed because fuel service was unavailable.",
-      "Keys unavailable": "This request could not be completed because the vehicle keys were unavailable.",
-      "Payment authorization issue": "This request could not be completed because of a payment authorization issue.",
-      "Safety concern": "This request could not be completed due to a safety concern.",
-      "Service location issue": "This request could not be completed because of a service location issue.",
-      "Vehicle inaccessible": "This request could not be completed because the vehicle was inaccessible.",
-      "Vehicle not located": "This request could not be completed because the vehicle could not be located.",
-      "Weather conditions": "This request could not be completed because of weather conditions.",
-      "We currently do not serve this area.": "We currently do not serve this area.",
-      "Other": "This request could not be completed. Please contact ShiftFuel if you have questions.",
-    };
-  
-    return customerSafeReasons[reason] || "This request could not be completed. Please contact ShiftFuel if you have questions.";
-  }
+
   return reason;
 }
 
@@ -525,16 +468,10 @@ function friendlyStatusLabel(status) {
 
 function importantPaymentLabel(request) {
   const status = request.payment_status || "";
-
   if (request.status === "payment_issue" || status === "capture_failed") return "Payment issue";
   if (request.status === "authorization_too_low") return "Authorization issue";
   if (request.status === "pending_customer_payment") return "Payment needed";
   if (status === "payment_release_failed") return "Payment review needed";
-  if (status === "cancellation_fee_paid") return "Cancellation fee paid";
-  if (status === "voided" || status === "authorization_released") return "No charge";
-  if (status === "refund_required") return "Refund pending";
-  if (status === "refunded") return "Refunded";
-
   return "";
 }
 
@@ -925,13 +862,9 @@ function renderTimeline(request) {
   // No timeline for closed/terminal non-complete statuses
   if (closedStatuses.includes(request.status)) return '';
   if (request.status === 'cancelled_pending_key_return') {
-    return `
-      <div class="service-issue-banner">
-        <strong>Cancellation received</strong>
-        <p>Your service request has been canceled. This request will stay visible until your key or vehicle has been returned.</p>
-      </div>
-    `;
+    return `<p class="timeline-status-message">Cancellation received — awaiting key/vehicle return.</p>`;
   }
+
   const steps = buildStatusSteps(request);
 
   steps.forEach(step => { step.done = isStepDone(step.key, request); });
@@ -1030,7 +963,7 @@ function renderServicePackageDetails(request) {
   return `<section class="service-package-details">${parts.join('')}</section>`;
 }
 
-const PAYMENT_RELEASED_STATUSES = ['voided', 'authorization_released', 'auto_reversed'];
+const PAYMENT_RELEASED_STATUSES = ['voided', 'authorization_released', 'refunded', 'auto_reversed'];
 
 function renderEstimatedTotalCard(request) {
   if (request.estimated_total == null && request.final_total == null) return '';
@@ -1038,40 +971,7 @@ function renderEstimatedTotalCard(request) {
   const isClosed = closedStatuses.includes(request.status);
   const holdReleased = isClosed && PAYMENT_RELEASED_STATUSES.includes(request.payment_status);
   const releaseFailed = isClosed && request.payment_status === 'payment_release_failed';
-  
-  if (request.payment_status === 'cancellation_fee_paid') {
-    const amount = request.cancellation_total_charged || request.final_total || 15;
-    return `
-      <div class="estimated-total-card">
-        <span class="estimated-total-label">Cancellation fee paid</span>
-        <span class="estimated-total-amount">${formatCurrency(amount)}</span>
-        <p class="estimated-total-note">Your cancellation was processed and the applicable fee was charged.</p>
-      </div>
-    `;
-  }
 
-  if (request.payment_status === 'refunded') {
-    const amount = request.final_total != null ? request.final_total : (request.estimated_total || 0);
-    return `
-      <div class="estimated-total-card estimated-total-released">
-        <span class="estimated-total-label">Refunded</span>
-        <span class="estimated-total-amount">${formatCurrency(amount)}</span>
-        <p class="estimated-total-note">Your payment was refunded. Your bank may take a few business days to post it.</p>
-      </div>
-    `;
-  }
-
-  if (request.payment_status === 'refund_required') {
-    const amount = request.final_total != null ? request.final_total : (request.estimated_total || 0);
-    return `
-      <div class="estimated-total-card">
-        <span class="estimated-total-label">Refund pending</span>
-        <span class="estimated-total-amount">${formatCurrency(amount)}</span>
-        <p class="estimated-total-note">This request was closed after payment was captured. A refund still needs to be processed.</p>
-      </div>
-    `;
-  }
-  
   if (holdReleased) {
     const amount = request.final_total != null ? request.final_total : request.estimated_total;
     return `
@@ -2258,21 +2158,15 @@ function renderPendingPaymentCard(request) {
 }
 
 function renderReturnCompletedNotice(request) {
-  if (!['canceled_return_completed', 'cancelled_return_completed'].includes(request.status)) return '';
-
-  const feePaid = request.payment_status === 'cancellation_fee_paid'
-    || Number(request.cancellation_total_charged || 0) > 0
-    || Number(request.cancellation_fee_amount || 0) > 0;
-
-  if (feePaid) {
+  if (request.status !== 'canceled_return_completed') return '';
+  if (request.cancellation_fee_applied) {
     return `
       <div class="estimated-total-card">
         <span class="estimated-total-label">Vehicle returned</span>
-        <p class="estimated-total-note">Your vehicle was returned. The applicable cancellation/service fee was charged because service had already started.</p>
+        <p class="estimated-total-note">Your vehicle was returned. A $15 cancellation/service fee was charged because service had already started.</p>
       </div>
     `;
   }
-
   return `
     <div class="estimated-total-card estimated-total-released">
       <span class="estimated-total-label">Vehicle returned</span>
@@ -2386,13 +2280,12 @@ function renderRequestCard(request, photos = [], review = null) {
 }
 
 async function renderAllRequests(requests, phone, email) {
-  const completed = requests.filter(r => r.status === 'complete');
+  const inProgress = requests.filter(r => !terminalStatuses.includes(r.status));
+  const completed  = requests.filter(r => r.status === 'complete');
+  // Denied Requests section covers denied + every cancellation/closed-without-charge
+  // status per the Track My Vehicle spec (cancelled, denied, and similar terminal
+  // non-complete outcomes all land here so nothing falls through the cracks).
   const denied = requests.filter(r => closedStatuses.includes(r.status));
-  const inProgress = requests.filter(r =>
-    r.status !== 'complete'
-    && !closedStatuses.includes(r.status)
-    && !terminalStatuses.includes(r.status)
-  );
 
   let html = `<div class="track-sections">`;
 
@@ -2436,17 +2329,17 @@ async function renderAllRequests(requests, phone, email) {
   }
   html += `</div></details>`;
 
-  // Denied / canceled requests
+  // Denied / cancelled section
   html += `
     <details class="track-section">
       <summary class="track-section-header">
-        Denied / canceled requests
+        Denied requests
         <span class="track-section-count">${denied.length}</span>
       </summary>
       <div class="track-section-body">
   `;
   if (denied.length === 0) {
-    html += `<p class="track-empty-msg">No denied or canceled requests found.</p>`;
+    html += `<p class="track-empty-msg">No denied or cancelled requests found.</p>`;
   } else {
     for (const request of denied) {
       html += renderDeniedCard(request);
@@ -2471,13 +2364,7 @@ function mountVisibleCustomerPayCards(root = trackingResult) {
   });
 }
 
-const HARD_DENIED_STATUSES = new Set([
-  'denied',
-  'customer_canceled',
-  'customer_cancelled',
-  'canceled',
-  'cancelled',
-]);
+const HARD_DENIED_STATUSES = new Set(['denied', 'customer_canceled', 'canceled', 'cancelled']);
 
 function renderDeniedCard(request) {
   const vehicle = [request.vehicle_year, request.vehicle_make, request.vehicle_model].filter(Boolean).join(' ');
@@ -2488,7 +2375,8 @@ function renderDeniedCard(request) {
     ? new Date(request.updated_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
     : '';
   const reason = cancellationReasonForDisplay(request);
-  const statusLabel = friendlyStatusLabel(request.status);
+  const baseLabel = friendlyStatusLabel(request.status);
+  const statusLabel = reason ? `${baseLabel} — ${reason}` : baseLabel;
   // Spec: only red badges for denied/cancelled/error states — other closed
   // statuses (auto-reversed, closed with no charge, etc.) stay neutral.
   const statusClass = HARD_DENIED_STATUSES.has(request.status) ? 'status-pill-denied' : '';
@@ -2850,7 +2738,7 @@ trackingResult.addEventListener("click", async (event) => {
 
   trackMessage.textContent = result.status === 'cancelled_pending_key_return'
     ? "Cancellation received. Your request will remain visible until your key or vehicle is returned."
-    : "Your request has been canceled.";
+    : "Your request has been cancelled.";
   try {
     await refreshTrackedRequestsAfterAction();
   } catch (refreshError) {
