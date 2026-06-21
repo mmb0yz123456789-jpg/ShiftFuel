@@ -55,6 +55,11 @@
       if (formatted) element.textContent = formatted;
     });
 
+    root.querySelectorAll("[data-display-phone]").forEach((element) => {
+      const formatted = formatPhone(element.textContent || element.getAttribute("data-display-phone"));
+      if (formatted) element.textContent = formatted;
+    });
+
     root.querySelectorAll("input[type='tel'], .cb-customer-phone").forEach((input) => {
       if (input.value) input.value = formatPhone(input.value);
     });
