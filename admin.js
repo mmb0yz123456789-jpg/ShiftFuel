@@ -332,8 +332,28 @@ let adminPhotoDeleted = false; // true when admin clicks "Delete photo"
 
 // Unified terminal/closed status list — keep in sync with worker.js, track.js,
 // and the SQL terminal-status list in supabase-production-rls-lockdown.sql.
-const terminalStatuses = ['complete', 'denied', 'customer_canceled', 'canceled', 'cancelled', 'unable_to_complete', 'auto_reversed', 'closed_no_charge', 'canceled_return_completed'];
-const closedStatuses = ['denied', 'customer_canceled', 'canceled', 'cancelled', 'unable_to_complete', 'auto_reversed', 'closed_no_charge', 'canceled_return_completed'];
+const terminalStatuses = [
+  'complete',
+  'denied',
+  'customer_canceled',
+  'canceled',
+  'cancelled',
+  'unable_to_complete',
+  'auto_reversed',
+  'closed_no_charge',
+  'canceled_return_completed',
+];
+
+const closedStatuses = [
+  'denied',
+  'customer_canceled',
+  'canceled',
+  'cancelled',
+  'unable_to_complete',
+  'auto_reversed',
+  'closed_no_charge',
+  'canceled_return_completed',
+];
 
 // Friendly labels for every status — keep in sync with worker.js and track.js.
 // Raw database status strings must never be shown to a user; this map is the
@@ -381,7 +401,7 @@ const statusLabels = {
   pending_customer_payment: 'Awaiting customer payment',
   return_requested: 'Return requested',
   customer_return_requested: 'Return requested',
-  cancelled_pending_key_return: 'Cancellation received - awaiting key/vehicle return',
+  cancelled_pending_key_return: 'Cancellation received — awaiting key/vehicle return',
   cancelled: 'Cancelled',
   canceled_return_completed: 'Return completed',
   payment_issue: 'Payment issue',
@@ -433,7 +453,16 @@ const PAYMENT_STATUS_LABELS = {
   capture_failed:         'Capture failed — customer must repay',
 };
 
-const CLOSED_STATUSES = ['denied', 'customer_canceled', 'canceled', 'cancelled', 'unable_to_complete', 'auto_reversed', 'closed_no_charge', 'canceled_return_completed'];
+const CLOSED_STATUSES = [
+  'denied',
+  'customer_canceled',
+  'canceled',
+  'cancelled',
+  'unable_to_complete',
+  'auto_reversed',
+  'closed_no_charge',
+  'canceled_return_completed',
+];
 
 function paymentStatusLabel(request) {
   const PAYMENT_STATUS_LABELS = {
@@ -570,7 +599,8 @@ function savedFeeOrDefault(value, fallback) {
 }
 
 function isOpen(request) {
-  return !terminalStatuses.includes(request.status);
+  return !terminalStatuses.includes(request.status)
+    && !CLOSED_STATUSES.includes(request.status);
 }
 
 function serviceNeedsFuel(request) {
