@@ -1,4 +1,4 @@
-<!doctype html>
+﻿<!doctype html>
 <html lang="en">
   <head>
     <meta charset="utf-8">
@@ -26,30 +26,56 @@
       <!-- Page-level tab nav -->
       <nav class="admin-page-tabs" aria-label="Admin pages">
         <button class="admin-page-tab active" data-page="dashboard">Dashboard</button>
+        <button class="admin-page-tab" data-page="requests">Requests</button>
         <button class="admin-page-tab" data-page="workers">Workers <span id="worker-count-badge" class="page-tab-badge">0</span></button>
-        <button class="admin-page-tab" data-page="create-request">Create Request</button>
+        <button class="admin-page-tab" data-page="services">Services</button>
+        <button class="admin-page-tab" data-page="reports">Reports</button>
         <button class="admin-page-tab" data-page="settings">Settings</button>
       </nav>
       <div class="portal-header-actions">
-        <span class="portal-header-label">Admin Portal</span>
+        <span class="admin-notification-bell" aria-label="Notifications">!</span>
+        <span class="admin-avatar">AA</span>
+        <span class="portal-header-label">Admin<br><small>Super Admin</small></span>
         <button class="portal-signout-btn" id="admin-signout-btn" type="button">Sign out</button>
       </div>
     </header>
 
-    <main>
+    <aside class="admin-sidebar" aria-label="Admin portal navigation">
+      <p class="admin-sidebar-label">Admin Portal</p>
+      <nav class="admin-sidebar-nav">
+        <button class="admin-page-tab active" data-page="dashboard" type="button"><span>01</span> Overview</button>
+        <button class="admin-page-tab" data-page="requests" type="button"><span>02</span> Requests</button>
+        <button class="admin-page-tab" data-page="workers" type="button"><span>03</span> Workers</button>
+        <button class="admin-page-tab" data-page="services" type="button"><span>04</span> Services</button>
+        <button class="admin-page-tab" data-page="reports" type="button"><span>05</span> Reports</button>
+        <button class="admin-page-tab" data-page="settings" type="button"><span>06</span> Settings</button>
+      </nav>
+      <p class="admin-sidebar-label admin-sidebar-tools-label">Tools</p>
+      <nav class="admin-sidebar-nav">
+        <button class="admin-page-tab" data-page="create-request" type="button"><span>+</span> Create Request</button>
+        <button id="sidebar-find-tickets-btn" type="button"><span>?</span> Find Tickets</button>
+      </nav>
+      <div class="admin-help-card">
+        <strong>Need help?</strong>
+        <p>Contact support or view the admin guide.</p>
+        <button class="button secondary" type="button">View Help Center</button>
+      </div>
+    </aside>
 
-      <!-- ═══════════════════ DASHBOARD PAGE ═══════════════════ -->
+    <main class="admin-main">
+
+      <!-- â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• DASHBOARD PAGE â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• -->
 
       <section class="section admin-hero" data-page-section="dashboard">
         <div class="admin-hero-top">
           <div class="section-heading">
-            <p class="eyebrow">Admin dashboard</p>
-            <h1>Service requests</h1>
+            <p class="eyebrow">Admin Portal</p>
+            <h1>Admin Portal</h1>
             <p>Overview of operations and service management.</p>
           </div>
           <div class="admin-hero-stats" id="admin-hero-stats">
             <div class="hero-stat">
-              <span class="hero-stat-value" id="admin-avg-rating">—</span>
+              <span class="hero-stat-value" id="admin-avg-rating">â€”</span>
               <span class="hero-stat-label">Avg rating</span>
             </div>
             <div class="hero-stat-divider"></div>
@@ -97,47 +123,72 @@
             <span class="admin-stat-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="8.5"/><path d="M12 7v10M9.5 9.5a2.5 2 0 0 1 2.5-1.5c1.4 0 2.5.7 2.5 1.8 0 2.4-5 1.4-5 4 0 1.1 1.1 1.8 2.5 1.8s2.5-.7 2.5-1.7"/></svg></span>
           </div>
         </div>
-
-        <div class="admin-summary">
-          <button id="show-reviews" class="summary-card summary-button">
-            <span id="total-reviews">0</span>
-            <p>Total Reviews</p>
-          </button>
-          <button id="show-open" class="summary-card summary-button active">
-            <span id="open-requests">0</span>
-            <p>Open Requests</p>
-          </button>
-          <button id="show-complete" class="summary-card summary-button">
-            <span id="complete-requests">0</span>
-            <p>Completed Requests</p>
-          </button>
-          <button id="show-denied" class="summary-card summary-button">
-            <span id="denied-requests">0</span>
-            <p>Closed Requests</p>
-          </button>
-          <button id="show-applicants" class="summary-card summary-button">
-            <span id="total-applicants">0</span>
-            <p>Total Applicants</p>
-          </button>
-          <button id="find-tickets-btn" class="summary-card summary-button">
-            <span class="find-tickets-icon">&#x1F50D;</span>
-            <p>Find Tickets</p>
-          </button>
-        </div>
       </section>
 
-      <section class="section admin-section" data-tab-panel="requests" data-page-section="dashboard">
+      <section class="section admin-section admin-dashboard-grid" data-page-section="dashboard">
+        <div class="admin-dashboard-main">
+          <section class="admin-queue-card" data-tab-panel="requests">
         <div class="admin-toolbar">
           <div>
-            <p class="eyebrow" id="request-queue-eyebrow">Queue</p>
-            <h2 id="request-queue-heading">Open requests</h2>
+            <p class="eyebrow" id="request-queue-eyebrow">Requests Queue</p>
+            <h2 id="request-queue-heading">Requests Queue</h2>
           </div>
           <div class="admin-button-row">
             <button id="admin-refresh-btn" class="button secondary" type="button">Refresh</button>
             <button id="show-all-time-btn" class="button secondary" style="display:none" type="button">Show all time</button>
           </div>
         </div>
+        <div class="admin-request-tabs">
+          <button id="show-open" class="summary-button active" type="button">All Requests <span id="open-requests">0</span></button>
+          <button class="summary-button" type="button">Open</button>
+          <button class="summary-button" type="button">In Progress</button>
+          <button id="show-complete" class="summary-button" type="button">Completed <span id="complete-requests">0</span></button>
+          <button id="show-denied" class="summary-button" type="button">On Hold <span id="denied-requests">0</span></button>
+        </div>
         <div id="request-list" class="request-list"></div>
+          </section>
+          <div class="admin-shortcut-grid">
+            <button class="admin-shortcut-card admin-page-tab" data-page="workers" type="button"><strong>Workers</strong><span>Manage your team and performance.</span><em>View Workers â†’</em></button>
+            <button class="admin-shortcut-card admin-page-tab" data-page="create-request" type="button"><strong>Create Request</strong><span>Add a new customer request.</span><em>Create New â†’</em></button>
+            <button class="admin-shortcut-card admin-page-tab" data-page="reports" type="button"><strong>Reports</strong><span>View performance and operations.</span><em>View Reports â†’</em></button>
+            <button class="admin-shortcut-card admin-page-tab" data-page="settings" type="button"><strong>Settings</strong><span>Manage services, pricing, and more.</span><em>Open Settings â†’</em></button>
+          </div>
+        </div>
+        <aside class="admin-dashboard-side">
+          <section class="admin-side-card">
+            <h2>Quick Actions</h2>
+            <button class="admin-action-card" type="button" data-page-action="workers"><strong>Assign Worker</strong><span>Assign an available worker</span></button>
+            <button class="admin-action-card" type="button" data-page-action="requests"><strong>Edit Request</strong><span>Update request details</span></button>
+            <button class="admin-action-card admin-page-tab" data-page="create-request" type="button"><strong>Create Request</strong><span>Add a new customer request</span></button>
+            <button class="admin-action-card" id="admin-side-refresh-btn" type="button"><strong>Refresh Dashboard</strong><span>Update all data</span></button>
+          </section>
+          <section class="admin-side-card">
+            <div class="admin-side-card-head">
+              <h2>Worker Snapshot</h2>
+              <button class="admin-link-button admin-page-tab" data-page="workers" type="button">View all</button>
+            </div>
+            <ul class="worker-snapshot-list">
+              <li><span class="dot online"></span>Online <strong id="worker-snapshot-online">0</strong></li>
+              <li><span class="dot break"></span>On Break <strong>0</strong></li>
+              <li><span class="dot busy"></span>Busy <strong id="worker-snapshot-busy">0</strong></li>
+              <li><span class="dot offline"></span>Offline <strong id="worker-snapshot-offline">0</strong></li>
+            </ul>
+          </section>
+          <section class="admin-side-card admin-summary compact">
+            <button id="show-reviews" class="summary-card summary-button">
+              <span id="total-reviews">0</span>
+              <p>Total Reviews</p>
+            </button>
+            <button id="show-applicants" class="summary-card summary-button">
+              <span id="total-applicants">0</span>
+              <p>Applicants</p>
+            </button>
+            <button id="find-tickets-btn" class="summary-card summary-button">
+              <span class="find-tickets-icon">&#x1F50D;</span>
+              <p>Find Tickets</p>
+            </button>
+          </section>
+        </aside>
       </section>
 
       <section class="section admin-section" data-tab-panel="reviews" data-page-section="dashboard" hidden>
@@ -173,7 +224,7 @@
         <div id="applicant-list" class="request-list"></div>
       </section>
 
-      <!-- ═══════════════════ WORKERS PAGE ═══════════════════ -->
+      <!-- â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• WORKERS PAGE â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• -->
 
       <section class="section admin-section" data-page-section="workers" hidden>
         <div class="admin-toolbar">
@@ -246,7 +297,7 @@
         </form>
       </section>
 
-      <!-- ═══════════════════ SETTINGS PAGE ═══════════════════ -->
+      <!-- â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• SETTINGS PAGE â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• -->
 
       <section class="section admin-section" data-page-section="settings" hidden>
         <div class="admin-toolbar">
@@ -282,7 +333,7 @@
         </form>
       </section>
 
-      <!-- ═══════════════════ CREATE REQUEST PAGE ═══════════════════ -->
+      <!-- â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• CREATE REQUEST PAGE â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• -->
 
       <section class="section admin-hero" data-page-section="create-request" hidden>
         <div class="section-heading">
@@ -396,7 +447,7 @@
           </fieldset>
 
           <fieldset>
-            <legend>Vehicle <span class="optional-mark">Optional — if known</span></legend>
+            <legend>Vehicle <span class="optional-mark">Optional â€” if known</span></legend>
             <div class="field-grid">
               <label>Year
                 <input id="cr-vehicle-year" type="text" placeholder="2020">
@@ -514,3 +565,4 @@
   <script defer src="/_vercel/speed-insights/script.js"></script>
   </body>
 </html>
+

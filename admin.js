@@ -12,6 +12,7 @@ const showDenied = document.querySelector('#show-denied');
 const showReviews = document.querySelector('#show-reviews');
 const showApplicants = document.querySelector('#show-applicants');
 const findTicketsBtn = document.querySelector('#find-tickets-btn');
+const sidebarFindTicketsBtn = document.querySelector('#sidebar-find-tickets-btn');
 const findTicketsModal = document.querySelector('#find-tickets-modal');
 const closeFindTicketsBtn = document.querySelector('#close-find-tickets');
 const findTicketsSearch = document.querySelector('#find-tickets-search');
@@ -33,6 +34,10 @@ const statInProgress = document.querySelector('#stat-in-progress');
 const statCompletedToday = document.querySelector('#stat-completed-today');
 const statActiveWorkers = document.querySelector('#stat-active-workers');
 const statRevenueToday = document.querySelector('#stat-revenue-today');
+const workerSnapshotOnline = document.querySelector('#worker-snapshot-online');
+const workerSnapshotBusy = document.querySelector('#worker-snapshot-busy');
+const workerSnapshotOffline = document.querySelector('#worker-snapshot-offline');
+const adminSideRefreshBtn = document.querySelector('#admin-side-refresh-btn');
 const findTicketsGoBtn = document.querySelector('#find-tickets-go');
 const findTicketsSortBar = document.querySelector('#find-tickets-sort-bar');
 const findTicketsSortSelect = document.querySelector('#find-tickets-sort');
@@ -1617,6 +1622,9 @@ function updateDashboardStatCards() {
   if (statCompletedToday) statCompletedToday.textContent = completedTodayCount;
   if (statActiveWorkers) statActiveWorkers.textContent = activeWorkerCount;
   if (statRevenueToday) statRevenueToday.textContent = `$${revenueToday.toFixed(2)}`;
+  if (workerSnapshotOnline) workerSnapshotOnline.textContent = activeWorkerCount;
+  if (workerSnapshotBusy) workerSnapshotBusy.textContent = allRequests.filter((r) => isOpen(r) && (r.assigned_employee_id || r.assigned_worker_name)).length;
+  if (workerSnapshotOffline) workerSnapshotOffline.textContent = Math.max(0, allEmployees.length - activeWorkerCount);
 }
 
 function renderRequests() {
@@ -4246,11 +4254,21 @@ showAllTimeBtn?.addEventListener('click', () => {
 });
 
 function switchPageTab(page) {
-  currentPageTab = page;
+  const aliases = {
+    requests: 'dashboard',
+    reports: 'dashboard',
+    services: 'settings',
+  };
+  const targetPage = aliases[page] || page;
+  currentPageTab = targetPage;
   adminPageTabs.forEach((btn) => btn.classList.toggle('active', btn.dataset.page === page));
   document.querySelectorAll('[data-page-section]').forEach((el) => {
-    el.hidden = el.dataset.pageSection !== page;
+    el.hidden = el.dataset.pageSection !== targetPage;
   });
+  if (page === 'requests') switchAdminTab('requests');
+  if (page === 'reports') switchAdminTab('reviews');
+  if (page === 'dashboard') switchAdminTab('requests');
+  if (targetPage === 'settings') loadFuelPricesForAdmin();
 }
 
 function switchAdminTab(tab) {
@@ -4268,13 +4286,18 @@ function switchAdminTab(tab) {
 adminPageTabs.forEach((btn) => {
   btn.addEventListener('click', () => switchPageTab(btn.dataset.page));
 });
+document.querySelectorAll('[data-page-action]').forEach((btn) => {
+  btn.addEventListener('click', () => switchPageTab(btn.dataset.pageAction));
+});
 adminRefreshBtn?.addEventListener('click', () => refreshAdminView(adminRefreshBtn));
+adminSideRefreshBtn?.addEventListener('click', () => refreshAdminView(adminSideRefreshBtn));
 adminWorkersRefreshBtn?.addEventListener('click', () => refreshAdminView(adminWorkersRefreshBtn));
 adminReviewsRefreshBtn?.addEventListener('click', () => refreshAdminView(adminReviewsRefreshBtn));
 adminApplicantsRefreshBtn?.addEventListener('click', () => refreshAdminView(adminApplicantsRefreshBtn));
 
 // Find Tickets modal
 findTicketsBtn?.addEventListener('click', openFindTicketsModal);
+sidebarFindTicketsBtn?.addEventListener('click', openFindTicketsModal);
 closeFindTicketsBtn?.addEventListener('click', closeFindTicketsModal);
 findTicketsModal?.addEventListener('click', (e) => { if (e.target === findTicketsModal) closeFindTicketsModal(); });
 
