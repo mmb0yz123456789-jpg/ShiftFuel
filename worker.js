@@ -196,7 +196,13 @@ function hasDropoffPhotoSet(request) {
 
 function isActiveCustomerReturnWorkflow(request) {
   return hasCustomerReturnRequestAlert(request)
-    && !['awaiting_key_return', 'keys_returned', 'complete', 'canceled_return_completed'].includes(request?.status);
+    && ![
+      'awaiting_key_return',
+      'keys_returned',
+      'complete',
+      'canceled_return_completed',
+      'cancelled_return_completed',
+    ].includes(request?.status);
 }
 
 function workerJobBelongsToCurrentEmployee(job) {
