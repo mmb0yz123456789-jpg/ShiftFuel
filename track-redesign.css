@@ -1,0 +1,583 @@
+/* Track My Vehicle redesign overrides
+   This file only affects track.html. Keep it loaded after styles.css. */
+
+.track-page {
+  min-height: 100vh;
+  background:
+    linear-gradient(180deg, rgba(255,255,255,0.92) 0%, rgba(247,247,245,0.98) 46%, rgba(247,247,245,1) 100%),
+    radial-gradient(circle at 12% 0%, rgba(167, 191, 166, 0.22), transparent 28rem),
+    var(--sf-off-white);
+}
+
+.track-page .site-header.landing-header {
+  background: linear-gradient(135deg, #073233, #021f20);
+  color: #fff;
+  box-shadow: 0 10px 34px rgba(0, 35, 35, 0.24);
+}
+
+.track-page .logo,
+.track-page .nav a:not(.nav-cta):not(.nav-outline):not(.nav-returning) {
+  color: #fff;
+}
+
+.track-page .logo-mark {
+  background: rgba(167, 191, 166, 0.22);
+  color: #cfe2cf;
+}
+
+.track-page .nav-outline,
+.track-page .nav-returning {
+  color: #fff;
+  background: rgba(255,255,255,0.04);
+  border-color: rgba(255,255,255,0.46);
+}
+
+.track-page .nav-outline[aria-current="page"] {
+  border-color: rgba(167, 191, 166, 0.78);
+  box-shadow: inset 0 0 0 1px rgba(167, 191, 166, 0.22);
+}
+
+.track-shell {
+  width: min(1320px, calc(100% - 40px));
+  margin-inline: auto;
+  padding: 0 0 28px;
+}
+
+.track-hero-redesign {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(420px, 0.86fr) minmax(420px, 1.14fr);
+  gap: 28px;
+  min-height: 265px;
+  margin-inline: calc((100vw - min(1320px, calc(100vw - 40px))) / -2);
+  padding: 34px max(20px, calc((100vw - 1320px) / 2)) 86px;
+  overflow: hidden;
+  background:
+    linear-gradient(90deg, rgba(247,247,245,0.98) 0%, rgba(247,247,245,0.92) 42%, rgba(247,247,245,0.18) 70%, rgba(247,247,245,0) 100%);
+}
+
+.track-hero-redesign .booking-flow-hero-copy {
+  position: relative;
+  z-index: 2;
+  align-self: center;
+  max-width: 620px;
+}
+
+.track-hero-redesign h1 {
+  margin-bottom: 16px;
+  font-size: clamp(3rem, 6vw, 5.4rem);
+  letter-spacing: 0.02em;
+}
+
+.track-hero-redesign p:not(.eyebrow) {
+  max-width: 520px;
+  color: #40524f;
+  font-size: 1.08rem;
+}
+
+.track-hero-redesign .booking-flow-hero-image {
+  position: absolute;
+  inset: 0 0 0 auto;
+  width: min(62vw, 920px);
+  min-height: 100%;
+  margin: 0;
+  border-radius: 0;
+  box-shadow: none;
+  opacity: 0.92;
+}
+
+.track-hero-redesign .booking-flow-hero-image::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, rgba(247,247,245,0.95) 0%, rgba(247,247,245,0.74) 26%, rgba(247,247,245,0.08) 58%, rgba(247,247,245,0) 100%);
+}
+
+.track-hero-redesign .booking-flow-hero-image img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center;
+}
+
+.track-search-card {
+  position: relative;
+  z-index: 3;
+  width: min(1040px, calc(100% - 80px));
+  margin: -56px auto 18px;
+  padding: 26px 30px 18px;
+  background: rgba(255,255,255,0.96);
+  border: 1px solid rgba(13, 59, 59, 0.1);
+  border-radius: 10px;
+  box-shadow: 0 22px 54px rgba(13, 59, 59, 0.14);
+  backdrop-filter: blur(10px);
+}
+
+.track-search-form {
+  display: grid;
+  gap: 22px;
+}
+
+.track-search-heading {
+  display: grid;
+  grid-template-columns: 64px 1fr;
+  align-items: center;
+  gap: 22px;
+}
+
+.track-search-icon {
+  display: grid;
+  place-items: center;
+  width: 64px;
+  height: 64px;
+  color: var(--sf-teal-dark);
+  background: var(--sf-sage-light);
+  border-radius: 999px;
+}
+
+.track-search-icon svg {
+  width: 30px;
+  height: 30px;
+}
+
+.track-search-heading h2 {
+  margin: 0 0 4px;
+  font-size: 1.45rem;
+}
+
+.track-search-heading p,
+.track-search-note {
+  margin: 0;
+  color: var(--sf-muted);
+}
+
+.track-field-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr)) minmax(170px, 190px);
+  gap: 16px 24px;
+  align-items: end;
+}
+
+.track-field-grid label {
+  display: grid;
+  gap: 7px;
+  color: var(--sf-teal-dark);
+  font-size: 0.86rem;
+  font-weight: 900;
+}
+
+.track-field-grid input {
+  width: 100%;
+  min-height: 46px;
+  padding: 11px 13px;
+  color: var(--sf-charcoal);
+  background: #fff;
+  border: 1px solid #d9e3df;
+  border-radius: 8px;
+}
+
+.track-field-grid input:focus {
+  outline: none;
+  border-color: rgba(13, 59, 59, 0.48);
+  box-shadow: 0 0 0 3px rgba(13, 59, 59, 0.1);
+}
+
+.track-search-actions {
+  display: grid;
+  gap: 10px;
+}
+
+.track-search-actions .button {
+  width: 100%;
+  min-height: 46px;
+}
+
+.track-search-note {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 0.82rem;
+}
+
+.track-search-note svg {
+  width: 16px;
+  height: 16px;
+  color: var(--sf-muted);
+}
+
+#tracking-result {
+  width: min(1040px, calc(100% - 80px));
+  margin-inline: auto;
+}
+
+.track-sections {
+  display: grid;
+  gap: 14px;
+}
+
+.track-section,
+.track-request-card {
+  background: #fff;
+  border: 1px solid rgba(13, 59, 59, 0.1);
+  border-radius: 10px;
+  box-shadow: 0 12px 34px rgba(13, 59, 59, 0.08);
+}
+
+.track-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 18px 20px;
+  color: var(--sf-teal-dark);
+  font-size: 1.08rem;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.track-section-count,
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 26px;
+  padding: 4px 12px;
+  color: var(--sf-teal-dark);
+  background: var(--sf-sage-light);
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 900;
+}
+
+.track-section-body {
+  display: grid;
+  gap: 14px;
+  padding: 0 18px 18px;
+}
+
+.track-request-card {
+  overflow: hidden;
+  box-shadow: none;
+}
+
+.track-request-details {
+  display: block;
+}
+
+.track-request-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 18px 20px;
+  cursor: pointer;
+}
+
+.track-request-summary-main {
+  display: grid;
+  gap: 4px;
+}
+
+.track-request-number {
+  color: var(--sf-teal-dark);
+  font-weight: 950;
+}
+
+.track-request-vehicle {
+  color: var(--sf-charcoal);
+  font-weight: 800;
+}
+
+.track-request-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  color: var(--sf-muted);
+  font-size: 0.86rem;
+}
+
+.track-request-body {
+  display: grid;
+  gap: 14px;
+  padding: 0 20px 22px;
+}
+
+.track-request-body > .request-details {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px 22px;
+  margin: 0;
+  padding: 18px;
+  background: var(--sf-sage-light);
+  border: 1px solid rgba(13, 59, 59, 0.1);
+  border-radius: 10px;
+}
+
+.track-request-body > .request-details p {
+  margin: 0;
+}
+
+.timeline-status-message,
+.timeline-progress-label {
+  margin: 0;
+  color: var(--sf-muted);
+  font-size: 0.9rem;
+}
+
+.customer-timeline {
+  --timeline-line: #dce5e1;
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(105px, 1fr);
+  align-items: start;
+  gap: 0;
+  margin: 4px 0 0;
+  padding: 18px 8px 4px;
+  overflow-x: auto;
+  list-style: none;
+}
+
+.timeline-step {
+  position: relative;
+  display: grid;
+  justify-items: center;
+  gap: 8px;
+  min-width: 105px;
+  color: var(--sf-muted);
+  text-align: center;
+}
+
+.timeline-step::before {
+  content: "";
+  position: absolute;
+  top: 17px;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: var(--timeline-line);
+  transform: translateY(-50%);
+  z-index: 0;
+}
+
+.timeline-step:first-child::before {
+  left: 50%;
+}
+
+.timeline-step:last-child::before {
+  right: 50%;
+}
+
+.timeline-icon {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  color: var(--sf-muted);
+  background: #e7ecea;
+  border: 2px solid #e7ecea;
+  border-radius: 999px;
+  font-size: 0.92rem;
+  font-weight: 950;
+}
+
+.timeline-step.done::before {
+  background: var(--sf-success);
+}
+
+.timeline-step.done .timeline-icon {
+  color: #fff;
+  background: var(--sf-success);
+  border-color: var(--sf-success);
+}
+
+.timeline-step.active .timeline-icon {
+  color: var(--sf-teal-dark);
+  background: #fff;
+  border-color: var(--sf-success);
+  box-shadow: 0 0 0 5px rgba(26, 122, 58, 0.12);
+}
+
+.timeline-step p {
+  margin: 0;
+  color: inherit;
+  font-size: 0.78rem;
+  font-weight: 850;
+  line-height: 1.25;
+}
+
+.timeline-step.done p,
+.timeline-step.active p {
+  color: var(--sf-teal-dark);
+}
+
+.timeline-step-nested {
+  opacity: 0.98;
+}
+
+.estimated-total-card,
+.service-package-details,
+.return-confirmation,
+.inspection-summary,
+.assigned-worker-card,
+.review-panel,
+.photo-proof-section,
+.payment-authorized-notice,
+.customer-payment-section {
+  background: #fff;
+  border: 1px solid rgba(13, 59, 59, 0.1);
+  border-radius: 10px;
+  box-shadow: 0 10px 28px rgba(13, 59, 59, 0.06);
+}
+
+.estimated-total-card,
+.service-package-details,
+.return-confirmation,
+.inspection-summary,
+.review-panel,
+.payment-authorized-notice,
+.customer-payment-section {
+  padding: 18px;
+}
+
+.portal-closing-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 22px;
+  margin-top: 10px;
+  padding: 22px max(20px, calc((100vw - 1320px) / 2));
+  color: #fff;
+  background: linear-gradient(135deg, #073233, #021f20);
+  border-top: 1px solid rgba(255,255,255,0.1);
+}
+
+.final-cta-main,
+.final-cta-portals {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.final-cta-icon {
+  display: grid;
+  place-items: center;
+  width: 56px;
+  height: 56px;
+  flex: 0 0 auto;
+  border: 1px solid rgba(255,255,255,0.68);
+  border-radius: 999px;
+}
+
+.final-cta-icon svg {
+  width: 28px;
+  height: 28px;
+}
+
+.final-cta-main strong {
+  display: block;
+  font-size: 1.15rem;
+  font-weight: 950;
+}
+
+.final-cta-main p {
+  margin: 0;
+  color: rgba(255,255,255,0.84);
+}
+
+.portal-closing-banner .portal-button {
+  min-width: 180px;
+  color: #fff;
+  background: transparent;
+  border-color: rgba(255,255,255,0.72);
+}
+
+.track-page .site-footer {
+  color: rgba(255,255,255,0.86);
+  background: #021f20;
+  border-top: 1px solid rgba(255,255,255,0.1);
+}
+
+.track-page .footer-copy {
+  margin: 0;
+}
+
+@media (max-width: 980px) {
+  .track-shell,
+  #tracking-result {
+    width: min(100% - 24px, 760px);
+  }
+
+  .track-hero-redesign {
+    grid-template-columns: 1fr;
+    margin-inline: -12px;
+    padding-inline: 20px;
+  }
+
+  .track-hero-redesign .booking-flow-hero-image {
+    width: 100%;
+    opacity: 0.38;
+  }
+
+  .track-search-card {
+    width: min(100% - 24px, 760px);
+    padding: 22px;
+  }
+
+  .track-field-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .track-request-body > .request-details {
+    grid-template-columns: 1fr;
+  }
+
+  .portal-closing-banner {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .final-cta-portals {
+    width: 100%;
+    flex-wrap: wrap;
+  }
+}
+
+@media (max-width: 640px) {
+  .track-page .nav.is-open {
+    background: #073233;
+  }
+
+  .track-hero-redesign h1 {
+    font-size: clamp(2.5rem, 12vw, 3.8rem);
+  }
+
+  .track-search-heading {
+    grid-template-columns: 48px 1fr;
+    gap: 14px;
+  }
+
+  .track-search-icon {
+    width: 48px;
+    height: 48px;
+  }
+
+  .track-request-summary {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .customer-timeline {
+    grid-auto-columns: minmax(92px, 1fr);
+  }
+
+  .timeline-step {
+    min-width: 92px;
+  }
+
+  .final-cta-portals,
+  .portal-closing-banner .portal-button {
+    width: 100%;
+  }
+}
