@@ -22,6 +22,51 @@
   margin-right: auto !important;
 }
 
+/* Make the Track header use the same visual rules as the home page header. */
+.track-page .site-header.landing-header {
+  color: var(--sf-white) !important;
+  background: linear-gradient(135deg, var(--sf-teal), var(--sf-teal-dark)) !important;
+  border: 1px solid rgba(255, 255, 255, 0.12) !important;
+  border-radius: var(--sf-radius-sm) !important;
+  box-shadow: var(--sf-shadow-header) !important;
+}
+
+.track-page .logo,
+.track-page .nav a:not(.nav-cta):not(.nav-outline):not(.nav-returning) {
+  color: var(--sf-white) !important;
+}
+
+.track-page .logo-mark {
+  color: var(--sf-sage) !important;
+  background: transparent !important;
+}
+
+.track-page .site-header .nav-cta {
+  color: var(--sf-white) !important;
+  background: linear-gradient(135deg, var(--sf-coral), var(--sf-coral-dark)) !important;
+  border-color: var(--sf-coral) !important;
+}
+
+.track-page .site-header .nav-returning {
+  color: var(--sf-teal-dark) !important;
+  background: var(--sf-sage) !important;
+  border-color: var(--sf-sage) !important;
+}
+
+.track-page .site-header .nav-outline {
+  color: var(--sf-white) !important;
+  background: transparent !important;
+  border-color: rgba(255, 255, 255, 0.72) !important;
+  box-shadow: none !important;
+}
+
+.track-page .site-header .nav-outline[aria-current="page"] {
+  color: var(--sf-white) !important;
+  background: transparent !important;
+  border-color: rgba(255, 255, 255, 0.72) !important;
+  box-shadow: none !important;
+}
+
 /* Book Now: stop the center content from feeling skinny compared with header/footer. */
 .booking-page .booking-flow-shell {
   display: grid;
