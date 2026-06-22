@@ -1,44 +1,10 @@
--- Adds a database-backed settings table for service fees and car wash package
--- prices, mirroring the existing fuel_price_settings pattern, so admins can
--- edit them from the Services page instead of relying on hardcoded constants.
+-- Fix service pricing save failure:
+--   operator does not exist: uuid = text
+--
+-- Run this in the Supabase SQL Editor if the service pricing migration was
+-- already applied before the token cast fix.
 
 begin;
-
-create table if not exists public.service_pricing_settings (
-  id int primary key,
-  fuel_service_fee numeric not null default 15,
-  wash_service_fee numeric not null default 15,
-  quick_inspection_fee numeric not null default 5,
-  wash_buff_shine_price numeric not null default 27,
-  wash_shine_protect_price numeric not null default 20,
-  wash_shine_price numeric not null default 16,
-  wash_double_wash_price numeric not null default 12,
-  last_updated_at timestamptz not null default now(),
-  updated_by text,
-  constraint service_pricing_settings_singleton check (id = 1)
-);
-
-insert into public.service_pricing_settings (id)
-values (1)
-on conflict (id) do nothing;
-
-alter table public.service_pricing_settings enable row level security;
--- No row-level policies are defined intentionally: all reads/writes go
--- through the SECURITY DEFINER RPC functions below, same as fuel_price_settings.
-
-create or replace function public.public_get_service_pricing()
-returns service_pricing_settings
-language plpgsql
-security definer
-set search_path = public, pg_temp
-as $$
-declare
-  v_row service_pricing_settings;
-begin
-  select * into v_row from service_pricing_settings where id = 1;
-  return v_row;
-end;
-$$;
 
 create or replace function public.admin_update_service_pricing(
   p_token text,
@@ -87,9 +53,9 @@ begin
 end;
 $$;
 
-revoke all on function public.public_get_service_pricing() from public;
 revoke all on function public.admin_update_service_pricing(text, numeric, numeric, numeric, numeric, numeric, numeric, numeric) from public;
-grant execute on function public.public_get_service_pricing() to anon;
 grant execute on function public.admin_update_service_pricing(text, numeric, numeric, numeric, numeric, numeric, numeric, numeric) to anon;
+
+notify pgrst, 'reload schema';
 
 commit;
