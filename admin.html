@@ -178,346 +178,158 @@
               <button class="star-filter-btn" data-stars="5">&#9733;&#9733;&#9733;&#9733;&#9733;</button>
               <button class="star-filter-btn" data-stars="4">&#9733;&#9733;&#9733;&#9733;</button>
               <button class="star-filter-btn" data-stars="3">&#9733;&#9733;&#9733;</button>
-              <button class="star-filter-btn" data-stars="2">&#9733;&#9733;</button>
-              <button class="star-filter-btn" data-stars="1">&#9733;</button>
-              <button class="star-filter-btn star-filter-all active" data-stars="">All</button>
+              <button class="star-filter-btn" data-stars="all">All</button>
             </div>
           </div>
         </div>
-        <div id="review-list" class="request-list"></div>
+        <div id="reviews-list" class="reviews-list"></div>
       </section>
 
       <section class="section admin-section" data-tab-panel="applicants" data-page-section="dashboard" hidden>
         <div class="admin-toolbar">
           <div>
-            <p class="eyebrow">Hiring</p>
-            <h2>Applicants</h2>
+            <p class="eyebrow">Recruiting</p>
+            <h2>Worker Applications</h2>
           </div>
-          <button id="admin-applicants-refresh-btn" class="button secondary" type="button">Refresh</button>
         </div>
-        <div id="applicant-list" class="request-list"></div>
+        <div id="applicants-list" class="request-list"></div>
       </section>
 
-      <!-- â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• WORKERS PAGE â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• -->
+      <section class="section admin-section" data-tab-panel="reports" data-page-section="reports" hidden>
+        <div class="admin-toolbar">
+          <div>
+            <p class="eyebrow">Reporting</p>
+            <h2>Request Report</h2>
+          </div>
+          <button id="admin-report-refresh-btn" class="button secondary" type="button">Refresh report</button>
+        </div>
+        <div id="admin-report-list" class="request-list"></div>
+      </section>
 
-      <section class="section admin-section" data-page-section="workers" hidden>
+      <section class="section admin-section" data-tab-panel="services" data-page-section="services" hidden>
+        <div class="admin-toolbar">
+          <div>
+            <p class="eyebrow">Catalog</p>
+            <h2>Services</h2>
+          </div>
+          <p class="field-help">Update the customer-facing service prices. These values are saved in Supabase and used on the Book Now page.</p>
+        </div>
+        <form id="services-settings-form" class="booking-card admin-services-settings-card">
+          <div id="services-settings-list" class="services-settings-list"></div>
+          <button class="button primary" type="submit">Save service pricing</button>
+          <p id="services-settings-status" class="form-status" role="status"></p>
+        </form>
+      </section>
+
+      <section class="section admin-section" data-tab-panel="workers" data-page-section="workers" hidden>
         <div class="admin-toolbar">
           <div>
             <p class="eyebrow">Team</p>
-            <h2>Worker profiles</h2>
+            <h2>Workers</h2>
           </div>
-          <button id="admin-workers-refresh-btn" class="button secondary" type="button">Refresh</button>
         </div>
-        <div class="admin-edit-panel worker-profile-search-panel">
-          <label>Find active worker
-            <select id="worker-profile-select-active">
-              <option value="">Select active worker</option>
-            </select>
-          </label>
-          <label>Find inactive worker
-            <select id="worker-profile-select-inactive">
-              <option value="">Select inactive worker</option>
-            </select>
-          </label>
-        </div>
-        <div id="worker-profile-list" class="request-list"></div>
+        <div id="admin-worker-profile-list" class="worker-profile-list"></div>
       </section>
 
-      <section class="section admin-section" data-page-section="workers" hidden>
+      <section class="section admin-section" data-tab-panel="settings" data-page-section="settings" hidden>
         <div class="admin-toolbar">
           <div>
-            <p class="eyebrow">Schedule</p>
-            <h2>Worker availability</h2>
-          </div>
-        </div>
-        <form id="worker-schedule-form" class="admin-edit-panel">
-          <div class="field-grid">
-            <label>Worker
-              <select id="worker-select" required>
-                <option value="">Select worker</option>
-              </select>
-            </label>
-            <label>Work location
-              <select id="worker-location" required>
-                <option value="">Select service location</option>
-              </select>
-            </label>
-          </div>
-          <div class="worker-schedule-actions">
-            <button id="open-workdays-panel" class="button primary" type="button">Work Days and Shift Times</button>
-            <button id="open-days-off-panel" class="button primary" type="button">Days Off</button>
-          </div>
-
-          <div id="workdays-panel" class="worker-availability-window" hidden>
-            <div class="worker-window-heading">
-              <h3>Work Days and Shift Times</h3>
-              <button id="close-workdays-panel" class="button" type="button">Close</button>
-            </div>
-            <div id="worker-days-grid" class="worker-days-grid"></div>
-            <button id="save-workdays" class="button primary" type="button">Save work days</button>
-          </div>
-
-          <div id="days-off-panel" class="worker-availability-window" hidden>
-            <div class="worker-window-heading">
-              <h3>Days Off</h3>
-              <button id="close-days-off-panel" class="button" type="button">Close</button>
-            </div>
-            <p class="field-help">Click any date in the 3-month booking window to make that day unbookable.</p>
-            <div id="worker-days-off-calendar" class="worker-days-off-calendar"></div>
-            <p id="worker-days-off-summary" class="field-help"></p>
-            <button id="save-days-off" class="button primary" type="button">Save days off</button>
-          </div>
-          <p id="worker-schedule-status" class="field-help"></p>
-        </form>
-      </section>
-
-      <!-- â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• SETTINGS PAGE â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• -->
-
-      <section class="section admin-section" data-page-section="services" hidden>
-        <div class="admin-toolbar">
-          <div>
-            <p class="eyebrow">Services</p>
-            <h2>Fuel prices</h2>
-          </div>
-        </div>
-        <form id="admin-fuel-prices-form" class="admin-edit-panel booking-form">
-          <p class="field-help">Set local area fuel price averages used in booking estimates. Update manually when prices change.</p>
-          <div class="field-grid">
-            <label>Regular (per gallon)
-              <input id="fp-regular" type="number" step="0.001" min="0" max="20" placeholder="3.799">
-            </label>
-            <label>Mid-grade (per gallon)
-              <input id="fp-midgrade" type="number" step="0.001" min="0" max="20" placeholder="4.199">
-            </label>
-            <label>Premium (per gallon)
-              <input id="fp-premium" type="number" step="0.001" min="0" max="20" placeholder="4.499">
-            </label>
-            <label>Diesel (per gallon)
-              <input id="fp-diesel" type="number" step="0.001" min="0" max="20" placeholder="4.199">
-            </label>
-              <label>Pricing area label
-              <input id="fp-area" type="text" maxlength="80" placeholder="Primary pricing area">
-            </label>
-          </div>
-          <div class="admin-button-row">
-            <button class="button primary" type="submit">Save fuel prices</button>
-          </div>
-          <p id="fuel-prices-status" class="form-status"></p>
-          <p id="fuel-prices-last-updated" class="field-help"></p>
-        </form>
-
-        <div class="admin-toolbar" style="margin-top:28px">
-          <div>
-            <p class="eyebrow">Services</p>
-            <h2>Service fees and car wash pricing</h2>
-          </div>
-        </div>
-        <form id="admin-service-pricing-form" class="admin-edit-panel booking-form">
-          <p class="field-help">These prices apply to new requests created after saving. Existing open requests keep the fee they were created with.</p>
-          <div class="field-grid">
-            <label>Fuel concierge service fee ($)
-              <input id="sp-fuel-fee" type="number" step="0.01" min="0" placeholder="15.00">
-            </label>
-            <label>Car wash service fee ($)
-              <input id="sp-wash-fee" type="number" step="0.01" min="0" placeholder="15.00">
-            </label>
-            <label>Quick inspection fee ($)
-              <input id="sp-inspection-fee" type="number" step="0.01" min="0" placeholder="5.00">
-            </label>
-            <label>Buff &amp; Shine package ($)
-              <input id="sp-wash-buff-shine" type="number" step="0.01" min="0" placeholder="27.00">
-            </label>
-            <label>Shine &amp; Protect package ($)
-              <input id="sp-wash-shine-protect" type="number" step="0.01" min="0" placeholder="20.00">
-            </label>
-            <label>Shine package ($)
-              <input id="sp-wash-shine" type="number" step="0.01" min="0" placeholder="16.00">
-            </label>
-            <label>Double Wash package ($)
-              <input id="sp-wash-double" type="number" step="0.01" min="0" placeholder="12.00">
-            </label>
-          </div>
-          <div class="admin-button-row">
-            <button class="button primary" type="submit">Save service pricing</button>
-          </div>
-          <p id="service-pricing-status" class="form-status"></p>
-          <p id="service-pricing-last-updated" class="field-help"></p>
-          <p class="field-help">Saved prices apply to the landing page, new bookings, admin-created requests, and new payment authorization totals. Existing open requests keep the fees they were created with.</p>
-        </form>
-      </section>
-
-      <section class="section admin-section" data-page-section="reports" hidden>
-        <div class="admin-toolbar">
-          <div>
-            <p class="eyebrow">Reports</p>
-            <h2>Worker activity</h2>
-          </div>
-        </div>
-        <div class="admin-edit-panel">
-          <div class="field-grid">
-            <label>Worker
-              <select id="report-worker-select">
-                <option value="">Select worker</option>
-              </select>
-            </label>
-            <label>From
-              <input id="report-worker-from" type="date">
-            </label>
-            <label>To
-              <input id="report-worker-to" type="date">
-            </label>
-          </div>
-          <div class="admin-button-row">
-            <button id="report-worker-run" class="button primary" type="button">Run report</button>
-          </div>
-          <div id="report-worker-output" class="report-output"></div>
-        </div>
-
-        <div class="admin-toolbar" style="margin-top:28px">
-          <div>
-            <p class="eyebrow">Reports</p>
-            <h2>Ticket volume</h2>
-          </div>
-        </div>
-        <div class="admin-edit-panel">
-          <div class="field-grid">
-            <label>From
-              <input id="report-volume-from" type="date">
-            </label>
-            <label>To
-              <input id="report-volume-to" type="date">
-            </label>
-          </div>
-          <div class="admin-button-row">
-            <button id="report-volume-run" class="button primary" type="button">Run report</button>
-          </div>
-          <div id="report-volume-output" class="report-output"></div>
-        </div>
-      </section>
-
-      <section class="section admin-section" data-page-section="settings" hidden>
-        <div class="admin-toolbar">
-          <div>
-            <p class="eyebrow">Settings</p>
+            <p class="eyebrow">Configuration</p>
             <h2>Settings</h2>
           </div>
         </div>
-        <div class="admin-edit-panel">
-          <p class="field-help">Nothing configurable lives here yet. Say what you'd like to manage from this page and it can get built out.</p>
+        <div class="settings-grid">
+          <form class="settings-card" id="admin-password-form">
+            <h3>Change Admin Password</h3>
+            <label>Current password
+              <input type="password" id="admin-current-password" autocomplete="current-password" required>
+            </label>
+            <label>New password
+              <input type="password" id="admin-new-password" autocomplete="new-password" minlength="8" required>
+            </label>
+            <label>Confirm new password
+              <input type="password" id="admin-confirm-password" autocomplete="new-password" minlength="8" required>
+            </label>
+            <button class="button primary" type="submit">Update password</button>
+            <p class="form-status" id="admin-password-status" role="status"></p>
+          </form>
         </div>
       </section>
 
-      <!-- â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• CREATE REQUEST PAGE â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• -->
-
-      <section class="section admin-hero" data-page-section="create-request" hidden>
-        <div class="section-heading">
-          <p class="eyebrow">Create Request</p>
-          <h1>Start a request for a customer</h1>
-          <p>The customer will complete vehicle details and payment on the Track page before the request enters the worker queue.</p>
+      <section class="section admin-section" data-tab-panel="create-request" data-page-section="create-request" hidden>
+        <div class="admin-toolbar">
+          <div>
+            <p class="eyebrow">Admin create</p>
+            <h2>Create Request</h2>
+            <p class="field-help">Create a request for a customer. It will appear in their Track My Vehicle page as awaiting payment info.</p>
+          </div>
         </div>
-
-        <form id="admin-create-request-form" class="booking-form">
+        <form id="admin-create-request-form" class="booking-card admin-create-card">
           <fieldset>
             <legend>Customer</legend>
             <div class="field-grid">
-              <label>Customer name <span class="required-mark">Required</span>
-                <input id="cr-customer-name" type="text" placeholder="Full name" required>
+              <label>Name
+                <input id="cr-customer-name" type="text" required>
               </label>
-              <label>Phone number <span class="required-mark">Required</span>
-                <input id="cr-customer-phone" type="tel" placeholder="(302) 555-0100" required>
+              <label>Phone
+                <input id="cr-customer-phone" type="tel" required>
               </label>
-              <label>Email <span class="required-mark">Required</span>
-                <input id="cr-customer-email" type="email" placeholder="customer@email.com" required>
+              <label>Email
+                <input id="cr-customer-email" type="email">
               </label>
             </div>
           </fieldset>
 
           <fieldset>
-            <legend>Service address</legend>
-            <p class="field-help">No address validation is required for admin-created requests.</p>
+            <legend>Service Address</legend>
             <div class="field-grid">
               <label>Street address
-                <input id="cr-address-street" type="text" placeholder="123 Main St">
+                <input id="cr-address-street" type="text" required>
               </label>
-              <label>Apt / suite
-                <input id="cr-address-apt" type="text" placeholder="Suite 100">
+              <label>Unit / suite
+                <input id="cr-address-unit" type="text">
               </label>
               <label>City
-                <input id="cr-address-city" type="text" placeholder="Newark">
+                <input id="cr-address-city" type="text" required>
               </label>
               <label>State
-                <input id="cr-address-state" type="text" placeholder="DE">
+                <select id="cr-address-state" required>
+                  <option value="DE">DE</option>
+                  <option value="PA">PA</option>
+                  <option value="NJ">NJ</option>
+                  <option value="MD">MD</option>
+                </select>
               </label>
               <label>ZIP
-                <input id="cr-address-zip" type="text" placeholder="19702">
-              </label>
-              <label>Parking location
-                <input id="cr-parking-location" type="text" placeholder="Lot C, row 3">
-              </label>
-              <label>Key handoff details
-                <input id="cr-key-handoff" type="text" placeholder="Keys in center console">
+                <input id="cr-address-zip" type="text" required>
               </label>
             </div>
           </fieldset>
 
           <fieldset>
-            <legend>Service</legend>
+            <legend>Service Details</legend>
             <div class="field-grid">
               <label>Service type
-                <select id="cr-service-type">
-                  <option value="">Select service</option>
-                  <option value="fuel">Fuel</option>
-                  <option value="car-wash">Car Wash</option>
-                  <option value="car-wash-fuel">Car Wash + Fuel</option>
+                <select id="cr-service-type" required>
+                  <option value="fuel">Fuel only</option>
+                  <option value="car-wash">Car wash only</option>
+                  <option value="car-wash-fuel">Fuel + car wash</option>
                 </select>
               </label>
-              <label class="cr-wash-control conditional-control" hidden>Car wash package
-                <select id="cr-wash-package">
-                  <option value="">Select wash package</option>
-                  <option value="buff-shine">Buff & Shine - $27</option>
-                  <option value="shine-protect">Shine & Protect - $20</option>
-                  <option value="shine">Shine - $16</option>
-                  <option value="double-wash">Double Wash - $12</option>
-                </select>
+              <label>Fuel type
+                <input id="cr-fuel-type" type="text" placeholder="Regular">
               </label>
-              <label class="cr-fuel-control conditional-control" hidden>Fuel type
-                <select id="cr-fuel-type">
-                  <option value="">Select fuel type</option>
-                  <option>Regular</option>
-                  <option>Mid-grade</option>
-                  <option>Premium</option>
-                  <option>Diesel</option>
-                </select>
-              </label>
-              <label class="cr-fuel-control conditional-control" hidden>Estimated fuel needed, in gallons
-                <select id="cr-fuel-estimate">
-                  <option value="">Select fuel range</option>
-                  <option value="5">5 gallons or less</option>
-                  <option value="10">5-10 gallons</option>
-                  <option value="15">10-15 gallons</option>
-                  <option value="20">15-20 gallons</option>
-                  <option value="25">20-25 gallons</option>
-                  <option value="30">25+ gallons</option>
-                </select>
-              </label>
-              <label>Service date
-                <div id="cr-service-date-picker" class="sfp-host">
-                  <input type="hidden" id="cr-service-date">
-                </div>
+              <label>Car wash package
+                <input id="cr-car-wash-package" type="text" placeholder="Exterior wash">
               </label>
               <label>Desired return time
-                <select id="cr-return-time">
-                  <option value="">Select a date first</option>
-                </select>
-                <span id="cr-time-help" class="field-help">Choose a service date to load available return times.</span>
+                <input id="cr-desired-return-time" type="text" placeholder="Before 4:00 PM">
               </label>
-              <div class="inspection-addon-control">
-                <label class="checkbox-label">
-                  <input id="cr-quick-inspection" type="checkbox" value="yes">
-                  <span>Add a quick vehicle inspection for $5 <span class="optional-mark">Optional</span></span>
-                </label>
-              </div>
             </div>
+            <label class="checkbox-label">
+              <input id="cr-inspection" type="checkbox">
+              <span>Add quick vehicle inspection</span>
+            </label>
           </fieldset>
 
           <fieldset>
@@ -683,8 +495,8 @@
 	<script src="photo-utils.js"></script>
 	<script src="date-picker.js"></script>
 	<script src="admin.js"></script>
+    <script src="admin-requests-tab-fix.js"></script>
   <script defer src="/_vercel/insights/script.js"></script>
   <script defer src="/_vercel/speed-insights/script.js"></script>
   </body>
 </html>
-
