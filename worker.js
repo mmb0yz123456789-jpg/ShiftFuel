@@ -739,7 +739,7 @@ async function ensureWorkerProfile() {
     if (storedError) {
       const fallback = await workerDb
         .from('employees_public')
-        .select('id,full_name,phone,home_location')
+        .select('id,employee_code,full_name,phone,photo_url,original_photo_url,cropped_photo_url,home_location,started_at')
         .eq('id', storedEmployeeId)
         .limit(1);
 
@@ -768,7 +768,7 @@ async function ensureWorkerProfile() {
   if (error) {
     const fallback = await workerDb
       .from('employees_public')
-      .select('id,full_name,phone,home_location')
+      .select('id,employee_code,full_name,phone,photo_url,original_photo_url,cropped_photo_url,home_location,started_at')
       .eq('full_name', SESSION_WORKER_NAME)
       .limit(1);
 
@@ -815,8 +815,8 @@ function renderWorkerDaysGrid(workdays = []) {
   workerDaysGrid.innerHTML = workerDayOptions.map(({ dayOfWeek, label }) => {
     const savedDay = workdayMap.get(dayOfWeek);
     const enabled = savedDay ? 'checked' : '';
-    const startsAt = savedDay?.startsAt || '07:00';
-    const endsAt = savedDay?.endsAt || '22:00';
+    const startsAt = savedDay?.startsAt || '09:00';
+    const endsAt = savedDay?.endsAt || '17:00';
 
     return `
       <div class="worker-day-row" data-day-of-week="${dayOfWeek}">
@@ -848,8 +848,8 @@ function selectedWorkdaysFromForm() {
       const row = workerDaysGrid.querySelector(`.worker-day-row[data-day-of-week="${dayOfWeek}"]`);
       return {
         dayOfWeek,
-        startsAt: row?.querySelector('.worker-day-start')?.value || '07:00',
-        endsAt: row?.querySelector('.worker-day-end')?.value || '22:00',
+        startsAt: row?.querySelector('.worker-day-start')?.value || '09:00',
+        endsAt: row?.querySelector('.worker-day-end')?.value || '17:00',
       };
     })
     .filter((day) => day.startsAt && day.endsAt);
@@ -938,8 +938,8 @@ async function loadWorkerSchedule() {
     const rows = availability || [];
     renderWorkerDaysGrid(rows.map((row) => ({
       dayOfWeek: row.day_of_week,
-      startsAt: String(row.starts_at || '07:00').slice(0, 5),
-      endsAt: String(row.ends_at || '22:00').slice(0, 5),
+      startsAt: String(row.starts_at || '09:00').slice(0, 5),
+      endsAt: String(row.ends_at || '17:00').slice(0, 5),
     })));
 
     const scheduleLocation = rows.find((row) => row.work_location)?.work_location || currentEmployee.home_location || DEFAULT_WORK_LOCATION;
@@ -3185,8 +3185,8 @@ workerDaysGrid?.addEventListener('click', (event) => {
 
   if (copyButton) {
     copiedWorkerDaySchedule = {
-      startsAt: startInput?.value || '07:00',
-      endsAt: endInput?.value || '22:00',
+      startsAt: startInput?.value || '09:00',
+      endsAt: endInput?.value || '17:00',
       enabled: Boolean(checkbox?.checked),
     };
     refreshWorkerPasteButtons();
@@ -3259,4 +3259,3 @@ renderWorkerDaysGrid([]);
 renderWorkerDaysOffCalendar();
 window.ShiftFuelPhoto?.initPhotoModal();
 loadVehiclePsiGuides().finally(loadWorkerProfile);
-

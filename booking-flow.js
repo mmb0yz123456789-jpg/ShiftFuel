@@ -67,6 +67,8 @@ const bookingState = {
   submitted: false,
   submitting: false,
   submittedRequestNumber: "",
+  bookedSlots: new Set(),
+  availabilitySlots: null,
 };
 
 const stepCopy = {
@@ -442,20 +444,39 @@ function timeValue(hour, minute) {
   return `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
 }
 
+function normalizeTimeSlot(value) {
+  const text = String(value || "").trim();
+  const match = text.match(/^(\d{1,2}):(\d{2})/);
+  if (!match) return "";
+  return `${match[1].padStart(2, "0")}:${match[2]}`;
+}
+
+function isMissingRpcError(error) {
+  const message = String(error?.message || "").toLowerCase();
+  return ["PGRST202", "PGRST204", "42883"].includes(error?.code)
+    || message.includes("could not find the function")
+    || (message.includes("function") && message.includes("does not exist"));
+}
+
 function availableTimeOptions() {
   const selectedDate = bookingState.values.serviceDate || "";
   const now = new Date();
   const isToday = selectedDate === todayValue();
   const bookedSlots = bookingState.bookedSlots || new Set();
+  const availabilitySlots = bookingState.availabilitySlots;
+  const hasAvailabilityLookup = availabilitySlots instanceof Set;
   const options = [];
-  for (let hour = 9; hour <= 18; hour += 1) {
+  for (let hour = 7; hour <= 22; hour += 1) {
     for (const minute of [0, 30]) {
-      if (hour === 18 && minute > 0) continue;
+      if (hour === 22 && minute > 0) continue;
       const value = timeValue(hour, minute);
       const optionDate = new Date(`${selectedDate || todayValue()}T${value}:00`);
       const past = isToday && optionDate <= now;
       const booked = bookedSlots.has(value);
-      options.push({ value, label: timeLabel(hour, minute), disabled: past || booked });
+      const unavailable = hasAvailabilityLookup ? !availabilitySlots.has(value) : (hour < 9 || hour > 17 || (hour === 17 && minute > 0));
+      if (!unavailable || bookingState.values.returnTime === value) {
+        options.push({ value, label: timeLabel(hour, minute), disabled: past || booked || unavailable });
+      }
     }
   }
   return options;
@@ -463,17 +484,37 @@ function availableTimeOptions() {
 
 async function loadBookedSlots() {
   bookingState.bookedSlots = new Set();
+  bookingState.availabilitySlots = null;
   if (!window.ShiftFuelSupabase || !bookingState.values.serviceDate) return;
   try {
-    const { data, error } = await window.ShiftFuelSupabase.rpc("public_booked_return_slots", {
-      p_service_date: bookingState.values.serviceDate,
-    });
+    const [bookedResult, availabilityResult] = await Promise.all([
+      window.ShiftFuelSupabase.rpc("public_booked_return_slots", {
+        p_service_date: bookingState.values.serviceDate,
+      }),
+      window.ShiftFuelSupabase.rpc("public_worker_availability_slots", {
+        p_service_date: bookingState.values.serviceDate,
+        p_hospital: "",
+      }),
+    ]);
+
+    const { data, error } = bookedResult || {};
     if (error) throw error;
     (data || []).forEach((row) => {
       if (slotHoldingStatuses.has(row.status) && row.desired_return_time) {
-        bookingState.bookedSlots.add(String(row.desired_return_time).slice(0, 5));
+        bookingState.bookedSlots.add(normalizeTimeSlot(row.desired_return_time));
       }
     });
+
+    if (availabilityResult?.error) {
+      if (!isMissingRpcError(availabilityResult.error)) {
+        console.warn("Could not load worker availability slots:", availabilityResult.error);
+        bookingState.availabilitySlots = new Set();
+      }
+    } else {
+      bookingState.availabilitySlots = new Set((availabilityResult?.data || [])
+        .map((row) => normalizeTimeSlot(row.slot))
+        .filter(Boolean));
+    }
   } catch (error) {
     console.warn("Could not load booked return slots:", error);
   }
@@ -1350,7 +1391,11 @@ function renderScheduleFields(panel) {
   if (bookingState.values.serviceDate) dateInput.value = bookingState.values.serviceDate;
 
   const selectedTime = bookingState.values.returnTime || "";
-  timeSelect.innerHTML = `<option value="">Select return time</option>${availableTimeOptions().map((option) => `
+  const options = availableTimeOptions();
+  const placeholder = bookingState.values.serviceDate && options.length === 0
+    ? "No return times available for this date"
+    : "Select return time";
+  timeSelect.innerHTML = `<option value="">${placeholder}</option>${options.map((option) => `
     <option value="${option.value}" ${option.disabled ? "disabled" : ""} ${option.value === selectedTime && !option.disabled ? "selected" : ""}>${option.label}${option.disabled ? " - unavailable" : ""}</option>
   `).join("")}`;
   if (selectedTime && !Array.from(timeSelect.options).some((option) => option.value === selectedTime && !option.disabled)) {
@@ -1794,6 +1839,10 @@ async function submitBooking(panel) {
           <h3>Request received.</h3>
           <p>Your request number is: <strong>${escapeHtml(bookingState.submittedRequestNumber)}</strong></p>
           <p>Use Track My Vehicle to follow your request.</p>
+          <div class="admin-button-row">
+            <button class="button primary" type="button" data-new-booking>Submit a new request</button>
+            <a class="button secondary" href="track.html">Track My Vehicle</a>
+          </div>
         </div>
       `;
     }
@@ -2011,6 +2060,11 @@ function renderFlow(root) {
 
     const panel = event.target.closest(".booking-accordion-card");
     if (!panel) return;
+
+    if (event.target.closest("[data-new-booking]")) {
+      window.location.reload();
+      return;
+    }
 
     if (event.target.closest("[data-verify-returning]")) {
       await verifyReturningCustomer(panel);
