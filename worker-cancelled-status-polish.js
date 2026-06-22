@@ -230,3 +230,15 @@
   const observer = new MutationObserver(applyCancelledStatusPolish);
   observer.observe(document.body, { childList: true, subtree: true, characterData: true });
 })();
+
+// Load optional live GPS tracking after the worker portal has fully initialized.
+(() => {
+  if (!document.body?.classList.contains('worker-portal-page')) return;
+  window.addEventListener('load', () => {
+    if (document.querySelector('script[data-worker-gps-tracking]')) return;
+    const script = document.createElement('script');
+    script.src = 'worker-gps-tracking.js';
+    script.dataset.workerGpsTracking = '1';
+    document.body.appendChild(script);
+  });
+})();
