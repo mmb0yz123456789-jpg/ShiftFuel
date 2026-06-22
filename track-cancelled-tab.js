@@ -1,5 +1,5 @@
 // Track page: split cancelled requests out of denied requests.
-// Request-result sections with at least one request open automatically.
+// Only Requests in progress opens automatically when it has active requests.
 (function () {
   if (!document.body || !document.body.className.includes('track-page')) return;
   const cancelledStatuses = new Set(['customer_canceled', 'canceled', 'cancelled', 'canceled_return_completed']);
@@ -13,7 +13,7 @@
     return deniedStatuses.has(request && request.status);
   }
 
-  function detailsOpenAttr(items) {
+  function inProgressOpenAttr(items) {
     return items.length > 0 ? ' open' : '';
   }
 
@@ -27,7 +27,7 @@
       const denied = (requests || []).filter(isDeniedRequest);
 
       let html = '<div class="track-sections">';
-      html += '<details class="track-section"' + detailsOpenAttr(inProgress) + '><summary class="track-section-header">Requests in progress <span class="track-section-count">' + inProgress.length + '</span></summary><div class="track-section-body">';
+      html += '<details class="track-section"' + inProgressOpenAttr(inProgress) + '><summary class="track-section-header">Requests in progress <span class="track-section-count">' + inProgress.length + '</span></summary><div class="track-section-body">';
       if (!inProgress.length) html += '<p class="track-empty-msg">No requests in progress.</p>';
       else for (const request of inProgress) {
         const photos = typeof loadRequestPhotos === 'function' ? await loadRequestPhotos(request.id, phone, email) : [];
@@ -36,7 +36,7 @@
       }
       html += '</div></details>';
 
-      html += '<details class="track-section"' + detailsOpenAttr(completed) + '><summary class="track-section-header">Completed requests <span class="track-section-count">' + completed.length + '</span></summary><div class="track-section-body">';
+      html += '<details class="track-section"><summary class="track-section-header">Completed requests <span class="track-section-count">' + completed.length + '</span></summary><div class="track-section-body">';
       if (!completed.length) html += '<p class="track-empty-msg">No completed requests available.</p>';
       else for (const request of completed) {
         const photos = typeof loadRequestPhotos === 'function' ? await loadRequestPhotos(request.id, phone, email) : [];
@@ -45,12 +45,12 @@
       }
       html += '</div></details>';
 
-      html += '<details class="track-section"' + detailsOpenAttr(cancelled) + '><summary class="track-section-header">Cancelled requests <span class="track-section-count">' + cancelled.length + '</span></summary><div class="track-section-body">';
+      html += '<details class="track-section"><summary class="track-section-header">Cancelled requests <span class="track-section-count">' + cancelled.length + '</span></summary><div class="track-section-body">';
       if (!cancelled.length) html += '<p class="track-empty-msg">No cancelled requests found.</p>';
       else for (const request of cancelled) html += renderDeniedCard(request);
       html += '</div></details>';
 
-      html += '<details class="track-section"' + detailsOpenAttr(denied) + '><summary class="track-section-header">Denied requests <span class="track-section-count">' + denied.length + '</span></summary><div class="track-section-body">';
+      html += '<details class="track-section"><summary class="track-section-header">Denied requests <span class="track-section-count">' + denied.length + '</span></summary><div class="track-section-body">';
       if (!denied.length) html += '<p class="track-empty-msg">No denied requests found.</p>';
       else for (const request of denied) html += renderDeniedCard(request);
       html += '</div></details></div>';
