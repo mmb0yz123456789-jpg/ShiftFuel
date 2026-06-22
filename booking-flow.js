@@ -60,6 +60,7 @@ const bookingState = {
     authorized: false,
     paymentIntentId: "",
     clientSecret: "",
+    authorizedAmountCents: 0,
     status: "",
     statusType: "",
   },
@@ -285,7 +286,15 @@ const VEHICLE_FALLBACK_MODELS = {
   Volkswagen: ["Atlas", "Golf", "ID.4", "Jetta", "Passat", "Taos", "Tiguan"],
   Volvo: ["S60", "S90", "V60", "XC40", "XC60", "XC90"],
 };
-const FUEL_RANGES = {
+const FUEL_SELECTED_GALLONS = {
+  "0-5": 5,
+  "5-10": 10,
+  "10-15": 15,
+  "15-20": 20,
+  "20-25": 25,
+  "25+": 40,
+};
+const FUEL_AUTHORIZATION_GALLONS = {
   "0-5": 10,
   "5-10": 15,
   "10-15": 20,
@@ -331,8 +340,10 @@ function selectedWashPackage() {
 }
 
 function calculateTotals() {
-  const fuelGallons = serviceNeedsFuel() ? FUEL_RANGES[bookingState.values.fuelPreference] || 0 : 0;
-  const fuelEstimate = fuelGallons * PRICE_PER_GALLON;
+  const selectedFuelGallons = serviceNeedsFuel() ? FUEL_SELECTED_GALLONS[bookingState.values.fuelPreference] || 0 : 0;
+  const authorizationFuelGallons = serviceNeedsFuel() ? FUEL_AUTHORIZATION_GALLONS[bookingState.values.fuelPreference] || 0 : 0;
+  const fuelGallons = authorizationFuelGallons;
+  const fuelEstimate = authorizationFuelGallons * PRICE_PER_GALLON;
   const washPackage = serviceNeedsWash() ? selectedWashPackage() : null;
   const washAmount = washPackage ? washPackage.price : 0;
   const fuelBaseFee = serviceNeedsFuel() ? FUEL_SERVICE_FEE : 0;
@@ -366,6 +377,8 @@ function calculateTotals() {
 
   return {
     fuelGallons,
+    selectedFuelGallons,
+    authorizationFuelGallons,
     fuelEstimate,
     washPackage,
     washAmount,
@@ -1318,7 +1331,7 @@ function renderPaymentSummary(panel) {
       ${serviceNeedsFuel() ? `<div><dt>Fuel service fee</dt><dd>${formatMoney(totals.fuelFee)}</dd></div>` : ""}
       ${serviceNeedsWash() ? `<div><dt>Car wash service fee</dt><dd>${formatMoney(totals.washFee)}</dd></div>` : ""}
       ${bookingState.values.quickCare ? `<div><dt>Quick Vehicle Care add-on</dt><dd>${formatMoney(totals.quickFee)}</dd></div>` : ""}
-      ${serviceNeedsFuel() ? `<div><dt>Estimated fuel</dt><dd>${totals.fuelGallons} gal x ${formatMoney(PRICE_PER_GALLON)}/gal = ${formatMoney(totals.fuelEstimate)}</dd></div>` : ""}
+      ${serviceNeedsFuel() ? `<div><dt>Estimated fuel</dt><dd>${escapeHtml(bookingState.values.fuelPreference || "Selected range")} selected. We authorize a ${totals.authorizationFuelGallons} gallon buffer just in case: ${totals.authorizationFuelGallons} gal x ${formatMoney(PRICE_PER_GALLON)}/gal = ${formatMoney(totals.fuelEstimate)}</dd></div>` : ""}
       ${totals.washPackage ? `<div><dt>Car wash package</dt><dd>${escapeHtml(totals.washPackage.label)} - ${formatMoney(totals.washAmount)}</dd></div>` : ""}
       <div><dt>Estimated total</dt><dd>${formatMoney(totals.estimatedTotal)}</dd></div>
     </dl>
@@ -1414,6 +1427,7 @@ async function confirmPaymentAuthorization(panel, button) {
     bookingState.payment.authorized = true;
     bookingState.payment.paymentIntentId = intent.payment_intent_id;
     bookingState.payment.clientSecret = intent.client_secret;
+    bookingState.payment.authorizedAmountCents = Math.round(totals.estimatedTotal * 100);
     setStatus("success", "Payment authorized. You are not charged until service is complete.");
     closePaymentModal();
     flowRoot?.dispatchEvent(new CustomEvent("booking-payment-authorized"));
@@ -1444,6 +1458,7 @@ async function cancelPaymentAuthorization(panel) {
     bookingState.payment.authorized = false;
     bookingState.payment.paymentIntentId = "";
     bookingState.payment.clientSecret = "";
+    bookingState.payment.authorizedAmountCents = 0;
     bookingState.values.reviewConfirmed = false;
     setStatus("warning", "Payment authorization was cleared. No request was booked.");
     return true;
@@ -1475,6 +1490,7 @@ async function cancelPaymentAuthorization(panel) {
     bookingState.payment.authorized = false;
     bookingState.payment.paymentIntentId = "";
     bookingState.payment.clientSecret = "";
+    bookingState.payment.authorizedAmountCents = 0;
     bookingState.values.reviewConfirmed = false;
     setStatus("success", "Payment authorization canceled. No request was booked and the card hold was released.");
     return true;
@@ -1633,7 +1649,7 @@ function buildBookingPayload() {
 
   return {
     payment_intent_id: bookingState.payment.paymentIntentId,
-    amount_cents: Math.round(totals.estimatedTotal * 100),
+    amount_cents: bookingState.payment.authorizedAmountCents || Math.round(totals.estimatedTotal * 100),
     customer_name: customerName(),
     customer_id: bookingState.returning.requests[0]?.customer_id || null,
     customer_phone: formatPhone(bookingState.values.customerPhone || ""),
@@ -1661,6 +1677,8 @@ function buildBookingPayload() {
     fuel_type: serviceNeedsFuel() ? bookingState.values.fuelType || "" : "",
     estimated_fuel_range: serviceNeedsFuel() ? bookingState.values.fuelPreference || "" : "",
     estimated_gallons: totals.fuelGallons,
+    selected_fuel_gallons: totals.selectedFuelGallons,
+    authorization_fuel_gallons: totals.authorizationFuelGallons,
     price_per_gallon: PRICE_PER_GALLON,
     estimated_fuel_amount: totals.fuelEstimate,
     fuel_convenience_fee: totals.fuelFee,
@@ -1770,7 +1788,7 @@ function renderReviewSummary(panel) {
       <div><dt>Service address</dt><dd>${escapeHtml([values.street, values.unit, values.city, values.state, values.zip].filter(Boolean).join(", ") || "Not entered")}</dd></div>
       <div><dt>Vehicle</dt><dd>${escapeHtml([values.vehicleYear, values.vehicleMake, values.vehicleModel, values.vehicleColor].filter(Boolean).join(" ") || "Not entered")}${values.licensePlate ? ` | Plate: ${escapeHtml(values.licensePlate)}` : ""}${values.fuelType ? ` | Fuel: ${escapeHtml(values.fuelType)}` : ""}</dd></div>
       <div><dt>Selected services</dt><dd>${escapeHtml(serviceLabel())}</dd></div>
-      ${serviceNeedsFuel() ? `<div><dt>Fuel details</dt><dd>${escapeHtml(values.fuelType || "Not selected")}, ${escapeHtml(values.fuelPreference || "Not selected")} gallons</dd></div>` : ""}
+      ${serviceNeedsFuel() ? `<div><dt>Fuel details</dt><dd>${escapeHtml(values.fuelType || "Not selected")}, ${escapeHtml(values.fuelPreference || "Not selected")} gallons selected. Authorization uses a ${totals.authorizationFuelGallons} gallon buffer.</dd></div>` : ""}
       ${totals.washPackage ? `<div><dt>Car wash package</dt><dd>${escapeHtml(totals.washPackage.label)}</dd></div>` : ""}
       <div><dt>Add-ons</dt><dd>${escapeHtml(addOns)}</dd></div>
       <div><dt>Service date</dt><dd>${escapeHtml(values.serviceDate || "Not selected")}</dd></div>
