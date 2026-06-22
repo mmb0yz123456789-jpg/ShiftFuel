@@ -4,6 +4,7 @@
   if (!document.body?.classList.contains('admin-portal-page')) return;
 
   const MONEY = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' });
+  const CLOSED_STATUSES = new Set(['complete', 'completed', 'denied', 'customer_canceled', 'cancelled', 'canceled', 'closed_no_charge', 'unable_to_complete', 'auto_reversed']);
   const QUICK_ACTIONS = [
     { selector: '.admin-action-card[data-page-action="requests"][data-request-view="unassigned"]', title: 'Assign Worker', subtitle: 'Assign an available worker' },
     { selector: '.admin-action-card[data-page-action="requests"][data-request-view="all"]', title: 'Edit Request', subtitle: 'Update request details' },
@@ -12,25 +13,22 @@
   ];
 
   let selectedDashboardView = 'open';
-  let isPatched = false;
+  let dashboardPatched = false;
+  let rendering = false;
 
-  function amount(value) {
+  const amount = (value) => {
     const num = Number(value);
     return Number.isFinite(num) ? num : 0;
-  }
+  };
 
-  function money(value) {
-    return MONEY.format(amount(value));
-  }
+  const money = (value) => MONEY.format(amount(value));
 
-  function html(value) {
-    return String(value ?? '')
-      .replaceAll('&', '&amp;')
-      .replaceAll('<', '&lt;')
-      .replaceAll('>', '&gt;')
-      .replaceAll('"', '&quot;')
-      .replaceAll("'", '&#39;');
-  }
+  const html = (value) => String(value ?? '')
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;');
 
   function getRequests() {
     try {
@@ -70,10 +68,12 @@
     try {
       if (typeof isInDashboardRange === 'function') return isInDashboardRange(request, range);
     } catch (_) {}
+
     if (range === 'all') return true;
     const stamp = new Date(request.completed_at || request.updated_at || request.created_at || 0);
     const now = new Date();
     let start = new Date(now);
+
     if (range === 'today') {
       start.setHours(0, 0, 0, 0);
     } else if (range === 'week') {
@@ -83,6 +83,7 @@
     } else if (range === 'month') {
       start = new Date(now.getFullYear(), now.getMonth(), 1);
     }
+
     return stamp >= start;
   }
 
@@ -97,12 +98,11 @@
     try {
       if (typeof isOpen === 'function') return isOpen(request) && !isOpenRequest(request);
     } catch (_) {}
-    const closed = new Set(['complete', 'completed', 'denied', 'customer_canceled', 'cancelled', 'canceled', 'closed_no_charge', 'unable_to_complete', 'auto_reversed']);
-    return !isOpenRequest(request) && !closed.has(request.status);
+    return !isOpenRequest(request) && !CLOSED_STATUSES.has(request.status);
   }
 
   function isCompletedToday(request) {
-    return request.status === 'complete' && isInRange(request, 'today');
+    return ['complete', 'completed', 'finalized'].includes(String(request.status || '').toLowerCase()) && isInRange(request, 'today');
   }
 
   function statusLabel(status) {
@@ -152,9 +152,6 @@
       accepted: 'Worker should confirm key received',
       key_received: 'Worker should pick up vehicle',
       vehicle_picked_up: 'Complete requested service',
-      pickup_vehicle_photo_uploaded: 'Upload pickup odometer/fuel photos',
-      pickup_odometer_photo_uploaded: 'Continue pickup photos',
-      pickup_fuel_gauge_photo_uploaded: 'Begin service',
       service_in_progress: 'Record receipts or service issue',
       fueling_in_progress: 'Record fuel receipt',
       car_wash_in_progress: 'Record car wash receipt',
@@ -172,6 +169,8 @@
       payment_issue: 'Review payment issue',
       authorization_too_low: 'Review payment issue',
       complete: 'Completed',
+      completed: 'Completed',
+      finalized: 'Completed',
     };
     return map[status] || 'Review request';
   }
@@ -217,8 +216,8 @@
     });
 
     const hasActualPaymentFees = paymentFees > 0;
-    const estimatedNet = gross - receipts - refundsTotal - (hasActualPaymentFees ? paymentFees : 0);
-    return { range, label: rangeLabel(range), captured, gross, receipts, serviceFees, addOns, paymentFees, paymentRecovery, refundsTotal, estimatedNet, hasActualPaymentFees };
+    const net = gross - receipts - refundsTotal - (hasActualPaymentFees ? paymentFees : 0);
+    return { range, label: rangeLabel(range), captured, gross, receipts, serviceFees, addOns, paymentFees, paymentRecovery, refundsTotal, net, hasActualPaymentFees };
   }
 
   function updateRevenueDisplay() {
@@ -226,7 +225,7 @@
     const label = document.querySelector('#stat-revenue-label');
     const value = document.querySelector('#stat-net-revenue');
     if (label) label.textContent = metrics.hasActualPaymentFees ? `Net Revenue ${metrics.label}` : `Gross Revenue ${metrics.label}`;
-    if (value) value.textContent = money(metrics.hasActualPaymentFees ? metrics.estimatedNet : metrics.gross);
+    if (value) value.textContent = money(metrics.hasActualPaymentFees ? metrics.net : metrics.gross);
   }
 
   function ensureDashboardPanel() {
@@ -238,19 +237,23 @@
       panel = document.createElement('div');
       panel.id = 'dashboard-detail-panel';
       panel.className = 'dashboard-detail-panel';
-      const requestList = document.querySelector('#request-list');
-      requestList?.insertAdjacentElement('beforebegin', panel);
+      queueCard.prepend(panel);
     }
     return panel;
   }
 
   function setDashboardMode(active) {
-    const tabs = document.querySelector('.admin-request-tabs');
-    const requestList = document.querySelector('#request-list');
+    const queueCard = document.querySelector('.admin-queue-card[data-tab-panel="requests"]');
     const panel = ensureDashboardPanel();
-    if (tabs) tabs.hidden = active;
-    if (requestList) requestList.hidden = active;
+
+    queueCard?.classList.toggle('dashboard-card-driven-mode', active);
     if (panel) panel.hidden = !active;
+
+    if (!active) {
+      document.querySelector('#request-list')?.removeAttribute('hidden');
+      document.querySelector('.admin-request-tabs')?.removeAttribute('hidden');
+      queueCard?.querySelector(':scope > .admin-toolbar')?.removeAttribute('hidden');
+    }
   }
 
   function updateCardActiveState() {
@@ -288,19 +291,22 @@
     return `<div class="dashboard-detail-empty"><p>${html(message)}</p></div>`;
   }
 
+  function viewAllButton() {
+    return '<button class="button secondary dashboard-view-all" type="button">View all requests</button>';
+  }
+
   function renderRequestsPanel(title, eyebrow, requests, emptyMessage) {
     const panel = ensureDashboardPanel();
     if (!panel) return;
-    const body = requests.length ? requests.map(requestCard).join('') : emptyState(emptyMessage);
     panel.innerHTML = `
       <div class="dashboard-detail-heading">
         <div>
           <p class="eyebrow">${html(eyebrow)}</p>
           <h2>${html(title)}</h2>
         </div>
-        <button class="button secondary dashboard-view-all" type="button">View all requests</button>
+        ${viewAllButton()}
       </div>
-      <div class="dashboard-detail-list">${body}</div>
+      <div class="dashboard-detail-list">${requests.length ? requests.map(requestCard).join('') : emptyState(emptyMessage)}</div>
     `;
   }
 
@@ -308,10 +314,10 @@
     const panel = ensureDashboardPanel();
     if (!panel) return;
     const workers = getEmployees().filter((employee) => employee.active);
-    const openRequests = getRequests().filter(isRequestInProgress);
+    const jobs = getRequests().filter(isRequestInProgress);
     const body = workers.length
       ? workers.map((worker) => {
-          const assignedJobs = openRequests.filter((request) => request.assigned_employee_id === worker.id || request.assigned_worker_name === worker.full_name).length;
+          const assignedJobs = jobs.filter((request) => request.assigned_employee_id === worker.id || request.assigned_worker_name === worker.full_name).length;
           return `
             <article class="dashboard-detail-request-card dashboard-worker-card">
               <div class="dashboard-detail-request-main">
@@ -337,12 +343,7 @@
       : emptyState('No active workers right now.');
 
     panel.innerHTML = `
-      <div class="dashboard-detail-heading">
-        <div>
-          <p class="eyebrow">Team</p>
-          <h2>Active Workers</h2>
-        </div>
-      </div>
+      <div class="dashboard-detail-heading"><div><p class="eyebrow">Team</p><h2>Active Workers</h2></div>${viewAllButton()}</div>
       <div class="dashboard-detail-list">${body}</div>
     `;
   }
@@ -351,7 +352,7 @@
     const panel = ensureDashboardPanel();
     if (!panel) return;
     const metrics = revenueMetrics('today');
-    const title = metrics.hasActualPaymentFees ? 'Net Revenue Today' : 'Revenue Today';
+    const title = metrics.hasActualPaymentFees ? 'Net Revenue Today' : 'Gross Revenue Today';
     const rows = metrics.captured.length
       ? metrics.captured.map((request) => {
           const receipt = receiptTotalsFromRequest(request);
@@ -380,47 +381,49 @@
       : emptyState('No completed charges today.');
 
     panel.innerHTML = `
-      <div class="dashboard-detail-heading">
-        <div>
-          <p class="eyebrow">Payments</p>
-          <h2>${html(title)}</h2>
-        </div>
-      </div>
+      <div class="dashboard-detail-heading"><div><p class="eyebrow">Payments</p><h2>${html(title)}</h2></div>${viewAllButton()}</div>
       <div class="dashboard-revenue-summary">
-        <div><span>Completed charges today</span><strong>${money(metrics.gross)}</strong></div>
-        <div><span>Receipt reimbursements</span><strong>${money(metrics.receipts)}</strong></div>
-        <div><span>Service fees</span><strong>${money(metrics.serviceFees)}</strong></div>
-        <div><span>Add-ons</span><strong>${money(metrics.addOns)}</strong></div>
-        <div><span>Refunds / reversals</span><strong>${money(metrics.refundsTotal)}</strong></div>
-        <div><span>${metrics.hasActualPaymentFees ? 'Payment fees' : 'Payment fees unavailable'}</span><strong>${money(metrics.paymentFees)}</strong></div>
-        <div><span>Payment recovery</span><strong>${money(metrics.paymentRecovery)}</strong></div>
-        <div><span>${metrics.hasActualPaymentFees ? 'Net revenue' : 'Estimated net before fees'}</span><strong>${money(metrics.estimatedNet)}</strong></div>
+        <div><span>Completed charges today:</span><strong>${money(metrics.gross)}</strong></div>
+        <div><span>Receipt reimbursements:</span><strong>${money(metrics.receipts)}</strong></div>
+        <div><span>Service fees:</span><strong>${money(metrics.serviceFees)}</strong></div>
+        <div><span>Add-ons:</span><strong>${money(metrics.addOns)}</strong></div>
+        <div><span>Refunds / reversals:</span><strong>${money(metrics.refundsTotal)}</strong></div>
+        <div><span>${metrics.hasActualPaymentFees ? 'Payment fees:' : 'Payment fees unavailable:'}</span><strong>${money(metrics.paymentFees)}</strong></div>
+        <div><span>Payment recovery:</span><strong>${money(metrics.paymentRecovery)}</strong></div>
+        <div><span>${metrics.hasActualPaymentFees ? 'Net revenue:' : 'Estimated net before fees:'}</span><strong>${money(metrics.net)}</strong></div>
       </div>
       <div class="dashboard-detail-list">${rows}</div>
     `;
   }
 
   function renderDashboardDetail() {
-    if (!isDashboardPage()) {
-      setDashboardMode(false);
+    if (rendering) return;
+    rendering = true;
+
+    try {
+      if (!isDashboardPage()) {
+        setDashboardMode(false);
+        updateCardActiveState();
+        return;
+      }
+
+      setDashboardMode(true);
       updateCardActiveState();
-      return;
-    }
+      const requests = getRequests();
 
-    setDashboardMode(true);
-    updateCardActiveState();
-    const requests = getRequests();
-
-    if (selectedDashboardView === 'open') {
-      renderRequestsPanel('Open Requests', 'Dashboard detail', requests.filter(isOpenRequest), 'No open requests right now.');
-    } else if (selectedDashboardView === 'inprogress') {
-      renderRequestsPanel('In Progress', 'Dashboard detail', requests.filter(isRequestInProgress), 'No requests are currently in progress.');
-    } else if (selectedDashboardView === 'completed') {
-      renderRequestsPanel('Completed Today', 'Dashboard detail', requests.filter(isCompletedToday), 'No requests completed today.');
-    } else if (selectedDashboardView === 'workers') {
-      renderWorkersPanel();
-    } else if (selectedDashboardView === 'revenue') {
-      renderRevenuePanel();
+      if (selectedDashboardView === 'open') {
+        renderRequestsPanel('Open Requests', 'Dashboard detail', requests.filter(isOpenRequest), 'No open requests right now.');
+      } else if (selectedDashboardView === 'inprogress') {
+        renderRequestsPanel('In Progress', 'Dashboard detail', requests.filter(isRequestInProgress), 'No requests are currently in progress.');
+      } else if (selectedDashboardView === 'completed') {
+        renderRequestsPanel('Completed Today', 'Dashboard detail', requests.filter(isCompletedToday), 'No requests completed today.');
+      } else if (selectedDashboardView === 'workers') {
+        renderWorkersPanel();
+      } else if (selectedDashboardView === 'revenue') {
+        renderRevenuePanel();
+      }
+    } finally {
+      rendering = false;
     }
   }
 
@@ -473,9 +476,7 @@
     document.querySelector('.admin-page-tab[data-page="requests"]')?.click();
     setTimeout(() => {
       document.querySelector('#show-all')?.click();
-      setTimeout(() => {
-        document.querySelector(`.queue-row-toggle[data-id="${CSS.escape(requestId)}"]`)?.click();
-      }, 100);
+      setTimeout(() => document.querySelector(`.queue-row-toggle[data-id="${CSS.escape(requestId)}"]`)?.click(), 100);
     }, 100);
   }
 
@@ -496,18 +497,22 @@
     const style = document.createElement('style');
     style.id = 'admin-dashboard-card-panel-style';
     style.textContent = `
+      .admin-queue-card.dashboard-card-driven-mode > .admin-toolbar,
+      .admin-queue-card.dashboard-card-driven-mode > .admin-request-tabs,
+      .admin-queue-card.dashboard-card-driven-mode > #request-list { display: none !important; }
+      .admin-queue-card.dashboard-card-driven-mode > #dashboard-detail-panel { display: grid !important; }
       .admin-action-card > strong,
       .admin-action-card > span { display: block; }
       .admin-action-card.is-refreshing { position: relative; }
-      .admin-action-card.is-refreshing::after { content: ''; position: absolute; right: 14px; top: 14px; width: 14px; height: 14px; border: 2px solid rgba(13,59,59,0.18); border-top-color: var(--sf-coral, #ff6b5a); border-radius: 999px; animation: adminQuickActionSpin 0.7s linear infinite; }
+      .admin-action-card.is-refreshing::after { content: ''; position: absolute; right: 14px; top: 14px; width: 14px; height: 14px; border: 2px solid rgba(13,59,59,0.18); border-top-color: var(--sf-teal-dark, #0d3b3b); border-radius: 999px; animation: adminQuickActionSpin 0.7s linear infinite; }
       @keyframes adminQuickActionSpin { to { transform: rotate(360deg); } }
       .admin-stat-card[data-dashboard-card-action] { cursor: pointer; transition: transform 160ms ease, box-shadow 160ms ease, border-color 160ms ease, background 160ms ease; }
-      .admin-stat-card[data-dashboard-card-action]:hover { transform: translateY(-2px); border-color: rgba(255,107,90,0.32); box-shadow: 0 16px 40px rgba(13,59,59,0.13); }
+      .admin-stat-card[data-dashboard-card-action]:hover { transform: translateY(-2px); border-color: rgba(13,59,59,0.24); box-shadow: 0 16px 40px rgba(13,59,59,0.13); }
       .admin-stat-card[data-dashboard-card-action]:active { transform: translateY(0) scale(0.99); }
-      .admin-stat-card[data-dashboard-card-action]:focus-visible { outline: 3px solid rgba(255,107,90,0.28); outline-offset: 3px; }
-      .admin-stat-card.is-active-dashboard-card { border-color: rgba(255,107,90,0.42); background: linear-gradient(180deg, #fff, rgba(255,107,90,0.06)); box-shadow: 0 18px 42px rgba(13,59,59,0.14); }
+      .admin-stat-card[data-dashboard-card-action]:focus-visible { outline: 3px solid rgba(13,59,59,0.22); outline-offset: 3px; }
+      .admin-stat-card.is-active-dashboard-card { border-color: rgba(13,59,59,0.42) !important; background: linear-gradient(180deg, #fff, rgba(234,242,234,0.92)); box-shadow: 0 18px 42px rgba(13,59,59,0.14); }
       .dashboard-detail-panel { display: grid; gap: 16px; }
-      .dashboard-detail-heading { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 4px 0 8px; }
+      .dashboard-detail-heading { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 2px 0 8px; }
       .dashboard-detail-heading h2 { margin: 0; color: var(--sf-teal-dark, #0d3b3b); }
       .dashboard-detail-list { display: grid; gap: 12px; }
       .dashboard-detail-request-card { display: grid; gap: 14px; padding: 18px; background: #fff; border: 1px solid rgba(13,59,59,0.10); border-radius: var(--sf-radius-sm, 14px); box-shadow: 0 10px 28px rgba(13,59,59,0.06); }
@@ -516,9 +521,9 @@
       .dashboard-detail-request-main p { margin: 0; color: var(--sf-muted, #60716d); }
       .dashboard-detail-ticket { color: var(--sf-muted, #60716d); font-size: 0.76rem; font-weight: 950; letter-spacing: .03em; text-transform: uppercase; }
       .dashboard-detail-grid, .dashboard-revenue-summary { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: 10px; margin: 0; }
-      .dashboard-detail-grid div, .dashboard-revenue-summary div { padding: 10px 12px; background: var(--sf-sage-light, #edf4ed); border: 1px solid rgba(13,59,59,0.08); border-radius: var(--sf-radius-sm, 14px); }
+      .dashboard-detail-grid div, .dashboard-revenue-summary div { display: grid; gap: 4px; padding: 10px 12px; background: var(--sf-sage-light, #edf4ed); border: 1px solid rgba(13,59,59,0.08); border-radius: var(--sf-radius-sm, 14px); }
       .dashboard-detail-grid dt, .dashboard-revenue-summary span { color: var(--sf-muted, #60716d); font-size: .72rem; font-weight: 900; text-transform: uppercase; letter-spacing: .03em; }
-      .dashboard-detail-grid dd, .dashboard-revenue-summary strong { margin: 3px 0 0; color: var(--sf-teal-dark, #0d3b3b); font-weight: 900; }
+      .dashboard-detail-grid dd, .dashboard-revenue-summary strong { margin: 0; color: var(--sf-teal-dark, #0d3b3b); font-weight: 900; }
       .dashboard-detail-actions { display: flex; justify-content: flex-end; }
       .dashboard-detail-empty { padding: 26px; background: linear-gradient(180deg, #fff, var(--sf-sage-light, #edf4ed)); border: 1px dashed rgba(13,59,59,0.18); border-radius: var(--sf-radius-sm, 14px); color: var(--sf-muted, #60716d); }
       .dashboard-detail-empty p { margin: 0; }
@@ -536,8 +541,9 @@
     setupDashboardCards();
     renderDashboardDetail();
     updateRevenueDisplay();
+
     try {
-      if (typeof updateDashboardStatCards === 'function' && !isPatched) {
+      if (typeof updateDashboardStatCards === 'function' && !dashboardPatched) {
         const original = updateDashboardStatCards;
         updateDashboardStatCards = function patchedUpdateDashboardStatCards(...args) {
           original.apply(this, args);
@@ -546,7 +552,7 @@
           normalizeQuickActions();
           setTimeout(renderDashboardDetail, 0);
         };
-        isPatched = true;
+        dashboardPatched = true;
         return true;
       }
     } catch (_) {}
@@ -607,6 +613,16 @@
   });
 
   document.addEventListener('click', (event) => {
-    if (event.target.closest('.admin-page-tab')) setTimeout(renderDashboardDetail, 120);
+    if (event.target.closest('.admin-page-tab')) setTimeout(renderDashboardDetail, 150);
   });
+
+  const queueCard = document.querySelector('.admin-queue-card[data-tab-panel="requests"]');
+  if (queueCard) {
+    let mutationTimer = null;
+    new MutationObserver(() => {
+      if (!isDashboardPage()) return;
+      clearTimeout(mutationTimer);
+      mutationTimer = setTimeout(renderDashboardDetail, 80);
+    }).observe(queueCard, { childList: true, subtree: true });
+  }
 })();
