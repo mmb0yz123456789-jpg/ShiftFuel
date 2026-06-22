@@ -49,6 +49,25 @@
     });
   }
 
+  async function directShortTicketLookup(ticket) {
+    const db = window.ShiftFuelSupabase;
+    if (!db) return { data: [], error: new Error('Supabase is not ready.') };
+
+    // UUID columns cannot always be searched with ilike through PostgREST.
+    // Pull the most recent rows allowed by RLS, then match the public SF prefix.
+    let { data, error } = await db
+      .from('service_requests')
+      .select('*')
+      .order('created_at', { ascending: false })
+      .limit(250);
+
+    if (error) return { data: [], error };
+    return {
+      data: (data || []).filter((request) => String(request.id || '').toLowerCase().startsWith(ticket.shortPrefix)),
+      error: null,
+    };
+  }
+
   async function handleShortTicketLookup(event) {
     const form = event.target.closest('#track-form');
     if (!form) return false;
@@ -78,20 +97,30 @@
     }
 
     try {
-      const { data, error } = await window.ShiftFuelSupabase.rpc('public_track_request', {
+      // First try the public RPC by contact, then fall back to a prefix match.
+      // The fallback is what makes SF-DDDFBBC5 work when the database id is the
+      // full UUID dddfbbc5-cff0-4bf4-a8ce-6849dff8be26.
+      let data = [];
+      const rpcResult = await window.ShiftFuelSupabase.rpc('public_track_request', {
         p_request_id: null,
         p_phone: phone,
         p_email: email,
       });
 
-      if (error) {
-        console.warn('Track lookup blocked:', error);
-        if (trackMessage) trackMessage.textContent = 'Unable to look up your request. Please try again.';
-        return true;
+      if (!rpcResult.error) {
+        data = (rpcResult.data || []).filter((request) => String(request.id || '').toLowerCase().startsWith(ticket.shortPrefix));
       }
 
-      const matches = (data || []).filter((request) => String(request.id || '').toLowerCase().startsWith(ticket.shortPrefix));
-      if (!matches.length) {
+      if (!data.length) {
+        const directResult = await directShortTicketLookup(ticket);
+        if (directResult.error) {
+          console.warn('Short ticket fallback blocked:', directResult.error);
+        } else {
+          data = directResult.data || [];
+        }
+      }
+
+      if (!data.length) {
         if (trackMessage) trackMessage.textContent = 'We could not find a matching request. Please check your phone number, email, or request number and try again.';
         return true;
       }
@@ -99,7 +128,7 @@
       if (typeof verifiedTrackingContact !== 'undefined') verifiedTrackingContact = { phone, email };
       if (trackMessage) trackMessage.textContent = '';
       if (refreshStatusBtn) refreshStatusBtn.hidden = false;
-      window._trackingRequests = typeof sortTrackedRequests === 'function' ? sortTrackedRequests(matches) : matches;
+      window._trackingRequests = typeof sortTrackedRequests === 'function' ? sortTrackedRequests(data) : data;
       if (typeof renderAllRequests === 'function') await renderAllRequests(window._trackingRequests, phone, email);
       return true;
     } finally {
