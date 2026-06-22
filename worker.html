@@ -331,6 +331,12 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="supabase-client.js"></script>
     <script src="photo-utils.js"></script>
+    <script>
+      function formatDate(value) {
+        if (!value) return '';
+        return new Intl.DateTimeFormat('en-US', { dateStyle: 'medium' }).format(new Date(value));
+      }
+    </script>
     <script src="worker.js"></script>
     <script defer src="/_vercel/insights/script.js"></script>
     <script defer src="/_vercel/speed-insights/script.js"></script>
