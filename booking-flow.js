@@ -193,7 +193,7 @@ const stepCopy = {
     fields: `
       <div class="payment-placeholder" data-payment-summary></div>
       <p class="payment-notice">Your payment method will be authorized now. You will only be charged after your service is completed.</p>
-      <p class="field-help">Do not capture payment at booking. Do not capture payment when worker clicks Return Vehicle. Capture payment only when service is confirmed complete. Void authorization if the request is denied or cancelled.</p>
+      <p class="field-help">This places a temporary hold for the estimated amount. The request is not booked until you review and submit it on the next step.</p>
       <button class="button secondary" type="button" data-authorize-payment>Authorize payment</button>
       <p class="booking-validation-message" data-payment-status></p>
     `,
@@ -206,7 +206,10 @@ const stepCopy = {
         <strong>Review summary</strong>
       </div>
       <label class="booking-check"><input data-required type="checkbox" name="reviewConfirmed"><span>I confirm that the information above is accurate and authorize ShiftFuel Concierge to pick up, service, and return my vehicle using the instructions provided.</span></label>
-      <button class="button primary" type="button" data-submit-booking>Submit Booking</button>
+      <div class="admin-button-row">
+        <button class="button primary" type="button" data-submit-booking>Book request</button>
+        <button class="button secondary" type="button" data-cancel-authorization>Cancel authorization</button>
+      </div>
       <p class="booking-validation-message" data-submit-status></p>
     `,
   },
@@ -332,11 +335,50 @@ function calculateTotals() {
   const fuelEstimate = fuelGallons * PRICE_PER_GALLON;
   const washPackage = serviceNeedsWash() ? selectedWashPackage() : null;
   const washAmount = washPackage ? washPackage.price : 0;
-  const fuelFee = serviceNeedsFuel() ? FUEL_SERVICE_FEE : 0;
-  const washFee = serviceNeedsWash() ? CAR_WASH_SERVICE_FEE : 0;
+  const fuelBaseFee = serviceNeedsFuel() ? FUEL_SERVICE_FEE : 0;
+  const washBaseFee = serviceNeedsWash() ? CAR_WASH_SERVICE_FEE : 0;
   const quickFee = bookingState.values.quickCare ? QUICK_CARE_FEE : 0;
-  const estimatedTotal = Math.ceil(fuelEstimate + washAmount + fuelFee + washFee + quickFee);
-  return { fuelGallons, fuelEstimate, washPackage, washAmount, fuelFee, washFee, quickFee, estimatedTotal };
+  const netTarget = fuelEstimate + washAmount + fuelBaseFee + washBaseFee + quickFee;
+  const grossBeforeRounding = netTarget ? (netTarget + 0.30) / (1 - 0.029) : 0;
+  const estimatedTotal = netTarget ? Math.ceil(grossBeforeRounding) : 0;
+  const recovery = Math.round((estimatedTotal - netTarget) * 100) / 100;
+  let fuelRecovery = 0;
+  let washRecovery = 0;
+
+  if (serviceNeedsFuel() && serviceNeedsWash()) {
+    const recoveryCents = Math.round(recovery * 100);
+    const fuelBase = fuelEstimate + fuelBaseFee;
+    const washBase = washAmount + washBaseFee;
+    const totalServiceBase = fuelBase + washBase;
+    const fuelCents = totalServiceBase
+      ? Math.round(recoveryCents * (fuelBase / totalServiceBase))
+      : Math.round(recoveryCents / 2);
+    fuelRecovery = fuelCents / 100;
+    washRecovery = (recoveryCents - fuelCents) / 100;
+  } else if (serviceNeedsFuel()) {
+    fuelRecovery = recovery;
+  } else if (serviceNeedsWash()) {
+    washRecovery = recovery;
+  }
+
+  const fuelFee = Math.round((fuelBaseFee + fuelRecovery) * 100) / 100;
+  const washFee = Math.round((washBaseFee + washRecovery) * 100) / 100;
+
+  return {
+    fuelGallons,
+    fuelEstimate,
+    washPackage,
+    washAmount,
+    fuelFee,
+    washFee,
+    quickFee,
+    estimatedTotal,
+    fuelBaseFee,
+    washBaseFee,
+    recovery,
+    netTarget,
+    grossBeforeRounding,
+  };
 }
 
 function timeLabel(hour, minute) {
@@ -1286,6 +1328,11 @@ function renderPaymentSummary(panel) {
     status.dataset.status = bookingState.payment.statusType || "";
     status.textContent = bookingState.payment.status || "";
   }
+  const button = panel.querySelector("[data-authorize-payment]");
+  if (button) {
+    button.disabled = bookingState.payment.authorized;
+    button.textContent = bookingState.payment.authorized ? "Payment authorized" : "Authorize payment";
+  }
 }
 
 async function authorizePayment(panel) {
@@ -1369,6 +1416,7 @@ async function confirmPaymentAuthorization(panel, button) {
     bookingState.payment.clientSecret = intent.client_secret;
     setStatus("success", "Payment authorized. You will only be charged after your service is completed.");
     closePaymentModal();
+    flowRoot?.dispatchEvent(new CustomEvent("booking-payment-authorized"));
   } catch (error) {
     console.error("Payment authorization failed:", error);
     bookingState.payment.authorized = false;
@@ -1377,6 +1425,67 @@ async function confirmPaymentAuthorization(panel, button) {
     if (button) {
       button.disabled = false;
       button.textContent = "Authorize payment";
+    }
+  }
+}
+
+async function cancelPaymentAuthorization(panel) {
+  const status = panel.querySelector("[data-submit-status]") || panel.querySelector("[data-payment-status]");
+  const setStatus = (type, message) => {
+    if (status) {
+      status.dataset.status = type;
+      status.textContent = message;
+    }
+    bookingState.payment.statusType = type;
+    bookingState.payment.status = message;
+  };
+
+  if (!bookingState.payment.paymentIntentId || !bookingState.payment.clientSecret) {
+    bookingState.payment.authorized = false;
+    bookingState.payment.paymentIntentId = "";
+    bookingState.payment.clientSecret = "";
+    bookingState.values.reviewConfirmed = false;
+    setStatus("warning", "Payment authorization was cleared. No request was booked.");
+    return true;
+  }
+
+  const confirmed = confirm("Cancel this payment authorization? No request will be booked and the card hold will be released.");
+  if (!confirmed) return false;
+
+  const button = panel.querySelector("[data-cancel-authorization]");
+  if (button) {
+    button.disabled = true;
+    button.textContent = "Canceling...";
+  }
+  setStatus("warning", "Canceling payment authorization...");
+
+  try {
+    const res = await fetch("/api/payments", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        action: "cancel_authorization",
+        payment_intent_id: bookingState.payment.paymentIntentId,
+        client_secret: bookingState.payment.clientSecret,
+      }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || "Could not cancel payment authorization.");
+
+    bookingState.payment.authorized = false;
+    bookingState.payment.paymentIntentId = "";
+    bookingState.payment.clientSecret = "";
+    bookingState.values.reviewConfirmed = false;
+    setStatus("success", "Payment authorization canceled. No request was booked and the card hold was released.");
+    return true;
+  } catch (error) {
+    console.error("Payment authorization cancel failed:", error);
+    setStatus("error", error.message || "Could not cancel payment authorization. Please contact ShiftFuel.");
+    return false;
+  } finally {
+    if (button) {
+      button.disabled = false;
+      button.textContent = "Cancel authorization";
     }
   }
 }
@@ -1564,6 +1673,16 @@ function buildBookingPayload() {
     service_fee: totals.fuelFee + totals.washFee,
     estimated_total: totals.estimatedTotal,
     authorized_amount: totals.estimatedTotal,
+    base_fuel_service_fee: totals.fuelBaseFee,
+    base_car_wash_service_fee: totals.washBaseFee,
+    base_inspection_fee: totals.quickFee,
+    payment_operating_recovery_amount: totals.recovery,
+    displayed_fuel_service_fee: totals.fuelFee,
+    displayed_car_wash_service_fee: totals.washFee,
+    displayed_inspection_fee: totals.quickFee,
+    net_target_amount: totals.netTarget,
+    gross_total_before_rounding: totals.grossBeforeRounding,
+    rounded_customer_total: totals.estimatedTotal,
     booking_source: flowRoot?.dataset.bookingFlow === "returning" ? "returning_customer" : "book_now",
     notes,
   };
@@ -1631,7 +1750,7 @@ async function submitBooking(panel) {
     setStatus("error", error.message || "Could not submit booking. Please try again.");
     if (button) {
       button.disabled = false;
-      button.textContent = "Submit Booking";
+      button.textContent = "Book request";
     }
   } finally {
     bookingState.submitting = false;
@@ -1800,6 +1919,14 @@ function renderFlow(root) {
     updateContinue();
   });
 
+  root.addEventListener("booking-payment-authorized", () => {
+    const activePanel = root.querySelector(".booking-accordion-card.is-active");
+    if (activePanel) {
+      renderPaymentSummary(activePanel);
+      updateContinue();
+    }
+  });
+
   root.addEventListener("click", async (event) => {
     const railStep = event.target.closest("[data-rail-step]");
     if (railStep && !railStep.disabled) {
@@ -1852,6 +1979,17 @@ function renderFlow(root) {
     if (event.target.closest("[data-submit-booking]")) {
       await submitBooking(panel);
       updateContinue();
+      return;
+    }
+
+    if (event.target.closest("[data-cancel-authorization]")) {
+      const canceled = await cancelPaymentAuthorization(panel);
+      if (canceled) {
+        unlockedIndex = Math.min(unlockedIndex, steps.indexOf("Payment"));
+        goToStep(steps.indexOf("Payment"));
+      } else {
+        updateContinue();
+      }
       return;
     }
 
