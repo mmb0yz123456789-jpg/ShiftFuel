@@ -1,10 +1,11 @@
-// Admin dashboard card-driven detail panel.
+// Admin dashboard card-driven detail panel + filtering fixes.
 // Safe display/navigation layer only. Does not change Supabase writes, payment capture, or request status logic.
 (() => {
   if (!document.body?.classList.contains('admin-portal-page')) return;
 
   const MONEY = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' });
-  const CLOSED_STATUSES = new Set(['complete', 'completed', 'denied', 'customer_canceled', 'cancelled', 'canceled', 'closed_no_charge', 'unable_to_complete', 'auto_reversed']);
+  const CLOSED_STATUSES = new Set(['complete', 'completed', 'finalized', 'denied', 'customer_canceled', 'cancelled', 'canceled', 'closed_no_charge', 'unable_to_complete', 'auto_reversed']);
+  const COMPLETE_STATUSES = new Set(['complete', 'completed', 'finalized']);
   const QUICK_ACTIONS = [
     { selector: '.admin-action-card[data-page-action="requests"][data-request-view="unassigned"]', title: 'Assign Worker', subtitle: 'Assign an available worker' },
     { selector: '.admin-action-card[data-page-action="requests"][data-request-view="all"]', title: 'Edit Request', subtitle: 'Update request details' },
@@ -13,6 +14,7 @@
   ];
 
   let selectedDashboardView = 'open';
+  let dashboardSearchTerm = '';
   let dashboardPatched = false;
   let rendering = false;
 
@@ -20,15 +22,15 @@
     const num = Number(value);
     return Number.isFinite(num) ? num : 0;
   };
-
   const money = (value) => MONEY.format(amount(value));
-
   const html = (value) => String(value ?? '')
     .replaceAll('&', '&amp;')
     .replaceAll('<', '&lt;')
     .replaceAll('>', '&gt;')
     .replaceAll('"', '&quot;')
     .replaceAll("'", '&#39;');
+  const normalizeText = (value) => String(value || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+  const digitsOnly = (value) => String(value || '').replace(/\D/g, '');
 
   function getRequests() {
     try {
@@ -52,39 +54,115 @@
     return activePage() === 'dashboard';
   }
 
+  function normalizeRangeValue(value) {
+    if (value === 'week') return 'last7';
+    if (value === 'this_month') return 'month';
+    return value || 'today';
+  }
+
   function rangeLabel(range) {
-    return { today: 'Today', week: 'This Week', month: 'This Month', all: 'All Time' }[range] || 'Today';
+    return {
+      today: 'Today',
+      yesterday: 'Yesterday',
+      last7: 'Last 7 Days',
+      month: 'This Month',
+      all: 'All Time',
+    }[normalizeRangeValue(range)] || 'Today';
   }
 
   function currentRange() {
+    const filterDateRange = document.querySelector('#dashboard-filter-date-range')?.value;
+    const dashboardValue = document.querySelector('#dashboard-range')?.value;
     try {
-      return typeof dashboardRange !== 'undefined' ? dashboardRange : (document.querySelector('#dashboard-range')?.value || 'today');
+      return normalizeRangeValue(filterDateRange || dashboardValue || dashboardRange || 'today');
     } catch (_) {
-      return document.querySelector('#dashboard-range')?.value || 'today';
+      return normalizeRangeValue(filterDateRange || dashboardValue || 'today');
     }
   }
 
-  function isInRange(request, range) {
-    try {
-      if (typeof isInDashboardRange === 'function') return isInDashboardRange(request, range);
-    } catch (_) {}
+  function normalizeDashboardRangeSelect() {
+    const select = document.querySelector('#dashboard-range');
+    if (!select || select.dataset.rangeOptionsFixed === '1') return;
+    const current = normalizeRangeValue(select.value || 'today');
+    select.innerHTML = `
+      <option value="today">Today</option>
+      <option value="yesterday">Yesterday</option>
+      <option value="last7">Last 7 Days</option>
+      <option value="month">This Month</option>
+      <option value="all">All Time</option>
+    `;
+    select.value = ['today', 'yesterday', 'last7', 'month', 'all'].includes(current) ? current : 'today';
+    select.dataset.rangeOptionsFixed = '1';
+  }
 
-    if (range === 'all') return true;
-    const stamp = new Date(request.completed_at || request.updated_at || request.created_at || 0);
+  function rangeBounds(range) {
+    const normalized = normalizeRangeValue(range);
     const now = new Date();
-    let start = new Date(now);
+    const start = new Date(now);
+    start.setHours(0, 0, 0, 0);
+    const end = new Date(start);
 
-    if (range === 'today') {
-      start.setHours(0, 0, 0, 0);
-    } else if (range === 'week') {
-      const dayIndex = (start.getDay() + 6) % 7;
-      start.setDate(start.getDate() - dayIndex);
-      start.setHours(0, 0, 0, 0);
-    } else if (range === 'month') {
-      start = new Date(now.getFullYear(), now.getMonth(), 1);
+    if (normalized === 'all') return { start: null, end: null };
+    if (normalized === 'today') {
+      end.setDate(end.getDate() + 1);
+      return { start, end };
     }
+    if (normalized === 'yesterday') {
+      start.setDate(start.getDate() - 1);
+      return { start, end };
+    }
+    if (normalized === 'last7') {
+      start.setDate(start.getDate() - 6);
+      end.setDate(end.getDate() + 1);
+      return { start, end };
+    }
+    if (normalized === 'month') {
+      const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+      const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+      return { start: monthStart, end: monthEnd };
+    }
+    end.setDate(end.getDate() + 1);
+    return { start, end };
+  }
 
-    return stamp >= start;
+  function inRange(stamp, range) {
+    const { start, end } = rangeBounds(range);
+    if (!start || !end) return true;
+    if (!stamp) return false;
+    const date = stamp instanceof Date ? stamp : new Date(stamp);
+    return !Number.isNaN(date.getTime()) && date >= start && date < end;
+  }
+
+  function completionTimestamp(request) {
+    const preferredFields = [
+      'completed_at',
+      'final_payment_processed_at',
+      'payment_captured_at',
+      'captured_at',
+      'charged_at',
+      'paid_at',
+      'payment_completed_at',
+    ];
+    for (const field of preferredFields) {
+      if (request?.[field]) return request[field];
+    }
+    // Fallback only for legacy completed records that do not have a dedicated completion timestamp.
+    if (COMPLETE_STATUSES.has(String(request?.status || '').toLowerCase())) return request.updated_at || null;
+    return null;
+  }
+
+  function operationalTimestamp(request) {
+    if (request.service_date) return `${request.service_date}T12:00:00`;
+    return request.updated_at || request.created_at || null;
+  }
+
+  function rangeTimestampForRequest(request, view) {
+    if (view === 'completed' || view === 'revenue') return completionTimestamp(request);
+    return operationalTimestamp(request);
+  }
+
+  function isInSelectedRange(request, view, range = currentRange()) {
+    return inRange(rangeTimestampForRequest(request, view), range);
   }
 
   function isOpenRequest(request) {
@@ -101,8 +179,8 @@
     return !isOpenRequest(request) && !CLOSED_STATUSES.has(request.status);
   }
 
-  function isCompletedToday(request) {
-    return ['complete', 'completed', 'finalized'].includes(String(request.status || '').toLowerCase()) && isInRange(request, 'today');
+  function isCompletedRequest(request) {
+    return COMPLETE_STATUSES.has(String(request.status || '').toLowerCase());
   }
 
   function statusLabel(status) {
@@ -123,7 +201,7 @@
     try {
       if (typeof formatPhone === 'function') return formatPhone(phone || '');
     } catch (_) {}
-    const digits = String(phone || '').replace(/\D/g, '');
+    const digits = digitsOnly(phone);
     if (digits.length === 10) return `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`;
     return phone || 'Not provided';
   }
@@ -133,9 +211,17 @@
   }
 
   function dateLabel(request) {
+    if (isCompletedRequest(request)) {
+      const completed = completionTimestamp(request);
+      if (completed) {
+        try {
+          return new Date(completed).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+        } catch (_) {}
+      }
+    }
     if (request.service_date && request.desired_return_time) return `${request.service_date} · ${String(request.desired_return_time).slice(0, 5)}`;
     if (request.service_date) return request.service_date;
-    const stamp = request.completed_at || request.updated_at || request.created_at;
+    const stamp = request.updated_at || request.created_at;
     if (!stamp) return 'Date not set';
     try {
       return new Date(stamp).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
@@ -188,10 +274,13 @@
     };
   }
 
+  function revenueTimestamp(request) {
+    return request.payment_captured_at || request.captured_at || request.charged_at || request.final_payment_processed_at || completionTimestamp(request);
+  }
+
   function revenueMetrics(range = currentRange()) {
-    const inRange = getRequests().filter((request) => isInRange(request, range));
-    const captured = inRange.filter((request) => request.payment_status === 'captured');
-    const refunds = inRange.filter((request) => ['refunded', 'auto_reversed', 'voided', 'authorization_released'].includes(request.payment_status));
+    const captured = getRequests().filter((request) => request.payment_status === 'captured' && inRange(revenueTimestamp(request), range));
+    const refunds = getRequests().filter((request) => ['refunded', 'auto_reversed', 'voided', 'authorization_released'].includes(request.payment_status) && inRange(revenueTimestamp(request), range));
 
     let gross = 0;
     let receipts = 0;
@@ -220,18 +309,117 @@
     return { range, label: rangeLabel(range), captured, gross, receipts, serviceFees, addOns, paymentFees, paymentRecovery, refundsTotal, net, hasActualPaymentFees };
   }
 
-  function updateRevenueDisplay() {
-    const metrics = revenueMetrics();
-    const label = document.querySelector('#stat-revenue-label');
-    const value = document.querySelector('#stat-net-revenue');
-    if (label) label.textContent = metrics.hasActualPaymentFees ? `Net Revenue ${metrics.label}` : `Gross Revenue ${metrics.label}`;
-    if (value) value.textContent = money(metrics.hasActualPaymentFees ? metrics.net : metrics.gross);
+  function serviceTypeMatches(request, selected) {
+    if (!selected) return true;
+    const type = String(request.service_type || '');
+    if (selected === 'fuel') return type === 'fuel' || type === 'fuel-only';
+    if (selected === 'car-wash') return type === 'car-wash' || (type.includes('wash') && !type.includes('fuel'));
+    if (selected === 'car-wash-fuel') return type.includes('wash') && type.includes('fuel');
+    return type === selected;
+  }
+
+  function workerMatches(request, selected) {
+    if (!selected) return true;
+    return request.assigned_employee_id === selected || request.assigned_worker_name === selected;
+  }
+
+  function assignmentMatches(request, selected) {
+    if (!selected) return true;
+    const assigned = Boolean(request.assigned_employee_id || request.assigned_worker_name);
+    if (selected === 'assigned') return assigned;
+    if (selected === 'unassigned') return !assigned;
+    return true;
+  }
+
+  function searchMatches(request, term) {
+    const clean = normalizeText(term);
+    const phoneDigits = digitsOnly(term);
+    if (!clean && !phoneDigits) return true;
+
+    const vehicle = [request.vehicle_year, request.vehicle_make, request.vehicle_model, request.vehicle_color].filter(Boolean).join(' ');
+    const ticket = publicTicket(request.id);
+    const haystack = normalizeText([
+      request.customer_name,
+      request.customer_email,
+      request.customer_phone,
+      request.id,
+      ticket,
+      vehicle,
+      request.license_plate,
+      request.service_type,
+      request.assigned_worker_name,
+      statusLabel(request.status),
+    ].filter(Boolean).join(' '));
+
+    if (clean && haystack.includes(clean)) return true;
+    if (phoneDigits && digitsOnly(request.customer_phone).includes(phoneDigits)) return true;
+    return false;
+  }
+
+  function currentFilters() {
+    return {
+      serviceType: document.querySelector('#filter-service-type')?.value || '',
+      assignment: document.querySelector('#filter-assignment')?.value || '',
+      status: document.querySelector('#dashboard-filter-status')?.value || '',
+      worker: document.querySelector('#dashboard-filter-worker')?.value || '',
+      paymentStatus: document.querySelector('#dashboard-filter-payment-status')?.value || '',
+      range: currentRange(),
+      search: dashboardSearchTerm,
+    };
+  }
+
+  function baseRequestsForView(view, range = currentRange()) {
+    const requests = getRequests();
+    if (view === 'open') return requests.filter((request) => isOpenRequest(request) && isInSelectedRange(request, 'open', range));
+    if (view === 'inprogress') return requests.filter((request) => isRequestInProgress(request) && isInSelectedRange(request, 'inprogress', range));
+    if (view === 'completed') return requests.filter((request) => isCompletedRequest(request) && isInSelectedRange(request, 'completed', range));
+    return requests.filter((request) => isInSelectedRange(request, view, range));
+  }
+
+  function applyDashboardFilters(requests) {
+    const filters = currentFilters();
+    return requests.filter((request) => {
+      if (!serviceTypeMatches(request, filters.serviceType)) return false;
+      if (!assignmentMatches(request, filters.assignment)) return false;
+      if (!workerMatches(request, filters.worker)) return false;
+      if (filters.status && request.status !== filters.status) return false;
+      if (filters.paymentStatus && request.payment_status !== filters.paymentStatus) return false;
+      if (!searchMatches(request, filters.search)) return false;
+      return true;
+    });
+  }
+
+  function updateMetricCards() {
+    const range = currentRange();
+    const openCount = applyDashboardFilters(baseRequestsForView('open', range)).length;
+    const inProgressCount = applyDashboardFilters(baseRequestsForView('inprogress', range)).length;
+    const completedCount = applyDashboardFilters(baseRequestsForView('completed', range)).length;
+    const activeWorkerCount = getEmployees().filter((employee) => employee.active).length;
+    const metrics = revenueMetrics(range);
+
+    const completedLabel = range === 'all' ? 'Completed' : `Completed ${rangeLabel(range)}`;
+    const revenuePrefix = metrics.hasActualPaymentFees ? 'Net Revenue' : 'Gross Revenue';
+    const revenueLabel = range === 'all' ? revenuePrefix : `${revenuePrefix} ${rangeLabel(range)}`;
+
+    const statCompletedLabel = document.querySelector('#stat-completed-label');
+    const statRevenueLabel = document.querySelector('#stat-revenue-label');
+    if (statCompletedLabel) statCompletedLabel.textContent = completedLabel;
+    if (statRevenueLabel) statRevenueLabel.textContent = revenueLabel;
+    const statOpen = document.querySelector('#stat-open-requests');
+    const statProgress = document.querySelector('#stat-in-progress');
+    const statCompleted = document.querySelector('#stat-completed-today');
+    const statWorkers = document.querySelector('#stat-active-workers');
+    const statRevenue = document.querySelector('#stat-net-revenue');
+    if (statOpen) statOpen.textContent = openCount;
+    if (statProgress) statProgress.textContent = inProgressCount;
+    if (statCompleted) statCompleted.textContent = completedCount;
+    if (statWorkers) statWorkers.textContent = activeWorkerCount;
+    if (statRevenue) statRevenue.textContent = money(metrics.hasActualPaymentFees ? metrics.net : metrics.gross);
   }
 
   function ensureDashboardPanel() {
     const queueCard = document.querySelector('.admin-queue-card[data-tab-panel="requests"]');
     if (!queueCard) return null;
-
     let panel = document.querySelector('#dashboard-detail-panel');
     if (!panel) {
       panel = document.createElement('div');
@@ -245,10 +433,8 @@
   function setDashboardMode(active) {
     const queueCard = document.querySelector('.admin-queue-card[data-tab-panel="requests"]');
     const panel = ensureDashboardPanel();
-
     queueCard?.classList.toggle('dashboard-card-driven-mode', active);
     if (panel) panel.hidden = !active;
-
     if (!active) {
       document.querySelector('#request-list')?.removeAttribute('hidden');
       document.querySelector('.admin-request-tabs')?.removeAttribute('hidden');
@@ -291,13 +477,26 @@
     return `<div class="dashboard-detail-empty"><p>${html(message)}</p></div>`;
   }
 
+  function controlsMarkup(resultCount) {
+    return `
+      <div class="dashboard-detail-controls">
+        <label class="dashboard-detail-search">
+          <span class="sr-only">Find tickets</span>
+          <input id="dashboard-detail-search" type="search" value="${html(dashboardSearchTerm)}" placeholder="Find tickets by name, phone, email, request number, vehicle, or plate">
+        </label>
+        <span class="dashboard-result-count">${resultCount} result${resultCount === 1 ? '' : 's'}</span>
+      </div>
+    `;
+  }
+
   function viewAllButton() {
     return '<button class="button secondary dashboard-view-all" type="button">View all requests</button>';
   }
 
-  function renderRequestsPanel(title, eyebrow, requests, emptyMessage) {
+  function renderRequestsPanel(title, eyebrow, baseRequests, emptyMessage) {
     const panel = ensureDashboardPanel();
     if (!panel) return;
+    const requests = applyDashboardFilters(baseRequests);
     panel.innerHTML = `
       <div class="dashboard-detail-heading">
         <div>
@@ -306,6 +505,7 @@
         </div>
         ${viewAllButton()}
       </div>
+      ${controlsMarkup(requests.length)}
       <div class="dashboard-detail-list">${requests.length ? requests.map(requestCard).join('') : emptyState(emptyMessage)}</div>
     `;
   }
@@ -313,8 +513,14 @@
   function renderWorkersPanel() {
     const panel = ensureDashboardPanel();
     if (!panel) return;
-    const workers = getEmployees().filter((employee) => employee.active);
+    const filters = currentFilters();
     const jobs = getRequests().filter(isRequestInProgress);
+    let workers = getEmployees().filter((employee) => employee.active);
+    if (filters.worker) workers = workers.filter((worker) => worker.id === filters.worker);
+    if (filters.search) {
+      workers = workers.filter((worker) => normalizeText(`${worker.full_name || worker.name || ''} ${worker.phone || ''} ${worker.email || ''}`).includes(normalizeText(filters.search)) || digitsOnly(worker.phone).includes(digitsOnly(filters.search)));
+    }
+
     const body = workers.length
       ? workers.map((worker) => {
           const assignedJobs = jobs.filter((request) => request.assigned_employee_id === worker.id || request.assigned_worker_name === worker.full_name).length;
@@ -344,6 +550,7 @@
 
     panel.innerHTML = `
       <div class="dashboard-detail-heading"><div><p class="eyebrow">Team</p><h2>Active Workers</h2></div>${viewAllButton()}</div>
+      ${controlsMarkup(workers.length)}
       <div class="dashboard-detail-list">${body}</div>
     `;
   }
@@ -351,10 +558,11 @@
   function renderRevenuePanel() {
     const panel = ensureDashboardPanel();
     if (!panel) return;
-    const metrics = revenueMetrics('today');
-    const title = metrics.hasActualPaymentFees ? 'Net Revenue Today' : 'Gross Revenue Today';
-    const rows = metrics.captured.length
-      ? metrics.captured.map((request) => {
+    const metrics = revenueMetrics(currentRange());
+    const title = `${metrics.hasActualPaymentFees ? 'Net Revenue' : 'Gross Revenue'} ${metrics.label === 'All Time' ? '' : metrics.label}`.trim();
+    const filteredCaptured = applyDashboardFilters(metrics.captured);
+    const rows = filteredCaptured.length
+      ? filteredCaptured.map((request) => {
           const receipt = receiptTotalsFromRequest(request);
           const gross = amount(request.final_total ?? request.captured_amount ?? request.rounded_customer_total);
           const serviceFees = amount(request.displayed_fuel_service_fee) + amount(request.displayed_car_wash_service_fee);
@@ -378,12 +586,13 @@
             </article>
           `;
         }).join('')
-      : emptyState('No completed charges today.');
+      : emptyState('No completed charges in this date range.');
 
     panel.innerHTML = `
       <div class="dashboard-detail-heading"><div><p class="eyebrow">Payments</p><h2>${html(title)}</h2></div>${viewAllButton()}</div>
+      ${controlsMarkup(filteredCaptured.length)}
       <div class="dashboard-revenue-summary">
-        <div><span>Completed charges today:</span><strong>${money(metrics.gross)}</strong></div>
+        <div><span>Completed charges:</span><strong>${money(metrics.gross)}</strong></div>
         <div><span>Receipt reimbursements:</span><strong>${money(metrics.receipts)}</strong></div>
         <div><span>Service fees:</span><strong>${money(metrics.serviceFees)}</strong></div>
         <div><span>Add-ons:</span><strong>${money(metrics.addOns)}</strong></div>
@@ -396,10 +605,17 @@
     `;
   }
 
+  function titleForView() {
+    const label = rangeLabel(currentRange());
+    if (selectedDashboardView === 'completed') return label === 'Today' ? 'Completed Today' : (label === 'All Time' ? 'Completed' : `Completed ${label}`);
+    if (selectedDashboardView === 'open') return 'Open Requests';
+    if (selectedDashboardView === 'inprogress') return 'In Progress';
+    return '';
+  }
+
   function renderDashboardDetail() {
     if (rendering) return;
     rendering = true;
-
     try {
       if (!isDashboardPage()) {
         setDashboardMode(false);
@@ -407,16 +623,18 @@
         return;
       }
 
+      normalizeDashboardRangeSelect();
+      ensureDashboardFilters();
       setDashboardMode(true);
       updateCardActiveState();
-      const requests = getRequests();
+      updateMetricCards();
 
       if (selectedDashboardView === 'open') {
-        renderRequestsPanel('Open Requests', 'Dashboard detail', requests.filter(isOpenRequest), 'No open requests right now.');
+        renderRequestsPanel(titleForView(), 'Dashboard detail', baseRequestsForView('open'), 'No open requests right now.');
       } else if (selectedDashboardView === 'inprogress') {
-        renderRequestsPanel('In Progress', 'Dashboard detail', requests.filter(isRequestInProgress), 'No requests are currently in progress.');
+        renderRequestsPanel(titleForView(), 'Dashboard detail', baseRequestsForView('inprogress'), 'No requests are currently in progress.');
       } else if (selectedDashboardView === 'completed') {
-        renderRequestsPanel('Completed Today', 'Dashboard detail', requests.filter(isCompletedToday), 'No requests completed today.');
+        renderRequestsPanel(titleForView(), 'Dashboard detail', baseRequestsForView('completed'), 'No requests completed today.');
       } else if (selectedDashboardView === 'workers') {
         renderWorkersPanel();
       } else if (selectedDashboardView === 'revenue') {
@@ -438,9 +656,9 @@
   function setupDashboardCards() {
     setCardAction(document.querySelector('#stat-open-requests')?.closest('.admin-stat-card'), 'open', 'Show open requests');
     setCardAction(document.querySelector('#stat-in-progress')?.closest('.admin-stat-card'), 'inprogress', 'Show in-progress requests');
-    setCardAction(document.querySelector('#stat-completed-today')?.closest('.admin-stat-card'), 'completed', 'Show completed today');
+    setCardAction(document.querySelector('#stat-completed-today')?.closest('.admin-stat-card'), 'completed', 'Show completed requests');
     setCardAction(document.querySelector('#stat-active-workers')?.closest('.admin-stat-card'), 'workers', 'Show active workers');
-    setCardAction(document.querySelector('#stat-net-revenue')?.closest('.admin-stat-card'), 'revenue', 'Show revenue today');
+    setCardAction(document.querySelector('#stat-net-revenue')?.closest('.admin-stat-card'), 'revenue', 'Show revenue');
   }
 
   function normalizeQuickAction(card, title, subtitle) {
@@ -468,6 +686,7 @@
         card.classList.remove('is-refreshing');
         card.removeAttribute('aria-busy');
         clearInterval(timer);
+        renderDashboardDetail();
       }
     }, 80);
   }
@@ -492,6 +711,86 @@
     }, 150);
   }
 
+  function uniqueStatuses() {
+    return [...new Set(getRequests().map((request) => request.status).filter(Boolean))].sort();
+  }
+
+  function uniquePaymentStatuses() {
+    return [...new Set(getRequests().map((request) => request.payment_status).filter(Boolean))].sort();
+  }
+
+  function ensureDashboardFilters() {
+    const panel = document.querySelector('#dashboard-filters-panel');
+    if (!panel) return;
+
+    if (!document.querySelector('#dashboard-filter-date-range')) {
+      panel.insertAdjacentHTML('beforeend', `
+        <label>Date range
+          <select id="dashboard-filter-date-range">
+            <option value="today">Today</option>
+            <option value="yesterday">Yesterday</option>
+            <option value="last7">Last 7 Days</option>
+            <option value="month">This Month</option>
+            <option value="all">All Time</option>
+          </select>
+        </label>
+        <label>Status
+          <select id="dashboard-filter-status"><option value="">All statuses</option></select>
+        </label>
+        <label>Worker
+          <select id="dashboard-filter-worker"><option value="">All workers</option></select>
+        </label>
+        <label>Payment status
+          <select id="dashboard-filter-payment-status"><option value="">All payment statuses</option></select>
+        </label>
+      `);
+    }
+
+    const dateSelect = document.querySelector('#dashboard-filter-date-range');
+    const mainRange = document.querySelector('#dashboard-range');
+    if (dateSelect && mainRange && dateSelect.value !== normalizeRangeValue(mainRange.value)) dateSelect.value = normalizeRangeValue(mainRange.value);
+
+    const statusSelect = document.querySelector('#dashboard-filter-status');
+    if (statusSelect) {
+      const current = statusSelect.value;
+      statusSelect.innerHTML = '<option value="">All statuses</option>' + uniqueStatuses().map((status) => `<option value="${html(status)}">${html(statusLabel(status))}</option>`).join('');
+      statusSelect.value = current;
+    }
+
+    const workerSelect = document.querySelector('#dashboard-filter-worker');
+    if (workerSelect) {
+      const current = workerSelect.value;
+      workerSelect.innerHTML = '<option value="">All workers</option>' + getEmployees().filter((employee) => employee.active).map((employee) => `<option value="${html(employee.id)}">${html(employee.full_name || employee.name || 'Worker')}</option>`).join('');
+      workerSelect.value = current;
+    }
+
+    const paymentSelect = document.querySelector('#dashboard-filter-payment-status');
+    if (paymentSelect) {
+      const current = paymentSelect.value;
+      paymentSelect.innerHTML = '<option value="">All payment statuses</option>' + uniquePaymentStatuses().map((status) => `<option value="${html(status)}">${html(status.replaceAll('_', ' '))}</option>`).join('');
+      paymentSelect.value = current;
+    }
+  }
+
+  function clearDashboardFilters() {
+    dashboardSearchTerm = '';
+    ['#filter-service-type', '#filter-assignment', '#dashboard-filter-status', '#dashboard-filter-worker', '#dashboard-filter-payment-status'].forEach((selector) => {
+      const el = document.querySelector(selector);
+      if (el) el.value = '';
+    });
+    const range = document.querySelector('#dashboard-range');
+    const detailRange = document.querySelector('#dashboard-filter-date-range');
+    if (range) range.value = 'today';
+    if (detailRange) detailRange.value = 'today';
+    renderDashboardDetail();
+  }
+
+  function focusDashboardSearch() {
+    if (!isDashboardPage()) return;
+    renderDashboardDetail();
+    setTimeout(() => document.querySelector('#dashboard-detail-search')?.focus(), 50);
+  }
+
   function ensureStyles() {
     if (document.querySelector('#admin-dashboard-card-panel-style')) return;
     const style = document.createElement('style');
@@ -514,6 +813,10 @@
       .dashboard-detail-panel { display: grid; gap: 16px; }
       .dashboard-detail-heading { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 2px 0 8px; }
       .dashboard-detail-heading h2 { margin: 0; color: var(--sf-teal-dark, #0d3b3b); }
+      .dashboard-detail-controls { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; padding: 12px; background: rgba(234,242,234,.72); border: 1px solid rgba(13,59,59,.08); border-radius: var(--sf-radius-sm, 14px); }
+      .dashboard-detail-search { flex: 1 1 360px; margin: 0; }
+      .dashboard-detail-search input { width: 100%; }
+      .dashboard-result-count { color: var(--sf-muted, #60716d); font-size: .8rem; font-weight: 900; }
       .dashboard-detail-list { display: grid; gap: 12px; }
       .dashboard-detail-request-card { display: grid; gap: 14px; padding: 18px; background: #fff; border: 1px solid rgba(13,59,59,0.10); border-radius: var(--sf-radius-sm, 14px); box-shadow: 0 10px 28px rgba(13,59,59,0.06); }
       .dashboard-detail-request-main { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
@@ -537,17 +840,21 @@
 
   function patchDashboardStats() {
     ensureStyles();
+    normalizeDashboardRangeSelect();
+    ensureDashboardFilters();
     normalizeQuickActions();
     setupDashboardCards();
+    updateMetricCards();
     renderDashboardDetail();
-    updateRevenueDisplay();
 
     try {
       if (typeof updateDashboardStatCards === 'function' && !dashboardPatched) {
         const original = updateDashboardStatCards;
         updateDashboardStatCards = function patchedUpdateDashboardStatCards(...args) {
           original.apply(this, args);
-          updateRevenueDisplay();
+          normalizeDashboardRangeSelect();
+          ensureDashboardFilters();
+          updateMetricCards();
           setupDashboardCards();
           normalizeQuickActions();
           setTimeout(renderDashboardDetail, 0);
@@ -566,6 +873,14 @@
   }, 100);
 
   document.addEventListener('click', (event) => {
+    const findButton = event.target.closest('#hero-find-tickets-btn');
+    if (findButton && isDashboardPage()) {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      focusDashboardSearch();
+      return;
+    }
+
     const refreshCard = event.target.closest('#admin-side-refresh-btn');
     if (refreshCard) window.requestAnimationFrame(() => normalizeRefreshDuringWork(refreshCard));
 
@@ -596,8 +911,44 @@
     if (workerButton) {
       event.preventDefault();
       openWorker(workerButton.dataset.workerId);
+      return;
+    }
+
+    const clearButton = event.target.closest('#filter-clear-btn');
+    if (clearButton && isDashboardPage()) {
+      setTimeout(clearDashboardFilters, 0);
     }
   }, true);
+
+  document.addEventListener('input', (event) => {
+    if (event.target?.id === 'dashboard-detail-search') {
+      dashboardSearchTerm = event.target.value;
+      renderDashboardDetail();
+    }
+  });
+
+  document.addEventListener('change', (event) => {
+    if (event.target?.id === 'dashboard-range') {
+      const range = normalizeRangeValue(event.target.value);
+      const filterRange = document.querySelector('#dashboard-filter-date-range');
+      if (filterRange) filterRange.value = range;
+      setTimeout(() => { updateMetricCards(); renderDashboardDetail(); }, 0);
+    }
+
+    if (event.target?.id === 'dashboard-filter-date-range') {
+      const range = normalizeRangeValue(event.target.value);
+      const mainRange = document.querySelector('#dashboard-range');
+      if (mainRange) {
+        mainRange.value = range;
+        try { dashboardRange = range; } catch (_) {}
+      }
+      setTimeout(() => { updateMetricCards(); renderDashboardDetail(); }, 0);
+    }
+
+    if (['filter-service-type', 'filter-assignment', 'dashboard-filter-status', 'dashboard-filter-worker', 'dashboard-filter-payment-status'].includes(event.target?.id)) {
+      setTimeout(() => { updateMetricCards(); renderDashboardDetail(); }, 0);
+    }
+  });
 
   document.addEventListener('keydown', (event) => {
     if (event.key !== 'Enter' && event.key !== ' ') return;
@@ -608,21 +959,7 @@
     renderDashboardDetail();
   });
 
-  document.addEventListener('change', (event) => {
-    if (event.target?.id === 'dashboard-range') setTimeout(() => { updateRevenueDisplay(); renderDashboardDetail(); }, 0);
-  });
-
   document.addEventListener('click', (event) => {
     if (event.target.closest('.admin-page-tab')) setTimeout(renderDashboardDetail, 150);
   });
-
-  const queueCard = document.querySelector('.admin-queue-card[data-tab-panel="requests"]');
-  if (queueCard) {
-    let mutationTimer = null;
-    new MutationObserver(() => {
-      if (!isDashboardPage()) return;
-      clearTimeout(mutationTimer);
-      mutationTimer = setTimeout(renderDashboardDetail, 80);
-    }).observe(queueCard, { childList: true, subtree: true });
-  }
 })();
