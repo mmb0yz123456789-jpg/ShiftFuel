@@ -2,11 +2,12 @@
    Visual-only: keeps forms/search logic untouched. */
 
 :root {
-  --sf-content-width: min(1280px, calc(100% - 48px));
+  /* Match the landing page/header/footer width instead of a smaller 1280px lane. */
+  --sf-content-width: min(var(--sf-page-width), calc(100% - 40px));
   --sf-content-width-mobile: calc(100% - 32px);
 }
 
-/* Keep the main page columns aligned with the header/footer grid. */
+/* Keep the main page columns aligned with the same wide landing-page grid. */
 .booking-page .site-header,
 .track-page .site-header,
 .booking-page .site-footer,
@@ -16,7 +17,7 @@
 .track-page #tracking-result,
 .track-page .portal-closing-banner {
   width: var(--sf-content-width) !important;
-  max-width: 1280px !important;
+  max-width: var(--sf-page-width) !important;
   margin-left: auto !important;
   margin-right: auto !important;
 }
@@ -40,23 +41,23 @@
 }
 
 .booking-page .booking-layout {
-  grid-template-columns: minmax(0, 1fr) minmax(320px, 400px);
-  gap: clamp(18px, 2vw, 28px);
+  grid-template-columns: minmax(0, 1fr) minmax(340px, 430px);
+  gap: clamp(18px, 2vw, 30px);
 }
 
 .booking-page .booking-accordion-body,
 .booking-page .booking-accordion-header,
 .booking-page .booking-summary-sidebar {
-  padding-left: clamp(20px, 2.5vw, 32px);
-  padding-right: clamp(20px, 2.5vw, 32px);
+  padding-left: clamp(20px, 2.5vw, 36px);
+  padding-right: clamp(20px, 2.5vw, 36px);
 }
 
 .booking-page .booking-flow-hero-copy {
-  padding-left: clamp(30px, 5vw, 72px);
-  padding-right: clamp(30px, 5vw, 72px);
+  padding-left: clamp(30px, 5vw, 76px);
+  padding-right: clamp(30px, 5vw, 76px);
 }
 
-/* Track: align header/content/footer to one clean grid and remove the shifted look. */
+/* Track: align header/content/footer to one clean landing-page grid. */
 .track-page .track-shell {
   padding-left: 0 !important;
   padding-right: 0 !important;
@@ -64,18 +65,18 @@
 
 .track-page .track-hero-redesign {
   width: 100% !important;
-  max-width: 1280px !important;
+  max-width: none !important;
   margin-left: auto !important;
   margin-right: auto !important;
-  padding-left: clamp(28px, 5vw, 72px) !important;
-  padding-right: clamp(28px, 5vw, 72px) !important;
+  padding-left: clamp(30px, 5vw, 76px) !important;
+  padding-right: clamp(30px, 5vw, 76px) !important;
   border-radius: var(--sf-radius-sm);
 }
 
 .track-page .track-search-card,
 .track-page #tracking-result {
-  width: min(1120px, calc(100% - 96px)) !important;
-  max-width: 1120px !important;
+  width: min(1240px, calc(100% - 96px)) !important;
+  max-width: 1240px !important;
   margin-left: auto !important;
   margin-right: auto !important;
 }
