@@ -60,6 +60,7 @@ const bookingState = {
     authorized: false,
     paymentIntentId: "",
     clientSecret: "",
+    authorizedAmountCents: 0,
     status: "",
     statusType: "",
   },
@@ -230,11 +231,11 @@ function isValidEmail(value) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value || "").trim());
 }
 
-const PRICE_PER_GALLON = 3.799;
-const FUEL_SERVICE_FEE = 15;
-const CAR_WASH_SERVICE_FEE = 15;
-const QUICK_CARE_FEE = 5;
-const WASH_PACKAGES = [
+let PRICE_PER_GALLON = 3.799;
+let FUEL_SERVICE_FEE = 15;
+let CAR_WASH_SERVICE_FEE = 15;
+let QUICK_CARE_FEE = 5;
+let WASH_PACKAGES = [
   {
     value: "buff-shine", label: "Buff & Shine", price: 27,
     includes: ["Fire Bath", "Super Hard Shell Ceramic Finish", "Buff N' Shine", "ICE® Instant Shine", "Salt Shield", "Tire Shine", "Triple Wheel Cleaning", "Tri-Foam Conditioner", "Blazin' Glaze Clear Coat", "High pH Presoak", "Low pH Presoak", "Double Tire & Wheel Cleaning", "Drying Agent", "Spot Free Rinse"],
@@ -252,6 +253,44 @@ const WASH_PACKAGES = [
     includes: ["High pH Presoak", "Low pH Presoak", "Double Tire & Wheel Cleaning", "Drying Agent", "Spot Free Rinse"],
   },
 ];
+const WASH_PACKAGE_INCLUDES = {
+  "buff-shine": WASH_PACKAGES[0].includes,
+  "shine-protect": WASH_PACKAGES[1].includes,
+  shine: WASH_PACKAGES[2].includes,
+  "double-wash": WASH_PACKAGES[3].includes,
+};
+
+async function loadLivePricing() {
+  if (!window.ShiftFuelSupabase) return;
+  try {
+    const [fuelResult, serviceResult] = await Promise.all([
+      window.ShiftFuelSupabase.rpc("public_get_fuel_prices"),
+      window.ShiftFuelSupabase.rpc("public_get_service_pricing"),
+    ]);
+
+    const fuelData = fuelResult?.data;
+    if (!fuelResult?.error && fuelData && fuelData.regular_price != null) {
+      PRICE_PER_GALLON = Number(fuelData.regular_price);
+    }
+
+    const serviceData = serviceResult?.data;
+    if (!serviceResult?.error && serviceData) {
+      FUEL_SERVICE_FEE = Number(serviceData.fuel_service_fee);
+      CAR_WASH_SERVICE_FEE = Number(serviceData.wash_service_fee);
+      QUICK_CARE_FEE = Number(serviceData.quick_inspection_fee);
+      WASH_PACKAGES = [
+        { value: "buff-shine", label: "Buff & Shine", price: Number(serviceData.wash_buff_shine_price), includes: WASH_PACKAGE_INCLUDES["buff-shine"] },
+        { value: "shine-protect", label: "Shine & Protect", price: Number(serviceData.wash_shine_protect_price), includes: WASH_PACKAGE_INCLUDES["shine-protect"] },
+        { value: "shine", label: "Shine", price: Number(serviceData.wash_shine_price), includes: WASH_PACKAGE_INCLUDES.shine },
+        { value: "double-wash", label: "Double Wash", price: Number(serviceData.wash_double_wash_price), includes: WASH_PACKAGE_INCLUDES["double-wash"] },
+      ];
+    }
+  } catch (err) {
+    console.error("Could not load live pricing, using defaults:", err);
+  }
+}
+
+loadLivePricing();
 const VEHICLE_POPULAR_MAKES = ["Chevrolet", "Ford", "Honda", "Hyundai", "Jeep", "Kia", "Nissan", "Subaru", "Tesla", "Toyota"];
 const VEHICLE_OTHER_MAKES = ["Acura", "Alfa Romeo", "Audi", "BMW", "Buick", "Cadillac", "Chrysler", "Dodge", "Fiat", "Genesis", "GMC", "Infiniti", "Jaguar", "Land Rover", "Lexus", "Lincoln", "Mazda", "Mercedes-Benz", "Mini", "Mitsubishi", "Porsche", "Ram", "Volkswagen", "Volvo"];
 const VEHICLE_FALLBACK_MODELS = {
@@ -285,7 +324,15 @@ const VEHICLE_FALLBACK_MODELS = {
   Volkswagen: ["Atlas", "Golf", "ID.4", "Jetta", "Passat", "Taos", "Tiguan"],
   Volvo: ["S60", "S90", "V60", "XC40", "XC60", "XC90"],
 };
-const FUEL_RANGES = {
+const FUEL_SELECTED_GALLONS = {
+  "0-5": 5,
+  "5-10": 10,
+  "10-15": 15,
+  "15-20": 20,
+  "20-25": 25,
+  "25+": 40,
+};
+const FUEL_AUTHORIZATION_GALLONS = {
   "0-5": 10,
   "5-10": 15,
   "10-15": 20,
@@ -331,8 +378,10 @@ function selectedWashPackage() {
 }
 
 function calculateTotals() {
-  const fuelGallons = serviceNeedsFuel() ? FUEL_RANGES[bookingState.values.fuelPreference] || 0 : 0;
-  const fuelEstimate = fuelGallons * PRICE_PER_GALLON;
+  const selectedFuelGallons = serviceNeedsFuel() ? FUEL_SELECTED_GALLONS[bookingState.values.fuelPreference] || 0 : 0;
+  const authorizationFuelGallons = serviceNeedsFuel() ? FUEL_AUTHORIZATION_GALLONS[bookingState.values.fuelPreference] || 0 : 0;
+  const fuelGallons = authorizationFuelGallons;
+  const fuelEstimate = authorizationFuelGallons * PRICE_PER_GALLON;
   const washPackage = serviceNeedsWash() ? selectedWashPackage() : null;
   const washAmount = washPackage ? washPackage.price : 0;
   const fuelBaseFee = serviceNeedsFuel() ? FUEL_SERVICE_FEE : 0;
@@ -366,6 +415,8 @@ function calculateTotals() {
 
   return {
     fuelGallons,
+    selectedFuelGallons,
+    authorizationFuelGallons,
     fuelEstimate,
     washPackage,
     washAmount,
@@ -1318,7 +1369,7 @@ function renderPaymentSummary(panel) {
       ${serviceNeedsFuel() ? `<div><dt>Fuel service fee</dt><dd>${formatMoney(totals.fuelFee)}</dd></div>` : ""}
       ${serviceNeedsWash() ? `<div><dt>Car wash service fee</dt><dd>${formatMoney(totals.washFee)}</dd></div>` : ""}
       ${bookingState.values.quickCare ? `<div><dt>Quick Vehicle Care add-on</dt><dd>${formatMoney(totals.quickFee)}</dd></div>` : ""}
-      ${serviceNeedsFuel() ? `<div><dt>Estimated fuel</dt><dd>${totals.fuelGallons} gal x ${formatMoney(PRICE_PER_GALLON)}/gal = ${formatMoney(totals.fuelEstimate)}</dd></div>` : ""}
+      ${serviceNeedsFuel() ? `<div><dt>Estimated fuel</dt><dd>${escapeHtml(bookingState.values.fuelPreference || "Selected range")} selected. We authorize a ${totals.authorizationFuelGallons} gallon buffer just in case: ${totals.authorizationFuelGallons} gal x ${formatMoney(PRICE_PER_GALLON)}/gal = ${formatMoney(totals.fuelEstimate)}</dd></div>` : ""}
       ${totals.washPackage ? `<div><dt>Car wash package</dt><dd>${escapeHtml(totals.washPackage.label)} - ${formatMoney(totals.washAmount)}</dd></div>` : ""}
       <div><dt>Estimated total</dt><dd>${formatMoney(totals.estimatedTotal)}</dd></div>
     </dl>
@@ -1414,6 +1465,7 @@ async function confirmPaymentAuthorization(panel, button) {
     bookingState.payment.authorized = true;
     bookingState.payment.paymentIntentId = intent.payment_intent_id;
     bookingState.payment.clientSecret = intent.client_secret;
+    bookingState.payment.authorizedAmountCents = Math.round(totals.estimatedTotal * 100);
     setStatus("success", "Payment authorized. You are not charged until service is complete.");
     closePaymentModal();
     flowRoot?.dispatchEvent(new CustomEvent("booking-payment-authorized"));
@@ -1444,6 +1496,7 @@ async function cancelPaymentAuthorization(panel) {
     bookingState.payment.authorized = false;
     bookingState.payment.paymentIntentId = "";
     bookingState.payment.clientSecret = "";
+    bookingState.payment.authorizedAmountCents = 0;
     bookingState.values.reviewConfirmed = false;
     setStatus("warning", "Payment authorization was cleared. No request was booked.");
     return true;
@@ -1475,6 +1528,7 @@ async function cancelPaymentAuthorization(panel) {
     bookingState.payment.authorized = false;
     bookingState.payment.paymentIntentId = "";
     bookingState.payment.clientSecret = "";
+    bookingState.payment.authorizedAmountCents = 0;
     bookingState.values.reviewConfirmed = false;
     setStatus("success", "Payment authorization canceled. No request was booked and the card hold was released.");
     return true;
@@ -1633,7 +1687,7 @@ function buildBookingPayload() {
 
   return {
     payment_intent_id: bookingState.payment.paymentIntentId,
-    amount_cents: Math.round(totals.estimatedTotal * 100),
+    amount_cents: bookingState.payment.authorizedAmountCents || Math.round(totals.estimatedTotal * 100),
     customer_name: customerName(),
     customer_id: bookingState.returning.requests[0]?.customer_id || null,
     customer_phone: formatPhone(bookingState.values.customerPhone || ""),
@@ -1661,6 +1715,8 @@ function buildBookingPayload() {
     fuel_type: serviceNeedsFuel() ? bookingState.values.fuelType || "" : "",
     estimated_fuel_range: serviceNeedsFuel() ? bookingState.values.fuelPreference || "" : "",
     estimated_gallons: totals.fuelGallons,
+    selected_fuel_gallons: totals.selectedFuelGallons,
+    authorization_fuel_gallons: totals.authorizationFuelGallons,
     price_per_gallon: PRICE_PER_GALLON,
     estimated_fuel_amount: totals.fuelEstimate,
     fuel_convenience_fee: totals.fuelFee,
@@ -1770,7 +1826,7 @@ function renderReviewSummary(panel) {
       <div><dt>Service address</dt><dd>${escapeHtml([values.street, values.unit, values.city, values.state, values.zip].filter(Boolean).join(", ") || "Not entered")}</dd></div>
       <div><dt>Vehicle</dt><dd>${escapeHtml([values.vehicleYear, values.vehicleMake, values.vehicleModel, values.vehicleColor].filter(Boolean).join(" ") || "Not entered")}${values.licensePlate ? ` | Plate: ${escapeHtml(values.licensePlate)}` : ""}${values.fuelType ? ` | Fuel: ${escapeHtml(values.fuelType)}` : ""}</dd></div>
       <div><dt>Selected services</dt><dd>${escapeHtml(serviceLabel())}</dd></div>
-      ${serviceNeedsFuel() ? `<div><dt>Fuel details</dt><dd>${escapeHtml(values.fuelType || "Not selected")}, ${escapeHtml(values.fuelPreference || "Not selected")} gallons</dd></div>` : ""}
+      ${serviceNeedsFuel() ? `<div><dt>Fuel details</dt><dd>${escapeHtml(values.fuelType || "Not selected")}, ${escapeHtml(values.fuelPreference || "Not selected")} gallons selected. Authorization uses a ${totals.authorizationFuelGallons} gallon buffer.</dd></div>` : ""}
       ${totals.washPackage ? `<div><dt>Car wash package</dt><dd>${escapeHtml(totals.washPackage.label)}</dd></div>` : ""}
       <div><dt>Add-ons</dt><dd>${escapeHtml(addOns)}</dd></div>
       <div><dt>Service date</dt><dd>${escapeHtml(values.serviceDate || "Not selected")}</dd></div>

@@ -40,7 +40,15 @@ const BOOKING_PRICE_PER_GALLON = 3.799;
 const BOOKING_FUEL_SERVICE_FEE = 15;
 const BOOKING_CAR_WASH_SERVICE_FEE = 15;
 const BOOKING_QUICK_CARE_FEE = 5;
-const BOOKING_FUEL_RANGES = {
+const BOOKING_SELECTED_GALLONS = {
+  '0-5': 5,
+  '5-10': 10,
+  '10-15': 15,
+  '15-20': 20,
+  '20-25': 25,
+  '25+': 40,
+};
+const BOOKING_FUEL_AUTHORIZATION_GALLONS = {
   '0-5': 10,
   '5-10': 15,
   '10-15': 20,
@@ -70,7 +78,7 @@ function bookingNeedsWash(serviceType) {
 function calculateBookingAuthorization(row) {
   const needsFuel = bookingNeedsFuel(row.service_type);
   const needsWash = bookingNeedsWash(row.service_type);
-  const fuelGallons = needsFuel ? BOOKING_FUEL_RANGES[row.estimated_fuel_range] || 0 : 0;
+  const fuelGallons = needsFuel ? BOOKING_FUEL_AUTHORIZATION_GALLONS[row.estimated_fuel_range] || 0 : 0;
   const pricePerGallon = Number(row.price_per_gallon) > 0 ? Number(row.price_per_gallon) : BOOKING_PRICE_PER_GALLON;
   const fuelEstimate = roundMoney(fuelGallons * pricePerGallon);
   const washPackage = needsWash ? BOOKING_WASH_PACKAGES[row.wash_package] || null : null;
@@ -305,7 +313,7 @@ const ALLOWED_BOOKING_FIELDS = [
   'parking_location', 'parking_spot', 'parking_map_url', 'key_handoff_details',
   'special_instructions',
   'service_type', 'service_label', 'service_date', 'desired_return_time',
-  'fuel_type', 'estimated_fuel_range', 'estimated_gallons', 'price_per_gallon', 'estimated_fuel_amount',
+  'fuel_type', 'estimated_fuel_range', 'estimated_gallons', 'selected_fuel_gallons', 'authorization_fuel_gallons', 'price_per_gallon', 'estimated_fuel_amount',
   'fuel_convenience_fee', 'wash_package', 'wash_package_label', 'wash_fee', 'wash_convenience_fee',
   'quick_inspection', 'quick_inspection_fee', 'service_fee', 'detailing_available_window',
   'estimated_total', 'notes', 'booking_source',
@@ -549,6 +557,8 @@ async function handleCreateAuthorizedBooking(body, res) {
   // never trusted from the client even though it's in ALLOWED_BOOKING_FIELDS.
   row.authorized_amount = serverPricing.estimatedTotal;
   row.estimated_gallons = serverPricing.fuelGallons;
+  row.authorization_fuel_gallons = serverPricing.fuelGallons;
+  row.selected_fuel_gallons = BOOKING_SELECTED_GALLONS?.[row.estimated_fuel_range] || row.selected_fuel_gallons || serverPricing.fuelGallons;
   row.estimated_fuel_amount = serverPricing.fuelEstimate;
   row.fuel_convenience_fee = serverPricing.fuelFee;
   row.wash_fee = serverPricing.washAmount;
