@@ -39,58 +39,63 @@
 
 .track-shell {
   width: min(1320px, calc(100% - 40px));
+  min-height: calc(100vh - 96px);
   margin-inline: auto;
-  padding: 0 0 28px;
+  padding: 0 0 72px;
 }
 
 .track-hero-redesign {
   position: relative;
   display: grid;
-  grid-template-columns: minmax(420px, 0.86fr) minmax(420px, 1.14fr);
+  grid-template-columns: minmax(520px, 0.9fr) minmax(420px, 1.1fr);
   gap: 28px;
-  min-height: 265px;
+  min-height: clamp(360px, 40vw, 520px);
   margin-inline: calc((100vw - min(1320px, calc(100vw - 40px))) / -2);
-  padding: 34px max(20px, calc((100vw - 1320px) / 2)) 86px;
+  padding: clamp(42px, 6vw, 78px) max(24px, calc((100vw - 1320px) / 2)) 120px;
   overflow: hidden;
   background:
-    linear-gradient(90deg, rgba(247,247,245,0.98) 0%, rgba(247,247,245,0.92) 42%, rgba(247,247,245,0.18) 70%, rgba(247,247,245,0) 100%);
+    linear-gradient(90deg, rgba(247,247,245,0.99) 0%, rgba(247,247,245,0.94) 38%, rgba(247,247,245,0.20) 68%, rgba(247,247,245,0) 100%);
 }
 
 .track-hero-redesign .booking-flow-hero-copy {
   position: relative;
   z-index: 2;
   align-self: center;
-  max-width: 620px;
+  width: min(760px, 52vw);
+  max-width: 760px;
 }
 
 .track-hero-redesign h1 {
+  max-width: none;
   margin-bottom: 16px;
-  font-size: clamp(3rem, 6vw, 5.4rem);
+  font-size: clamp(3.5rem, 6.4vw, 6.2rem);
+  line-height: 0.98;
   letter-spacing: 0.02em;
+  white-space: nowrap;
 }
 
 .track-hero-redesign p:not(.eyebrow) {
-  max-width: 520px;
+  max-width: 560px;
   color: #40524f;
-  font-size: 1.08rem;
+  font-size: 1.12rem;
 }
 
 .track-hero-redesign .booking-flow-hero-image {
   position: absolute;
   inset: 0 0 0 auto;
-  width: min(62vw, 920px);
+  width: min(66vw, 980px);
   min-height: 100%;
   margin: 0;
   border-radius: 0;
   box-shadow: none;
-  opacity: 0.92;
+  opacity: 0.94;
 }
 
 .track-hero-redesign .booking-flow-hero-image::after {
   content: "";
   position: absolute;
   inset: 0;
-  background: linear-gradient(90deg, rgba(247,247,245,0.95) 0%, rgba(247,247,245,0.74) 26%, rgba(247,247,245,0.08) 58%, rgba(247,247,245,0) 100%);
+  background: linear-gradient(90deg, rgba(247,247,245,0.96) 0%, rgba(247,247,245,0.78) 25%, rgba(247,247,245,0.10) 58%, rgba(247,247,245,0) 100%);
 }
 
 .track-hero-redesign .booking-flow-hero-image img {
@@ -104,7 +109,7 @@
   position: relative;
   z-index: 3;
   width: min(1040px, calc(100% - 80px));
-  margin: -56px auto 18px;
+  margin: -72px auto 28px;
   padding: 26px 30px 18px;
   background: rgba(255,255,255,0.96);
   border: 1px solid rgba(13, 59, 59, 0.1);
@@ -423,7 +428,7 @@
 .assigned-worker-card,
 .review-panel,
 .photo-proof-section,
-.payment-authorized-notice,
+payment-authorized-notice,
 .customer-payment-section {
   background: #fff;
   border: 1px solid rgba(13, 59, 59, 0.1);
@@ -455,6 +460,11 @@
   border: 0;
   border-radius: var(--sf-radius-md);
   box-shadow: var(--sf-shadow-card);
+}
+
+.track-page #tracking-result:empty + .portal-closing-banner,
+.track-page:has(#tracking-result:empty) .portal-closing-banner {
+  margin-top: 96px;
 }
 
 .final-cta-main,
@@ -532,8 +542,19 @@
 
   .track-hero-redesign {
     grid-template-columns: 1fr;
+    min-height: 430px;
     margin-inline: -12px;
     padding-inline: 20px;
+    padding-bottom: 110px;
+  }
+
+  .track-hero-redesign .booking-flow-hero-copy {
+    width: min(520px, 100%);
+  }
+
+  .track-hero-redesign h1 {
+    white-space: normal;
+    font-size: clamp(3rem, 10vw, 4.8rem);
   }
 
   .track-hero-redesign .booking-flow-hero-image {
