@@ -3,6 +3,14 @@
 (() => {
   if (!document.body?.classList.contains('admin-portal-page')) return;
 
+  if (!document.querySelector('link[data-admin-dashboard-refinements]')) {
+    const refinementCss = document.createElement('link');
+    refinementCss.rel = 'stylesheet';
+    refinementCss.href = 'admin-dashboard-refinements.css';
+    refinementCss.dataset.adminDashboardRefinements = '1';
+    document.head.appendChild(refinementCss);
+  }
+
   const DENY_REASONS = [
     'Address outside service area',
     'Customer information incomplete',
