@@ -1,5 +1,5 @@
-// Worker portal visual polish and emergency text cleanup.
-// Loaded after worker.js so it can fix generated worker job panels.
+// Worker portal visual polish and safety fixes.
+// Loaded after worker.js so it can patch generated worker job panels.
 (() => {
   if (!document.body?.classList.contains('worker-portal-page')) return;
 
@@ -17,7 +17,6 @@
       color: #9f1239 !important;
     }
 
-    /* Keep checkboxes normal sized inside worker panels. */
     .worker-portal-page .checkbox-label {
       display: grid !important;
       grid-template-columns: 22px 1fr !important;
@@ -58,10 +57,9 @@
   ];
 
   function fixTextNode(node) {
-    let value = node.nodeValue;
-    let next = value;
+    let next = node.nodeValue;
     textFixes.forEach(([bad, good]) => { next = next.replace(bad, good); });
-    if (next !== value) node.nodeValue = next;
+    if (next !== node.nodeValue) node.nodeValue = next;
   }
 
   function cleanupBrokenCharacters(root = document.body) {
@@ -70,8 +68,34 @@
     while ((node = walker.nextNode())) fixTextNode(node);
   }
 
+  function normalized(value) {
+    return String(value || '').trim().toLowerCase();
+  }
+
   function selectedReason(panel) {
-    return String(panel?.querySelector('.service-unable-reason')?.value || '').trim().toLowerCase();
+    return normalized(panel?.querySelector('.service-unable-reason')?.value || '');
+  }
+
+  function isCustomerCancellationReason(reason) {
+    const value = normalized(reason);
+    return value.includes('customer requested cancellation')
+      || value.includes('customer requested cancel')
+      || value.includes('customer cancelled')
+      || value.includes('customer canceled');
+  }
+
+  function serviceUnableReason(request, type) {
+    const notes = String(request?.notes || '');
+    const matches = Array.from(notes.matchAll(new RegExp(`\\[service_unable ${type}\\] [^:]+: ([^\\n]+)`, 'g')));
+    return matches.length ? matches[matches.length - 1][1].trim() : '';
+  }
+
+  if (typeof serviceUnableFeeCharged === 'function') {
+    const originalServiceUnableFeeCharged = serviceUnableFeeCharged;
+    serviceUnableFeeCharged = function patchedServiceUnableFeeCharged(request, type) {
+      if (isCustomerCancellationReason(serviceUnableReason(request, type))) return false;
+      return originalServiceUnableFeeCharged(request, type);
+    };
   }
 
   function applyServiceUnableFeeRules(panel) {
@@ -79,15 +103,14 @@
     const feeBox = panel.querySelector('.service-unable-charge-fee');
     if (!feeBox) return;
 
-    const reason = selectedReason(panel);
-    const mustWaive = reason === 'customer requested cancellation';
+    const mustWaive = isCustomerCancellationReason(selectedReason(panel));
 
     if (mustWaive) {
       feeBox.checked = false;
       feeBox.disabled = true;
       const text = feeBox.closest('.checkbox-label')?.querySelector('span');
       if (text) {
-        text.textContent = 'Service fee waived because the customer requested cancellation for this service. No fuel/wash cost is charged without a receipt.';
+        text.textContent = 'Service fee waived because the customer cancelled this service. No fuel/wash cost is charged without a receipt.';
       }
     } else {
       feeBox.disabled = false;
@@ -102,9 +125,70 @@
     document.querySelectorAll('.service-unable-panel').forEach(applyServiceUnableFeeRules);
   }
 
+  function polishKeyReturnPanels() {
+    document.querySelectorAll('.keys-returned-panel').forEach((panel) => {
+      const select = panel.querySelector('.key-returned-to-type');
+      const otherWrap = panel.querySelector('.key-returned-other-wrap');
+      if (!select || select.dataset.keyReturnPolished) return;
+      select.dataset.keyReturnPolished = '1';
+      const customerOption = Array.from(select.options).find((option) => option.value === 'customer');
+      if (customerOption) {
+        customerOption.textContent = customerOption.textContent.replace('Customer —', 'Customer -').replace('Customer –', 'Customer -');
+      }
+      select.addEventListener('change', () => {
+        if (otherWrap) otherWrap.hidden = select.value !== 'other';
+      });
+    });
+  }
+
+  // After capturing payment, keep the job open for the worker until keys are documented returned.
+  if (typeof sendWorkerToCustomerPayment === 'function') {
+    const originalSendWorkerToCustomerPayment = sendWorkerToCustomerPayment;
+    sendWorkerToCustomerPayment = async function patchedSendWorkerToCustomerPayment(button) {
+      const id = button?.dataset?.id;
+      const request = Array.isArray(allWorkerJobs) ? allWorkerJobs.find((item) => item.id === id) : null;
+      await originalSendWorkerToCustomerPayment(button);
+
+      // If the capture succeeded, worker.js reloads jobs. Move the row back into the worker queue as Awaiting key return.
+      if (id && request && request.status !== 'awaiting_key_return') {
+        const timestamp = new Date().toISOString();
+        const note = `[payment_captured_key_return_needed ${timestamp}] Final payment captured. Worker must return keys before the request is marked complete.`;
+        const notes = request.notes ? `${request.notes}\n${note}` : note;
+        await workerDb.rpc('worker_update_request', {
+          p_token: SESSION_WORKER_TOKEN,
+          p_request_id: id,
+          p_data: { status: 'awaiting_key_return', notes, updated_at: timestamp },
+        }).catch((error) => console.warn('Could not move captured job to key return step:', error));
+        await loadWorkerJobs().catch(() => {});
+      }
+    };
+  }
+
+  if (typeof completeWorkerRequest === 'function') {
+    const originalCompleteWorkerRequest = completeWorkerRequest;
+    completeWorkerRequest = async function patchedCompleteWorkerRequest(button) {
+      const id = button?.dataset?.id;
+      const request = Array.isArray(allWorkerJobs) ? allWorkerJobs.find((item) => item.id === id) : null;
+      await originalCompleteWorkerRequest(button);
+
+      if (id && request && request.status !== 'awaiting_key_return') {
+        const timestamp = new Date().toISOString();
+        const note = `[totals_confirmed_key_return_needed ${timestamp}] Worker confirmed final totals. Keys must be returned before the request is marked complete.`;
+        const notes = request.notes ? `${request.notes}\n${note}` : note;
+        await workerDb.rpc('worker_update_request', {
+          p_token: SESSION_WORKER_TOKEN,
+          p_request_id: id,
+          p_data: { status: 'awaiting_key_return', notes, updated_at: timestamp },
+        }).catch((error) => console.warn('Could not move completed job to key return step:', error));
+        await loadWorkerJobs().catch(() => {});
+      }
+    };
+  }
+
   function applyCancelledStatusPolish() {
     cleanupBrokenCharacters();
     applyServiceUnableFeeRulesEverywhere();
+    polishKeyReturnPanels();
 
     document.querySelectorAll('.status-pill').forEach((pill) => {
       const text = pill.textContent.trim().toLowerCase();
@@ -129,12 +213,11 @@
     }
   }, true);
 
-  // Run before worker.js save handler reads the checkbox.
   document.addEventListener('click', (event) => {
     const button = event.target.closest('.save-service-unable');
     if (!button) return;
     const panel = button.closest('.service-unable-panel');
-    if (selectedReason(panel) === 'customer requested cancellation') {
+    if (isCustomerCancellationReason(selectedReason(panel))) {
       const feeBox = panel?.querySelector('.service-unable-charge-fee');
       if (feeBox) {
         feeBox.checked = false;
