@@ -14,11 +14,4 @@ window.ShiftFuelSupabase = supabaseClient;
     document.head.appendChild(mobile);
   }
 
-  window.setTimeout(() => {
-    if (document.querySelector('script[data-pricing-fee-polish]')) return;
-    const pricing = document.createElement('script');
-    pricing.src = 'pricing-fee-polish.js';
-    pricing.dataset.pricingFeePolish = '1';
-    document.body.appendChild(pricing);
-  }, 0);
 })();
