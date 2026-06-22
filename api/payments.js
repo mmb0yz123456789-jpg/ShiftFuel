@@ -1030,6 +1030,43 @@ async function handleCancelPayment(body, res) {
   }
 }
 
+async function handleCancelAuthorization(body, res) {
+  // Customer-side pre-booking cancel: void a manual-capture authorization before
+  // the service_request row is created.
+  const { payment_intent_id, client_secret } = body;
+
+  if (!payment_intent_id || !client_secret) {
+    return res.status(400).json({ error: 'payment_intent_id and client_secret are required' });
+  }
+
+  try {
+    const stripe = getStripe();
+    const intent = await stripe.paymentIntents.retrieve(payment_intent_id);
+    if (intent.client_secret !== client_secret) {
+      return res.status(403).json({ error: 'Payment authorization could not be verified' });
+    }
+
+    if (intent.status === 'canceled') {
+      return res.status(200).json({ status: 'already_canceled' });
+    }
+    if (intent.status === 'requires_capture') {
+      const canceled = await stripe.paymentIntents.cancel(payment_intent_id);
+      console.log('[payments/cancel_authorization] Canceled pre-booking authorization', payment_intent_id);
+      return res.status(200).json({ status: canceled.status });
+    }
+    if (['requires_payment_method', 'requires_confirmation', 'requires_action', 'processing'].includes(intent.status)) {
+      const canceled = await stripe.paymentIntents.cancel(payment_intent_id);
+      console.log('[payments/cancel_authorization] Canceled incomplete pre-booking authorization', payment_intent_id);
+      return res.status(200).json({ status: canceled.status });
+    }
+
+    return res.status(400).json({ error: 'This payment authorization can no longer be canceled automatically.' });
+  } catch (err) {
+    console.error('[payments/cancel_authorization] Stripe error:', err.message);
+    return res.status(500).json({ error: 'Payment authorization could not be canceled. Please contact ShiftFuel.' });
+  }
+}
+
 async function handleCapturePayment(body, res) {
   // Admin manual capture of an authorized PI.
   const { payment_intent_id, request_id, amount_cents, caller_token } = body;
@@ -1580,6 +1617,7 @@ const HANDLERS = {
   customer_cancel:       handleCustomerCancel,
   worker_confirm_cancellation_return: handleWorkerConfirmCancellationReturn,
   worker_capture:        handleWorkerCapture,
+  cancel_authorization:  handleCancelAuthorization,
   cancel_payment:        handleCancelPayment,
   capture_payment:       handleCapturePayment,
   refund:                handleRefund,
