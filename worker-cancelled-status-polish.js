@@ -1,4 +1,5 @@
-// Worker portal: make cancellation/return-required status badges red instead of green.
+// Worker portal visual polish and emergency text cleanup.
+// Loaded after worker.js so it can fix generated worker job panels.
 (() => {
   if (!document.body?.classList.contains('worker-portal-page')) return;
 
@@ -15,10 +16,60 @@
     .guided-step.guided-step-cancelled .next-action-label {
       color: #9f1239 !important;
     }
+
+    /* Keep checkboxes normal sized inside worker panels. */
+    .worker-portal-page .checkbox-label {
+      display: grid !important;
+      grid-template-columns: 22px 1fr !important;
+      align-items: start !important;
+      gap: 10px !important;
+      margin: 14px 0 !important;
+      line-height: 1.45 !important;
+    }
+    .worker-portal-page .checkbox-label input[type="checkbox"] {
+      width: 18px !important;
+      height: 18px !important;
+      min-width: 18px !important;
+      min-height: 18px !important;
+      max-width: 18px !important;
+      max-height: 18px !important;
+      margin: 3px 0 0 !important;
+      padding: 0 !important;
+      appearance: auto !important;
+      -webkit-appearance: checkbox !important;
+      accent-color: #073233;
+      transform: none !important;
+      box-shadow: none !important;
+    }
+    .worker-portal-page .checkbox-label span {
+      display: block !important;
+      width: auto !important;
+    }
   `;
   document.head.appendChild(style);
 
+  const textFixes = [
+    [/â€”/g, '—'],
+    [/â†’/g, '→'],
+    [/âš\s*/g, '⚠ '],
+  ];
+
+  function fixTextNode(node) {
+    let value = node.nodeValue;
+    let next = value;
+    textFixes.forEach(([bad, good]) => { next = next.replace(bad, good); });
+    if (next !== value) node.nodeValue = next;
+  }
+
+  function cleanupBrokenCharacters(root = document.body) {
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+    let node;
+    while ((node = walker.nextNode())) fixTextNode(node);
+  }
+
   function applyCancelledStatusPolish() {
+    cleanupBrokenCharacters();
+
     document.querySelectorAll('.status-pill').forEach((pill) => {
       const text = pill.textContent.trim().toLowerCase();
       const isCancelled = text.includes('cancellation received')
