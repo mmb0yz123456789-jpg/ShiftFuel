@@ -501,7 +501,7 @@ font-size: 0.85rem;
   display: grid;
   grid-template-columns: minmax(380px, 1fr) minmax(380px, 1fr);
   align-items: stretch;
-  width: min(1320px, calc(100% - 40px));
+  width: min(var(--sf-page-width), calc(100% - 40px));
   min-height: 520px;
   margin: 26px auto 0;
   overflow: hidden;
@@ -1062,7 +1062,7 @@ font-size: 0.85rem;
 .availability-section,
 .landing-final-cta,
 .returning-flow-shell {
-  width: min(1320px, calc(100% - 40px));
+  width: min(var(--sf-page-width), calc(100% - 40px));
   margin-inline: auto;
 }
 
@@ -7822,7 +7822,8 @@ justify-self: start;
 }
 
 .worker-portal-hero {
-  max-width: 1500px;
+  width: min(var(--sf-page-width), calc(100% - 40px));
+  max-width: none;
   min-height: 280px;
   margin: 0 auto;
   padding: 0;
@@ -7957,7 +7958,8 @@ justify-self: start;
   display: grid;
   grid-template-columns: minmax(0, 1.2fr) minmax(360px, 0.95fr);
   gap: 18px;
-  max-width: 1500px;
+  width: min(var(--sf-page-width), calc(100% - 40px));
+  max-width: none;
   margin: 0 auto;
   padding: 0;
 }
@@ -8151,7 +8153,8 @@ justify-self: start;
 }
 
 .worker-portal-page .admin-section {
-  max-width: 1500px;
+  width: min(var(--sf-page-width), calc(100% - 40px));
+  max-width: none;
   margin-left: auto;
   margin-right: auto;
   border: 1px solid var(--worker-line);
@@ -8161,7 +8164,8 @@ justify-self: start;
 }
 
 .worker-portal-page .portal-closing-banner {
-  max-width: 1500px;
+  width: min(var(--sf-page-width), calc(100% - 40px));
+  max-width: none;
   margin: 10px auto 0;
   border-radius: 14px;
 }
@@ -8309,4 +8313,32 @@ justify-self: start;
 
 .unified-portal-header.worker-top-nav .portal-header-actions {
   margin-left: auto;
+}
+
+/* Keep customer-facing sub pages aligned with the header/footer width.
+   Worker portal and admin login intentionally keep their own layouts. */
+
+.booking-page .booking-flow-shell,
+.track-page .booking-flow-shell,
+.track-page .track-shell,
+.worker-login-page .portal-login-shell {
+  width: min(var(--sf-page-width), calc(100% - 40px));
+  max-width: none;
+  margin-inline: auto;
+  place-items: center;
+}
+
+.worker-login-page .portal-login-card {
+  width: min(640px, 100%);
+}
+
+.admin-portal-page .admin-hero,
+.admin-portal-page .admin-section,
+.admin-portal-page .admin-page-row,
+.worker-portal-page .worker-portal-hero,
+.worker-portal-page .worker-dashboard-layout,
+.worker-portal-page .admin-section,
+.worker-portal-page .portal-closing-banner {
+  width: min(var(--sf-page-width), calc(100% - 40px));
+  max-width: none;
 }
