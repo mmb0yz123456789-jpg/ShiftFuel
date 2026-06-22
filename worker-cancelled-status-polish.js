@@ -45,6 +45,9 @@
       display: block !important;
       width: auto !important;
     }
+    .worker-portal-page .service-unable-charge-fee:disabled + span {
+      color: #667674 !important;
+    }
   `;
   document.head.appendChild(style);
 
@@ -67,8 +70,41 @@
     while ((node = walker.nextNode())) fixTextNode(node);
   }
 
+  function selectedReason(panel) {
+    return String(panel?.querySelector('.service-unable-reason')?.value || '').trim().toLowerCase();
+  }
+
+  function applyServiceUnableFeeRules(panel) {
+    if (!panel) return;
+    const feeBox = panel.querySelector('.service-unable-charge-fee');
+    if (!feeBox) return;
+
+    const reason = selectedReason(panel);
+    const mustWaive = reason === 'customer requested cancellation';
+
+    if (mustWaive) {
+      feeBox.checked = false;
+      feeBox.disabled = true;
+      const text = feeBox.closest('.checkbox-label')?.querySelector('span');
+      if (text) {
+        text.textContent = 'Service fee waived because the customer requested cancellation for this service. No fuel/wash cost is charged without a receipt.';
+      }
+    } else {
+      feeBox.disabled = false;
+      const text = feeBox.closest('.checkbox-label')?.querySelector('span');
+      if (text && text.textContent.includes('Service fee waived because')) {
+        text.textContent = "Charge the service fee anyway (e.g. work was attempted). No fuel/wash cost is ever charged when there's no receipt — leave unchecked to waive the fee entirely.";
+      }
+    }
+  }
+
+  function applyServiceUnableFeeRulesEverywhere() {
+    document.querySelectorAll('.service-unable-panel').forEach(applyServiceUnableFeeRules);
+  }
+
   function applyCancelledStatusPolish() {
     cleanupBrokenCharacters();
+    applyServiceUnableFeeRulesEverywhere();
 
     document.querySelectorAll('.status-pill').forEach((pill) => {
       const text = pill.textContent.trim().toLowerCase();
@@ -86,6 +122,26 @@
       panel.classList.toggle('guided-step-cancelled', isCancelled);
     });
   }
+
+  document.addEventListener('change', (event) => {
+    if (event.target.matches('.service-unable-reason')) {
+      applyServiceUnableFeeRules(event.target.closest('.service-unable-panel'));
+    }
+  }, true);
+
+  // Run before worker.js save handler reads the checkbox.
+  document.addEventListener('click', (event) => {
+    const button = event.target.closest('.save-service-unable');
+    if (!button) return;
+    const panel = button.closest('.service-unable-panel');
+    if (selectedReason(panel) === 'customer requested cancellation') {
+      const feeBox = panel?.querySelector('.service-unable-charge-fee');
+      if (feeBox) {
+        feeBox.checked = false;
+        feeBox.disabled = true;
+      }
+    }
+  }, true);
 
   document.addEventListener('DOMContentLoaded', applyCancelledStatusPolish);
   const observer = new MutationObserver(applyCancelledStatusPolish);
