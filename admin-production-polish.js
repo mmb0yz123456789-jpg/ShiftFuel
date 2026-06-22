@@ -1,5 +1,5 @@
-// Admin revenue label/calculation patch.
-// Safe, display-only: does not change payment capture, Supabase writes, or request status logic.
+// Admin dashboard revenue + clickable summary card polish.
+// Safe, display-only/navigation-only: does not change payment capture, Supabase writes, or request status logic.
 (() => {
   if (!document.body?.classList.contains('admin-portal-page')) return;
 
@@ -47,6 +47,13 @@
     return stamp >= start;
   }
 
+  function isToday(request) {
+    const stamp = new Date(request.updated_at || request.created_at || 0);
+    const start = new Date();
+    start.setHours(0, 0, 0, 0);
+    return stamp >= start;
+  }
+
   function receiptTotalsFromRequest(request) {
     const savedFuel = amount(request.actual_fuel_receipt_amount);
     const savedWash = amount(request.actual_car_wash_receipt_amount);
@@ -70,8 +77,7 @@
     return [];
   }
 
-  function calculateRevenueMetrics() {
-    const range = currentRange();
+  function calculateRevenueMetrics(range = currentRange()) {
     const captured = getRequests().filter((request) => request.payment_status === 'captured' && isInRange(request, range));
 
     let gross = 0;
@@ -86,7 +92,7 @@
     });
 
     const net = gross - receipts - paymentRecovery;
-    return { range, label: rangeLabel(range), gross, receipts, paymentRecovery, net };
+    return { range, label: rangeLabel(range), gross, receipts, paymentRecovery, net, captured };
   }
 
   function ensureBreakdown() {
@@ -113,6 +119,30 @@
     const style = document.createElement('style');
     style.id = 'admin-revenue-metrics-style';
     style.textContent = `
+      .admin-stat-card[data-dashboard-card-action] {
+        cursor: pointer;
+        transition: transform 160ms ease, box-shadow 160ms ease, border-color 160ms ease, background 160ms ease;
+      }
+      .admin-stat-card[data-dashboard-card-action]:hover {
+        transform: translateY(-2px);
+        border-color: rgba(255,107,90,0.32);
+        box-shadow: 0 16px 40px rgba(13,59,59,0.13);
+      }
+      .admin-stat-card[data-dashboard-card-action]:active {
+        transform: translateY(0) scale(0.99);
+        box-shadow: 0 8px 22px rgba(13,59,59,0.10);
+      }
+      .admin-stat-card[data-dashboard-card-action]:focus-visible {
+        outline: 3px solid rgba(255,107,90,0.28);
+        outline-offset: 3px;
+      }
+      .admin-stat-card .dashboard-card-hint {
+        display: block;
+        margin-top: 4px;
+        color: var(--sf-muted, #60716d);
+        font-size: 0.72rem;
+        font-weight: 800;
+      }
       .admin-revenue-breakdown {
         display: grid;
         grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -140,11 +170,93 @@
         font-size: 1rem;
         font-weight: 950;
       }
+      .admin-revenue-modal-overlay {
+        position: fixed;
+        inset: 0;
+        z-index: 9999;
+        display: grid;
+        place-items: center;
+        padding: 20px;
+        background: rgba(13, 59, 59, 0.48);
+      }
+      .admin-revenue-modal {
+        width: min(720px, 100%);
+        max-height: min(82vh, 760px);
+        overflow: auto;
+        background: #fff;
+        border-radius: var(--sf-radius-md, 24px);
+        box-shadow: 0 28px 90px rgba(13,59,59,0.28);
+      }
+      .admin-revenue-modal-header,
+      .admin-revenue-modal-body {
+        padding: 22px;
+      }
+      .admin-revenue-modal-header {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 16px;
+        border-bottom: 1px solid rgba(13,59,59,0.10);
+      }
+      .admin-revenue-modal-header h3 {
+        margin: 0 0 4px;
+        color: var(--sf-teal-dark, #0d3b3b);
+      }
+      .admin-revenue-modal-header p {
+        margin: 0;
+        color: var(--sf-muted, #60716d);
+      }
+      .admin-revenue-modal-close {
+        border: 0;
+        background: transparent;
+        color: var(--sf-teal-dark, #0d3b3b);
+        font-size: 1.6rem;
+        cursor: pointer;
+      }
+      .admin-revenue-modal-grid {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 10px;
+        margin-bottom: 16px;
+      }
+      .admin-revenue-modal-grid div,
+      .admin-revenue-row {
+        padding: 12px;
+        background: var(--sf-sage-light, #edf4ed);
+        border: 1px solid rgba(13,59,59,0.08);
+        border-radius: var(--sf-radius-sm, 14px);
+      }
+      .admin-revenue-modal-grid span,
+      .admin-revenue-row span {
+        display: block;
+        color: var(--sf-muted, #60716d);
+        font-size: 0.72rem;
+        font-weight: 900;
+        text-transform: uppercase;
+      }
+      .admin-revenue-modal-grid strong,
+      .admin-revenue-row strong {
+        color: var(--sf-teal-dark, #0d3b3b);
+      }
+      .admin-revenue-list {
+        display: grid;
+        gap: 8px;
+      }
+      .admin-revenue-row {
+        display: grid;
+        grid-template-columns: 1fr auto;
+        gap: 12px;
+        align-items: center;
+        background: #fff;
+      }
       @media (max-width: 900px) {
-        .admin-revenue-breakdown { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+        .admin-revenue-breakdown,
+        .admin-revenue-modal-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
       }
       @media (max-width: 560px) {
-        .admin-revenue-breakdown { grid-template-columns: 1fr; }
+        .admin-revenue-breakdown,
+        .admin-revenue-modal-grid { grid-template-columns: 1fr; }
+        .admin-revenue-row { grid-template-columns: 1fr; }
       }
     `;
     document.head.appendChild(style);
@@ -170,13 +282,125 @@
     breakdown.querySelector('[data-value="net"]').textContent = money(metrics.net);
   }
 
+  function setCardAction(card, action, label) {
+    if (!card || card.dataset.dashboardCardAction === action) return;
+    card.dataset.dashboardCardAction = action;
+    card.setAttribute('role', 'button');
+    card.setAttribute('tabindex', '0');
+    card.setAttribute('aria-label', label);
+    if (!card.querySelector('.dashboard-card-hint')) {
+      const hint = document.createElement('span');
+      hint.className = 'dashboard-card-hint';
+      hint.textContent = 'Click to view';
+      card.querySelector('div')?.appendChild(hint);
+    }
+  }
+
+  function setupDashboardCards() {
+    setCardAction(document.querySelector('#stat-open-requests')?.closest('.admin-stat-card'), 'open', 'Show open requests');
+    setCardAction(document.querySelector('#stat-in-progress')?.closest('.admin-stat-card'), 'inprogress', 'Show in-progress requests');
+    setCardAction(document.querySelector('#stat-completed-today')?.closest('.admin-stat-card'), 'completed', 'Show completed requests');
+    setCardAction(document.querySelector('#stat-active-workers')?.closest('.admin-stat-card'), 'workers', 'Open active workers');
+    setCardAction(document.querySelector('#stat-net-revenue')?.closest('.admin-stat-card'), 'revenue', 'Show revenue summary');
+  }
+
+  function scrollToRequests() {
+    const section = document.querySelector('.admin-queue-section') || document.querySelector('#request-list');
+    section?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    setTimeout(() => document.querySelector('#request-list')?.focus?.(), 250);
+  }
+
+  function clickFilter(selector) {
+    const button = document.querySelector(selector);
+    button?.click();
+    scrollToRequests();
+  }
+
+  function openWorkers() {
+    document.querySelector('.admin-page-tab[data-page="workers"]')?.click();
+    setTimeout(() => {
+      const activeSelect = document.querySelector('#worker-profile-select-active') || document.querySelector('#worker-select');
+      activeSelect?.focus?.();
+      activeSelect?.scrollIntoView?.({ behavior: 'smooth', block: 'center' });
+    }, 150);
+  }
+
+  function requestName(request) {
+    const vehicle = [request.vehicle_year, request.vehicle_make, request.vehicle_model].filter(Boolean).join(' ');
+    return request.customer_name || vehicle || String(request.id || '').slice(0, 8).toUpperCase();
+  }
+
+  function showRevenueModal() {
+    document.querySelector('#admin-revenue-modal-overlay')?.remove();
+    const metrics = calculateRevenueMetrics('today');
+    const rows = metrics.captured.length
+      ? metrics.captured.map((request) => {
+          const receipt = receiptTotalsFromRequest(request);
+          const gross = amount(request.final_total ?? request.captured_amount ?? request.rounded_customer_total);
+          const net = gross - receipt.fuel - receipt.wash - amount(request.payment_operating_recovery_amount);
+          return `
+            <div class="admin-revenue-row">
+              <div>
+                <strong>${requestName(request)}</strong>
+                <span>${String(request.id || '').slice(0, 8).toUpperCase()} · Receipts ${money(receipt.fuel + receipt.wash)}</span>
+              </div>
+              <strong>${money(net)}</strong>
+            </div>
+          `;
+        }).join('')
+      : '<p class="field-help">No captured customer charges today.</p>';
+
+    const overlay = document.createElement('div');
+    overlay.id = 'admin-revenue-modal-overlay';
+    overlay.className = 'admin-revenue-modal-overlay';
+    overlay.innerHTML = `
+      <section class="admin-revenue-modal" role="dialog" aria-modal="true" aria-labelledby="admin-revenue-modal-title">
+        <div class="admin-revenue-modal-header">
+          <div>
+            <h3 id="admin-revenue-modal-title">Today’s Revenue Summary</h3>
+            <p>Captured customer charges minus receipt reimbursements and payment recovery.</p>
+          </div>
+          <button class="admin-revenue-modal-close" type="button" aria-label="Close">&times;</button>
+        </div>
+        <div class="admin-revenue-modal-body">
+          <div class="admin-revenue-modal-grid">
+            <div><span>Gross Revenue</span><strong>${money(metrics.gross)}</strong></div>
+            <div><span>Receipt Reimbursements</span><strong>${money(metrics.receipts)}</strong></div>
+            <div><span>Payment Recovery</span><strong>${money(metrics.paymentRecovery)}</strong></div>
+            <div><span>Net Revenue</span><strong>${money(metrics.net)}</strong></div>
+          </div>
+          <div class="admin-revenue-list">${rows}</div>
+        </div>
+      </section>
+    `;
+    document.body.appendChild(overlay);
+    overlay.querySelector('.admin-revenue-modal-close')?.focus();
+  }
+
+  function handleDashboardCardAction(action) {
+    if (action === 'open') clickFilter('#show-open');
+    if (action === 'inprogress') clickFilter('#show-inprogress');
+    if (action === 'completed') {
+      const range = document.querySelector('#dashboard-range');
+      if (range) {
+        range.value = 'today';
+        range.dispatchEvent(new Event('change', { bubbles: true }));
+      }
+      clickFilter('#show-complete');
+    }
+    if (action === 'workers') openWorkers();
+    if (action === 'revenue') showRevenueModal();
+  }
+
   function patchDashboardStats() {
+    setupDashboardCards();
     try {
       if (typeof updateDashboardStatCards === 'function' && !updateDashboardStatCards.__revenuePatched) {
         const original = updateDashboardStatCards;
         updateDashboardStatCards = function patchedUpdateDashboardStatCards(...args) {
           original.apply(this, args);
           updateRevenueDisplay();
+          setupDashboardCards();
         };
         updateDashboardStatCards.__revenuePatched = true;
         updateRevenueDisplay();
@@ -191,6 +415,32 @@
     attempts += 1;
     if (patchDashboardStats() || attempts > 80) clearInterval(timer);
   }, 100);
+
+  document.addEventListener('click', (event) => {
+    const modalOverlay = event.target.closest('#admin-revenue-modal-overlay');
+    if (event.target.matches('.admin-revenue-modal-close') || event.target.id === 'admin-revenue-modal-overlay') {
+      modalOverlay?.remove();
+      return;
+    }
+
+    const card = event.target.closest('.admin-stat-card[data-dashboard-card-action]');
+    if (!card) return;
+    event.preventDefault();
+    handleDashboardCardAction(card.dataset.dashboardCardAction);
+  });
+
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') {
+      document.querySelector('#admin-revenue-modal-overlay')?.remove();
+      return;
+    }
+
+    if (event.key !== 'Enter' && event.key !== ' ') return;
+    const card = event.target.closest?.('.admin-stat-card[data-dashboard-card-action]');
+    if (!card) return;
+    event.preventDefault();
+    handleDashboardCardAction(card.dataset.dashboardCardAction);
+  });
 
   document.addEventListener('change', (event) => {
     if (event.target?.id === 'dashboard-range') setTimeout(updateRevenueDisplay, 0);
