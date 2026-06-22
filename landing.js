@@ -4,6 +4,11 @@ mobilePolish.href = "mobile-polish.css";
 mobilePolish.dataset.mobilePolish = "1";
 document.head.appendChild(mobilePolish);
 
+const copyPolish = document.createElement("script");
+copyPolish.src = "landing-copy-polish.js";
+copyPolish.defer = true;
+document.head.appendChild(copyPolish);
+
 const pricingPolish = document.createElement("script");
 pricingPolish.src = "pricing-fee-polish.js";
 pricingPolish.defer = true;
