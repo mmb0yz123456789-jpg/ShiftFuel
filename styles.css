@@ -2117,6 +2117,58 @@ font-size: 0.85rem;
   border-radius: 8px;
 }
 
+.payment-modal-open {
+  overflow: hidden;
+}
+
+.booking-payment-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: grid;
+  place-items: center;
+  padding: 18px;
+}
+
+.booking-payment-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 31, 31, 0.48);
+}
+
+.booking-payment-dialog {
+  position: relative;
+  z-index: 1;
+  width: min(460px, 100%);
+  display: grid;
+  gap: 14px;
+  padding: 24px;
+  background: #ffffff;
+  border: 1px solid rgba(0, 59, 59, 0.14);
+  border-radius: 14px;
+  box-shadow: 0 24px 70px rgba(0, 31, 31, 0.26);
+}
+
+.booking-payment-dialog h3,
+.booking-payment-dialog p {
+  margin: 0;
+}
+
+.booking-payment-close {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  width: 34px;
+  height: 34px;
+  border: 0;
+  border-radius: 50%;
+  background: #eef6f2;
+  color: var(--brand-dark);
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+}
+
 .payment-notice {
   padding: 14px 16px;
   color: var(--brand-dark);

@@ -127,7 +127,7 @@ const stepCopy = {
         <label><span>Make <span class="required-mark">Required</span></span><select data-required name="vehicleMake"><option value="">Select make</option></select></label>
         <label><span>Model <span class="required-mark">Required</span></span><select data-required name="vehicleModel"><option value="">Select year and make first</option></select></label>
         <label><span>Color <span class="required-mark">Required</span></span><input data-required name="vehicleColor" type="text" placeholder="Blue"></label>
-        <label><span>License plate <span class="required-mark">Required</span></span><input data-required name="licensePlate" type="text" placeholder="TEST"></label>
+        <label><span>License plate <span class="required-mark">Required</span></span><input data-required name="licensePlate" type="text" placeholder="123456"></label>
       </div>
     `,
   },
@@ -192,10 +192,6 @@ const stepCopy = {
     intro: "Authorize your payment method now. You will only be charged after your service is completed.",
     fields: `
       <div class="payment-placeholder" data-payment-summary></div>
-      <div class="payment-card-box">
-        <label><span>Card information</span><div id="booking-card-element" class="booking-card-element"></div></label>
-        <p id="booking-card-errors" class="booking-validation-message" data-status="error"></p>
-      </div>
       <p class="payment-notice">Your payment method will be authorized now. You will only be charged after your service is completed.</p>
       <p class="field-help">Do not capture payment at booking. Do not capture payment when worker clicks Return Vehicle. Capture payment only when service is confirmed complete. Void authorization if the request is denied or cancelled.</p>
       <button class="button secondary" type="button" data-authorize-payment>Authorize payment</button>
@@ -399,6 +395,57 @@ function mountCardIfNeeded() {
   cardElement.on("change", (event) => {
     const display = document.querySelector("#booking-card-errors");
     if (display) display.textContent = event.error ? event.error.message : "";
+  });
+}
+
+function closePaymentModal() {
+  const modal = document.querySelector("#booking-payment-modal");
+  if (!modal) return;
+  if (cardElement && cardMounted) {
+    cardElement.unmount();
+    cardMounted = false;
+  }
+  modal.remove();
+  document.body.classList.remove("payment-modal-open");
+}
+
+function openPaymentModal(panel) {
+  closePaymentModal();
+
+  const modal = document.createElement("div");
+  modal.id = "booking-payment-modal";
+  modal.className = "booking-payment-modal";
+  modal.innerHTML = `
+    <div class="booking-payment-backdrop" data-close-payment-modal></div>
+    <div class="booking-payment-dialog" role="dialog" aria-modal="true" aria-labelledby="booking-payment-title">
+      <button class="booking-payment-close" type="button" aria-label="Close payment authorization" data-close-payment-modal>&times;</button>
+      <p class="eyebrow">Secure payment authorization</p>
+      <h3 id="booking-payment-title">Enter card information</h3>
+      <p class="field-help">Your card is authorized now and only charged after service is completed.</p>
+      <div class="payment-card-box">
+        <label><span>Card information</span><div id="booking-card-element" class="booking-card-element"></div></label>
+        <p id="booking-card-errors" class="booking-validation-message" data-status="error"></p>
+      </div>
+      <div class="admin-button-row">
+        <button class="button secondary" type="button" data-close-payment-modal>Cancel</button>
+        <button class="button primary" type="button" data-confirm-payment-authorization>Authorize payment</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(modal);
+  document.body.classList.add("payment-modal-open");
+  mountCardIfNeeded();
+  if (cardElement?.clear) cardElement.clear();
+
+  modal.addEventListener("click", async (event) => {
+    if (event.target.closest("[data-close-payment-modal]")) {
+      closePaymentModal();
+      return;
+    }
+
+    const confirmButton = event.target.closest("[data-confirm-payment-authorization]");
+    if (!confirmButton) return;
+    await confirmPaymentAuthorization(panel, confirmButton);
   });
 }
 
@@ -986,7 +1033,7 @@ function returningVehicleForm() {
         <label><span>Make <span class="required-mark">Required</span></span><select data-returning-vehicle-field name="returningVehicleMake"><option value="">Select make</option></select></label>
         <label><span>Model <span class="required-mark">Required</span></span><select data-returning-vehicle-field name="returningVehicleModel"><option value="">Select year and make first</option></select></label>
         <label><span>Color <span class="required-mark">Required</span></span><input data-returning-vehicle-field name="returningVehicleColor" type="text" placeholder="Blue"></label>
-        <label><span>License plate <span class="required-mark">Required</span></span><input data-returning-vehicle-field name="returningLicensePlate" type="text" placeholder="TEST"></label>
+        <label><span>License plate <span class="required-mark">Required</span></span><input data-returning-vehicle-field name="returningLicensePlate" type="text" placeholder="123456"></label>
         <label><span>Fuel type</span><select data-returning-vehicle-field name="returningFuelType">
           <option value="">Select fuel type later if needed</option>
           <option>Regular</option>
@@ -1239,7 +1286,6 @@ function renderPaymentSummary(panel) {
     status.dataset.status = bookingState.payment.statusType || "";
     status.textContent = bookingState.payment.status || "";
   }
-  mountCardIfNeeded();
 }
 
 async function authorizePayment(panel) {
@@ -1263,6 +1309,29 @@ async function authorizePayment(panel) {
     setStatus("error", "Please complete service details before authorizing payment.");
     return;
   }
+  openPaymentModal(panel);
+}
+
+async function confirmPaymentAuthorization(panel, button) {
+  savePanelValues(panel);
+  const status = panel.querySelector("[data-payment-status]");
+  const setStatus = (type, message) => {
+    bookingState.payment.statusType = type;
+    bookingState.payment.status = message;
+    if (status) {
+      status.dataset.status = type;
+      status.textContent = message;
+    }
+    const modalError = document.querySelector("#booking-card-errors");
+    if (modalError && type === "error") modalError.textContent = message;
+  };
+
+  if (!stripe || !cardElement || !cardMounted) {
+    setStatus("error", "Payment authorization is not available right now.");
+    return;
+  }
+
+  const totals = calculateTotals();
   if (button) {
     button.disabled = true;
     button.textContent = "Authorizing...";
@@ -1299,6 +1368,7 @@ async function authorizePayment(panel) {
     bookingState.payment.paymentIntentId = intent.payment_intent_id;
     bookingState.payment.clientSecret = intent.client_secret;
     setStatus("success", "Payment authorized. You will only be charged after your service is completed.");
+    closePaymentModal();
   } catch (error) {
     console.error("Payment authorization failed:", error);
     bookingState.payment.authorized = false;
@@ -1306,7 +1376,7 @@ async function authorizePayment(panel) {
   } finally {
     if (button) {
       button.disabled = false;
-      button.textContent = bookingState.payment.authorized ? "Payment authorized" : "Authorize payment";
+      button.textContent = "Authorize payment";
     }
   }
 }
