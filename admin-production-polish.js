@@ -1,9 +1,15 @@
-// Admin dashboard revenue + clickable summary card polish.
-// Safe, display-only/navigation-only: does not change payment capture, Supabase writes, or request status logic.
+// Admin dashboard polish.
+// Safe display/navigation layer only. Does not change Supabase writes, payment capture, or status logic.
 (() => {
   if (!document.body?.classList.contains('admin-portal-page')) return;
 
   const MONEY = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' });
+  const QUICK_ACTIONS = [
+    { selector: '.admin-action-card[data-page-action="requests"][data-request-view="unassigned"]', title: 'Assign Worker', subtitle: 'Assign an available worker' },
+    { selector: '.admin-action-card[data-page-action="requests"][data-request-view="all"]', title: 'Edit Request', subtitle: 'Update request details' },
+    { selector: '.admin-action-card[data-page="create-request"]', title: 'Create Request', subtitle: 'Add a new customer request' },
+    { selector: '#admin-side-refresh-btn', title: 'Refresh Dashboard', subtitle: 'Update all data' },
+  ];
 
   function amount(value) {
     const num = Number(value);
@@ -12,6 +18,13 @@
 
   function money(value) {
     return MONEY.format(amount(value));
+  }
+
+  function getRequests() {
+    try {
+      if (typeof allRequests !== 'undefined' && Array.isArray(allRequests)) return allRequests;
+    } catch (_) {}
+    return [];
   }
 
   function currentRange() {
@@ -30,7 +43,6 @@
     try {
       if (typeof isInDashboardRange === 'function') return isInDashboardRange(request, range);
     } catch (_) {}
-
     if (range === 'all') return true;
     const stamp = new Date(request.updated_at || request.created_at || 0);
     const now = new Date();
@@ -47,22 +59,12 @@
     return stamp >= start;
   }
 
-  function isToday(request) {
-    const stamp = new Date(request.updated_at || request.created_at || 0);
-    const start = new Date();
-    start.setHours(0, 0, 0, 0);
-    return stamp >= start;
-  }
-
   function receiptTotalsFromRequest(request) {
     const savedFuel = amount(request.actual_fuel_receipt_amount);
     const savedWash = amount(request.actual_car_wash_receipt_amount);
-    if (savedFuel || savedWash) {
-      return { fuel: savedFuel, wash: savedWash };
-    }
+    if (savedFuel || savedWash) return { fuel: savedFuel, wash: savedWash };
 
-    const notes = String(request.notes || '');
-    const matches = Array.from(notes.matchAll(/\[receipt_totals fuel=([0-9.]+) wash=([0-9.]+)\]/g));
+    const matches = Array.from(String(request.notes || '').matchAll(/\[receipt_totals fuel=([0-9.]+) wash=([0-9.]+)\]/g));
     const latest = matches.at(-1);
     return {
       fuel: latest ? amount(latest[1]) : 0,
@@ -70,16 +72,8 @@
     };
   }
 
-  function getRequests() {
-    try {
-      if (typeof allRequests !== 'undefined' && Array.isArray(allRequests)) return allRequests;
-    } catch (_) {}
-    return [];
-  }
-
   function calculateRevenueMetrics(range = currentRange()) {
     const captured = getRequests().filter((request) => request.payment_status === 'captured' && isInRange(request, range));
-
     let gross = 0;
     let receipts = 0;
     let paymentRecovery = 0;
@@ -91,11 +85,49 @@
       paymentRecovery += amount(request.payment_operating_recovery_amount);
     });
 
-    const net = gross - receipts - paymentRecovery;
-    return { range, label: rangeLabel(range), gross, receipts, paymentRecovery, net, captured };
+    return {
+      range,
+      label: rangeLabel(range),
+      gross,
+      receipts,
+      paymentRecovery,
+      net: gross - receipts - paymentRecovery,
+      captured,
+    };
   }
 
-  function ensureBreakdown() {
+  function normalizeQuickAction(card, title, subtitle) {
+    if (!card) return;
+    const strong = card.querySelector(':scope > strong');
+    const span = card.querySelector(':scope > span');
+    const stable = strong?.textContent.trim() === title && span?.textContent.trim() === subtitle;
+    if (!stable || card.childElementCount < 2) {
+      card.innerHTML = `<strong>${title}</strong><span>${subtitle}</span>`;
+    }
+    card.type = 'button';
+  }
+
+  function normalizeQuickActions() {
+    QUICK_ACTIONS.forEach(({ selector, title, subtitle }) => normalizeQuickAction(document.querySelector(selector), title, subtitle));
+  }
+
+  function normalizeRefreshDuringWork(card) {
+    const action = QUICK_ACTIONS.find((item) => item.selector === '#admin-side-refresh-btn');
+    if (!action) return;
+    card.classList.add('is-refreshing');
+    card.setAttribute('aria-busy', 'true');
+    const started = Date.now();
+    const timer = setInterval(() => {
+      normalizeQuickAction(card, action.title, action.subtitle);
+      if (!card.disabled || Date.now() - started > 8000) {
+        card.classList.remove('is-refreshing');
+        card.removeAttribute('aria-busy');
+        clearInterval(timer);
+      }
+    }, 80);
+  }
+
+  function ensureRevenueBreakdown() {
     const statGrid = document.querySelector('.admin-stat-grid');
     if (!statGrid) return null;
     let breakdown = document.querySelector('#admin-revenue-breakdown');
@@ -114,154 +146,6 @@
     return breakdown;
   }
 
-  function ensureStyles() {
-    if (document.querySelector('#admin-revenue-metrics-style')) return;
-    const style = document.createElement('style');
-    style.id = 'admin-revenue-metrics-style';
-    style.textContent = `
-      .admin-stat-card[data-dashboard-card-action] {
-        cursor: pointer;
-        transition: transform 160ms ease, box-shadow 160ms ease, border-color 160ms ease, background 160ms ease;
-      }
-      .admin-stat-card[data-dashboard-card-action]:hover {
-        transform: translateY(-2px);
-        border-color: rgba(255,107,90,0.32);
-        box-shadow: 0 16px 40px rgba(13,59,59,0.13);
-      }
-      .admin-stat-card[data-dashboard-card-action]:active {
-        transform: translateY(0) scale(0.99);
-        box-shadow: 0 8px 22px rgba(13,59,59,0.10);
-      }
-      .admin-stat-card[data-dashboard-card-action]:focus-visible {
-        outline: 3px solid rgba(255,107,90,0.28);
-        outline-offset: 3px;
-      }
-      .admin-stat-card .dashboard-card-hint {
-        display: block;
-        margin-top: 4px;
-        color: var(--sf-muted, #60716d);
-        font-size: 0.72rem;
-        font-weight: 800;
-      }
-      .admin-revenue-breakdown {
-        display: grid;
-        grid-template-columns: repeat(4, minmax(0, 1fr));
-        gap: 12px;
-        margin-top: 14px;
-      }
-      .admin-revenue-breakdown div {
-        display: grid;
-        gap: 4px;
-        padding: 13px 14px;
-        background: rgba(255,255,255,0.92);
-        border: 1px solid rgba(13,59,59,0.10);
-        border-radius: var(--sf-radius-sm, 14px);
-        box-shadow: 0 8px 22px rgba(13,59,59,0.06);
-      }
-      .admin-revenue-breakdown span {
-        color: var(--sf-muted, #60716d);
-        font-size: 0.72rem;
-        font-weight: 900;
-        text-transform: uppercase;
-        letter-spacing: 0.03em;
-      }
-      .admin-revenue-breakdown strong {
-        color: var(--sf-teal-dark, #0d3b3b);
-        font-size: 1rem;
-        font-weight: 950;
-      }
-      .admin-revenue-modal-overlay {
-        position: fixed;
-        inset: 0;
-        z-index: 9999;
-        display: grid;
-        place-items: center;
-        padding: 20px;
-        background: rgba(13, 59, 59, 0.48);
-      }
-      .admin-revenue-modal {
-        width: min(720px, 100%);
-        max-height: min(82vh, 760px);
-        overflow: auto;
-        background: #fff;
-        border-radius: var(--sf-radius-md, 24px);
-        box-shadow: 0 28px 90px rgba(13,59,59,0.28);
-      }
-      .admin-revenue-modal-header,
-      .admin-revenue-modal-body {
-        padding: 22px;
-      }
-      .admin-revenue-modal-header {
-        display: flex;
-        align-items: flex-start;
-        justify-content: space-between;
-        gap: 16px;
-        border-bottom: 1px solid rgba(13,59,59,0.10);
-      }
-      .admin-revenue-modal-header h3 {
-        margin: 0 0 4px;
-        color: var(--sf-teal-dark, #0d3b3b);
-      }
-      .admin-revenue-modal-header p {
-        margin: 0;
-        color: var(--sf-muted, #60716d);
-      }
-      .admin-revenue-modal-close {
-        border: 0;
-        background: transparent;
-        color: var(--sf-teal-dark, #0d3b3b);
-        font-size: 1.6rem;
-        cursor: pointer;
-      }
-      .admin-revenue-modal-grid {
-        display: grid;
-        grid-template-columns: repeat(4, minmax(0, 1fr));
-        gap: 10px;
-        margin-bottom: 16px;
-      }
-      .admin-revenue-modal-grid div,
-      .admin-revenue-row {
-        padding: 12px;
-        background: var(--sf-sage-light, #edf4ed);
-        border: 1px solid rgba(13,59,59,0.08);
-        border-radius: var(--sf-radius-sm, 14px);
-      }
-      .admin-revenue-modal-grid span,
-      .admin-revenue-row span {
-        display: block;
-        color: var(--sf-muted, #60716d);
-        font-size: 0.72rem;
-        font-weight: 900;
-        text-transform: uppercase;
-      }
-      .admin-revenue-modal-grid strong,
-      .admin-revenue-row strong {
-        color: var(--sf-teal-dark, #0d3b3b);
-      }
-      .admin-revenue-list {
-        display: grid;
-        gap: 8px;
-      }
-      .admin-revenue-row {
-        display: grid;
-        grid-template-columns: 1fr auto;
-        gap: 12px;
-        align-items: center;
-        background: #fff;
-      }
-      @media (max-width: 900px) {
-        .admin-revenue-breakdown,
-        .admin-revenue-modal-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-      }
-      @media (max-width: 560px) {
-        .admin-revenue-breakdown,
-        .admin-revenue-modal-grid { grid-template-columns: 1fr; }
-        .admin-revenue-row { grid-template-columns: 1fr; }
-      }
-    `;
-    document.head.appendChild(style);
-  }
-
   function updateRevenueDisplay() {
     const metrics = calculateRevenueMetrics();
     const label = document.querySelector('#stat-revenue-label');
@@ -269,8 +153,7 @@
     if (label) label.textContent = `Net Revenue ${metrics.label}`;
     if (value) value.textContent = money(metrics.net);
 
-    ensureStyles();
-    const breakdown = ensureBreakdown();
+    const breakdown = ensureRevenueBreakdown();
     if (!breakdown) return;
     breakdown.querySelector('[data-label="gross"]').textContent = `Gross Revenue ${metrics.label}`;
     breakdown.querySelector('[data-label="receipts"]').textContent = `Receipt Reimbursements ${metrics.label}`;
@@ -283,7 +166,7 @@
   }
 
   function setCardAction(card, action, label) {
-    if (!card || card.dataset.dashboardCardAction === action) return;
+    if (!card) return;
     card.dataset.dashboardCardAction = action;
     card.setAttribute('role', 'button');
     card.setAttribute('tabindex', '0');
@@ -307,12 +190,10 @@
   function scrollToRequests() {
     const section = document.querySelector('.admin-queue-section') || document.querySelector('#request-list');
     section?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    setTimeout(() => document.querySelector('#request-list')?.focus?.(), 250);
   }
 
   function clickFilter(selector) {
-    const button = document.querySelector(selector);
-    button?.click();
+    document.querySelector(selector)?.click();
     scrollToRequests();
   }
 
@@ -393,6 +274,7 @@
   }
 
   function patchDashboardStats() {
+    normalizeQuickActions();
     setupDashboardCards();
     try {
       if (typeof updateDashboardStatCards === 'function' && !updateDashboardStatCards.__revenuePatched) {
@@ -401,6 +283,7 @@
           original.apply(this, args);
           updateRevenueDisplay();
           setupDashboardCards();
+          normalizeQuickActions();
         };
         updateDashboardStatCards.__revenuePatched = true;
         updateRevenueDisplay();
@@ -410,6 +293,53 @@
     return false;
   }
 
+  function ensureStyles() {
+    if (document.querySelector('#admin-dashboard-polish-style')) return;
+    const style = document.createElement('style');
+    style.id = 'admin-dashboard-polish-style';
+    style.textContent = `
+      .admin-action-card > strong,
+      .admin-action-card > span { display: block; }
+      .admin-action-card.is-refreshing { position: relative; }
+      .admin-action-card.is-refreshing::after {
+        content: '';
+        position: absolute;
+        right: 14px;
+        top: 14px;
+        width: 14px;
+        height: 14px;
+        border: 2px solid rgba(13,59,59,0.18);
+        border-top-color: var(--sf-coral, #ff6b5a);
+        border-radius: 999px;
+        animation: adminQuickActionSpin 0.7s linear infinite;
+      }
+      @keyframes adminQuickActionSpin { to { transform: rotate(360deg); } }
+      .admin-stat-card[data-dashboard-card-action] { cursor: pointer; transition: transform 160ms ease, box-shadow 160ms ease, border-color 160ms ease; }
+      .admin-stat-card[data-dashboard-card-action]:hover { transform: translateY(-2px); border-color: rgba(255,107,90,0.32); box-shadow: 0 16px 40px rgba(13,59,59,0.13); }
+      .admin-stat-card[data-dashboard-card-action]:active { transform: translateY(0) scale(0.99); box-shadow: 0 8px 22px rgba(13,59,59,0.10); }
+      .admin-stat-card[data-dashboard-card-action]:focus-visible { outline: 3px solid rgba(255,107,90,0.28); outline-offset: 3px; }
+      .admin-stat-card .dashboard-card-hint { display: block; margin-top: 4px; color: var(--sf-muted, #60716d); font-size: 0.72rem; font-weight: 800; }
+      .admin-revenue-breakdown { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-top: 14px; }
+      .admin-revenue-breakdown div, .admin-revenue-modal-grid div, .admin-revenue-row { padding: 12px; background: rgba(255,255,255,0.92); border: 1px solid rgba(13,59,59,0.10); border-radius: var(--sf-radius-sm, 14px); box-shadow: 0 8px 22px rgba(13,59,59,0.06); }
+      .admin-revenue-breakdown span, .admin-revenue-modal-grid span, .admin-revenue-row span { display: block; color: var(--sf-muted, #60716d); font-size: 0.72rem; font-weight: 900; text-transform: uppercase; letter-spacing: 0.03em; }
+      .admin-revenue-breakdown strong, .admin-revenue-modal-grid strong, .admin-revenue-row strong { color: var(--sf-teal-dark, #0d3b3b); font-size: 1rem; font-weight: 950; }
+      .admin-revenue-modal-overlay { position: fixed; inset: 0; z-index: 9999; display: grid; place-items: center; padding: 20px; background: rgba(13,59,59,0.48); }
+      .admin-revenue-modal { width: min(720px, 100%); max-height: min(82vh, 760px); overflow: auto; background: #fff; border-radius: var(--sf-radius-md, 24px); box-shadow: 0 28px 90px rgba(13,59,59,0.28); }
+      .admin-revenue-modal-header, .admin-revenue-modal-body { padding: 22px; }
+      .admin-revenue-modal-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; border-bottom: 1px solid rgba(13,59,59,0.10); }
+      .admin-revenue-modal-header h3 { margin: 0 0 4px; color: var(--sf-teal-dark, #0d3b3b); }
+      .admin-revenue-modal-header p { margin: 0; color: var(--sf-muted, #60716d); }
+      .admin-revenue-modal-close { border: 0; background: transparent; color: var(--sf-teal-dark, #0d3b3b); font-size: 1.6rem; cursor: pointer; }
+      .admin-revenue-modal-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-bottom: 16px; }
+      .admin-revenue-list { display: grid; gap: 8px; }
+      .admin-revenue-row { display: grid; grid-template-columns: 1fr auto; gap: 12px; align-items: center; background: #fff; }
+      @media (max-width: 900px) { .admin-revenue-breakdown, .admin-revenue-modal-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+      @media (max-width: 560px) { .admin-revenue-breakdown, .admin-revenue-modal-grid { grid-template-columns: 1fr; } .admin-revenue-row { grid-template-columns: 1fr; } }
+    `;
+    document.head.appendChild(style);
+  }
+
+  ensureStyles();
   let attempts = 0;
   const timer = setInterval(() => {
     attempts += 1;
@@ -417,6 +347,11 @@
   }, 100);
 
   document.addEventListener('click', (event) => {
+    const refreshCard = event.target.closest('#admin-side-refresh-btn');
+    if (refreshCard) {
+      window.requestAnimationFrame(() => normalizeRefreshDuringWork(refreshCard));
+    }
+
     const modalOverlay = event.target.closest('#admin-revenue-modal-overlay');
     if (event.target.matches('.admin-revenue-modal-close') || event.target.id === 'admin-revenue-modal-overlay') {
       modalOverlay?.remove();
@@ -427,7 +362,7 @@
     if (!card) return;
     event.preventDefault();
     handleDashboardCardAction(card.dataset.dashboardCardAction);
-  });
+  }, true);
 
   document.addEventListener('keydown', (event) => {
     if (event.key === 'Escape') {
@@ -445,4 +380,9 @@
   document.addEventListener('change', (event) => {
     if (event.target?.id === 'dashboard-range') setTimeout(updateRevenueDisplay, 0);
   });
+
+  const side = document.querySelector('.admin-dashboard-side');
+  if (side) {
+    new MutationObserver(() => normalizeQuickActions()).observe(side, { childList: true, subtree: true, characterData: true });
+  }
 })();
