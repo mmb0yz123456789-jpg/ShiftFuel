@@ -290,7 +290,7 @@ async function loadLivePricing() {
   }
 }
 
-loadLivePricing();
+const livePricingReady = loadLivePricing();
 const VEHICLE_POPULAR_MAKES = ["Chevrolet", "Ford", "Honda", "Hyundai", "Jeep", "Kia", "Nissan", "Subaru", "Tesla", "Toyota"];
 const VEHICLE_OTHER_MAKES = ["Acura", "Alfa Romeo", "Audi", "BMW", "Buick", "Cadillac", "Chrysler", "Dodge", "Fiat", "Genesis", "GMC", "Infiniti", "Jaguar", "Land Rover", "Lexus", "Lincoln", "Mazda", "Mercedes-Benz", "Mini", "Mitsubishi", "Porsche", "Ram", "Volkswagen", "Volvo"];
 const VEHICLE_FALLBACK_MODELS = {
@@ -2134,4 +2134,10 @@ function renderFlow(root) {
   render();
 }
 
-if (flowRoot) renderFlow(flowRoot);
+async function initBookingFlow() {
+  if (!flowRoot) return;
+  await livePricingReady;
+  renderFlow(flowRoot);
+}
+
+initBookingFlow();
