@@ -2924,7 +2924,7 @@ function initCbPaymentModal() {
       <h3 class="cb-payment-modal-title">Secure payment authorization</h3>
       <p class="cb-payment-modal-desc">
         Enter your card details to authorize payment.
-        Your card will not be charged until your service is complete.
+        Your card is authorized now. You are not charged until service is complete, unless you cancel after the worker has received your keys or service has started.
       </p>
       <div class="cb-payment-modal-card-wrap">
         <div id="cb-modal-card-element" class="stripe-card-element"></div>

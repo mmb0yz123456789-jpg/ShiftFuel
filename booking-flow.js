@@ -189,10 +189,10 @@ const stepCopy = {
   },
   Payment: {
     title: "Payment Authorization",
-    intro: "Authorize your payment method now. You will only be charged after your service is completed.",
+    intro: "Authorize your payment method now. You are not charged until service is complete.",
     fields: `
       <div class="payment-placeholder" data-payment-summary></div>
-      <p class="payment-notice">Your payment method will be authorized now. You will only be charged after your service is completed.</p>
+      <p class="payment-notice">Your card is authorized now. You are not charged until service is complete, unless you cancel after the worker has received your keys or service has started.</p>
       <p class="field-help">This places a temporary hold for the estimated amount. The request is not booked until you review and submit it on the next step.</p>
       <button class="button secondary" type="button" data-authorize-payment>Authorize payment</button>
       <p class="booking-validation-message" data-payment-status></p>
@@ -286,11 +286,11 @@ const VEHICLE_FALLBACK_MODELS = {
   Volvo: ["S60", "S90", "V60", "XC40", "XC60", "XC90"],
 };
 const FUEL_RANGES = {
-  "0-5": 5,
-  "5-10": 10,
-  "10-15": 15,
-  "15-20": 20,
-  "20-25": 25,
+  "0-5": 10,
+  "5-10": 15,
+  "10-15": 20,
+  "15-20": 30,
+  "20-25": 30,
   "25+": 40,
 };
 const slotHoldingStatuses = new Set([
@@ -463,7 +463,7 @@ function openPaymentModal(panel) {
       <button class="booking-payment-close" type="button" aria-label="Close payment authorization" data-close-payment-modal>&times;</button>
       <p class="eyebrow">Secure payment authorization</p>
       <h3 id="booking-payment-title">Enter card information</h3>
-      <p class="field-help">Your card is authorized now and only charged after service is completed.</p>
+      <p class="field-help">Your card is authorized now. You are not charged until service is complete, unless you cancel after the worker has received your keys or service has started.</p>
       <div class="payment-card-box">
         <label><span>Card information</span><div id="booking-card-element" class="booking-card-element"></div></label>
         <p id="booking-card-errors" class="booking-validation-message" data-status="error"></p>
@@ -1414,7 +1414,7 @@ async function confirmPaymentAuthorization(panel, button) {
     bookingState.payment.authorized = true;
     bookingState.payment.paymentIntentId = intent.payment_intent_id;
     bookingState.payment.clientSecret = intent.client_secret;
-    setStatus("success", "Payment authorized. You will only be charged after your service is completed.");
+    setStatus("success", "Payment authorized. You are not charged until service is complete.");
     closePaymentModal();
     flowRoot?.dispatchEvent(new CustomEvent("booking-payment-authorized"));
   } catch (error) {
@@ -1780,7 +1780,7 @@ function renderReviewSummary(panel) {
       <div><dt>Special instructions</dt><dd>${escapeHtml(values.specialInstructions || "None")}</dd></div>
       <div><dt>Payment authorization total</dt><dd>${formatMoney(totals.estimatedTotal)}</dd></div>
     </dl>
-    <p>Request status will be created as request_received. Customer, service address, and vehicle details are saved as a snapshot on the request.</p>
+    <p class="field-help">Your card is authorized now. You are not charged until service is complete, unless you cancel after the worker has received your keys or service has started. Choose Book request to send this booking to ShiftFuel, or Cancel authorization to release the hold and stop here.</p>
   `;
 }
 
