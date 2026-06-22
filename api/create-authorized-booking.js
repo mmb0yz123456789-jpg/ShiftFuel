@@ -199,7 +199,6 @@ function buildBookingRow(body, intent) {
   row.authorized_amount = authorizedTotal;
   row.rounded_customer_total = authorizedTotal;
 
-  // Preserve the frozen quote fields sent from the browser. Fill any missing totals from the authorized amount.
   row.gross_total_before_rounding = row.gross_total_before_rounding ?? authorizedTotal;
   row.net_target_amount = row.net_target_amount ?? authorizedTotal;
   row.service_fee = row.service_fee ?? roundMoney(Number(row.displayed_fuel_service_fee || 0) + Number(row.displayed_car_wash_service_fee || 0));
@@ -212,10 +211,12 @@ function buildBookingRow(body, intent) {
 async function insertBookingRow(db, row) {
   const maxInsertAttempts = Object.keys(row).length + 5;
   for (let attempt = 0; attempt < maxInsertAttempts; attempt += 1) {
+    console.log('[create-authorized-booking] Supabase insert attempt', attempt + 1);
     const { data, error } = await db.from('service_requests').insert(row).select().maybeSingle();
     if (!error) return data;
 
     const message = String(error.message || '');
+    console.error('[create-authorized-booking] Supabase insert failed:', message);
     if (/null value in column "(user_id|vehicle_id)"/i.test(message)) {
       const attached = await attachLegacyUserAndVehicle(db, row);
       if (attached) continue;
@@ -225,12 +226,30 @@ async function insertBookingRow(db, row) {
       || message.match(/column "([^"]+)" of relation/i)?.[1]
       || message.match(/record has no field "([^"]+)"/i)?.[1];
     if (column && Object.prototype.hasOwnProperty.call(row, column)) {
+      console.warn('[create-authorized-booking] Dropping unsupported column and retrying:', column);
       delete row[column];
       continue;
     }
     throw error;
   }
   throw new Error('Could not create booking after retrying unsupported columns.');
+}
+
+async function findExistingBookingForPayment(db, paymentIntentId) {
+  if (!paymentIntentId) return null;
+  const { data, error } = await db
+    .from('service_requests')
+    .select('id,status,payment_status,payment_intent_id')
+    .eq('payment_intent_id', paymentIntentId)
+    .order('created_at', { ascending: true })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) {
+    console.warn('[create-authorized-booking] Existing booking lookup failed:', error.message);
+    return null;
+  }
+  return data || null;
 }
 
 module.exports = async function handler(req, res) {
@@ -243,6 +262,8 @@ module.exports = async function handler(req, res) {
     const paymentIntentId = body.payment_intent_id;
     const expectedCents = Math.round(Number(body.amount_cents));
 
+    console.log('[create-authorized-booking] Request received for PI', paymentIntentId, 'expected cents', expectedCents);
+
     if (!paymentIntentId) return res.status(400).json({ error: 'payment_intent_id is required' });
     if (!expectedCents || expectedCents < 50) return res.status(400).json({ error: 'Amount must be at least $0.50' });
     if (!body.customer_name || !String(body.customer_name).trim()) return res.status(400).json({ error: 'Customer name is required' });
@@ -253,7 +274,9 @@ module.exports = async function handler(req, res) {
     const stripe = getStripe();
     let intent;
     try {
+      console.log('[create-authorized-booking] Stripe authorization/payment intent lookup started');
       intent = await stripe.paymentIntents.retrieve(paymentIntentId);
+      console.log('[create-authorized-booking] Stripe authorization/payment intent lookup succeeded', intent.id, intent.status, intent.amount);
     } catch (error) {
       console.error('[create-authorized-booking] Stripe retrieve failed:', error.message);
       return res.status(400).json({ error: 'Payment authorization could not be verified. Please try again.' });
@@ -274,8 +297,17 @@ module.exports = async function handler(req, res) {
     }
 
     const db = getSupabaseAdmin();
+    const existing = await findExistingBookingForPayment(db, intent.id);
+    if (existing?.id) {
+      console.log('[create-authorized-booking] Existing request found for PI', intent.id, existing.id);
+      return res.status(200).json({ id: existing.id, status: existing.status, payment_status: existing.payment_status, existing: true });
+    }
+
     const row = buildBookingRow(body, intent);
+    console.log('[create-authorized-booking] Supabase insert started for PI', intent.id);
     const data = await insertBookingRow(db, row);
+    console.log('[create-authorized-booking] Supabase insert succeeded', data?.id);
+
     try {
       await saveReusableBookingSnapshots(db, row);
     } catch (error) {
