@@ -1944,8 +1944,8 @@ async function loadEmployees() {
     renderWorkerProfiles();
     renderWorkerDaysGrid(workerDayOptions.map(({ dayOfWeek }) => ({
       dayOfWeek,
-      startsAt: '07:00',
-      endsAt: '22:00',
+      startsAt: '09:00',
+      endsAt: '17:00',
     })));
     selectedWorkerDaysOff = new Set();
     renderWorkerDaysOffCalendar();
@@ -2292,8 +2292,8 @@ async function loadAdminWorkerSchedule(employeeId) {
   if (String(employeeId).startsWith('local-')) {
     renderWorkerDaysGrid(workerDayOptions.map(({ dayOfWeek }) => ({
       dayOfWeek,
-      startsAt: '07:00',
-      endsAt: '22:00',
+      startsAt: '09:00',
+      endsAt: '17:00',
     })));
     selectedWorkerDaysOff = new Set();
     renderWorkerDaysOffCalendar();
@@ -2316,8 +2316,8 @@ async function loadAdminWorkerSchedule(employeeId) {
     const rows = availability || [];
     renderWorkerDaysGrid(rows.map((row) => ({
       dayOfWeek: row.day_of_week,
-      startsAt: String(row.starts_at || '07:00').slice(0, 5),
-      endsAt: String(row.ends_at || '22:00').slice(0, 5),
+      startsAt: String(row.starts_at || '09:00').slice(0, 5),
+      endsAt: String(row.ends_at || '17:00').slice(0, 5),
     })));
 
     const location = rows.find((row) => row.work_location)?.work_location || employee.home_location || DEFAULT_WORK_LOCATION;
@@ -4877,8 +4877,8 @@ function renderWorkerDaysGrid(workdays = []) {
     .map(({ dayOfWeek, label }) => {
       const savedDay = workdayMap.get(dayOfWeek);
       const enabled = savedDay ? 'checked' : '';
-      const startsAt = savedDay?.startsAt || '07:00';
-      const endsAt = savedDay?.endsAt || '22:00';
+    const startsAt = savedDay?.startsAt || '09:00';
+    const endsAt = savedDay?.endsAt || '17:00';
 
       return `
         <div class="worker-day-row" data-day-of-week="${dayOfWeek}">
@@ -4919,13 +4919,13 @@ function normalizeSavedWorkdays(savedSchedule) {
   if (Array.isArray(savedSchedule?.workdays) && savedSchedule.workdays.length) {
     return savedSchedule.workdays.map((day) => ({
       dayOfWeek: Number(day.dayOfWeek),
-      startsAt: day.startsAt || '07:00',
-      endsAt: day.endsAt || '22:00',
+      startsAt: day.startsAt || '09:00',
+      endsAt: day.endsAt || '17:00',
     }));
   }
 
-  const startsAt = savedSchedule?.startsAt || '07:00';
-  const endsAt = savedSchedule?.endsAt || '22:00';
+  const startsAt = savedSchedule?.startsAt || '09:00';
+  const endsAt = savedSchedule?.endsAt || '17:00';
 
   return workerDayOptions.map(({ dayOfWeek }) => ({
     dayOfWeek,
@@ -4944,8 +4944,8 @@ function selectedWorkdaysFromForm() {
 
       return {
         dayOfWeek,
-        startsAt: row?.querySelector('.worker-day-start')?.value || '07:00',
-        endsAt: row?.querySelector('.worker-day-end')?.value || '22:00',
+        startsAt: row?.querySelector('.worker-day-start')?.value || '09:00',
+        endsAt: row?.querySelector('.worker-day-end')?.value || '17:00',
       };
     })
     .filter((day) => day.startsAt && day.endsAt);
@@ -5058,8 +5058,8 @@ workerDaysGrid?.addEventListener('click', (event) => {
 
   if (copyButton) {
     copiedWorkerDaySchedule = {
-      startsAt: startInput?.value || '07:00',
-      endsAt: endInput?.value || '22:00',
+      startsAt: startInput?.value || '09:00',
+      endsAt: endInput?.value || '17:00',
       enabled: Boolean(checkbox?.checked),
     };
 
@@ -5279,8 +5279,8 @@ saveDaysOffButton?.addEventListener('click', async () => {
 
 renderWorkerDaysGrid(workerDayOptions.map(({ dayOfWeek }) => ({
   dayOfWeek,
-  startsAt: '07:00',
-  endsAt: '22:00',
+  startsAt: '09:00',
+  endsAt: '17:00',
 })));
 renderWorkerDaysOffCalendar();
 
