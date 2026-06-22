@@ -7,7 +7,8 @@ create extension if not exists pgcrypto;
 create table if not exists public.request_locations (
   id uuid primary key default gen_random_uuid(),
   request_id uuid not null references public.service_requests(id) on delete cascade,
-  worker_id uuid not null references public.employees_public(id) on delete cascade,
+  -- employees_public may be a view in some deployments, so keep worker_id as uuid and validate it in RPCs.
+  worker_id uuid not null,
   latitude double precision not null check (latitude between -90 and 90),
   longitude double precision not null check (longitude between -180 and 180),
   accuracy double precision,
@@ -102,7 +103,6 @@ begin
     raise exception 'Worker is not assigned to this request';
   end if;
 
-  -- Keep only one active location row per worker/request. History is still kept as inactive rows.
   update public.request_locations
   set is_active = false
   where request_id = p_request_id
