@@ -27,6 +27,15 @@
     'Other',
   ];
 
+  const ATTENTION_STATUSES = new Set([
+    'pending', 'request_received', 'payment_issue', 'authorization_too_low',
+    'pending_customer_payment', 'return_requested', 'customer_return_requested',
+    'cancelled_pending_key_return',
+  ]);
+
+  const CANCELLED_STATUSES = new Set(['customer_canceled', 'canceled', 'cancelled', 'canceled_return_completed', 'cancelled_pending_key_return']);
+  const ARCHIVED_STATUSES = new Set(['unable_to_complete', 'auto_reversed', 'closed_no_charge']);
+
   function text(value) {
     return String(value ?? '').trim();
   }
@@ -49,6 +58,22 @@
     return `SF-${String(id || '').slice(0, 8).toUpperCase()}`;
   }
 
+  function getAllRequests() {
+    try {
+      if (typeof allRequests !== 'undefined' && Array.isArray(allRequests)) return allRequests;
+    } catch (_) {}
+    return [];
+  }
+
+  function selectedRequestId() {
+    return document.querySelector('.request-card[data-request-id]')?.dataset.requestId || '';
+  }
+
+  function selectedRequestCard() {
+    const id = selectedRequestId();
+    return id ? document.querySelector(`.request-card[data-request-id="${CSS.escape(id)}"]`) : null;
+  }
+
   function safeFormatPhone(value) {
     const digits = text(value).replace(/\D/g, '');
     if (digits.length === 10) return `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`;
@@ -56,10 +81,7 @@
   }
 
   function requestById(id) {
-    try {
-      if (typeof allRequests !== 'undefined') return allRequests.find((request) => request.id === id);
-    } catch (_) {}
-    return null;
+    return getAllRequests().find((request) => request.id === id) || null;
   }
 
   function requestFinalTotal(request) {
@@ -169,6 +191,135 @@
     panel.querySelector('.request-details')?.after(review);
   }
 
+  function ensureLastUpdatedControl() {
+    if (document.querySelector('#admin-last-updated')) return;
+    const refresh = document.querySelector('#admin-refresh-btn');
+    if (!refresh) return;
+    const stamp = document.createElement('span');
+    stamp.id = 'admin-last-updated';
+    stamp.className = 'admin-last-updated';
+    stamp.textContent = 'Last updated: —';
+    refresh.insertAdjacentElement('afterend', stamp);
+  }
+
+  function markLastUpdated() {
+    ensureLastUpdatedControl();
+    const stamp = document.querySelector('#admin-last-updated');
+    if (!stamp) return;
+    const time = new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+    stamp.textContent = `Last updated: ${time}`;
+  }
+
+  function normalizeRevenueLabel() {
+    const label = document.querySelector('#stat-revenue-label');
+    if (!label) return;
+    // Current calculation is displayed service-fee revenue, not true net profit after all costs.
+    label.textContent = label.textContent.replace(/^Net Revenue/i, 'Revenue');
+  }
+
+  function updateRequestsBadge() {
+    const requests = getAllRequests();
+    const nav = document.querySelector('.admin-page-tab[data-page="requests"]');
+    if (!nav) return;
+
+    let badge = nav.querySelector('.requests-attention-badge');
+    if (!badge) {
+      badge = document.createElement('span');
+      badge.className = 'page-tab-badge requests-attention-badge';
+      nav.appendChild(badge);
+    }
+
+    const count = requests.filter((request) => ATTENTION_STATUSES.has(request.status)).length;
+    badge.textContent = count;
+    badge.hidden = count <= 0;
+    nav.setAttribute('aria-label', count > 0 ? `Requests, ${count} need attention` : 'Requests');
+  }
+
+  function updateClosedBreakdown() {
+    const tabs = document.querySelector('.admin-request-tabs');
+    if (!tabs) return;
+    let breakdown = document.querySelector('.admin-closed-breakdown');
+    if (!breakdown) {
+      breakdown = document.createElement('div');
+      breakdown.className = 'admin-closed-breakdown';
+      tabs.insertAdjacentElement('afterend', breakdown);
+    }
+
+    const requests = getAllRequests();
+    const completed = requests.filter((r) => r.status === 'complete').length;
+    const cancelled = requests.filter((r) => CANCELLED_STATUSES.has(r.status)).length;
+    const denied = requests.filter((r) => r.status === 'denied').length;
+    const archived = requests.filter((r) => ARCHIVED_STATUSES.has(r.status)).length;
+    const htmlText = `
+      <span><strong>${completed}</strong> Completed</span>
+      <span><strong>${cancelled}</strong> Cancelled</span>
+      <span><strong>${denied}</strong> Denied</span>
+      <span><strong>${archived}</strong> Archived/Closed</span>
+    `;
+    if (breakdown.innerHTML.trim() !== htmlText.trim()) breakdown.innerHTML = htmlText;
+  }
+
+  function updateOpenEmptyState() {
+    const empty = document.querySelector('#request-list .empty-state');
+    const openSelected = document.querySelector('#show-open')?.classList.contains('active');
+    if (!empty || !openSelected || empty.dataset.productionOpenState === '1') return;
+
+    empty.dataset.productionOpenState = '1';
+    empty.innerHTML = `
+      <p><strong>No open requests right now.</strong><br>Use All Requests to view completed or closed requests.</p>
+      <div class="empty-state-actions">
+        <button class="button primary empty-create-request" type="button">Create Request</button>
+        <button class="button secondary empty-view-all" type="button">View All Requests</button>
+      </div>
+    `;
+  }
+
+  function updateQuickActionsState() {
+    const hasSelected = Boolean(selectedRequestId());
+    document.querySelectorAll('.admin-action-card').forEach((card) => {
+      const label = card.querySelector('strong')?.textContent.trim().toLowerCase() || '';
+      const requiresSelection = label === 'assign worker' || label === 'edit request';
+      if (!requiresSelection) return;
+      card.disabled = !hasSelected;
+      card.setAttribute('aria-disabled', String(!hasSelected));
+      card.classList.toggle('is-disabled', !hasSelected);
+      if (!hasSelected) {
+        card.title = 'Select a request first.';
+      } else {
+        card.title = label === 'assign worker' ? 'Assign or review the selected request worker.' : 'Edit the selected request.';
+      }
+    });
+  }
+
+  function handleQuickAction(card, event) {
+    const label = card.querySelector('strong')?.textContent.trim().toLowerCase() || '';
+    const requiresSelection = label === 'assign worker' || label === 'edit request';
+    if (!requiresSelection) return false;
+
+    const cardEl = selectedRequestCard();
+    if (!cardEl) {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      updateQuickActionsState();
+      return true;
+    }
+
+    event.preventDefault();
+    event.stopImmediatePropagation();
+
+    if (label === 'assign worker') {
+      const select = cardEl.querySelector('.assign-worker-select');
+      cardEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      setTimeout(() => select?.focus(), 250);
+      return true;
+    }
+
+    const editButton = cardEl.querySelector('.edit-request');
+    editButton?.click();
+    cardEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    return true;
+  }
+
   function polishText(root = document) {
     root.querySelectorAll('.capture-and-proceed').forEach((button) => {
       button.dataset.productionChargeAmount = String(requestFinalTotal(requestById(button.dataset.id)) || 0);
@@ -189,11 +340,18 @@
     if (findSearch) findSearch.placeholder = 'Search by name, phone, email, request number, vehicle, plate, status, or date';
   }
 
-  function enhance(root = document) {
+  function enhance(root = document, options = {}) {
+    ensureLastUpdatedControl();
     applyReasonDropdowns(root);
     root.querySelectorAll('.request-card').forEach(addProductionSummary);
     root.querySelectorAll('.complete-panel').forEach(addChargeReview);
     polishText(root);
+    normalizeRevenueLabel();
+    updateRequestsBadge();
+    updateClosedBreakdown();
+    updateOpenEmptyState();
+    updateQuickActionsState();
+    if (options.markUpdated) markLastUpdated();
   }
 
   function confirmationMessage(button) {
@@ -246,6 +404,23 @@
   }, true);
 
   document.addEventListener('click', (event) => {
+    const emptyCreate = event.target.closest('.empty-create-request');
+    if (emptyCreate) {
+      event.preventDefault();
+      document.querySelector('.admin-page-tab[data-page="create-request"]')?.click();
+      return;
+    }
+
+    const emptyAll = event.target.closest('.empty-view-all');
+    if (emptyAll) {
+      event.preventDefault();
+      document.querySelector('#show-all')?.click();
+      return;
+    }
+
+    const quickCard = event.target.closest('.admin-action-card');
+    if (quickCard && handleQuickAction(quickCard, event)) return;
+
     const button = event.target.closest('button');
     if (!button || button.dataset.productionConfirmed === '1') return;
     const message = confirmationMessage(button);
@@ -260,20 +435,27 @@
   }, true);
 
   const observer = new MutationObserver((mutations) => {
+    let requestListChanged = false;
     for (const mutation of mutations) {
+      if (mutation.target?.id === 'request-list' || mutation.target?.closest?.('#request-list')) {
+        requestListChanged = true;
+      }
+      if (mutation.target?.id === 'stat-revenue-label') normalizeRevenueLabel();
       mutation.addedNodes.forEach((node) => {
         if (node.nodeType === Node.ELEMENT_NODE) enhance(node);
       });
     }
+    enhance(document, { markUpdated: requestListChanged });
   });
 
+  function start() {
+    enhance(document);
+    observer.observe(document.body, { childList: true, subtree: true, characterData: true });
+  }
+
   if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', () => {
-      enhance();
-      observer.observe(document.body, { childList: true, subtree: true });
-    });
+    document.addEventListener('DOMContentLoaded', start);
   } else {
-    enhance();
-    observer.observe(document.body, { childList: true, subtree: true });
+    start();
   }
 })();
