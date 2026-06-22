@@ -123,6 +123,40 @@
   color: var(--sf-muted);
 }
 
+/* The card-driven dashboard detail panel belongs only on the Dashboard tab.
+   The Requests tab should always show the normal Requests Queue toolbar, filters, and request list. */
+.admin-portal-page:has(.admin-page-tab[data-page="requests"].active)
+  .admin-queue-card.dashboard-card-driven-mode[data-tab-panel="requests"] > #dashboard-detail-panel,
+.admin-portal-page:has(.admin-page-tab[data-page="requests"].active)
+  .admin-queue-card[data-tab-panel="requests"] > #dashboard-detail-panel {
+  display: none !important;
+  visibility: hidden !important;
+}
+
+.admin-portal-page:has(.admin-page-tab[data-page="requests"].active)
+  .admin-queue-card.dashboard-card-driven-mode[data-tab-panel="requests"] > .admin-toolbar,
+.admin-portal-page:has(.admin-page-tab[data-page="requests"].active)
+  .admin-queue-card[data-tab-panel="requests"] > .admin-toolbar {
+  display: flex !important;
+  visibility: visible !important;
+}
+
+.admin-portal-page:has(.admin-page-tab[data-page="requests"].active)
+  .admin-queue-card.dashboard-card-driven-mode[data-tab-panel="requests"] > .admin-request-tabs,
+.admin-portal-page:has(.admin-page-tab[data-page="requests"].active)
+  .admin-queue-card[data-tab-panel="requests"] > .admin-request-tabs {
+  display: flex !important;
+  visibility: visible !important;
+}
+
+.admin-portal-page:has(.admin-page-tab[data-page="requests"].active)
+  .admin-queue-card.dashboard-card-driven-mode[data-tab-panel="requests"] > #request-list,
+.admin-portal-page:has(.admin-page-tab[data-page="requests"].active)
+  .admin-queue-card[data-tab-panel="requests"] > #request-list {
+  display: block !important;
+  visibility: visible !important;
+}
+
 @media (max-width: 760px) {
   .admin-last-updated {
     width: 100%;
