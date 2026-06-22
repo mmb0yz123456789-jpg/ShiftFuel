@@ -1,0 +1,145 @@
+/* Shared layout width/alignment polish for Book Now and Track My Vehicle.
+   Visual-only: keeps forms/search logic untouched. */
+
+:root {
+  --sf-content-width: min(1280px, calc(100% - 48px));
+  --sf-content-width-mobile: calc(100% - 32px);
+}
+
+/* Keep the main page columns aligned with the header/footer grid. */
+.booking-page .site-header,
+.track-page .site-header,
+.booking-page .site-footer,
+.track-page .site-footer,
+.booking-page .booking-flow-shell,
+.track-page .track-shell,
+.track-page #tracking-result,
+.track-page .portal-closing-banner {
+  width: var(--sf-content-width) !important;
+  max-width: 1280px !important;
+  margin-left: auto !important;
+  margin-right: auto !important;
+}
+
+/* Book Now: stop the center content from feeling skinny compared with header/footer. */
+.booking-page .booking-flow-shell {
+  display: grid;
+  gap: 24px;
+  padding-inline: 0 !important;
+}
+
+.booking-page .booking-flow,
+.booking-page .booking-progress-rail,
+.booking-page .booking-layout,
+.booking-page .booking-cards,
+.booking-page .booking-accordion-card,
+.booking-page .booking-summary-sidebar,
+.booking-page .booking-flow-hero {
+  width: 100% !important;
+  max-width: none !important;
+}
+
+.booking-page .booking-layout {
+  grid-template-columns: minmax(0, 1fr) minmax(320px, 400px);
+  gap: clamp(18px, 2vw, 28px);
+}
+
+.booking-page .booking-accordion-body,
+.booking-page .booking-accordion-header,
+.booking-page .booking-summary-sidebar {
+  padding-left: clamp(20px, 2.5vw, 32px);
+  padding-right: clamp(20px, 2.5vw, 32px);
+}
+
+.booking-page .booking-flow-hero-copy {
+  padding-left: clamp(30px, 5vw, 72px);
+  padding-right: clamp(30px, 5vw, 72px);
+}
+
+/* Track: align header/content/footer to one clean grid and remove the shifted look. */
+.track-page .track-shell {
+  padding-left: 0 !important;
+  padding-right: 0 !important;
+}
+
+.track-page .track-hero-redesign {
+  width: 100% !important;
+  max-width: 1280px !important;
+  margin-left: auto !important;
+  margin-right: auto !important;
+  padding-left: clamp(28px, 5vw, 72px) !important;
+  padding-right: clamp(28px, 5vw, 72px) !important;
+  border-radius: var(--sf-radius-sm);
+}
+
+.track-page .track-search-card,
+.track-page #tracking-result {
+  width: min(1120px, calc(100% - 96px)) !important;
+  max-width: 1120px !important;
+  margin-left: auto !important;
+  margin-right: auto !important;
+}
+
+.track-page .track-search-card {
+  margin-top: -72px !important;
+}
+
+.track-page .track-section,
+.track-page .track-request-card {
+  width: 100%;
+}
+
+@media (max-width: 980px) {
+  .booking-page .site-header,
+  .track-page .site-header,
+  .booking-page .site-footer,
+  .track-page .site-footer,
+  .booking-page .booking-flow-shell,
+  .track-page .track-shell,
+  .track-page #tracking-result,
+  .track-page .portal-closing-banner,
+  .track-page .track-search-card {
+    width: var(--sf-content-width-mobile) !important;
+    max-width: 760px !important;
+  }
+
+  .booking-page .booking-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .booking-page .booking-summary-sidebar {
+    position: static;
+    order: -1;
+  }
+
+  .track-page .track-hero-redesign {
+    width: var(--sf-content-width-mobile) !important;
+    max-width: 760px !important;
+    margin-left: auto !important;
+    margin-right: auto !important;
+    padding-left: 22px !important;
+    padding-right: 22px !important;
+  }
+
+  .track-page .track-search-card {
+    margin-top: -56px !important;
+  }
+}
+
+@media (max-width: 640px) {
+  :root {
+    --sf-content-width-mobile: calc(100% - 24px);
+  }
+
+  .booking-page .booking-accordion-body,
+  .booking-page .booking-accordion-header,
+  .booking-page .booking-summary-sidebar {
+    padding-left: 18px;
+    padding-right: 18px;
+  }
+
+  .track-page .track-search-card,
+  .track-page #tracking-result {
+    width: var(--sf-content-width-mobile) !important;
+  }
+}
