@@ -188,3 +188,101 @@ window.ShiftFuelPhoto = (() => {
 
   return { initPhotoModal, openPhotoModal, closePhotoModal, renderPhotoFrame, cropToBlobFromBoundaryEditor };
 })();
+
+// Admin dashboard finish polish. Kept here because photo-utils.js is already
+// loaded on admin.html before admin.js. The guard prevents changes on other pages.
+(() => {
+  function applyAdminDashboardFinish() {
+    if (!document.body.classList.contains('admin-portal-page')) return;
+
+    if (!document.getElementById('admin-dashboard-finish-style')) {
+      const style = document.createElement('style');
+      style.id = 'admin-dashboard-finish-style';
+      style.textContent = `
+        .admin-dashboard-main { min-width: 0; }
+        .admin-queue-card .empty-state {
+          border: 1px dashed rgba(0, 47, 42, 0.22);
+          border-radius: 18px;
+          background: rgba(241, 248, 245, 0.72);
+          padding: 26px;
+          text-align: center;
+        }
+        .admin-queue-card .empty-state strong {
+          display: block;
+          color: #002f2a;
+          font-size: 1.05rem;
+          margin-bottom: 6px;
+        }
+        .admin-queue-card .empty-state p {
+          margin: 0;
+          color: #4d615f;
+        }
+        .admin-request-tabs .admin-polish-hidden-tab { display: none !important; }
+        .admin-shortcut-card em { letter-spacing: -0.01em; }
+        .admin-side-card.admin-summary.compact { gap: 10px; }
+        @media (min-width: 1100px) {
+          .admin-dashboard-grid { align-items: start; }
+          .admin-dashboard-side { position: sticky; top: 110px; }
+        }
+      `;
+      document.head.appendChild(style);
+    }
+
+    const replacements = new Map([
+      ['View Workers â†’', 'View Workers →'],
+      ['Create New â†’', 'Create New →'],
+      ['View Reports â†’', 'View Reports →'],
+      ['Open Settings â†’', 'Open Settings →'],
+      ['â€”', '—'],
+      ['Optional â€” if known', 'Optional — if known'],
+    ]);
+
+    document.querySelectorAll('em, span, legend, p, strong, h2, h3, button').forEach((el) => {
+      const fixed = replacements.get(el.textContent.trim());
+      if (fixed) el.textContent = fixed;
+    });
+
+    const completedLabel = document.querySelector('#admin-completed-count')?.closest('.hero-stat')?.querySelector('.hero-stat-label');
+    if (completedLabel) completedLabel.textContent = 'Completed total';
+
+    const tabs = document.querySelectorAll('.admin-request-tabs .summary-button');
+    if (tabs[0]) {
+      const count = document.querySelector('#open-requests')?.textContent || '0';
+      tabs[0].innerHTML = `Open requests <span id="open-requests">${count}</span>`;
+    }
+    if (tabs[1]) tabs[1].classList.add('admin-polish-hidden-tab');
+    if (tabs[2]) tabs[2].classList.add('admin-polish-hidden-tab');
+    if (tabs[3]) {
+      const count = document.querySelector('#complete-requests')?.textContent || '0';
+      tabs[3].innerHTML = `Completed all time <span id="complete-requests">${count}</span>`;
+    }
+    if (tabs[4]) {
+      const count = document.querySelector('#denied-requests')?.textContent || '0';
+      tabs[4].innerHTML = `Closed / on hold <span id="denied-requests">${count}</span>`;
+    }
+
+    const empty = document.querySelector('#request-list .empty-state');
+    if (empty && !empty.dataset.polished) {
+      const heading = document.querySelector('#request-queue-heading')?.textContent || 'requests';
+      const showAll = empty.querySelector('.inline-show-all');
+      if (showAll) {
+        empty.innerHTML = `<strong>No recent ${heading.toLowerCase()}.</strong><p>No requests match this view from the last 7 days.</p>`;
+        empty.querySelector('p').append(' ');
+        empty.querySelector('p').appendChild(showAll);
+      } else {
+        const lower = heading.toLowerCase();
+        const message = lower.includes('open')
+          ? 'New customer requests will appear here when they enter the queue.'
+          : 'Requests will appear here when they match this status.';
+        empty.innerHTML = `<strong>No ${lower} right now.</strong><p>${message}</p>`;
+      }
+      empty.dataset.polished = 'true';
+    }
+  }
+
+  document.addEventListener('DOMContentLoaded', () => {
+    applyAdminDashboardFinish();
+    const observer = new MutationObserver(() => applyAdminDashboardFinish());
+    observer.observe(document.body, { childList: true, subtree: true, characterData: true });
+  });
+})();
