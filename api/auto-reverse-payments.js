@@ -115,7 +115,47 @@ module.exports = async (req, res) => {
     }
   }
 
-  console.log(`[auto-reverse] Done. Reversed: ${results.reversed.length}, Skipped: ${results.skipped.length}, Failed: ${results.failed.length}`);
+  // ── Second pass: orphaned authorization holds ──────────────────────────────
+  // Holds that were placed but never became a booking (customer left before
+  // clicking "Book request" and the on-unload beacon never fired — e.g. a crash
+  // or force-quit). These have no service_requests row, so the pass above can
+  // never see them. Void any still-pending hold older than 24h so the customer's
+  // funds are released well before Stripe's ~7-day auth expiry.
+  results.orphansVoided = [];
+  const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+  const { data: orphans, error: orphanErr } = await supabase
+    .from('pending_authorizations')
+    .select('payment_intent_id, created_at')
+    .eq('status', 'pending')
+    .lt('created_at', cutoff);
+
+  if (orphanErr) {
+    console.error('[auto-reverse] pending_authorizations query error:', orphanErr.message);
+  } else {
+    for (const hold of orphans || []) {
+      const voidedAt = new Date().toISOString();
+      try {
+        const intent = await stripe.paymentIntents.retrieve(hold.payment_intent_id);
+        if (intent.status !== 'canceled') {
+          await stripe.paymentIntents.cancel(hold.payment_intent_id);
+        }
+      } catch (err) {
+        // already canceled/captured/terminal — still resolve the row below
+        if (err.code !== 'payment_intent_unexpected_state' && err.code !== 'resource_missing') {
+          console.error(`[auto-reverse] orphan void failed for ${hold.payment_intent_id}:`, err.message);
+          results.failed.push({ payment_intent_id: hold.payment_intent_id, reason: err.message });
+          continue;
+        }
+      }
+      await supabase
+        .from('pending_authorizations')
+        .update({ status: 'voided', reason: 'auto_expired', resolved_at: voidedAt })
+        .eq('payment_intent_id', hold.payment_intent_id);
+      results.orphansVoided.push({ payment_intent_id: hold.payment_intent_id });
+    }
+  }
+
+  console.log(`[auto-reverse] Done. Reversed: ${results.reversed.length}, Skipped: ${results.skipped.length}, Failed: ${results.failed.length}, OrphansVoided: ${results.orphansVoided.length}`);
   res.status(200).json(results);
 };
 

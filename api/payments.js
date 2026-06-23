@@ -253,6 +253,41 @@ async function tryIncrementAuthorization(stripe, paymentIntentId, targetAmountCe
   }
 }
 
+// ── Pending-authorization tracking ──────────────────────────────────────────
+// Best-effort bookkeeping of holds that exist in Stripe but have no booking yet.
+// Every helper swallows its own errors: tracking must NEVER break the payment
+// flow it is observing.
+async function recordPendingAuthorization(fields) {
+  try {
+    const db = getSupabaseAdmin();
+    await db.from('pending_authorizations').upsert({
+      payment_intent_id: fields.payment_intent_id,
+      client_secret:     fields.client_secret || null,
+      amount_cents:      Math.round(Number(fields.amount_cents) || 0),
+      customer_name:     fields.customer_name || null,
+      customer_email:    fields.customer_email || null,
+      service_label:     fields.service_label || null,
+      status:            'pending',
+      reason:            null,
+      resolved_at:       null,
+    }, { onConflict: 'payment_intent_id' });
+  } catch (err) {
+    console.warn('[pending_auth] record failed:', err.message);
+  }
+}
+
+async function resolvePendingAuthorization(paymentIntentId, status, reason) {
+  if (!paymentIntentId) return;
+  try {
+    const db = getSupabaseAdmin();
+    await db.from('pending_authorizations')
+      .update({ status, reason: reason || null, resolved_at: new Date().toISOString() })
+      .eq('payment_intent_id', paymentIntentId);
+  } catch (err) {
+    console.warn('[pending_auth] resolve failed:', err.message);
+  }
+}
+
 async function handleCreateIntent(body, res) {
   // Booking authorization — manual capture, no DB involvement here.
   const { amount_cents, customer_name, customer_email, service_label } = body;
@@ -292,6 +327,14 @@ async function handleCreateIntent(body, res) {
       pi = await stripe.paymentIntents.create(paymentIntentParams);
     }
     console.log('[payments/create_intent] Created', pi.id, 'amount:', parsedCents);
+    await recordPendingAuthorization({
+      payment_intent_id: pi.id,
+      client_secret: pi.client_secret,
+      amount_cents: parsedCents,
+      customer_name,
+      customer_email,
+      service_label,
+    });
     return res.status(200).json({ client_secret: pi.client_secret, payment_intent_id: pi.id });
   } catch (err) {
     console.error('[payments/create_intent] Stripe error:', err.message);
@@ -334,6 +377,10 @@ async function saveReusableBookingSnapshots(db, row) {
   const customerEmail = row.customer_email || '';
   if (!cleanPhone(customerPhone) || !String(customerEmail || '').trim()) return;
 
+  await Promise.all([saveAddressSnapshot(db, row, customerPhone, customerEmail), saveVehicleSnapshot(db, row, customerPhone, customerEmail)]);
+}
+
+async function saveAddressSnapshot(db, row, customerPhone, customerEmail) {
   const addressPayload = {
     customer_phone: customerPhone,
     customer_email: customerEmail,
@@ -386,7 +433,9 @@ async function saveReusableBookingSnapshots(db, row) {
       console.warn('[payments/create_authorized_booking] Saved address snapshot skipped:', err.message);
     }
   }
+}
 
+async function saveVehicleSnapshot(db, row, customerPhone, customerEmail) {
   const vehiclePayload = {
     customer_phone: customerPhone,
     customer_email: customerEmail,
@@ -588,14 +637,12 @@ async function handleCreateAuthorizedBooking(body, res) {
     const { data, error } = await db.from('service_requests').insert(row).select().maybeSingle();
 
     if (!error) {
-      // Best-effort — never let a snapshot-save problem block a booking that
-      // already succeeded and was already charged.
-      try {
-        await saveReusableBookingSnapshots(db, row);
-      } catch (snapshotErr) {
-        console.warn('[payments/create_authorized_booking] Snapshot save failed:', snapshotErr.message);
-      }
       console.log('[payments/create_authorized_booking] Created request', data?.id, 'for PI', intent.id);
+      // Fire snapshot saves after responding — they're best-effort and must
+      // never delay the booking confirmation the customer is waiting on.
+      saveReusableBookingSnapshots(db, row).catch((snapshotErr) => {
+        console.warn('[payments/create_authorized_booking] Snapshot save failed:', snapshotErr.message);
+      });
       return res.status(200).json({ id: data?.id, status: 'request_received', payment_status: 'authorized' });
     }
 
@@ -1233,7 +1280,7 @@ async function handleCancelPayment(body, res) {
 async function handleCancelAuthorization(body, res) {
   // Customer-side pre-booking cancel: void a manual-capture authorization before
   // the service_request row is created.
-  const { payment_intent_id, client_secret } = body;
+  const { payment_intent_id, client_secret, reason } = body;
 
   if (!payment_intent_id || !client_secret) {
     return res.status(400).json({ error: 'payment_intent_id and client_secret are required' });
@@ -1247,16 +1294,19 @@ async function handleCancelAuthorization(body, res) {
     }
 
     if (intent.status === 'canceled') {
+      await resolvePendingAuthorization(payment_intent_id, 'voided', reason || 'abandoned');
       return res.status(200).json({ status: 'already_canceled' });
     }
     if (intent.status === 'requires_capture') {
       const canceled = await stripe.paymentIntents.cancel(payment_intent_id);
       console.log('[payments/cancel_authorization] Canceled pre-booking authorization', payment_intent_id);
+      await resolvePendingAuthorization(payment_intent_id, 'voided', reason || 'abandoned');
       return res.status(200).json({ status: canceled.status });
     }
     if (['requires_payment_method', 'requires_confirmation', 'requires_action', 'processing'].includes(intent.status)) {
       const canceled = await stripe.paymentIntents.cancel(payment_intent_id);
       console.log('[payments/cancel_authorization] Canceled incomplete pre-booking authorization', payment_intent_id);
+      await resolvePendingAuthorization(payment_intent_id, 'voided', reason || 'abandoned');
       return res.status(200).json({ status: canceled.status });
     }
 
@@ -1819,9 +1869,60 @@ async function handleResolveReturnRequest(body, res) {
   }
 }
 
+// ── Admin: incomplete-authorization management ──────────────────────────────
+async function handleAdminListPendingAuthorizations(body, res) {
+  const { caller_token } = body;
+  if (!caller_token) return res.status(401).json({ error: 'Authorization required' });
+  const isAdmin = await verifyAdminToken(caller_token);
+  if (!isAdmin) return res.status(403).json({ error: 'Admin access required' });
+
+  const db = getSupabaseAdmin();
+  const { data, error } = await db
+    .from('pending_authorizations')
+    .select('payment_intent_id, amount_cents, customer_name, customer_email, service_label, reason, created_at')
+    .eq('status', 'pending')
+    .order('created_at', { ascending: true });
+
+  if (error) {
+    console.error('[payments/admin_list_pending_authorizations] DB error:', error.message);
+    return res.status(500).json({ error: 'Could not load incomplete authorizations.' });
+  }
+  return res.status(200).json({ authorizations: data || [] });
+}
+
+async function handleAdminVoidAuthorization(body, res) {
+  const { caller_token, payment_intent_id } = body;
+  if (!caller_token) return res.status(401).json({ error: 'Authorization required' });
+  const isAdmin = await verifyAdminToken(caller_token);
+  if (!isAdmin) return res.status(403).json({ error: 'Admin access required' });
+  if (!payment_intent_id) return res.status(400).json({ error: 'payment_intent_id is required' });
+
+  try {
+    const stripe = getStripe();
+    const intent = await stripe.paymentIntents.retrieve(payment_intent_id);
+    if (intent.status !== 'canceled') {
+      await stripe.paymentIntents.cancel(payment_intent_id);
+      console.log('[payments/admin_void_authorization] Voided hold', payment_intent_id);
+    }
+    await resolvePendingAuthorization(payment_intent_id, 'voided', 'admin_voided');
+    return res.status(200).json({ status: 'voided' });
+  } catch (err) {
+    // If Stripe says it's already in a terminal state, still mark it resolved so
+    // it leaves the admin list rather than reappearing on every refresh.
+    if (err.code === 'payment_intent_unexpected_state') {
+      await resolvePendingAuthorization(payment_intent_id, 'voided', 'admin_voided');
+      return res.status(200).json({ status: 'already_finalized' });
+    }
+    console.error('[payments/admin_void_authorization] Stripe error:', err.message);
+    return res.status(500).json({ error: 'Could not void this authorization. Please check Stripe.' });
+  }
+}
+
 // ── Main router ───────────────────────────────────────────────────────────────
 
 const HANDLERS = {
+  admin_list_pending_authorizations: handleAdminListPendingAuthorizations,
+  admin_void_authorization:          handleAdminVoidAuthorization,
   create_intent:             handleCreateIntent,
   create_authorized_booking: handleCreateAuthorizedBooking,
   create_customer_final: handleCreateCustomerFinal,

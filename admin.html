@@ -36,9 +36,8 @@
         <button class="admin-page-tab" data-page="settings">Settings</button>
       </nav>
       <div class="portal-header-actions">
-        <span class="admin-notification-bell" aria-label="Notifications">!</span>
-        <span class="admin-avatar">AA</span>
-        <span class="portal-header-label">Admin<br><small>Super Admin</small></span>
+        <span class="admin-avatar" id="admin-avatar-initials">A</span>
+        <span class="portal-header-label" id="admin-header-name">Admin</span>
         <button class="portal-signout-btn" id="admin-signout-btn" type="button">Sign out</button>
       </div>
     </header>
@@ -52,8 +51,8 @@
       <section class="section admin-hero" data-page-section="dashboard">
         <div class="admin-hero-top">
           <div class="section-heading">
-            <p class="eyebrow">Admin Portal</p>
-            <h1>Admin Portal</h1>
+            <p class="eyebrow" id="admin-greeting">Welcome back,</p>
+            <h1 id="admin-portal-name">Admin</h1>
             <p>Overview of operations and service management.</p>
             <div class="admin-hero-stats" id="admin-hero-stats">
               <button class="hero-stat hero-stat-btn" id="hero-avg-rating-btn" type="button" title="View all reviews" aria-label="View all reviews">
@@ -126,6 +125,20 @@
             <h2 id="drilldown-title"></h2>
           </div>
           <div id="drilldown-body"></div>
+        </div>
+      </section>
+
+      <section class="section admin-section admin-pending-auth-section" data-page-section="dashboard" id="pending-auth-section" hidden>
+        <div class="admin-queue-card">
+          <div class="admin-toolbar">
+            <div>
+              <p class="eyebrow">Needs attention</p>
+              <h2>Incomplete authorizations</h2>
+              <p class="field-help">Card holds placed during booking that never became a request. Void them to release the customer's hold now; otherwise they auto-release after 24 hours.</p>
+            </div>
+            <button id="pending-auth-refresh-btn" class="button secondary" type="button">Refresh</button>
+          </div>
+          <div id="pending-auth-list" class="pending-auth-list"></div>
         </div>
       </section>
 
@@ -580,6 +593,7 @@
 
 	<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 	<script src="supabase-client.js"></script>
+	<script src="password-toggle.js"></script>
 	<script src="photo-utils.js"></script>
 	<script src="date-picker.js"></script>
 	<script src="admin.js"></script>

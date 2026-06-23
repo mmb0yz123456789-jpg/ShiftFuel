@@ -144,6 +144,45 @@
         </aside>
       </section>
 
+      <!-- Schedule view (inline, shown by tab bar) -->
+      <section id="worker-availability" class="section worker-schedule-view" data-app-view="schedule">
+        <div class="section-heading">
+          <h2>My Availability</h2>
+        </div>
+        <form id="worker-schedule-form" class="admin-edit-panel worker-schedule-form-inline">
+          <label>Work location
+            <select id="worker-location" required>
+              <option value="">Select service center</option>
+            </select>
+          </label>
+          <div class="worker-schedule-actions">
+            <button id="open-workdays-panel" class="button primary" type="button">Work Days and Shift Times</button>
+            <button id="open-days-off-panel" class="button primary" type="button">Days Off</button>
+          </div>
+
+          <div id="workdays-panel" class="worker-availability-window" hidden>
+            <div class="worker-window-heading">
+              <h3>Work Days and Shift Times</h3>
+              <button id="close-workdays-panel" class="button" type="button">Close</button>
+            </div>
+            <div id="worker-days-grid" class="worker-days-grid"></div>
+            <button id="save-workdays" class="button primary" type="button">Save work days</button>
+          </div>
+
+          <div id="days-off-panel" class="worker-availability-window" hidden>
+            <div class="worker-window-heading">
+              <h3>Days Off</h3>
+              <button id="close-days-off-panel" class="button" type="button">Close</button>
+            </div>
+            <p class="field-help">Click any date in the 3-month booking window to make that day unbookable.</p>
+            <div id="worker-days-off-calendar" class="worker-days-off-calendar"></div>
+            <p id="worker-days-off-summary" class="field-help"></p>
+            <button id="save-days-off" class="button primary" type="button">Save days off</button>
+          </div>
+          <p id="worker-schedule-status" class="field-help"></p>
+        </form>
+      </section>
+
     </main>
 
     <section class="portal-closing-banner">
@@ -191,45 +230,6 @@
       </button>
     </nav>
     <script defer src="app-tabbar.js"></script>
-
-    <!-- Schedule view (inline, shown by tab bar) -->
-    <section id="worker-availability" class="section worker-schedule-view" data-app-view="schedule">
-      <div class="section-heading">
-        <h2>My Availability</h2>
-      </div>
-      <form id="worker-schedule-form" class="admin-edit-panel worker-schedule-form-inline">
-        <label>Work location
-          <select id="worker-location" required>
-            <option value="">Select service center</option>
-          </select>
-        </label>
-        <div class="worker-schedule-actions">
-          <button id="open-workdays-panel" class="button primary" type="button">Work Days and Shift Times</button>
-          <button id="open-days-off-panel" class="button primary" type="button">Days Off</button>
-        </div>
-
-        <div id="workdays-panel" class="worker-availability-window" hidden>
-          <div class="worker-window-heading">
-            <h3>Work Days and Shift Times</h3>
-            <button id="close-workdays-panel" class="button" type="button">Close</button>
-          </div>
-          <div id="worker-days-grid" class="worker-days-grid"></div>
-          <button id="save-workdays" class="button primary" type="button">Save work days</button>
-        </div>
-
-        <div id="days-off-panel" class="worker-availability-window" hidden>
-          <div class="worker-window-heading">
-            <h3>Days Off</h3>
-            <button id="close-days-off-panel" class="button" type="button">Close</button>
-          </div>
-          <p class="field-help">Click any date in the 3-month booking window to make that day unbookable.</p>
-          <div id="worker-days-off-calendar" class="worker-days-off-calendar"></div>
-          <p id="worker-days-off-summary" class="field-help"></p>
-          <button id="save-days-off" class="button primary" type="button">Save days off</button>
-        </div>
-        <p id="worker-schedule-status" class="field-help"></p>
-      </form>
-    </section>
 
     <!-- My service reviews modal -->
     <div id="worker-reviews-section" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="wr-title" hidden>
@@ -349,6 +349,7 @@
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="supabase-client.js"></script>
+    <script src="password-toggle.js"></script>
     <script src="photo-utils.js"></script>
     <script>
       function formatDate(value) {

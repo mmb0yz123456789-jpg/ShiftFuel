@@ -487,6 +487,11 @@ function availableTimeOptions() {
   const bookedSlots = bookingState.bookedSlots || new Set();
   const availabilitySlots = bookingState.availabilitySlots;
   const hasAvailabilityLookup = availabilitySlots instanceof Set;
+  // Car wash bookings must be returned before the wash closes (8 AM–7 PM),
+  // so the latest selectable return time is capped at 6:00 PM to leave an
+  // hour of buffer for the wash and drive-back. The start of the window is
+  // left to worker availability / the past-time filter.
+  const washClose = serviceNeedsWash();
   const options = [];
   for (let hour = 7; hour <= 22; hour += 1) {
     for (const minute of [0, 30]) {
@@ -495,7 +500,9 @@ function availableTimeOptions() {
       const optionDate = new Date(`${selectedDate || todayValue()}T${value}:00`);
       const past = isToday && optionDate <= now;
       const booked = bookedSlots.has(value);
-      const unavailable = hasAvailabilityLookup ? !availabilitySlots.has(value) : (hour < 9 || hour > 17 || (hour === 17 && minute > 0));
+      const afterWashCutoff = washClose && (hour > 18 || (hour === 18 && minute > 0));
+      const unavailable = afterWashCutoff
+        || (hasAvailabilityLookup ? !availabilitySlots.has(value) : (hour < 9 || hour > 17 || (hour === 17 && minute > 0)));
       if (!unavailable || bookingState.values.returnTime === value) {
         options.push({ value, label: timeLabel(hour, minute), disabled: past || booked || unavailable });
       }
@@ -849,7 +856,7 @@ function renderStepCard(step, index, flowName, unlockedIndex, openIndex) {
       <div class="booking-accordion-body">
         <div class="booking-step-fields">${content.fields}</div>
         <div class="booking-step-actions">
-          ${index > 0 ? `<button class="button secondary" type="button" data-back>Back</button>` : ""}
+          ${index > 0 && step !== "Review" ? `<button class="button secondary" type="button" data-back>Back</button>` : ""}
           ${step !== "Review" ? `<button class="button primary" type="button" data-continue>Continue</button>` : ""}
         </div>
       </div>
@@ -2374,6 +2381,59 @@ initBookingFlow();
     submit(panel, button);
   }, true);
   window.unlockBookingPage = unlock;
+})();
+
+// ============================================================
+// Abandoned-authorization guard
+// ============================================================
+// If the customer authorizes their card on the Review step but leaves the page
+// before clicking "Book request", a Stripe hold is left on their card with no
+// booking behind it. The auto-reverse cron cannot clean it up (it only looks at
+// service_requests rows, and no row was ever created). So we:
+//   1. Warn before unload while a hold is pending (catches accidental exits).
+//   2. Best-effort void the hold on the way out via sendBeacon (immediate
+//      release instead of waiting ~7 days for Stripe's auth to expire).
+(() => {
+  function hasPendingHold() {
+    const p = bookingState.payment || {};
+    return Boolean(p.authorized && p.paymentIntentId)
+      && !bookingState.submitted
+      && !bookingState.submitting;
+  }
+
+  window.addEventListener("beforeunload", (event) => {
+    if (!hasPendingHold()) return;
+    // Triggers the browser's native "Leave site?" confirmation.
+    event.preventDefault();
+    event.returnValue = "";
+    return "";
+  });
+
+  // pagehide fires once the user actually commits to leaving (close/navigate).
+  // Fire a keepalive beacon to release the hold. Guard against double-cancel by
+  // clearing the pending flag immediately.
+  window.addEventListener("pagehide", () => {
+    if (!hasPendingHold()) return;
+    const p = bookingState.payment;
+    const payload = JSON.stringify({
+      action: "cancel_authorization",
+      payment_intent_id: p.paymentIntentId,
+      client_secret: p.clientSecret || "",
+    });
+    p.authorized = false; // prevent a second beacon if pagehide fires twice
+    try {
+      if (navigator.sendBeacon) {
+        navigator.sendBeacon("/api/payments", new Blob([payload], { type: "application/json" }));
+      } else {
+        fetch("/api/payments", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: payload,
+          keepalive: true,
+        });
+      }
+    } catch (_) { /* best-effort only */ }
+  });
 })();
 
 // ============================================================
