@@ -32,6 +32,9 @@
   ]);
 
   const liveState = new Map();
+  // Cache credentials so DOM re-renders don't blank them mid-poll.
+  let cachedPhone = '';
+  let cachedEmail = '';
 
   function db() {
     return window.ShiftFuelSupabase;
@@ -42,11 +45,15 @@
   }
 
   function emailValue() {
-    return document.querySelector('#tracking-email')?.value.trim().toLowerCase() || '';
+    const live = document.querySelector('#tracking-email')?.value.trim().toLowerCase() || '';
+    if (live) cachedEmail = live;
+    return cachedEmail;
   }
 
   function phoneValue() {
-    return cleanPhone(document.querySelector('#tracking-phone')?.value || '');
+    const live = cleanPhone(document.querySelector('#tracking-phone')?.value || '');
+    if (live) cachedPhone = live;
+    return cachedPhone;
   }
 
   function requestList() {
@@ -161,6 +168,9 @@
       return;
     }
 
+    const state = liveState.get(requestId) || {};
+    const isCurrentlyLive = panel?.classList.contains('is-live');
+
     try {
       const { data, error } = await db().rpc('public_track_request_location', {
         p_request_id: requestId,
@@ -170,13 +180,25 @@
       if (error) throw error;
       const row = Array.isArray(data) ? data[0] : data;
       if (!row) {
-        setUnavailable(panel);
+        // Allow 2 consecutive empty responses before hiding the map,
+        // so a single slow poll doesn't flash the panel unavailable.
+        state.missCount = (state.missCount || 0) + 1;
+        liveState.set(requestId, state);
+        if (!isCurrentlyLive || state.missCount >= 2) {
+          setUnavailable(panel);
+        }
         return;
       }
+      state.missCount = 0;
+      liveState.set(requestId, state);
       setLocation(panel, row);
     } catch (error) {
       console.warn('Live location lookup unavailable:', error);
-      setUnavailable(panel, 'Live location is not currently available.');
+      state.missCount = (state.missCount || 0) + 1;
+      liveState.set(requestId, state);
+      if (!isCurrentlyLive || state.missCount >= 2) {
+        setUnavailable(panel, 'Live location is not currently available.');
+      }
     }
   }
 
@@ -274,7 +296,13 @@
     ensureStyles();
     refreshLivePanels();
     const result = document.querySelector('#tracking-result');
-    if (result) new MutationObserver(() => setTimeout(refreshLivePanels, 0)).observe(result, { childList: true, subtree: true });
+    if (result) {
+      let debounceTimer = null;
+      new MutationObserver(() => {
+        clearTimeout(debounceTimer);
+        debounceTimer = setTimeout(refreshLivePanels, 400);
+      }).observe(result, { childList: true, subtree: true });
+    }
   }
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start);
