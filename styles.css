@@ -4898,6 +4898,31 @@ legend {
   opacity: 0.55;
 }
 
+.customer-timeline li.failed:not(:last-child)::after {
+  border-top-color: #dc2626;
+  border-top-style: solid;
+}
+
+.customer-timeline li.failed span {
+  color: #fff;
+  background: #dc2626;
+  border-color: #dc2626;
+  box-shadow: 0 0 0 5px rgba(220, 38, 38, 0.12);
+}
+
+.customer-timeline li.failed p {
+  color: #991b1b;
+}
+
+.timeline-failure-reason {
+  display: block;
+  max-width: 120px;
+  color: #991b1b;
+  font-size: 0.68rem;
+  font-weight: 800;
+  line-height: 1.2;
+}
+
 /* Request detail panels */
 
 .request-details {
