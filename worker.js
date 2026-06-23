@@ -1378,7 +1378,7 @@ function workerProgressStepForStatus(status) {
 function updateWorkerProgressTimeline(myJobs) {
   const line = document.querySelector('.worker-progress-line');
   if (!line) return;
-  const spans = Array.from(line.querySelectorAll('span'));
+  const spans = Array.from(line.querySelectorAll('.worker-progress-step'));
 
   const activeJobs = myJobs.filter((job) => isWorkerOpenStatus(job.status) && !['pending', 'request_received'].includes(job.status));
   const activeJob = activeJobs.slice().sort((a, b) => {

@@ -32,6 +32,7 @@
   ]);
 
   const liveState = new Map();
+  let lastCardSignature = '';
   function db() {
     return window.ShiftFuelSupabase;
   }
@@ -88,7 +89,7 @@
         <div class="track-live-location-body">
           <p class="track-live-location-status">${activeAllowed ? 'Checking for live location...' : 'Live location is not currently available.'}</p>
           <div class="track-live-location-map" hidden>
-            <iframe title="Approximate live vehicle service location" loading="lazy" referrerpolicy="no-referrer-when-downgrade"></iframe>
+            <div class="track-live-map-canvas" aria-label="Approximate live vehicle service location"></div>
             <p class="field-help">Map data © OpenStreetMap contributors. Location is approximate and comes from the worker’s phone GPS.</p>
           </div>
           <div class="track-live-location-links" hidden></div>
@@ -126,7 +127,125 @@
     }
   }
 
-  function setLocation(panel, location) {
+  // Load Leaflet once (CSS + JS) so we can show a live, smoothly-updating map
+  // instead of a flickering iframe that reloads on every GPS update.
+  let leafletPromise = null;
+  function loadLeaflet() {
+    if (window.L) return Promise.resolve();
+    if (leafletPromise) return leafletPromise;
+    leafletPromise = new Promise((resolve, reject) => {
+      const css = document.createElement('link');
+      css.rel = 'stylesheet';
+      css.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
+      document.head.appendChild(css);
+      const js = document.createElement('script');
+      js.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
+      js.onload = () => resolve();
+      js.onerror = reject;
+      document.head.appendChild(js);
+    });
+    return leafletPromise;
+  }
+
+  function liveMarkerIcon() {
+    return window.L.divIcon({
+      className: 'track-live-marker',
+      html: '<span class="track-live-marker-pulse"></span><span class="track-live-marker-dot"></span>',
+      iconSize: [22, 22],
+      iconAnchor: [11, 11],
+    });
+  }
+
+  // ── Map provider ──────────────────────────────────────────────────────────
+  // Primary: Mapbox GL JS (billed per map LOAD, not per tile — best for long
+  // live-tracking sessions). Set window.SHIFTFUEL_MAPBOX_TOKEN to enable it.
+  // Fallback (no token): Leaflet + free OpenStreetMap tiles, so the map still
+  // works during development before a Mapbox key is configured.
+  function getMapboxToken() {
+    try { return (window.SHIFTFUEL_MAPBOX_TOKEN || '').trim(); } catch (_) { return ''; }
+  }
+
+  let mapboxPromise = null;
+  function loadMapbox() {
+    if (window.mapboxgl) return Promise.resolve();
+    if (mapboxPromise) return mapboxPromise;
+    mapboxPromise = new Promise((resolve, reject) => {
+      const css = document.createElement('link');
+      css.rel = 'stylesheet';
+      css.href = 'https://api.mapbox.com/mapbox-gl-js/v3.7.0/mapbox-gl.css';
+      document.head.appendChild(css);
+      const js = document.createElement('script');
+      js.src = 'https://api.mapbox.com/mapbox-gl-js/v3.7.0/mapbox-gl.js';
+      js.onload = () => resolve();
+      js.onerror = reject;
+      document.head.appendChild(js);
+    });
+    return mapboxPromise;
+  }
+
+  function markerElement() {
+    const el = document.createElement('div');
+    el.className = 'track-live-marker';
+    el.innerHTML = '<span class="track-live-marker-pulse"></span><span class="track-live-marker-dot"></span>';
+    return el;
+  }
+
+  // Smoothly move an existing map+marker to the new point (no reload).
+  function updateLiveMap(state, lat, lng) {
+    if (state.engine === 'mapbox') {
+      state.marker.setLngLat([lng, lat]);
+      state.map.easeTo({ center: [lng, lat], duration: 800 });
+    } else {
+      state.map.invalidateSize(); // in case the container was just re-shown
+      state.marker.setLatLng([lat, lng]);
+      state.map.panTo([lat, lng], { animate: true, duration: 0.8 });
+    }
+  }
+
+  async function createLiveMap(requestId, canvas, lat, lng) {
+    const state = liveState.get(requestId) || {};
+    const token = getMapboxToken();
+    try {
+      if (token) {
+        await loadMapbox();
+        window.mapboxgl.accessToken = token;
+        const map = new window.mapboxgl.Map({
+          container: canvas,
+          style: 'mapbox://styles/mapbox/streets-v12',
+          center: [lng, lat],
+          zoom: 14,
+        });
+        map.scrollZoom.disable(); // let the page scroll over the map
+        const marker = new window.mapboxgl.Marker({ element: markerElement() }).setLngLat([lng, lat]).addTo(map);
+        map.on('load', () => map.resize());
+        state.engine = 'mapbox';
+        state.map = map;
+        state.marker = marker;
+      } else {
+        await loadLeaflet();
+        const map = window.L.map(canvas, {
+          zoomControl: true,
+          attributionControl: true,
+          scrollWheelZoom: false,
+        }).setView([lat, lng], 15);
+        window.L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+          maxZoom: 19,
+          attribution: '© OpenStreetMap contributors',
+        }).addTo(map);
+        state.engine = 'leaflet';
+        state.map = map;
+        state.marker = window.L.marker([lat, lng], { icon: liveMarkerIcon() }).addTo(map);
+        setTimeout(() => map.invalidateSize(), 60);
+      }
+    } catch (err) {
+      console.warn('Could not load the live map:', err);
+    } finally {
+      state.creatingMap = false;
+      liveState.set(requestId, state);
+    }
+  }
+
+  async function setLocation(panel, location) {
     const lat = Number(location.latitude);
     const lng = Number(location.longitude);
     if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
@@ -139,20 +258,32 @@
     panel.classList.add('is-live');
     panel.querySelector('.track-live-location-status').textContent = `Worker GPS is active.${updated}${accuracy}`;
 
-    const map = panel.querySelector('.track-live-location-map');
-    const frame = map?.querySelector('iframe');
-    if (map && frame) {
-      const delta = 0.006;
-      const bbox = `${lng - delta},${lat - delta},${lng + delta},${lat + delta}`;
-      frame.src = `https://www.openstreetmap.org/export/embed.html?bbox=${encodeURIComponent(bbox)}&layer=mapnik&marker=${encodeURIComponent(`${lat},${lng}`)}`;
-      map.hidden = false;
+    const mapWrap = panel.querySelector('.track-live-location-map');
+    const canvas = panel.querySelector('.track-live-map-canvas');
+    if (mapWrap && canvas) {
+      mapWrap.hidden = false;
+      const requestId = panel.dataset.requestId;
+      const state = liveState.get(requestId) || {};
+      if (state.map) {
+        updateLiveMap(state, lat, lng);
+      } else if (!state.creatingMap) {
+        // Reserve immediately so a concurrent update can't build a second map.
+        state.creatingMap = true;
+        liveState.set(requestId, state);
+        await createLiveMap(requestId, canvas, lat, lng);
+      }
     }
 
     const links = panel.querySelector('.track-live-location-links');
     if (links) {
       const mapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${lat},${lng}`)}`;
       const appleUrl = `https://maps.apple.com/?ll=${encodeURIComponent(`${lat},${lng}`)}`;
-      links.innerHTML = `<a class="button secondary" href="${mapsUrl}" target="_blank" rel="noopener">Open in Google Maps</a><a class="button secondary" href="${appleUrl}" target="_blank" rel="noopener">Open in Apple Maps</a>`;
+      const wantedHtml = `<a class="button secondary" href="${mapsUrl}" target="_blank" rel="noopener">Open in Google Maps</a><a class="button secondary" href="${appleUrl}" target="_blank" rel="noopener">Open in Apple Maps</a>`;
+      // Only rewrite the links when they actually change (avoids needless DOM churn).
+      if (links.dataset.coords !== `${lat},${lng}`) {
+        links.innerHTML = wantedHtml;
+        links.dataset.coords = `${lat},${lng}`;
+      }
       links.hidden = false;
     }
   }
@@ -200,9 +331,14 @@
   }
 
   function subscribeLocation(requestId) {
-    if (liveState.get(requestId)?.subscribed) return;
-    const channel = db()?.channel?.(`request-location-${requestId}`);
-    if (channel?.on) {
+    const state = liveState.get(requestId) || {};
+    if (state.subscribed) return; // already wired up — never re-subscribe (causes realtime errors)
+
+    let channel = null;
+    const realtime = db();
+    if (realtime?.channel) {
+      // Attach the postgres_changes handler to a FRESH channel BEFORE subscribing.
+      channel = realtime.channel(`request-location-${requestId}`);
       channel
         .on('postgres_changes', {
           event: '*',
@@ -214,7 +350,7 @@
     }
 
     const poll = setInterval(() => loadLocation(requestId), 20000);
-    liveState.set(requestId, { subscribed: true, channel, poll });
+    liveState.set(requestId, { ...state, subscribed: true, channel, poll });
   }
 
   function clearOldSubscriptions(activeIds) {
@@ -222,6 +358,9 @@
       if (activeIds.has(requestId)) continue;
       if (state.poll) clearInterval(state.poll);
       if (state.channel && db()?.removeChannel) db().removeChannel(state.channel);
+      if (state.map) {
+        try { state.map.remove(); } catch (_) {}
+      }
       liveState.delete(requestId);
     }
   }
@@ -278,26 +417,63 @@
         box-shadow: 0 0 0 5px rgba(22,163,74,.14);
       }
       .track-live-location-body { display: grid; gap: 12px; margin-top: 12px; }
-      .track-live-location-map iframe {
+      .track-live-location-map { position: relative; }
+      .track-live-map-canvas {
         width: 100%;
-        min-height: 260px;
-        border: 0;
+        height: 280px;
         border-radius: 14px;
+        overflow: hidden;
+        background: #e8eef0;
+      }
+      .track-live-map-canvas .leaflet-control-attribution { font-size: 10px; }
+      /* Uber-style pulsing live marker */
+      .track-live-marker { position: relative; width: 22px; height: 22px; }
+      .track-live-marker-dot {
+        position: absolute; left: 50%; top: 50%;
+        width: 14px; height: 14px; margin: -7px 0 0 -7px;
+        background: #16a34a; border: 2px solid #fff; border-radius: 50%;
+        box-shadow: 0 1px 4px rgba(0,0,0,.35);
+      }
+      .track-live-marker-pulse {
+        position: absolute; left: 50%; top: 50%;
+        width: 14px; height: 14px; margin: -7px 0 0 -7px;
+        background: rgba(22,163,74,.45); border-radius: 50%;
+        animation: track-live-pulse 1.8s ease-out infinite;
+      }
+      @keyframes track-live-pulse {
+        0% { transform: scale(1); opacity: .7; }
+        100% { transform: scale(3.4); opacity: 0; }
       }
       .track-live-location-links { display: flex; flex-wrap: wrap; gap: 10px; }
     `;
     document.head.appendChild(style);
   }
 
+  // Signature of the request cards currently on screen — used so the observer
+  // only re-wires panels when a NEW lookup changes the set of cards, not when
+  // Leaflet or a marker update mutates the DOM (which caused a refresh loop).
+  function cardSignature() {
+    return [...document.querySelectorAll('.track-request-card[data-request-id]')]
+      .map((c) => c.dataset.requestId)
+      .sort()
+      .join(',');
+  }
+
   function start() {
     ensureStyles();
     refreshLivePanels();
+    lastCardSignature = cardSignature();
     const result = document.querySelector('#tracking-result');
     if (result) {
       let debounceTimer = null;
       new MutationObserver(() => {
         clearTimeout(debounceTimer);
-        debounceTimer = setTimeout(refreshLivePanels, 400);
+        debounceTimer = setTimeout(() => {
+          const sig = cardSignature();
+          if (sig === lastCardSignature) return; // same cards — don't re-wire (no flicker, no re-subscribe)
+          lastCardSignature = sig;
+          refreshLivePanels();
+        }, 400);
       }).observe(result, { childList: true, subtree: true });
     }
   }
