@@ -650,3 +650,38 @@
   }
   .admin-requests-table tr.queue-row-detail td::before { display: none; }
 }
+
+/* ─────────────────────────────────────────────────────────────────────────
+   App density pass (phones): tighter type + spacing + compact hero so the
+   staff portals read like an app rather than a marketing website.
+   ───────────────────────────────────────────────────────────────────────── */
+@media (max-width: 760px) {
+  /* Smaller, denser headings inside the portals. */
+  body.worker-portal-page h1,
+  body.admin-portal-page h1 { font-size: 1.5rem !important; line-height: 1.15; }
+  body.worker-portal-page h2,
+  body.admin-portal-page h2,
+  body.worker-portal-page .worker-card-heading h2 { font-size: 1.15rem !important; }
+
+  /* Tighter cards + less gap between sections. */
+  body.worker-portal-page .worker-dashboard-card,
+  body.worker-portal-page .worker-current-status-card {
+    padding: 15px 14px !important;
+    border-radius: 16px !important;
+  }
+  body.worker-portal-page .worker-dashboard-layout { gap: 12px !important; }
+  body.worker-portal-page .section,
+  body.admin-portal-page .section { margin-top: 12px !important; margin-bottom: 12px !important; }
+
+  /* Compact the worker hero so jobs are visible sooner (less giant image). */
+  body.worker-portal-page .worker-portal-hero { padding: 16px !important; min-height: 0 !important; }
+  body.worker-portal-page .worker-portal-hero .booking-flow-hero-image,
+  body.worker-portal-page .worker-portal-hero figure { display: none !important; }
+  body.worker-portal-page .worker-hero-content { gap: 12px !important; }
+
+  /* Make the in-portal action buttons full-width + comfortably tappable. */
+  body.worker-portal-page .worker-portal-hero .actions .button,
+  body.worker-portal-page .worker-profile-actions .button { width: 100%; min-height: 46px; }
+  body.worker-portal-page .worker-portal-hero .actions,
+  body.worker-portal-page .worker-profile-actions { display: grid; gap: 8px; }
+}
