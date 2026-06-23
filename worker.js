@@ -1245,7 +1245,7 @@ function updateWorkerStatCards(requests) {
   if (!todayEl && !completedEl && !workerCurrentJobsToday && !workerHeroSubtitle) return;
 
   const today = new Date().toISOString().slice(0, 10);
-  const jobsToday = requests.filter((r) => r.service_date === today).length;
+  const jobsToday = requests.filter((r) => r.service_date === today && workerOpenStatuses.includes(r.status)).length;
   if (todayEl) {
     todayEl.textContent = jobsToday;
   }
@@ -3277,8 +3277,9 @@ function toggleWorkerPanel(sectionId, show) {
   overlay.hidden = !shouldShow;
 }
 
-document.querySelector('#open-schedule-btn')?.addEventListener('click', () => toggleWorkerPanel('worker-availability', true));
-document.querySelector('#close-worker-availability')?.addEventListener('click', () => toggleWorkerPanel('worker-availability', false));
+document.querySelector('#open-schedule-btn')?.addEventListener('click', () => {
+  document.querySelector('[data-tab-view="schedule"]')?.click();
+});
 
 document.querySelector('#open-edit-profile-btn')?.addEventListener('click', () => toggleWorkerPanel('worker-account', true));
 document.querySelector('#close-worker-account')?.addEventListener('click', () => toggleWorkerPanel('worker-account', false));
@@ -3286,7 +3287,7 @@ document.querySelector('#close-worker-account')?.addEventListener('click', () =>
 document.querySelector('#worker-reviews-trigger')?.addEventListener('click', () => toggleWorkerPanel('worker-reviews-section', true));
 document.querySelector('#close-worker-reviews')?.addEventListener('click', () => toggleWorkerPanel('worker-reviews-section', false));
 
-['worker-availability', 'worker-reviews-section', 'worker-account'].forEach((id) => {
+['worker-reviews-section', 'worker-account'].forEach((id) => {
   const overlay = document.getElementById(id);
   overlay?.addEventListener('click', (event) => {
     if (event.target === overlay) toggleWorkerPanel(id, false);

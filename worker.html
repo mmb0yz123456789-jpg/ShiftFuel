@@ -4,6 +4,11 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Worker Portal | ShiftFuel Concierge</title>
+    <link rel="manifest" href="manifest-worker.webmanifest">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="SF Worker">
+    <link rel="apple-touch-icon" href="icon-worker.svg">
     <link rel="stylesheet" href="styles.css">
   </head>
 
@@ -176,7 +181,7 @@
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 19V5M4 14l5-4 4 3 7-7"/></svg>
         <span>Progress</span>
       </button>
-      <button class="app-tab" data-tab data-tab-action="#open-schedule-btn" type="button">
+      <button class="app-tab" data-tab data-tab-view="schedule" type="button">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="5" width="16" height="16" rx="2"/><path d="M4 9h16M8 3v4M16 3v4"/></svg>
         <span>Schedule</span>
       </button>
@@ -187,49 +192,44 @@
     </nav>
     <script defer src="app-tabbar.js"></script>
 
-    <!-- Schedule / availability modal -->
-    <div id="worker-availability" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="wa-title" hidden>
-      <div class="modal-dialog worker-modal-wide">
-        <div class="modal-header">
-          <h2 id="wa-title">My availability</h2>
-          <button class="modal-close" id="close-worker-availability" type="button" aria-label="Close">&times;</button>
-        </div>
-        <div class="modal-body">
-          <form id="worker-schedule-form" class="admin-edit-panel">
-            <label>Work location
-              <select id="worker-location" required>
-                <option value="">Select service center</option>
-              </select>
-            </label>
-            <div class="worker-schedule-actions">
-              <button id="open-workdays-panel" class="button primary" type="button">Work Days and Shift Times</button>
-              <button id="open-days-off-panel" class="button primary" type="button">Days Off</button>
-            </div>
-
-            <div id="workdays-panel" class="worker-availability-window" hidden>
-              <div class="worker-window-heading">
-                <h3>Work Days and Shift Times</h3>
-                <button id="close-workdays-panel" class="button" type="button">Close</button>
-              </div>
-              <div id="worker-days-grid" class="worker-days-grid"></div>
-              <button id="save-workdays" class="button primary" type="button">Save work days</button>
-            </div>
-
-            <div id="days-off-panel" class="worker-availability-window" hidden>
-              <div class="worker-window-heading">
-                <h3>Days Off</h3>
-                <button id="close-days-off-panel" class="button" type="button">Close</button>
-              </div>
-              <p class="field-help">Click any date in the 3-month booking window to make that day unbookable.</p>
-              <div id="worker-days-off-calendar" class="worker-days-off-calendar"></div>
-              <p id="worker-days-off-summary" class="field-help"></p>
-              <button id="save-days-off" class="button primary" type="button">Save days off</button>
-            </div>
-            <p id="worker-schedule-status" class="field-help"></p>
-          </form>
-        </div>
+    <!-- Schedule view (inline, shown by tab bar) -->
+    <section id="worker-availability" class="section worker-schedule-view" data-app-view="schedule">
+      <div class="section-heading">
+        <h2>My Availability</h2>
       </div>
-    </div>
+      <form id="worker-schedule-form" class="admin-edit-panel worker-schedule-form-inline">
+        <label>Work location
+          <select id="worker-location" required>
+            <option value="">Select service center</option>
+          </select>
+        </label>
+        <div class="worker-schedule-actions">
+          <button id="open-workdays-panel" class="button primary" type="button">Work Days and Shift Times</button>
+          <button id="open-days-off-panel" class="button primary" type="button">Days Off</button>
+        </div>
+
+        <div id="workdays-panel" class="worker-availability-window" hidden>
+          <div class="worker-window-heading">
+            <h3>Work Days and Shift Times</h3>
+            <button id="close-workdays-panel" class="button" type="button">Close</button>
+          </div>
+          <div id="worker-days-grid" class="worker-days-grid"></div>
+          <button id="save-workdays" class="button primary" type="button">Save work days</button>
+        </div>
+
+        <div id="days-off-panel" class="worker-availability-window" hidden>
+          <div class="worker-window-heading">
+            <h3>Days Off</h3>
+            <button id="close-days-off-panel" class="button" type="button">Close</button>
+          </div>
+          <p class="field-help">Click any date in the 3-month booking window to make that day unbookable.</p>
+          <div id="worker-days-off-calendar" class="worker-days-off-calendar"></div>
+          <p id="worker-days-off-summary" class="field-help"></p>
+          <button id="save-days-off" class="button primary" type="button">Save days off</button>
+        </div>
+        <p id="worker-schedule-status" class="field-help"></p>
+      </form>
+    </section>
 
     <!-- My service reviews modal -->
     <div id="worker-reviews-section" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="wr-title" hidden>
