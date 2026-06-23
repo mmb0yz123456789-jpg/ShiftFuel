@@ -1,5 +1,10 @@
 # SQL Deployment Run Order
 
+> **Note:** These one-off SQL patches now live in [`archive/sql/`](archive/sql/) — they
+> were applied manually (in the order below) before launch and are kept for history.
+> Ongoing schema changes go through `supabase/migrations/`, which CI applies
+> automatically on push to `main`. Filenames below refer to files in `archive/sql/`.
+
 Run these files in the Supabase SQL Editor **in this exact order** before launch. Each file is safe to re-run.
 
 ---
@@ -28,8 +33,13 @@ Secondary copy of the same `::time` cast fix. Safe to run after step 2.
 
 ---
 
-## 5. `supabase-create-request.sql`
-Ensures `public_track_request` includes support for `pending_customer_info` status.
+## 5. `supabase-create-request.sql` _(superseded)_
+Originally added the admin-create / customer-completion flow
+(`admin_create_request`, `customer_complete_booking`) and ensured
+`public_track_request` floats `pending_customer_info` requests to the top.
+**Now consolidated into the tracked migration
+`supabase/migrations/202606231400_create_request_booking_flow.sql`** (definitions
++ pinned `search_path` + grants in one place), so the archived copy was removed.
 
 ---
 

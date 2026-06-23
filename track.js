@@ -1080,8 +1080,10 @@ function renderPhotos(request, photos) {
     }
   });
 
+  const slotPhoto = (types) => types.map((type) => photoByType.get(type)).find(Boolean);
+
   const photoSlot = (label, types) => {
-    const photo = types.map((type) => photoByType.get(type)).find(Boolean);
+    const photo = slotPhoto(types);
 
     if (!photo) {
       return `
@@ -1106,43 +1108,58 @@ function renderPhotos(request, photos) {
     `;
   };
 
-  const section = (title, slots, isCompact = false) => `
-    <section class="photo-proof-section ${isCompact ? "photo-proof-section-compact" : ""}">
-      <h3>${escapeHtml(title)}</h3>
-      <div class="photo-proof-grid">
-        ${slots.map((slot) => photoSlot(slot.label, slot.types)).join("")}
-      </div>
-    </section>
-  `;
+  // Only render a section once at least one of its photos exists. This avoids a
+  // wall of empty "Not uploaded yet" placeholders before the service has begun;
+  // partially-filled sections still show their remaining slots so the customer
+  // can see what's coming.
+  const section = (title, slots, isCompact = false) => {
+    if (!slots.some((slot) => slotPhoto(slot.types))) return "";
+    return `
+      <section class="photo-proof-section ${isCompact ? "photo-proof-section-compact" : ""}">
+        <h3>${escapeHtml(title)}</h3>
+        <div class="photo-proof-grid">
+          ${slots.map((slot) => photoSlot(slot.label, slot.types)).join("")}
+        </div>
+      </section>
+    `;
+  };
 
-  return `
-    <div class="photo-proof-sections">
-      ${section("Pickup", [
-        { label: "Driver Side Front", types: ["pickup_driver_front", "pickup_front"] },
-        { label: "Passenger Side Front", types: ["pickup_passenger_front", "pickup_passenger_side"] },
-        { label: "Driver Side Rear", types: ["pickup_driver_rear", "pickup_driver_side"] },
-        { label: "Passenger Side Rear", types: ["pickup_passenger_rear", "pickup_rear"] },
-        { label: "Pickup odometer", types: ["pickup_odometer"] },
-        { label: "Pickup fuel gauge", types: ["pickup_fuel_gauge"] },
-      ])}
-      ${requestNeedsFuel(request) ? section("Fuel Receipt", [
-        { label: "Receipt", types: ["fuel_receipt"] },
-      ], true) : ""}
-      ${requestNeedsWash(request) ? section("Car Wash Receipt", [
-        { label: "Receipt", types: ["wash_receipt"] },
-      ], true) : ""}
-      ${section("Drop off", [
-        { label: "Driver Side Front", types: ["dropoff_driver_front", "dropoff_front"] },
-        { label: "Passenger Side Front", types: ["dropoff_passenger_front", "dropoff_passenger_side"] },
-        { label: "Driver Side Rear", types: ["dropoff_driver_rear", "dropoff_driver_side"] },
-        { label: "Passenger Side Rear", types: ["dropoff_passenger_rear", "dropoff_rear"] },
-        { label: "Odometer", types: ["dropoff_odometer"] },
-      ])}
-      ${section("Return back", [
-        { label: "Ending Fuel Gauge", types: ["dropoff_fuel_gauge"] },
-      ], true)}
-    </div>
-  `;
+  const sections = [
+    section("Pickup", [
+      { label: "Driver Side Front", types: ["pickup_driver_front", "pickup_front"] },
+      { label: "Passenger Side Front", types: ["pickup_passenger_front", "pickup_passenger_side"] },
+      { label: "Driver Side Rear", types: ["pickup_driver_rear", "pickup_driver_side"] },
+      { label: "Passenger Side Rear", types: ["pickup_passenger_rear", "pickup_rear"] },
+      { label: "Pickup odometer", types: ["pickup_odometer"] },
+      { label: "Pickup fuel gauge", types: ["pickup_fuel_gauge"] },
+    ]),
+    requestNeedsFuel(request) ? section("Fuel Receipt", [
+      { label: "Receipt", types: ["fuel_receipt"] },
+    ], true) : "",
+    requestNeedsWash(request) ? section("Car Wash Receipt", [
+      { label: "Receipt", types: ["wash_receipt"] },
+    ], true) : "",
+    section("Drop off", [
+      { label: "Driver Side Front", types: ["dropoff_driver_front", "dropoff_front"] },
+      { label: "Passenger Side Front", types: ["dropoff_passenger_front", "dropoff_passenger_side"] },
+      { label: "Driver Side Rear", types: ["dropoff_driver_rear", "dropoff_driver_side"] },
+      { label: "Passenger Side Rear", types: ["dropoff_passenger_rear", "dropoff_rear"] },
+      { label: "Odometer", types: ["dropoff_odometer"] },
+    ]),
+    section("Return back", [
+      { label: "Ending Fuel Gauge", types: ["dropoff_fuel_gauge"] },
+    ], true),
+  ].join("");
+
+  if (!sections.trim()) {
+    return `
+      <div class="photo-proof-sections">
+        <p class="photo-proof-empty">Service photos will appear here as your vehicle is picked up and serviced.</p>
+      </div>
+    `;
+  }
+
+  return `<div class="photo-proof-sections">${sections}</div>`;
 }
 
 function inspectionSummaryFromNotes(request) {

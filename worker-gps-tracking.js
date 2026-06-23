@@ -3,24 +3,41 @@
 (() => {
   if (!document.body?.classList.contains('worker-portal-page')) return;
 
+  // Tracking window = the whole time the worker holds the customer's key/vehicle:
+  // from key pickup through service AND the return trip, until the key/vehicle is
+  // physically handed back. 'accepted' stays eligible only so the key-received gate
+  // can start GPS within the tap gesture (shouldTrack() excludes it from auto-start).
   const ACTIVE_FROM_STATUSES = new Set([
-    'accepted', 'key_received', 'vehicle_picked_up', 'service_in_progress',
+    'accepted', 'key_received',
+    'pickup_vehicle_photo_uploaded', 'pickup_odometer_photo_uploaded', 'pickup_fuel_gauge_photo_uploaded',
+    'vehicle_picked_up', 'service_in_progress',
     'fueling_in_progress', 'car_wash_in_progress', 'partial_service_complete',
-    'fueling_complete', 'car_wash_complete', 'fuel_receipt_uploaded', 'wash_receipt_uploaded',
+    'fueling_complete', 'car_wash_complete', 'fuel_and_wash_complete',
+    'fuel_receipt_uploaded', 'wash_receipt_uploaded',
     'service_complete', 'receipts_recorded',
+    // Return trip — keep tracking until the key/vehicle is returned.
+    'returned_location_pending', 'return_location_recorded', 'return_photos_needed',
+    'dropoff_vehicle_photo_uploaded', 'dropoff_odometer_photo_uploaded', 'dropoff_fuel_gauge_photo_uploaded',
+    'vehicle_returned', 'inspection_needed', 'inspection_recorded', 'final_payment_processed',
+    'awaiting_key_return',
+    // Payment waits that happen before the key is returned.
+    'pending_customer_payment', 'payment_issue', 'authorization_too_low',
+    // Cancellation / return that still requires handing the key/vehicle back.
+    'cancelled_pending_key_return', 'return_requested', 'customer_return_requested',
   ]);
 
+  // GPS turns OFF only once the key/vehicle is back, or the job is otherwise terminal.
   const STOP_STATUSES = new Set([
-    'returned_location_pending', 'return_location_recorded', 'return_photos_needed',
-    'vehicle_returned', 'inspection_needed', 'inspection_recorded', 'final_payment_processed',
-    'awaiting_key_return', 'keys_returned', 'complete', 'completed', 'finalized',
-    'denied', 'customer_canceled', 'canceled', 'cancelled', 'unable_to_complete',
-    'auto_reversed', 'closed_no_charge', 'canceled_return_completed',
+    'keys_returned', 'complete', 'completed', 'finalized',
+    'canceled_return_completed',
+    'denied', 'customer_canceled', 'canceled', 'cancelled',
+    'unable_to_complete', 'auto_reversed', 'closed_no_charge',
   ]);
 
   const MIN_UPDATE_MS = 15000;
   const MIN_DISTANCE_METERS = 25;
   const activeWatches = new Map();
+  const blockedRequests = new Set();
 
   function db() {
     return window.ShiftFuelSupabase;
@@ -63,6 +80,13 @@
       && belongsToCurrentWorker(job)
       && ACTIVE_FROM_STATUSES.has(job.status)
       && !STOP_STATUSES.has(job.status);
+  }
+
+  // Tracking is mandatory from key pickup onward. 'accepted' stays eligible (so the
+  // key-received gate can start GPS within the tap gesture) but must not by itself
+  // render the panel or trigger auto-resume until the key is actually received.
+  function shouldTrack(job) {
+    return isEligibleForGps(job) && job.status !== 'accepted';
   }
 
   function distanceMeters(a, b) {
@@ -168,8 +192,17 @@
       }
     }, (error) => {
       console.warn('GPS permission/update error:', error);
-      setStatus(requestId, error.code === 1 ? 'Location permission was denied.' : 'Could not get GPS location from this device.', true);
-      stopGps(requestId, 'GPS tracking stopped.');
+      if (error.code === 1) {
+        // Permission denied/revoked. Stop and mark blocked so auto-resume does not loop;
+        // the worker must re-enable location and tap Resume to continue.
+        blockedRequests.add(requestId);
+        setStatus(requestId, 'Location permission is off. Turn it on and tap Resume to keep tracking.', true);
+        stopGps(requestId, 'GPS tracking stopped because location permission is off.');
+      } else {
+        // Transient signal loss (position unavailable/timeout). Keep the watch alive so
+        // tracking stays on and resumes automatically when the signal returns.
+        setStatus(requestId, 'GPS signal is weak right now — still trying to track…', true);
+      }
     }, {
       enableHighAccuracy: true,
       maximumAge: 10000,
@@ -186,12 +219,11 @@
     return `
       <section class="gps-tracking-panel" data-request-id="${request.id}">
         <h4>Live GPS tracking</h4>
-        <p class="field-help">Optional. Uses your phone GPS for this active request only. Tracking stops when the vehicle is returned, completed, or stopped.</p>
-        <div class="admin-button-row">
-          <button class="button primary start-gps-tracking" data-request-id="${request.id}" type="button" ${active ? 'hidden' : ''}>Start GPS Tracking</button>
-          <button class="button secondary stop-gps-tracking" data-request-id="${request.id}" type="button" ${active ? '' : 'hidden'}>Stop GPS Tracking</button>
+        <p class="field-help">Required. Your phone GPS stays on for this job until it is complete or the vehicle is returned. It cannot be turned off while the job is active.</p>
+        <div class="admin-button-row" ${active ? 'hidden' : ''}>
+          <button class="button primary start-gps-tracking" data-request-id="${request.id}" type="button">Resume GPS tracking</button>
         </div>
-        <p class="gps-tracking-status field-help">${active ? 'GPS tracking is active for this request. Tracking stops when the request is completed or stopped.' : 'GPS tracking is off.'}</p>
+        <p class="gps-tracking-status field-help">${active ? 'GPS tracking is active for this request.' : 'GPS tracking is required — tap Resume if it does not start automatically.'}</p>
       </section>
     `;
   }
@@ -202,7 +234,7 @@
       const request = requestId ? findRequest(requestId) : null;
       const existing = card.querySelector('.gps-tracking-panel');
 
-      if (!isEligibleForGps(request)) {
+      if (!shouldTrack(request)) {
         if (existing) existing.remove();
         if (requestId && STOP_STATUSES.has(request?.status)) stopGps(requestId, 'GPS tracking stopped because this request is no longer active.');
         return;
@@ -213,9 +245,14 @@
         if (guided) guided.insertAdjacentHTML('afterend', panelHtml(request));
         else card.insertAdjacentHTML('beforeend', panelHtml(request));
       } else {
-        existing.querySelector('.start-gps-tracking').hidden = activeWatches.has(request.id);
-        existing.querySelector('.stop-gps-tracking').hidden = !activeWatches.has(request.id);
+        const row = existing.querySelector('.admin-button-row');
+        if (row) row.hidden = activeWatches.has(request.id);
       }
+
+      // Mandatory tracking: keep GPS on for the whole active job. Resume it if it is not
+      // running (page reload, navigation, transient drop). Permission was granted at
+      // "Key received", so this does not re-prompt. Skip requests blocked by a denial.
+      if (!activeWatches.has(request.id) && !blockedRequests.has(request.id)) startGps(request.id);
     });
   }
 
@@ -242,22 +279,72 @@
     const start = event.target.closest('.start-gps-tracking');
     if (start) {
       event.preventDefault();
+      // Manual resume overrides a prior denial block (e.g., worker re-enabled location).
+      blockedRequests.delete(start.dataset.requestId);
       startGps(start.dataset.requestId);
       return;
     }
 
-    const stop = event.target.closest('.stop-gps-tracking');
-    if (stop) {
+    // Mandatory GPS gate on "Key received": the worker cannot advance the job to
+    // key_received unless they grant location access. Runs in the capture phase so
+    // it can block worker.js's status-update handler until permission is granted.
+    const keyBtn = event.target.closest('.worker-update-status');
+    if (keyBtn && keyBtn.dataset.status === 'key_received' && keyBtn.dataset.id) {
+      // Second pass after permission was granted — let worker.js handle the update.
+      if (keyBtn.dataset.gpsCleared === '1') return;
+
+      // Block the status change until location permission is confirmed.
       event.preventDefault();
-      stopGps(stop.dataset.requestId, 'GPS tracking stopped by worker.');
+      event.stopImmediatePropagation();
+
+      const requestId = keyBtn.dataset.id;
+
+      if (!navigator.geolocation) {
+        setStatus(requestId, 'Location is required to mark Key received, but this device/browser has no GPS.', true);
+        alert('Location access is required to mark Key received, but GPS is not available on this device/browser.');
+        return;
+      }
+
+      const originalLabel = keyBtn.textContent;
+      keyBtn.disabled = true;
+      keyBtn.textContent = 'Checking location...';
+      setStatus(requestId, 'Requesting location permission to start tracking...');
+
+      navigator.geolocation.getCurrentPosition(
+        () => {
+          // Permission granted: start tracking, then re-dispatch so the status advances.
+          blockedRequests.delete(requestId);
+          startGps(requestId);
+          keyBtn.dataset.gpsCleared = '1';
+          keyBtn.disabled = false;
+          keyBtn.textContent = originalLabel;
+          keyBtn.click();
+        },
+        (error) => {
+          keyBtn.disabled = false;
+          keyBtn.textContent = originalLabel;
+          const denied = error.code === 1;
+          setStatus(requestId, denied
+            ? 'Location permission denied. It is required to mark Key received.'
+            : 'Could not get your location. It is required to mark Key received.', true);
+          alert(denied
+            ? 'Location access was denied. You must allow location to mark Key received. Turn on location for this site in your browser settings, then try again.'
+            : 'Could not get your location. Make sure location is enabled, then try again to mark Key received.');
+        },
+        { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
+      );
       return;
     }
 
-    const statusButton = event.target.closest('.worker-update-status, .complete-request, .send-to-customer-payment, .worker-submit-keys-returned, .confirm-cancellation-return');
+    // Only stop GPS the instant the worker takes an action that returns the key/
+    // vehicle or completes the job — NOT when sending to customer payment, since the
+    // key still hasn't been handed back at that point.
+    const statusButton = event.target.closest('.worker-update-status, .complete-request, .worker-submit-keys-returned, .confirm-cancellation-return');
     if (statusButton?.dataset?.id) {
       const nextStatus = statusButton.dataset.status || '';
-      if (!nextStatus || STOP_STATUSES.has(nextStatus) || statusButton.matches('.complete-request, .send-to-customer-payment, .worker-submit-keys-returned, .confirm-cancellation-return')) {
-        setTimeout(() => stopGps(statusButton.dataset.id, 'GPS tracking stopped because the request is being returned or completed.'), 500);
+      const isKeyReturnOrComplete = statusButton.matches('.complete-request, .worker-submit-keys-returned, .confirm-cancellation-return');
+      if (STOP_STATUSES.has(nextStatus) || isKeyReturnOrComplete) {
+        setTimeout(() => stopGps(statusButton.dataset.id, 'GPS tracking stopped because the key/vehicle was returned or the job is complete.'), 500);
       }
     }
   }, true);

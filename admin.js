@@ -16,6 +16,7 @@ const showDenied = document.querySelector('#show-denied');
 const showReviews = document.querySelector('#show-reviews');
 const showApplicants = document.querySelector('#show-applicants');
 const heroFindTicketsBtn = document.querySelector('#hero-find-tickets-btn');
+const heroAvgRatingBtn = document.querySelector('#hero-avg-rating-btn');
 const findTicketsModal = document.querySelector('#find-tickets-modal');
 const closeFindTicketsBtn = document.querySelector('#close-find-tickets');
 const findTicketsSearch = document.querySelector('#find-tickets-search');
@@ -42,8 +43,12 @@ const statRevenueLabel = document.querySelector('#stat-revenue-label');
 const dashboardRangeSelect = document.querySelector('#dashboard-range');
 const dashboardFiltersBtn = document.querySelector('#dashboard-filters-btn');
 const dashboardFiltersPanel = document.querySelector('#dashboard-filters-panel');
+const filterSearchInput = document.querySelector('#filter-search');
 const filterServiceTypeSelect = document.querySelector('#filter-service-type');
-const filterAssignmentSelect = document.querySelector('#filter-assignment');
+const filterStatusSelect = document.querySelector('#filter-status');
+const filterWorkerSelect = document.querySelector('#filter-worker');
+const filterPaymentSelect = document.querySelector('#filter-payment');
+const filterSortSelect = document.querySelector('#filter-sort');
 const filterClearBtn = document.querySelector('#filter-clear-btn');
 const workerSnapshotOnline = document.querySelector('#worker-snapshot-online');
 const workerSnapshotBusy = document.querySelector('#worker-snapshot-busy');
@@ -73,7 +78,6 @@ const applicantList = document.querySelector('#applicants-list');
 const workerProfileList = document.querySelector('#admin-worker-profile-list');
 const adminRefreshBtn = document.querySelector('#admin-refresh-btn');
 const adminReviewsRefreshBtn = document.querySelector('#admin-reviews-refresh-btn');
-const adminReportRefreshBtn = document.querySelector('#admin-report-refresh-btn');
 
 const PHOTO_BUCKET = 'service-photos';
 const DEFAULT_WORKER_NAME = 'Mark Urban';
@@ -106,8 +110,10 @@ let showAllTime = false;
 let lastSearchResults = [];
 let vehiclePsiGuides = [];
 let expandedRequestId = null;
+let expandedSummaryId = null;
 let dashboardRange = 'today';
-let queueFilters = { serviceType: '', assignment: '' };
+let customRange = { start: '', end: '' };
+let queueFilters = { search: '', serviceType: '', status: '', worker: '', payment: '', sort: 'newest' };
 const UNASSIGNED_STATUSES = ['pending', 'request_received'];
 
 function adminToken() {
@@ -305,20 +311,26 @@ async function refreshAdminCreateReturnTimes() {
 function updateAdminCreateServiceControls() {
   const needsFuel = crServiceNeedsFuel();
   const needsWash = crServiceNeedsWash();
-  document.querySelectorAll('.cr-fuel-control').forEach((el) => {
-    el.hidden = !needsFuel;
-    el.querySelectorAll('select,input').forEach((input) => {
-      input.disabled = !needsFuel;
-      if (!needsFuel) input.value = '';
+
+  const fuelFields = document.getElementById('cr-fuel-fields');
+  const washFields = document.getElementById('cr-wash-fields');
+
+  if (fuelFields) {
+    fuelFields.classList.toggle('cr-hidden', !needsFuel);
+    fuelFields.querySelectorAll('select,input').forEach((el) => {
+      el.disabled = !needsFuel;
+      if (!needsFuel) el.value = '';
     });
-  });
-  document.querySelectorAll('.cr-wash-control').forEach((el) => {
-    el.hidden = !needsWash;
-    el.querySelectorAll('select,input').forEach((input) => {
-      input.disabled = !needsWash;
-      if (!needsWash) input.value = '';
+  }
+
+  if (washFields) {
+    washFields.classList.toggle('cr-hidden', !needsWash);
+    washFields.querySelectorAll('select,input').forEach((el) => {
+      el.disabled = !needsWash;
+      if (!needsWash) el.value = '';
     });
-  });
+  }
+
   refreshAdminCreateReturnTimes();
 }
 
@@ -332,6 +344,110 @@ initServiceDateInput();
 updateAdminCreateServiceControls();
 document.getElementById('cr-service-type')?.addEventListener('change', updateAdminCreateServiceControls);
 document.getElementById('cr-service-date')?.addEventListener('change', refreshAdminCreateReturnTimes);
+
+// ── Create Request vehicle dropdowns (mirrors booking-flow.js) ────────────────
+
+const CR_VEHICLE_POPULAR_MAKES = ['Chevrolet', 'Ford', 'Honda', 'Hyundai', 'Jeep', 'Kia', 'Nissan', 'Subaru', 'Tesla', 'Toyota'];
+const CR_VEHICLE_OTHER_MAKES = ['Acura', 'Alfa Romeo', 'Audi', 'BMW', 'Buick', 'Cadillac', 'Chrysler', 'Dodge', 'Fiat', 'Genesis', 'GMC', 'Infiniti', 'Jaguar', 'Land Rover', 'Lexus', 'Lincoln', 'Mazda', 'Mercedes-Benz', 'Mini', 'Mitsubishi', 'Porsche', 'Ram', 'Volkswagen', 'Volvo'];
+const CR_VEHICLE_FALLBACK_MODELS = {
+  Acura: ['ILX', 'Integra', 'MDX', 'RDX', 'TLX'],
+  Audi: ['A3', 'A4', 'A5', 'A6', 'Q3', 'Q5', 'Q7'],
+  BMW: ['3 Series', '4 Series', '5 Series', 'X1', 'X3', 'X5'],
+  Buick: ['Encore', 'Encore GX', 'Enclave', 'Envision'],
+  Cadillac: ['CT4', 'CT5', 'Escalade', 'XT4', 'XT5', 'XT6'],
+  Chevrolet: ['Blazer', 'Colorado', 'Equinox', 'Malibu', 'Silverado', 'Suburban', 'Tahoe', 'Trailblazer', 'Traverse'],
+  Chrysler: ['300', 'Pacifica', 'Voyager'],
+  Dodge: ['Challenger', 'Charger', 'Durango', 'Hornet'],
+  Ford: ['Bronco', 'Escape', 'Explorer', 'F-150', 'Fusion', 'Maverick', 'Mustang', 'Ranger'],
+  Genesis: ['G70', 'G80', 'GV70', 'GV80'],
+  GMC: ['Acadia', 'Canyon', 'Sierra', 'Terrain', 'Yukon'],
+  Honda: ['Accord', 'Civic', 'CR-V', 'HR-V', 'Odyssey', 'Passport', 'Pilot', 'Ridgeline'],
+  Hyundai: ['Elantra', 'Kona', 'Palisade', 'Santa Fe', 'Sonata', 'Tucson'],
+  Infiniti: ['Q50', 'QX50', 'QX55', 'QX60', 'QX80'],
+  Jeep: ['Cherokee', 'Compass', 'Gladiator', 'Grand Cherokee', 'Renegade', 'Wrangler'],
+  Kia: ['Carnival', 'Forte', 'K5', 'Seltos', 'Sorento', 'Soul', 'Sportage', 'Telluride'],
+  Lexus: ['ES', 'GX', 'IS', 'NX', 'RX', 'TX'],
+  Lincoln: ['Aviator', 'Corsair', 'Nautilus', 'Navigator'],
+  Mazda: ['CX-30', 'CX-5', 'CX-50', 'CX-9', 'Mazda3', 'Mazda6', 'MX-5 Miata'],
+  'Mercedes-Benz': ['C-Class', 'E-Class', 'GLA', 'GLC', 'GLE', 'S-Class'],
+  Mini: ['Clubman', 'Convertible', 'Cooper', 'Countryman'],
+  Mitsubishi: ['Eclipse Cross', 'Mirage', 'Outlander', 'Outlander Sport'],
+  Nissan: ['Altima', 'Frontier', 'Kicks', 'Maxima', 'Murano', 'Pathfinder', 'Rogue', 'Sentra', 'Versa'],
+  Ram: ['1500', '2500', '3500', 'ProMaster'],
+  Subaru: ['Ascent', 'Crosstrek', 'Forester', 'Impreza', 'Legacy', 'Outback'],
+  Tesla: ['Model 3', 'Model S', 'Model X', 'Model Y'],
+  Toyota: ['4Runner', 'Camry', 'Corolla', 'Highlander', 'Prius', 'RAV4', 'Sienna', 'Tacoma', 'Tundra'],
+  Volkswagen: ['Atlas', 'Golf', 'ID.4', 'Jetta', 'Passat', 'Taos', 'Tiguan'],
+  Volvo: ['S60', 'S90', 'V60', 'XC40', 'XC60', 'XC90'],
+};
+
+function crPopulateYearOptions(select) {
+  const maxYear = new Date().getFullYear() + 1;
+  let html = '<option value="">Select year</option>';
+  for (let year = maxYear; year >= 1980; year -= 1) html += `<option value="${year}">${year}</option>`;
+  select.innerHTML = html;
+}
+
+function crPopulateMakeOptions(select) {
+  const popular = CR_VEHICLE_POPULAR_MAKES.map((m) => `<option value="${escapeHtml(m)}">${escapeHtml(m)}</option>`).join('');
+  const other = CR_VEHICLE_OTHER_MAKES
+    .filter((m) => !CR_VEHICLE_POPULAR_MAKES.includes(m))
+    .sort((a, b) => a.localeCompare(b))
+    .map((m) => `<option value="${escapeHtml(m)}">${escapeHtml(m)}</option>`)
+    .join('');
+  select.innerHTML = `
+    <option value="">Select make</option>
+    <optgroup label="Most common makes">${popular}</optgroup>
+    <optgroup label="Other makes">${other}</optgroup>`;
+}
+
+async function crLoadModelOptions(yearSelect, makeSelect, modelSelect) {
+  if (!modelSelect) return;
+  const year = yearSelect?.value || '';
+  const make = makeSelect?.value || '';
+
+  if (!year || !make) {
+    modelSelect.innerHTML = '<option value="">Select year and make first</option>';
+    modelSelect.disabled = true;
+    return;
+  }
+
+  modelSelect.innerHTML = '<option value="">Loading models…</option>';
+  modelSelect.disabled = true;
+
+  try {
+    const url = `https://vpic.nhtsa.dot.gov/api/vehicles/GetModelsForMakeYear/make/${encodeURIComponent(make)}/modelyear/${year}/vehicletype/car?format=json`;
+    const res = await fetch(url);
+    if (res.ok) {
+      const data = await res.json();
+      const models = [...new Set((data.Results || []).map((row) => row.Model_Name).filter(Boolean))].sort((a, b) => a.localeCompare(b));
+      if (models.length) {
+        modelSelect.innerHTML = `<option value="">Select model</option>${models.map((m) => `<option value="${escapeHtml(m)}">${escapeHtml(m)}</option>`).join('')}`;
+        modelSelect.disabled = false;
+        return;
+      }
+    }
+  } catch (error) {
+    console.warn('Could not load vehicle models from NHTSA:', error);
+  }
+
+  const fallback = CR_VEHICLE_FALLBACK_MODELS[make] || [];
+  modelSelect.innerHTML = `<option value="">${fallback.length ? 'Select model' : 'No models found'}</option>${fallback.map((m) => `<option value="${escapeHtml(m)}">${escapeHtml(m)}</option>`).join('')}`;
+  modelSelect.disabled = fallback.length === 0;
+}
+
+(function initCreateRequestVehicleDropdowns() {
+  const yearSelect = document.getElementById('cr-vehicle-year');
+  const makeSelect = document.getElementById('cr-vehicle-make');
+  const modelSelect = document.getElementById('cr-vehicle-model');
+  if (!yearSelect || !makeSelect || !modelSelect) return;
+
+  crPopulateYearOptions(yearSelect);
+  crPopulateMakeOptions(makeSelect);
+
+  yearSelect.addEventListener('change', () => crLoadModelOptions(yearSelect, makeSelect, modelSelect));
+  makeSelect.addEventListener('change', () => crLoadModelOptions(yearSelect, makeSelect, modelSelect));
+})();
 
 // Admin profile photo editor state (mirrors worker.js)
 let adminPhotoZoom = 1;
@@ -569,34 +685,53 @@ function isOpen(request) {
   return !terminalStatuses.includes(request.status);
 }
 
-function dashboardRangeStart(range) {
+function dashboardRangeBounds(range) {
   const now = new Date();
   if (range === 'today') {
     const d = new Date(now);
     d.setHours(0, 0, 0, 0);
-    return d;
+    return { start: d, end: null };
   }
   if (range === 'week') {
     const d = new Date(now);
     const dayIndex = (d.getDay() + 6) % 7;
     d.setDate(d.getDate() - dayIndex);
     d.setHours(0, 0, 0, 0);
-    return d;
+    return { start: d, end: null };
   }
   if (range === 'month') {
-    return new Date(now.getFullYear(), now.getMonth(), 1);
+    return { start: new Date(now.getFullYear(), now.getMonth(), 1), end: null };
   }
-  return null;
+  if (range === 'custom') {
+    const start = customRange.start ? new Date(customRange.start + 'T00:00:00') : null;
+    const end = customRange.end ? new Date(customRange.end + 'T23:59:59') : null;
+    return { start, end };
+  }
+  return { start: null, end: null }; // 'all'
 }
 
 function isInDashboardRange(request, range) {
-  const start = dashboardRangeStart(range);
-  if (!start) return true;
+  const { start, end } = dashboardRangeBounds(range);
+  if (!start && !end) return true;
   const stamp = new Date(request.updated_at || request.created_at);
-  return stamp >= start;
+  if (start && stamp < start) return false;
+  if (end && stamp > end) return false;
+  return true;
+}
+
+function formatShortDate(value) {
+  if (!value) return '';
+  const d = new Date(value + 'T00:00:00');
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 }
 
 function dashboardRangeLabel(range) {
+  if (range === 'custom') {
+    if (customRange.start && customRange.end) return `${formatShortDate(customRange.start)} – ${formatShortDate(customRange.end)}`;
+    if (customRange.start) return `From ${formatShortDate(customRange.start)}`;
+    if (customRange.end) return `Until ${formatShortDate(customRange.end)}`;
+    return 'Custom range';
+  }
   return { today: 'Today', week: 'This Week', month: 'This Month', all: 'All Time' }[range] || 'Today';
 }
 
@@ -1018,6 +1153,59 @@ function requestCardDetails(request) {
           </button>
         </div>
         <div class="edit-total-charge-panel" id="edit-total-panel-${escapeHtml(request.id)}" hidden></div>` : ''}
+    </div>
+  `;
+}
+
+function renderCompletedSummary(request) {
+  const receiptTotals = receiptTotalsFromNotes(request);
+  const fees = feeSummary(request, receiptTotals);
+  const vehicle = [request.vehicle_year, request.vehicle_make, request.vehicle_model, request.vehicle_color].filter(Boolean).join(' ');
+  const dateStr = request.service_date || formatTimestamp(request.updated_at || request.created_at);
+
+  const feeRows = [
+    receiptTotals.fuel  ? `<div class="summary-kv"><span>Fuel receipt</span><strong>${money(receiptTotals.fuel)}</strong></div>` : '',
+    receiptTotals.wash  ? `<div class="summary-kv"><span>Wash receipt</span><strong>${money(receiptTotals.wash)}</strong></div>` : '',
+    fees.fuel           ? `<div class="summary-kv"><span>Fuel service fee</span><strong>${money(fees.fuel)}</strong></div>` : '',
+    fees.wash           ? `<div class="summary-kv"><span>Wash service fee</span><strong>${money(fees.wash)}</strong></div>` : '',
+    fees.inspection     ? `<div class="summary-kv"><span>Inspection fee</span><strong>${money(fees.inspection)}</strong></div>` : '',
+    request.final_total != null
+      ? `<div class="summary-kv summary-kv--total"><span>Final total</span><strong>${money(request.final_total)}</strong></div>`
+      : '',
+  ].filter(Boolean).join('');
+
+  return `
+    <div class="completed-summary-card">
+      <div class="completed-summary-header">
+        <div class="completed-summary-title">
+          <strong>${escapeHtml(request.customer_name || 'Customer')}</strong>
+          <span class="completed-summary-id field-help">${escapeHtml(String(request.id).slice(0, 8))}</span>
+        </div>
+        <span class="status-pill status-pill-complete">Completed</span>
+      </div>
+      <div class="completed-summary-cols">
+        <div class="completed-summary-col">
+          <p class="summary-section-label">Service</p>
+          <p>${escapeHtml(adminFormatService(request))}</p>
+          <p class="summary-section-label">Vehicle</p>
+          <p>${escapeHtml(vehicle) || '—'}${request.license_plate ? ` · ${escapeHtml(request.license_plate)}` : ''}</p>
+          <p class="summary-section-label">Address</p>
+          <p>${escapeHtml(adminFormatAddress(request))}</p>
+        </div>
+        <div class="completed-summary-col">
+          <p class="summary-section-label">Worker</p>
+          <p>${escapeHtml(request.assigned_worker_name || '—')}</p>
+          <p class="summary-section-label">Date</p>
+          <p>${escapeHtml(dateStr)}</p>
+          <p class="summary-section-label">Payment</p>
+          <p>${paymentStatusLabel(request)}</p>
+        </div>
+        ${feeRows ? `<div class="completed-summary-col">${feeRows}</div>` : ''}
+      </div>
+      <div class="admin-button-row" style="margin-top:12px">
+        <button class="button secondary edit-request" data-id="${escapeHtml(request.id)}" type="button">Edit</button>
+      </div>
+      ${renderEditPanel(request)}
     </div>
   `;
 }
@@ -1679,8 +1867,10 @@ function renderEditPanel(request) {
 }
 
 function updateDashboardStatCards() {
-  const openCount = allRequests.filter((r) => UNASSIGNED_STATUSES.includes(r.status)).length;
-  const inProgressCount = allRequests.filter((r) => isOpen(r) && !UNASSIGNED_STATUSES.includes(r.status)).length;
+  // Every request-based tile is scoped to the active date range so the tile
+  // numbers match the lists you see when you click them.
+  const openCount = allRequests.filter((r) => UNASSIGNED_STATUSES.includes(r.status) && isInDashboardRange(r, dashboardRange)).length;
+  const inProgressCount = allRequests.filter((r) => isOpen(r) && !UNASSIGNED_STATUSES.includes(r.status) && isInDashboardRange(r, dashboardRange)).length;
   const completedCount = allRequests.filter((r) => r.status === 'complete' && isInDashboardRange(r, dashboardRange)).length;
   const activeWorkerCount = allEmployees.filter((e) => e.active).length;
   const netRevenue = allRequests
@@ -1702,41 +1892,96 @@ function updateDashboardStatCards() {
 }
 
 function matchesQueueFilters(request) {
+  // Service type
   if (queueFilters.serviceType && request.service_type !== queueFilters.serviceType) return false;
-  const assigned = Boolean(request.assigned_employee_id || request.assigned_worker_name);
-  if (queueFilters.assignment === 'unassigned' && assigned) return false;
-  if (queueFilters.assignment === 'assigned' && !assigned) return false;
+
+  // Specific status
+  if (queueFilters.status && request.status !== queueFilters.status) return false;
+
+  // Worker (specific worker, or unassigned)
+  if (queueFilters.worker) {
+    const assigned = Boolean(request.assigned_employee_id || request.assigned_worker_name);
+    if (queueFilters.worker === '__unassigned') {
+      if (assigned) return false;
+    } else {
+      const emp = allEmployees.find((e) => e.id === queueFilters.worker);
+      const matchById = request.assigned_employee_id === queueFilters.worker;
+      const matchByName = emp && request.assigned_worker_name === emp.full_name;
+      if (!matchById && !matchByName) return false;
+    }
+  }
+
+  // Payment status
+  if (queueFilters.payment) {
+    const ps = request.payment_status || 'not_started';
+    if (queueFilters.payment === 'attention') {
+      if (!['payment_release_failed', 'capture_failed'].includes(ps)) return false;
+    } else if (ps !== queueFilters.payment) {
+      return false;
+    }
+  }
+
+  // Free-text search across name / email / phone / plate / vehicle / ticket id
+  if (queueFilters.search) {
+    const q = queueFilters.search.trim().toLowerCase();
+    const digits = q.replace(/[^0-9]/g, '');
+    const hay = [
+      request.customer_name, request.customer_email, request.license_plate,
+      request.vehicle_make, request.vehicle_model, request.service_label, request.id,
+    ].filter(Boolean).join(' ').toLowerCase();
+    const phoneDigits = String(request.customer_phone || '').replace(/[^0-9]/g, '');
+    const textMatch = hay.includes(q);
+    const phoneMatch = digits.length >= 3 && phoneDigits.includes(digits);
+    if (!textMatch && !phoneMatch) return false;
+  }
+
   return true;
 }
 
-function renderRequests() {
-  const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+function sortFilteredRequests(list) {
+  const by = queueFilters.sort || 'newest';
+  return list.slice().sort((a, b) => {
+    if (by === 'name') {
+      return String(a.customer_name || '').localeCompare(String(b.customer_name || ''));
+    }
+    if (by === 'service-date') {
+      // Soonest service date first; rows with no date sink to the bottom.
+      const ad = a.service_date || '9999-12-31';
+      const bd = b.service_date || '9999-12-31';
+      return ad.localeCompare(bd);
+    }
+    const at = new Date(a.created_at || 0).getTime();
+    const bt = new Date(b.created_at || 0).getTime();
+    return by === 'oldest' ? at - bt : bt - at;
+  });
+}
 
+function renderRequests() {
   const filtered = allRequests.filter((request) => {
     if (!matchesQueueFilters(request)) return false;
+    // The date range is a global filter — it applies to EVERY view (All, Open,
+    // In Progress, Completed, Closed). "All time" shows everything.
+    if (!isInDashboardRange(request, dashboardRange)) return false;
+    // A specific status filter is authoritative — it overrides the bucket tab so
+    // e.g. "Complete" still shows even while the Open view is active.
+    if (queueFilters.status) return true;
     if (currentView === 'all') return true;
     if (currentView === 'unassigned') return UNASSIGNED_STATUSES.includes(request.status);
     if (currentView === 'inprogress') return isOpen(request) && !UNASSIGNED_STATUSES.includes(request.status);
-    if (currentView === 'complete') {
-      if (!showAllTime && request.status === 'complete') {
-        return (request.updated_at || request.created_at) >= sevenDaysAgo;
-      }
-      return request.status === 'complete';
-    }
-    if (currentView === 'closed') {
-      if (!showAllTime && closedStatuses.includes(request.status)) {
-        return (request.updated_at || request.created_at) >= sevenDaysAgo;
-      }
-      return closedStatuses.includes(request.status);
-    }
+    if (currentView === 'complete') return request.status === 'complete';
+    if (currentView === 'closed') return closedStatuses.includes(request.status);
     return true;
   });
 
-  const allCount = allRequests.length;
-  const openCount = allRequests.filter((r) => UNASSIGNED_STATUSES.includes(r.status)).length;
-  const inProgressCount = allRequests.filter((r) => isOpen(r) && !UNASSIGNED_STATUSES.includes(r.status)).length;
-  const completeCount = allRequests.filter((r) => r.status === 'complete').length;
-  const closedCount = allRequests.filter((r) => closedStatuses.includes(r.status)).length;
+  const sortedFiltered = sortFilteredRequests(filtered);
+
+  // Bucket-tab counts are scoped to the active date range so they match the list.
+  const inRange = allRequests.filter((r) => isInDashboardRange(r, dashboardRange));
+  const allCount = inRange.length;
+  const openCount = inRange.filter((r) => UNASSIGNED_STATUSES.includes(r.status)).length;
+  const inProgressCount = inRange.filter((r) => isOpen(r) && !UNASSIGNED_STATUSES.includes(r.status)).length;
+  const completeCount = inRange.filter((r) => r.status === 'complete').length;
+  const closedCount = inRange.filter((r) => closedStatuses.includes(r.status)).length;
 
   if (allRequestsCountEl) allRequestsCountEl.textContent = allCount;
   if (openRequests) openRequests.textContent = openCount;
@@ -1744,8 +1989,8 @@ function renderRequests() {
   if (completeRequests) completeRequests.textContent = completeCount;
   if (deniedRequests) deniedRequests.textContent = closedCount;
 
-  // Update hero completed count
-  if (adminCompletedCount) adminCompletedCount.textContent = completeCount;
+  // Hero "Completed all-time" stays all-time regardless of the date range.
+  if (adminCompletedCount) adminCompletedCount.textContent = allRequests.filter((r) => r.status === 'complete').length;
 
   updateDashboardStatCards();
 
@@ -1754,8 +1999,9 @@ function renderRequests() {
   if (requestQueueHeading) requestQueueHeading.textContent = headings[currentView] || 'Requests';
   if (requestQueueEyebrow) requestQueueEyebrow.textContent = (currentView === 'complete' || currentView === 'closed') ? 'History' : 'Queue';
 
-  const needsShowAll = (currentView === 'complete' || currentView === 'closed') && !showAllTime;
-  if (showAllTimeBtn) showAllTimeBtn.style.display = needsShowAll ? '' : 'none';
+  // The date range dropdown ("All time" shows everything) replaces the old
+  // standalone "Show all time" button.
+  if (showAllTimeBtn) showAllTimeBtn.style.display = 'none';
 
   // Summary card active state
   [showAll, showOpen, showInProgress, showComplete, showDenied].forEach((btn) => btn?.classList.remove('active'));
@@ -1765,10 +2011,13 @@ function renderRequests() {
   if (currentView === 'complete') showComplete?.classList.add('active');
   if (currentView === 'closed') showDenied?.classList.add('active');
 
-  if (filtered.length === 0) {
-    const msg = needsShowAll
-      ? '<div class="empty-state"><p>No requests in the last 7 days. <button class="button secondary inline-show-all" type="button">Show all time</button></p></div>'
-      : '<div class="empty-state"><p>No requests in this view.</p></div>';
+  if (sortedFiltered.length === 0) {
+    const hasActiveFilters = Boolean(queueFilters.search || queueFilters.serviceType || queueFilters.worker || queueFilters.payment);
+    const msg = hasActiveFilters
+      ? '<div class="empty-state"><p>No requests match your filters. <button class="button secondary inline-clear-filters" type="button">Clear filters</button></p></div>'
+      : (dashboardRange !== 'all')
+        ? `<div class="empty-state"><p>No requests in <strong>${escapeHtml(dashboardRangeLabel(dashboardRange))}</strong>. <button class="button secondary inline-range-all" type="button">Show all time</button></p></div>`
+        : '<div class="empty-state"><p>No requests in this view.</p></div>';
     requestList.innerHTML = msg;
     return;
   }
@@ -1786,11 +2035,14 @@ function renderRequests() {
         </tr>
       </thead>
       <tbody>
-        ${filtered.map((request) => {
+        ${sortedFiltered.map((request) => {
           const bucket = queueStatusBucket(request);
           const isExpanded = expandedRequestId === request.id;
+          const isSummaryExpanded = expandedSummaryId === request.id;
+          const isCompleted = bucket.label === 'Completed';
+          const actionBtnClass = isCompleted ? 'queue-summary-toggle' : 'queue-row-toggle';
           const rows = [`
-            <tr class="queue-row${isExpanded ? ' is-expanded' : ''}" data-request-id="${request.id}">
+            <tr class="queue-row${isExpanded || isSummaryExpanded ? ' is-expanded' : ''}" data-request-id="${request.id}">
               <td>
                 <div class="queue-customer-cell">
                   <span class="queue-avatar">${escapeHtml(queueInitials(request.customer_name))}</span>
@@ -1806,7 +2058,7 @@ function renderRequests() {
               <td>${queueDateTime(request)}</td>
               <td>
                 <div class="queue-next-action-cell">
-                  <button class="button secondary queue-row-toggle" data-id="${request.id}" type="button">${queueNextActionLabel(bucket)}</button>
+                  <button class="button secondary ${actionBtnClass}" data-id="${request.id}" type="button">${queueNextActionLabel(bucket)}</button>
                   <button class="queue-row-kebab queue-row-toggle" data-id="${request.id}" type="button" aria-label="More">&#8942;</button>
                 </div>
               </td>
@@ -1828,6 +2080,15 @@ function renderRequests() {
                     ${renderWorkerAssignment(request)}
                     ${renderActions(request)}
                   </article>
+                </td>
+              </tr>
+            `);
+          }
+          if (isSummaryExpanded) {
+            rows.push(`
+              <tr class="queue-row-summary">
+                <td colspan="6">
+                  ${renderCompletedSummary(request)}
                 </td>
               </tr>
             `);
@@ -1930,6 +2191,7 @@ async function loadEmployees() {
     if (workerCountBadge) workerCountBadge.textContent = allEmployees.filter((e) => e.active).length;
     renderWorkerSelect();
     renderWorkerProfiles();
+    populateFilterWorkers();
     updateDashboardStatCards();
   } catch (error) {
     console.error('Could not load employees:', error);
@@ -2595,7 +2857,13 @@ async function loadRequests() {
 
   allRequests = data || [];
   updateHeroStats();
-  renderRequests();
+  populateFilterStatuses();
+  // The Active Workers and Revenue stat cards inject custom tables that aren't
+  // driven by currentView — re-render them so a refresh doesn't revert to the
+  // default queue.
+  if (activeStatCard === 'workers') openWorkersPanel();
+  else if (activeStatCard === 'revenue') openRevenueBreakdown();
+  else renderRequests();
 }
 
 function renderReviews(reviews, requestMap = new Map(), starFilter = null) {
@@ -4057,9 +4325,18 @@ requestList.addEventListener('click', async (event) => {
   if (!button) return;
 
   try {
+    if (button.classList.contains('queue-summary-toggle')) {
+      const id = button.dataset.id;
+      expandedSummaryId = expandedSummaryId === id ? null : id;
+      expandedRequestId = null;
+      renderRequests();
+      return;
+    }
+
     if (button.classList.contains('queue-row-toggle')) {
       const id = button.dataset.id;
       expandedRequestId = expandedRequestId === id ? null : id;
+      expandedSummaryId = null;
       renderRequests();
       return;
     }
@@ -4067,6 +4344,19 @@ requestList.addEventListener('click', async (event) => {
     if (button.classList.contains('inline-show-all')) {
       showAllTime = true;
       renderRequests();
+      return;
+    }
+
+    if (button.classList.contains('inline-range-all')) {
+      dashboardRange = 'all';
+      if (dashboardRangeSelect) dashboardRangeSelect.value = 'all';
+      if (customRangeInputs) customRangeInputs.hidden = true;
+      applyDashboardRange();
+      return;
+    }
+
+    if (button.classList.contains('inline-clear-filters')) {
+      clearQueueFilters();
       return;
     }
 
@@ -4367,30 +4657,35 @@ requestList.addEventListener('input', (event) => {
 });
 
 showAll?.addEventListener('click', () => {
+  setActiveStatCard(null);
   currentView = 'all';
   showAllTime = false;
   switchAdminTab('requests');
   renderRequests();
 });
 showOpen?.addEventListener('click', () => {
+  setActiveStatCard(null);
   currentView = 'unassigned';
   showAllTime = false;
   switchAdminTab('requests');
   renderRequests();
 });
 showInProgress?.addEventListener('click', () => {
+  setActiveStatCard(null);
   currentView = 'inprogress';
   showAllTime = false;
   switchAdminTab('requests');
   renderRequests();
 });
 showComplete?.addEventListener('click', () => {
+  setActiveStatCard(null);
   currentView = 'complete';
   showAllTime = false;
   switchAdminTab('requests');
   renderRequests();
 });
 showDenied?.addEventListener('click', () => {
+  setActiveStatCard(null);
   currentView = 'closed';
   showAllTime = false;
   switchAdminTab('requests');
@@ -4405,9 +4700,41 @@ showAllTimeBtn?.addEventListener('click', () => {
   renderRequests();
 });
 
+const customRangeInputs = document.querySelector('#custom-range-inputs');
+const customRangeStart = document.querySelector('#custom-range-start');
+const customRangeEnd = document.querySelector('#custom-range-end');
+
+function applyDashboardRange() {
+  // History views (Completed/Closed) are date-scoped, so re-render the queue too.
+  updateDashboardStatCards();
+  if (activeStatCard === 'revenue') openRevenueBreakdown();
+  else renderRequests();
+}
+
 dashboardRangeSelect?.addEventListener('change', () => {
   dashboardRange = dashboardRangeSelect.value;
-  updateDashboardStatCards();
+  if (customRangeInputs) customRangeInputs.hidden = dashboardRange !== 'custom';
+  // For a brand-new custom selection with no dates yet, behave like "all" until
+  // the user picks dates (handled by dashboardRangeBounds returning nulls).
+  applyDashboardRange();
+});
+
+const customRangeApply = document.querySelector('#custom-range-apply');
+
+// Custom range only takes effect when the user clicks Apply — this avoids
+// half-finished filtering while they're still picking the start/end dates.
+customRangeApply?.addEventListener('click', () => {
+  customRange.start = customRangeStart?.value || '';
+  customRange.end = customRangeEnd?.value || '';
+  dashboardRange = 'custom';
+  applyDashboardRange();
+});
+
+// Pressing Enter in either date field applies too.
+[customRangeStart, customRangeEnd].forEach((el) => {
+  el?.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); customRangeApply?.click(); }
+  });
 });
 
 dashboardFiltersBtn?.addEventListener('click', () => {
@@ -4423,10 +4750,63 @@ document.addEventListener('click', (event) => {
   dashboardFiltersBtn?.setAttribute('aria-expanded', 'false');
 });
 
-function updateFiltersButtonState() {
-  const hasActiveFilters = Boolean(queueFilters.serviceType || queueFilters.assignment);
-  dashboardFiltersBtn?.classList.toggle('has-active-filters', hasActiveFilters);
+function activeFilterCount() {
+  return [queueFilters.search, queueFilters.serviceType, queueFilters.status, queueFilters.worker, queueFilters.payment]
+    .filter(Boolean).length;
 }
+
+function updateFiltersButtonState() {
+  const count = activeFilterCount();
+  dashboardFiltersBtn?.classList.toggle('has-active-filters', count > 0);
+  // Show the active-filter count right in the button label.
+  if (dashboardFiltersBtn) {
+    let badge = dashboardFiltersBtn.querySelector('.filter-count-badge');
+    if (count > 0) {
+      if (!badge) {
+        badge = document.createElement('span');
+        badge.className = 'filter-count-badge';
+        dashboardFiltersBtn.appendChild(badge);
+      }
+      badge.textContent = count;
+    } else if (badge) {
+      badge.remove();
+    }
+  }
+}
+
+// Populate the Worker filter dropdown from the active employee list.
+function populateFilterWorkers() {
+  if (!filterWorkerSelect) return;
+  const current = filterWorkerSelect.value;
+  const active = allEmployees
+    .filter((e) => e.active)
+    .sort((a, b) => String(a.full_name || '').localeCompare(String(b.full_name || '')));
+  filterWorkerSelect.innerHTML =
+    '<option value="">Any worker</option>' +
+    '<option value="__unassigned">Unassigned</option>' +
+    active.map((e) => `<option value="${escapeHtml(e.id)}">${escapeHtml(e.full_name)}</option>`).join('');
+  if ([...filterWorkerSelect.options].some((o) => o.value === current)) filterWorkerSelect.value = current;
+}
+
+// Populate the Status filter with only the statuses present in the current data,
+// labelled with their friendly names and sorted alphabetically by label.
+function populateFilterStatuses() {
+  if (!filterStatusSelect) return;
+  const current = filterStatusSelect.value;
+  const present = [...new Set(allRequests.map((r) => r.status).filter(Boolean))]
+    .map((s) => ({ value: s, label: statusLabels[s] || s }))
+    .sort((a, b) => a.label.localeCompare(b.label));
+  filterStatusSelect.innerHTML =
+    '<option value="">Any status</option>' +
+    present.map((s) => `<option value="${escapeHtml(s.value)}">${escapeHtml(s.label)}</option>`).join('');
+  if ([...filterStatusSelect.options].some((o) => o.value === current)) filterStatusSelect.value = current;
+}
+
+filterSearchInput?.addEventListener('input', () => {
+  queueFilters.search = filterSearchInput.value;
+  updateFiltersButtonState();
+  renderRequests();
+});
 
 filterServiceTypeSelect?.addEventListener('change', () => {
   queueFilters.serviceType = filterServiceTypeSelect.value;
@@ -4434,20 +4814,44 @@ filterServiceTypeSelect?.addEventListener('change', () => {
   renderRequests();
 });
 
-filterAssignmentSelect?.addEventListener('change', () => {
-  queueFilters.assignment = filterAssignmentSelect.value;
+filterStatusSelect?.addEventListener('change', () => {
+  queueFilters.status = filterStatusSelect.value;
   updateFiltersButtonState();
   renderRequests();
 });
 
-filterClearBtn?.addEventListener('click', () => {
-  queueFilters = { serviceType: '', assignment: '' };
-  if (filterServiceTypeSelect) filterServiceTypeSelect.value = '';
-  if (filterAssignmentSelect) filterAssignmentSelect.value = '';
-  if (dashboardFiltersPanel) dashboardFiltersPanel.hidden = true;
-  dashboardFiltersBtn?.setAttribute('aria-expanded', 'false');
+filterWorkerSelect?.addEventListener('change', () => {
+  queueFilters.worker = filterWorkerSelect.value;
   updateFiltersButtonState();
   renderRequests();
+});
+
+filterPaymentSelect?.addEventListener('change', () => {
+  queueFilters.payment = filterPaymentSelect.value;
+  updateFiltersButtonState();
+  renderRequests();
+});
+
+filterSortSelect?.addEventListener('change', () => {
+  queueFilters.sort = filterSortSelect.value;
+  renderRequests();
+});
+
+function clearQueueFilters() {
+  queueFilters = { search: '', serviceType: '', status: '', worker: '', payment: '', sort: queueFilters.sort || 'newest' };
+  if (filterSearchInput) filterSearchInput.value = '';
+  if (filterServiceTypeSelect) filterServiceTypeSelect.value = '';
+  if (filterStatusSelect) filterStatusSelect.value = '';
+  if (filterWorkerSelect) filterWorkerSelect.value = '';
+  if (filterPaymentSelect) filterPaymentSelect.value = '';
+  updateFiltersButtonState();
+  renderRequests();
+}
+
+filterClearBtn?.addEventListener('click', () => {
+  clearQueueFilters();
+  if (dashboardFiltersPanel) dashboardFiltersPanel.hidden = true;
+  dashboardFiltersBtn?.setAttribute('aria-expanded', 'false');
 });
 
 function switchPageTab(page) {
@@ -4464,8 +4868,11 @@ function switchPageTab(page) {
     currentView = 'unassigned';
     switchAdminTab('requests');
   }
-  if (page === 'services') { loadFuelPricesForAdmin(); loadServicePricing(); }
-  if (page === 'reports') loadReportsPage();
+  if (page === 'services') {
+    Promise.all([loadFuelPricesForAdmin(), loadServicePricing()]).then(([fuelData, pricingData]) => {
+      showPricingPendingBanner(fuelData, pricingData);
+    });
+  }
   renderRequests();
 }
 
@@ -4496,7 +4903,133 @@ document.querySelectorAll('[data-page-action]').forEach((btn) => {
 adminRefreshBtn?.addEventListener('click', () => refreshAdminView(adminRefreshBtn));
 adminSideRefreshBtn?.addEventListener('click', () => refreshAdminView(adminSideRefreshBtn));
 adminReviewsRefreshBtn?.addEventListener('click', () => refreshAdminView(adminReviewsRefreshBtn));
-adminReportRefreshBtn?.addEventListener('click', () => loadReportsPage());
+
+// ── Dashboard stat card drilldown ────────────────────────────────────────────
+
+// ── Stat card inline filtering ────────────────────────────────────────────────
+
+let activeStatCard = null;
+
+function setActiveStatCard(cardId) {
+  document.querySelectorAll('.admin-stat-card--clickable').forEach((c) => c.classList.remove('stat-card--active'));
+  if (cardId) document.getElementById(`stat-card-${cardId}`)?.classList.add('stat-card--active');
+  activeStatCard = cardId;
+  // Stat cards render into the requests panel — make sure it's the visible tab
+  // (the user may have switched to reviews/applicants first).
+  if (cardId) switchAdminTab('requests');
+  // When a stat tile drives the view, the tiles ARE the navigation — hide the
+  // All/Open/In Progress/Completed/Closed sub-tabs so only that subset shows.
+  const queueTabs = document.querySelector('.admin-request-tabs');
+  if (queueTabs) queueTabs.classList.toggle('cr-hidden', !!cardId);
+}
+
+function statCardNav(view, cardId) {
+  setActiveStatCard(cardId);
+  currentView = view;
+  if (view === 'complete') showAllTime = false;
+  renderRequests();
+  requestList?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+function openWorkersPanel() {
+  setActiveStatCard('workers');
+
+  const active = allEmployees.filter((e) => e.active);
+  const busy   = new Set(
+    allRequests
+      .filter((r) => isOpen(r) && (r.assigned_employee_id || r.assigned_worker_name))
+      .map((r) => r.assigned_employee_id || r.assigned_worker_name)
+  );
+
+  if (!requestList) return;
+
+  if (!active.length) {
+    requestList.innerHTML = '<div class="empty-state"><p>No active workers right now.</p></div>';
+  } else {
+    const rows = active.map((e) => {
+      const isBusy = busy.has(e.id) || busy.has(e.full_name);
+      const statusLabel = isBusy ? 'Busy' : 'Available';
+      const statusClass = isBusy ? 'status-pill-progress' : 'status-pill-complete';
+      return `<tr>
+        <td><strong>${escapeHtml(e.full_name)}</strong></td>
+        <td>${escapeHtml(e.employee_code)}</td>
+        <td>${escapeHtml(e.phone || '—')}</td>
+        <td><span class="status-pill ${statusClass}">${statusLabel}</span></td>
+      </tr>`;
+    }).join('');
+    requestList.innerHTML = `
+      <table class="revenue-breakdown-table">
+        <thead><tr><th>Name</th><th>Code</th><th>Phone</th><th>Status</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>`;
+  }
+
+  if (requestQueueHeading) requestQueueHeading.textContent = 'Active Workers';
+  if (requestQueueEyebrow) requestQueueEyebrow.textContent = 'Workers';
+  if (showAllTimeBtn) showAllTimeBtn.style.display = 'none';
+  requestList?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+function openRevenueBreakdown() {
+  setActiveStatCard('revenue');
+
+  const rangeLabel = dashboardRangeLabel(dashboardRange);
+  const captured = allRequests.filter((r) => r.payment_status === 'captured' && isInDashboardRange(r, dashboardRange));
+
+  if (!requestList) return;
+
+  if (!captured.length) {
+    requestList.innerHTML = '<div class="empty-state"><p>No captured payments in this period.</p></div>';
+  } else {
+    let grandTotal = 0;
+    const rows = captured.map((r) => {
+      const fuel  = Number(r.displayed_fuel_service_fee || 0);
+      const wash  = Number(r.displayed_car_wash_service_fee || 0);
+      const insp  = Number(r.displayed_inspection_fee || 0);
+      const total = fuel + wash + insp;
+      grandTotal += total;
+      const name = [r.first_name, r.last_name].filter(Boolean).join(' ') || 'Customer';
+      const ticket = r.id ? `#${String(r.id).slice(0, 8)}` : '';
+      return `<tr>
+        <td>${escapeHtml(ticket)}</td>
+        <td>${escapeHtml(name)}</td>
+        <td>${fuel > 0 ? '$' + fuel.toFixed(2) : '—'}</td>
+        <td>${wash > 0 ? '$' + wash.toFixed(2) : '—'}</td>
+        <td>${insp > 0 ? '$' + insp.toFixed(2) : '—'}</td>
+        <td class="revenue-row-total">$${total.toFixed(2)}</td>
+      </tr>`;
+    }).join('');
+    requestList.innerHTML = `
+      <table class="revenue-breakdown-table">
+        <thead><tr>
+          <th>Ticket</th><th>Customer</th><th>Fuel Fee</th><th>Wash Fee</th><th>Inspection Fee</th><th>Total</th>
+        </tr></thead>
+        <tbody>${rows}</tbody>
+        <tfoot><tr>
+          <td colspan="5" class="revenue-grand-label">Net Revenue Total</td>
+          <td class="revenue-grand-total">$${grandTotal.toFixed(2)}</td>
+        </tr></tfoot>
+      </table>`;
+  }
+
+  if (requestQueueHeading) requestQueueHeading.textContent = `Net Revenue — ${rangeLabel}`;
+  if (requestQueueEyebrow) requestQueueEyebrow.textContent = 'Revenue';
+  if (showAllTimeBtn) showAllTimeBtn.style.display = 'none';
+  requestList?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+function closeRevenueBreakdown() { /* no-op — kept for any legacy callers */ }
+
+document.getElementById('stat-card-open')?.addEventListener('click', () => statCardNav('unassigned', 'open'));
+document.getElementById('stat-card-open')?.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); statCardNav('unassigned', 'open'); } });
+document.getElementById('stat-card-inprogress')?.addEventListener('click', () => statCardNav('inprogress', 'inprogress'));
+document.getElementById('stat-card-inprogress')?.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); statCardNav('inprogress', 'inprogress'); } });
+document.getElementById('stat-card-completed')?.addEventListener('click', () => statCardNav('complete', 'completed'));
+document.getElementById('stat-card-completed')?.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); statCardNav('complete', 'completed'); } });
+document.getElementById('stat-card-workers')?.addEventListener('click', openWorkersPanel);
+document.getElementById('stat-card-workers')?.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openWorkersPanel(); } });
+document.getElementById('stat-card-revenue')?.addEventListener('click', openRevenueBreakdown);
+document.getElementById('stat-card-revenue')?.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openRevenueBreakdown(); } });
 
 // Find Tickets modal
 heroFindTicketsBtn?.addEventListener('click', openFindTicketsModal);
@@ -4518,6 +5051,8 @@ function closeFindTicketsModal() {
   findTicketsModal.hidden = true;
   document.body.style.overflow = '';
 }
+
+heroAvgRatingBtn?.addEventListener('click', () => switchAdminTab('reviews'));
 
 function normalizePhone(s) {
   return String(s || '').replace(/\D/g, '');
@@ -4564,10 +5099,10 @@ document.querySelectorAll('input[type="tel"], .edit-customer-phone, .admin-worke
   .forEach(attachPhoneInputFormatting);
 
 async function refreshAdminView(button = null) {
-  const originalText = button?.textContent;
+  const originalHTML = button?.innerHTML;
   if (button) {
     button.disabled = true;
-    button.textContent = 'Refreshing...';
+    button.innerHTML = 'Refreshing&hellip;';
   }
 
   try {
@@ -4586,7 +5121,7 @@ async function refreshAdminView(button = null) {
   } finally {
     if (button) {
       button.disabled = false;
-      button.textContent = originalText;
+      button.innerHTML = originalHTML;
     }
   }
 }
@@ -5370,12 +5905,102 @@ const SERVICE_PRICING_FIELDS = [
 function renderServicesSettingsList() {
   const list = document.querySelector('#services-settings-list');
   if (!list || list.dataset.rendered) return;
-  list.innerHTML = SERVICE_PRICING_FIELDS.map((field) => `
-    <label>${escapeHtml(field.label)}
-      <input id="${field.id}" type="number" step="${field.step}" min="0">
-    </label>
-  `).join('');
+  list.innerHTML = `
+    <div class="pricing-group">
+      <div class="pricing-group-card">
+        <p class="pricing-group-label">Fuel Prices</p>
+        <div class="pricing-group-grid">
+          <label>Regular ($/gal)<input id="fp-regular" type="number" step="0.001" min="0"></label>
+          <label>Mid-grade ($/gal)<input id="fp-midgrade" type="number" step="0.001" min="0"></label>
+          <label>Premium ($/gal)<input id="fp-premium" type="number" step="0.001" min="0"></label>
+          <label>Diesel ($/gal)<input id="fp-diesel" type="number" step="0.001" min="0"></label>
+        </div>
+      </div>
+      <label class="pricing-fee-row">Fuel concierge service fee ($)<input id="sp-fuel-fee" type="number" step="0.01" min="0"></label>
+    </div>
+
+    <div class="pricing-group">
+      <div class="pricing-group-card">
+        <p class="pricing-group-label">Car Wash Packages</p>
+        <div class="pricing-group-grid">
+          <label>Buff &amp; Shine ($)<input id="sp-wash-buff-shine" type="number" step="0.01" min="0"></label>
+          <label>Shine &amp; Protect ($)<input id="sp-wash-shine-protect" type="number" step="0.01" min="0"></label>
+          <label>Shine ($)<input id="sp-wash-shine" type="number" step="0.01" min="0"></label>
+          <label>Double Wash ($)<input id="sp-wash-double" type="number" step="0.01" min="0"></label>
+        </div>
+      </div>
+      <label class="pricing-fee-row">Car wash service fee ($)<input id="sp-wash-fee" type="number" step="0.01" min="0"></label>
+    </div>
+
+    <div class="pricing-group pricing-group--single">
+      <label>Quick inspection fee ($)<input id="sp-inspection-fee" type="number" step="0.01" min="0"></label>
+    </div>
+
+    <div class="pricing-effective-date-row">
+      <div id="pricing-pending-banner" class="pricing-pending-banner" hidden></div>
+      <label class="pricing-effective-label">
+        Effective date
+        <span class="pricing-effective-hint">Leave blank to apply immediately</span>
+        <input id="sp-effective-date" type="datetime-local">
+      </label>
+    </div>
+  `;
   list.dataset.rendered = '1';
+}
+
+function showPricingPendingBanner(fuelData, pricingData) {
+  const banner = document.getElementById('pricing-pending-banner');
+  if (!banner) return;
+
+  const effectiveAt = fuelData?.prices_effective_at || pricingData?.prices_effective_at;
+  const hasPending = (fuelData?.pending_prices || pricingData?.pending_prices) && effectiveAt;
+
+  if (!hasPending) {
+    banner.hidden = true;
+    return;
+  }
+
+  const when = new Date(effectiveAt).toLocaleString('en-US', {
+    month: 'short', day: 'numeric', year: 'numeric',
+    hour: 'numeric', minute: '2-digit', hour12: true,
+  });
+  banner.hidden = false;
+  banner.innerHTML = `
+    <span class="pricing-pending-icon">⏰</span>
+    <span>Price update scheduled for <strong>${when}</strong>. Current prices remain active until then.</span>
+    <button type="button" class="pricing-pending-cancel" id="cancel-pending-prices">Cancel scheduled update</button>
+  `;
+
+  document.getElementById('cancel-pending-prices')?.addEventListener('click', async () => {
+    try {
+      await Promise.all([
+        db.rpc('admin_update_fuel_prices', {
+          p_token: adminToken(),
+          p_regular: Number(document.getElementById('fp-regular')?.value || 0),
+          p_midgrade: Number(document.getElementById('fp-midgrade')?.value || 0),
+          p_premium: Number(document.getElementById('fp-premium')?.value || 0),
+          p_diesel: Number(document.getElementById('fp-diesel')?.value || 0),
+          p_effective_at: null,
+        }),
+        db.rpc('admin_update_service_pricing', {
+          p_token: adminToken(),
+          p_fuel_service_fee: Number(document.getElementById('sp-fuel-fee')?.value || 0),
+          p_wash_service_fee: Number(document.getElementById('sp-wash-fee')?.value || 0),
+          p_quick_inspection_fee: Number(document.getElementById('sp-inspection-fee')?.value || 0),
+          p_wash_buff_shine_price: Number(document.getElementById('sp-wash-buff-shine')?.value || 0),
+          p_wash_shine_protect_price: Number(document.getElementById('sp-wash-shine-protect')?.value || 0),
+          p_wash_shine_price: Number(document.getElementById('sp-wash-shine')?.value || 0),
+          p_wash_double_wash_price: Number(document.getElementById('sp-wash-double')?.value || 0),
+          p_effective_at: null,
+        }),
+      ]);
+      banner.hidden = true;
+      const statusEl = document.getElementById('services-settings-status');
+      if (statusEl) statusEl.textContent = 'Scheduled update cancelled. Current prices remain active.';
+    } catch (err) {
+      console.error('Cancel pending prices failed:', err);
+    }
+  });
 }
 
 async function loadFuelPricesForAdmin() {
@@ -5388,6 +6013,7 @@ async function loadFuelPricesForAdmin() {
     if (v('fp-midgrade')) v('fp-midgrade').value = Number(data.midgrade_price).toFixed(3);
     if (v('fp-premium')) v('fp-premium').value = Number(data.premium_price).toFixed(3);
     if (v('fp-diesel')) v('fp-diesel').value = Number(data.diesel_price).toFixed(3);
+    return data;
   } catch {
     // Non-fatal — form stays blank.
   }
@@ -5426,6 +6052,7 @@ async function loadServicePricing() {
     if (v('sp-wash-shine-protect')) v('sp-wash-shine-protect').value = Number(data.wash_shine_protect_price).toFixed(2);
     if (v('sp-wash-shine')) v('sp-wash-shine').value = Number(data.wash_shine_price).toFixed(2);
     if (v('sp-wash-double')) v('sp-wash-double').value = Number(data.wash_double_wash_price).toFixed(2);
+    return data;
   } catch {
     // Non-fatal — form keeps its defaults.
   }
@@ -5493,6 +6120,9 @@ document.querySelector('#services-settings-form')?.addEventListener('submit', as
 
   try {
     const val = (id) => parseFloat(document.getElementById(id)?.value || '0');
+    const effectiveDateRaw = document.getElementById('sp-effective-date')?.value;
+    const effectiveAt = effectiveDateRaw ? new Date(effectiveDateRaw).toISOString() : null;
+    const isScheduled = effectiveAt && new Date(effectiveDateRaw) > new Date();
 
     const [fuelResult, pricingResult] = await Promise.all([
       db.rpc('admin_update_fuel_prices', {
@@ -5502,6 +6132,7 @@ document.querySelector('#services-settings-form')?.addEventListener('submit', as
         p_premium: val('fp-premium'),
         p_diesel: val('fp-diesel'),
         p_service_area: null,
+        p_effective_at: effectiveAt,
       }),
       db.rpc('admin_update_service_pricing', {
         p_token: adminToken(),
@@ -5512,14 +6143,30 @@ document.querySelector('#services-settings-form')?.addEventListener('submit', as
         p_wash_shine_protect_price: val('sp-wash-shine-protect'),
         p_wash_shine_price: val('sp-wash-shine'),
         p_wash_double_wash_price: val('sp-wash-double'),
+        p_effective_at: effectiveAt,
       }),
     ]);
 
     if (fuelResult.error) throw fuelResult.error;
     if (pricingResult.error) throw pricingResult.error;
 
-    applyServicePricing(pricingResult.data);
-    if (statusEl) statusEl.textContent = 'Service pricing saved.';
+    if (!isScheduled) applyServicePricing(pricingResult.data);
+
+    const dateInput = document.getElementById('sp-effective-date');
+    if (dateInput) dateInput.value = '';
+
+    if (isScheduled) {
+      const when = new Date(effectiveDateRaw).toLocaleString('en-US', {
+        month: 'short', day: 'numeric', year: 'numeric',
+        hour: 'numeric', minute: '2-digit', hour12: true,
+      });
+      if (statusEl) statusEl.textContent = `Price update scheduled for ${when}.`;
+      showPricingPendingBanner(fuelResult.data, pricingResult.data);
+    } else {
+      if (statusEl) statusEl.textContent = 'Service pricing saved.';
+      const banner = document.getElementById('pricing-pending-banner');
+      if (banner) banner.hidden = true;
+    }
   } catch (err) {
     console.error('Service pricing save failed:', err);
     if (statusEl) statusEl.textContent = `Could not save: ${err.message || err}`;
@@ -5527,53 +6174,6 @@ document.querySelector('#services-settings-form')?.addEventListener('submit', as
     if (submitBtn) submitBtn.disabled = false;
   }
 });
-
-// ── Reports page ──────────────────────────────────────────────────────────
-
-function requestTimestamp(request) {
-  return new Date(request.updated_at || request.created_at);
-}
-
-function loadReportsPage() {
-  const output = document.querySelector('#admin-report-list');
-  if (!output) return;
-
-  if (!allRequests.length) {
-    output.innerHTML = '<div class="empty-state"><p>No requests yet.</p></div>';
-    return;
-  }
-
-  const rows = allRequests.slice().sort((a, b) => requestTimestamp(b) - requestTimestamp(a));
-  const counts = { Open: 0, 'In Progress': 0, Completed: 0, Closed: 0 };
-  rows.forEach((r) => { counts[queueStatusBucket(r).label] += 1; });
-
-  output.innerHTML = `
-    <div class="admin-stat-grid report-volume-grid">
-      ${Object.entries(counts).map(([label, count]) => `
-        <div class="admin-stat-card">
-          <div>
-            <span class="admin-stat-label">${escapeHtml(label)}</span>
-            <span class="admin-stat-value">${count}</span>
-          </div>
-        </div>
-      `).join('')}
-    </div>
-    <table class="admin-requests-table">
-      <thead><tr><th>Date</th><th>Customer</th><th>Service Type</th><th>Worker</th><th>Status</th></tr></thead>
-      <tbody>
-        ${rows.map((r) => `
-          <tr>
-            <td>${escapeHtml(formatTimestamp(r.updated_at || r.created_at))}</td>
-            <td>${escapeHtml(r.customer_name || '')}</td>
-            <td>${escapeHtml(queueServiceLabel(r))}</td>
-            <td>${r.assigned_worker_name ? escapeHtml(r.assigned_worker_name) : '<span class="field-help">Unassigned</span>'}</td>
-            <td><span class="status-pill ${queueStatusBucket(r).cls}">${escapeHtml(queueStatusBucket(r).label)}</span></td>
-          </tr>
-        `).join('')}
-      </tbody>
-    </table>
-  `;
-}
 
 // Called here, after SERVICE_PRICING_FIELDS and its render/load functions are
 // declared above, to avoid a temporal-dead-zone error on the const.

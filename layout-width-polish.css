@@ -120,8 +120,9 @@
 
 .track-page .track-search-card,
 .track-page #tracking-result {
-  width: min(1240px, calc(100% - 96px)) !important;
-  max-width: 1240px !important;
+  /* Match the header/footer width exactly so the left/right edges line up. */
+  width: var(--sf-content-width) !important;
+  max-width: var(--sf-page-width) !important;
   margin-left: auto !important;
   margin-right: auto !important;
 }
