@@ -2589,6 +2589,7 @@ trackForm.addEventListener("submit", async (event) => {
     if (refreshStatusBtn) refreshStatusBtn.hidden = false;
     window._trackingRequests = matchedRequests;
     await renderAllRequests(matchedRequests, phone, email);
+    startTrackingPoll();
   } finally {
     if (submitButton) {
       submitButton.disabled = false;
@@ -2604,6 +2605,56 @@ refreshStatusBtn?.addEventListener("click", () => {
   trackMessage.textContent = "Refreshing status...";
   window._trackingRequests = [];
   trackForm.requestSubmit();
+});
+
+// ── Auto-refresh tracked request status ──────────────────────────────────────
+// Polls in the background so worker-side changes (e.g. a cancellation or
+// completion) appear without the customer hitting "Refresh Status". To avoid
+// disrupting an open accordion or a half-filled payment/cancel form, it only
+// re-renders when a status actually changed since the last poll.
+let trackingPollTimer = null;
+let trackingPollInFlight = false;
+
+function trackedStatusSignature(list) {
+  return (list || [])
+    .map((r) => `${r.id}:${r.status || ''}:${r.payment_status || ''}`)
+    .sort()
+    .join('|');
+}
+
+async function pollTrackingStatus() {
+  if (trackingPollInFlight || document.hidden) return;
+  const contact = verifiedTrackingContact || {};
+  const id = trackingId?.value.trim() || null;
+  if (!contact.phone && !contact.email && !id) return;
+
+  trackingPollInFlight = true;
+  try {
+    const { data, error } = await shiftFuelDb.rpc("public_track_request", {
+      p_request_id: id,
+      p_phone: contact.phone || "",
+      p_email: contact.email || "",
+    });
+    if (error || !Array.isArray(data)) return;
+    const next = sortTrackedRequests(data);
+    if (trackedStatusSignature(next) === trackedStatusSignature(window._trackingRequests)) return;
+    window._trackingRequests = next;
+    await renderAllRequests(next, contact.phone || "", contact.email || "");
+  } catch (err) {
+    console.warn("Status auto-refresh failed:", err);
+  } finally {
+    trackingPollInFlight = false;
+  }
+}
+
+function startTrackingPoll() {
+  if (trackingPollTimer) return;
+  trackingPollTimer = setInterval(pollTrackingStatus, 20000);
+}
+
+// Refresh immediately when the customer returns to the tab.
+document.addEventListener("visibilitychange", () => {
+  if (!document.hidden && trackingPollTimer) pollTrackingStatus();
 });
 
 // ── Completion-form change delegation ────────────────────────────────────────

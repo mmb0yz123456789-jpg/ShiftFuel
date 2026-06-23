@@ -246,6 +246,9 @@
   }
 
   async function setLocation(panel, location) {
+    // The panel can be momentarily absent if the card re-rendered between the
+    // RPC call and this callback — bail rather than throw on a null element.
+    if (!panel) return;
     const lat = Number(location.latitude);
     const lng = Number(location.longitude);
     if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
@@ -336,17 +339,33 @@
 
     let channel = null;
     const realtime = db();
+    const topicBase = `request-location-${requestId}`;
     if (realtime?.channel) {
-      // Attach the postgres_changes handler to a FRESH channel BEFORE subscribing.
-      channel = realtime.channel(`request-location-${requestId}`);
-      channel
-        .on('postgres_changes', {
-          event: '*',
-          schema: 'public',
-          table: 'request_locations',
-          filter: `request_id=eq.${requestId}`,
-        }, () => loadLocation(requestId))
-        .subscribe();
+      try {
+        // Supabase caches channels by topic, and removeChannel() is async — so
+        // reusing the same topic name returns the still-subscribed cached channel,
+        // and calling .on() after subscribe() throws. Tear down any existing
+        // channel for this request, then attach to a uniquely-named (guaranteed
+        // fresh, un-subscribed) channel.
+        const existing = (realtime.getChannels?.() || [])
+          .filter((c) => typeof c?.topic === 'string' && c.topic.includes(topicBase));
+        existing.forEach((c) => { try { realtime.removeChannel(c); } catch (_) {} });
+
+        channel = realtime.channel(`${topicBase}-${Date.now()}`);
+        channel
+          .on('postgres_changes', {
+            event: '*',
+            schema: 'public',
+            table: 'request_locations',
+            filter: `request_id=eq.${requestId}`,
+          }, () => loadLocation(requestId))
+          .subscribe();
+      } catch (err) {
+        // Realtime is only an optimization — the 20s poll below still keeps the
+        // map fresh. Never let a realtime hiccup throw into the console.
+        console.warn('Live location realtime unavailable; using polling only.', err?.message || err);
+        channel = null;
+      }
     }
 
     const poll = setInterval(() => loadLocation(requestId), 20000);

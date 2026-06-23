@@ -51,6 +51,7 @@ const filterPaymentSelect = document.querySelector('#filter-payment');
 const filterSortSelect = document.querySelector('#filter-sort');
 const filterClearBtn = document.querySelector('#filter-clear-btn');
 const workerSnapshotOnline = document.querySelector('#worker-snapshot-online');
+const workerSnapshotOnBreak = document.querySelector('#worker-snapshot-onbreak');
 const workerSnapshotBusy = document.querySelector('#worker-snapshot-busy');
 const workerSnapshotOffline = document.querySelector('#worker-snapshot-offline');
 const adminSideRefreshBtn = document.querySelector('#admin-side-refresh-btn');
@@ -1886,9 +1887,31 @@ function updateDashboardStatCards() {
   if (statCompletedToday) statCompletedToday.textContent = completedCount;
   if (statActiveWorkers) statActiveWorkers.textContent = activeWorkerCount;
   if (statNetRevenue) statNetRevenue.textContent = `$${netRevenue.toFixed(2)}`;
-  if (workerSnapshotOnline) workerSnapshotOnline.textContent = activeWorkerCount;
-  if (workerSnapshotBusy) workerSnapshotBusy.textContent = allRequests.filter((r) => isOpen(r) && (r.assigned_employee_id || r.assigned_worker_name)).length;
-  if (workerSnapshotOffline) workerSnapshotOffline.textContent = Math.max(0, allEmployees.length - activeWorkerCount);
+  // Worker Snapshot — derive live presence from the heartbeat (last_seen_at +
+  // presence_status) plus current job assignments. A worker counts as "live"
+  // only if they pinged within the freshness window; otherwise they age out to
+  // Offline. Counts are mutually exclusive and sum to the active-worker count.
+  const PRESENCE_FRESH_MS = 2 * 60 * 1000;
+  const nowMs = Date.now();
+  const activeEmployees = allEmployees.filter((e) => e.active);
+  const isLive = (e) => e.last_seen_at && (nowMs - new Date(e.last_seen_at).getTime()) < PRESENCE_FRESH_MS;
+  const busyWorkerKeys = new Set(
+    allRequests
+      .filter((r) => isOpen(r) && (r.assigned_employee_id || r.assigned_worker_name))
+      .flatMap((r) => [r.assigned_employee_id, r.assigned_worker_name].filter(Boolean))
+  );
+  const isBusy = (e) => busyWorkerKeys.has(e.id) || busyWorkerKeys.has(e.full_name);
+
+  const liveEmployees = activeEmployees.filter(isLive);
+  const onBreakCount = liveEmployees.filter((e) => e.presence_status === 'on_break').length;
+  const busyCount = liveEmployees.filter((e) => e.presence_status !== 'on_break' && isBusy(e)).length;
+  const onlineCount = liveEmployees.filter((e) => e.presence_status !== 'on_break' && !isBusy(e)).length;
+  const offlineCount = Math.max(0, activeEmployees.length - liveEmployees.length);
+
+  if (workerSnapshotOnline) workerSnapshotOnline.textContent = onlineCount;
+  if (workerSnapshotOnBreak) workerSnapshotOnBreak.textContent = onBreakCount;
+  if (workerSnapshotBusy) workerSnapshotBusy.textContent = busyCount;
+  if (workerSnapshotOffline) workerSnapshotOffline.textContent = offlineCount;
 }
 
 function matchesQueueFilters(request) {
@@ -2043,7 +2066,7 @@ function renderRequests() {
           const actionBtnClass = isCompleted ? 'queue-summary-toggle' : 'queue-row-toggle';
           const rows = [`
             <tr class="queue-row${isExpanded || isSummaryExpanded ? ' is-expanded' : ''}" data-request-id="${request.id}">
-              <td>
+              <td data-label="Customer">
                 <div class="queue-customer-cell">
                   <span class="queue-avatar">${escapeHtml(queueInitials(request.customer_name))}</span>
                   <div>
@@ -2052,11 +2075,11 @@ function renderRequests() {
                   </div>
                 </div>
               </td>
-              <td>${escapeHtml(queueServiceLabel(request))}</td>
-              <td><span class="status-pill ${bucket.cls}">${escapeHtml(bucket.label)}</span></td>
-              <td>${request.assigned_worker_name ? escapeHtml(request.assigned_worker_name) : '<span class="field-help">Unassigned</span>'}</td>
-              <td>${queueDateTime(request)}</td>
-              <td>
+              <td data-label="Service">${escapeHtml(queueServiceLabel(request))}</td>
+              <td data-label="Status"><span class="status-pill ${bucket.cls}">${escapeHtml(bucket.label)}</span></td>
+              <td data-label="Worker">${request.assigned_worker_name ? escapeHtml(request.assigned_worker_name) : '<span class="field-help">Unassigned</span>'}</td>
+              <td data-label="Date">${queueDateTime(request)}</td>
+              <td data-label="Action">
                 <div class="queue-next-action-cell">
                   <button class="button secondary ${actionBtnClass}" data-id="${request.id}" type="button">${queueNextActionLabel(bucket)}</button>
                   <button class="queue-row-kebab queue-row-toggle" data-id="${request.id}" type="button" aria-label="More">&#8942;</button>
@@ -2156,6 +2179,8 @@ function normalizeEmployee(employee) {
     home_location: employee.home_location || DEFAULT_WORK_LOCATION,
     started_at: employee.started_at || '',
     active: employee.active !== false,
+    last_seen_at: employee.last_seen_at || null,
+    presence_status: employee.presence_status || 'offline',
   };
 }
 
@@ -2165,7 +2190,7 @@ async function loadEmployees() {
 
     let { data, error } = await db
       .from('employees_public')
-      .select('id,employee_code,full_name,phone,email,photo_url,original_photo_url,cropped_photo_url,photo_zoom,photo_position_x,photo_position_y,home_location,started_at,active')
+      .select('id,employee_code,full_name,phone,email,photo_url,original_photo_url,cropped_photo_url,photo_zoom,photo_position_x,photo_position_y,home_location,started_at,active,last_seen_at,presence_status')
       .order('full_name', { ascending: true });
 
     if (error) {
@@ -2856,8 +2881,10 @@ async function loadRequests() {
   }
 
   allRequests = data || [];
+  lastAdminRequestsSignature = adminRequestsSignature(allRequests);
   updateHeroStats();
   populateFilterStatuses();
+  updateCancellationBadge();
   // The Active Workers and Revenue stat cards inject custom tables that aren't
   // driven by currentView — re-render them so a refresh doesn't revert to the
   // default queue.
@@ -2865,6 +2892,122 @@ async function loadRequests() {
   else if (activeStatCard === 'revenue') openRevenueBreakdown();
   else renderRequests();
 }
+
+// ── Customer-cancellation alert: badge + 20s polling ───────────────────────
+// A customer cancelling (or requesting a return mid-service) needs admin
+// action — key/vehicle still held, or a fee decision pending. The badge surfaces
+// the count, and the poll keeps the queue fresh without a manual refresh.
+const CANCELLATION_ALERT_STATUSES = ['cancelled_pending_key_return', 'return_requested', 'customer_return_requested'];
+
+function isCancellationAlert(request) {
+  return hasCustomerReturnRequestAlert(request)
+    || CANCELLATION_ALERT_STATUSES.includes(request?.status);
+}
+
+function updateCancellationBadge() {
+  const badge = document.querySelector('#cancellation-alert-badge');
+  if (!badge) return;
+  const count = (allRequests || []).filter(isCancellationAlert).length;
+  if (!count) {
+    badge.hidden = true;
+    return;
+  }
+  badge.hidden = false;
+  badge.textContent = `⚠️ ${count} cancellation${count === 1 ? '' : 's'} need attention`;
+}
+
+let lastAdminRequestsSignature = '';
+
+function adminRequestsSignature(requests) {
+  return (requests || [])
+    .map((r) => `${r.id}:${r.status}:${r.payment_status || ''}:${r.assigned_employee_id || ''}`)
+    .sort()
+    .join('|');
+}
+
+function isAdminInteracting() {
+  const el = document.activeElement;
+  return !!el && /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName);
+}
+
+// True if any field in the request list changed but isn't saved yet, so a silent
+// re-render won't wipe an in-progress entry (e.g. a receipt total being typed).
+function hasUnsavedAdminInput() {
+  if (!requestList) return false;
+  for (const el of requestList.querySelectorAll('input, textarea, select')) {
+    if (el.type === 'file') {
+      if (el.files && el.files.length) return true;
+      continue;
+    }
+    if (el.type === 'checkbox' || el.type === 'radio') {
+      if (el.checked !== el.defaultChecked) return true;
+      continue;
+    }
+    if (el.tagName === 'SELECT') {
+      if ([...el.options].some((o) => o.selected !== o.defaultSelected)) return true;
+      continue;
+    }
+    if ((el.value || '') !== (el.defaultValue || '')) return true;
+  }
+  return false;
+}
+
+async function pollAdminRequests() {
+  if (!requestList || !adminToken()) return;
+  if (isAdminInteracting() || hasUnsavedAdminInput()) return;
+  // Leave the custom stat-card tables (workers/revenue) alone — they aren't
+  // queue-driven and a re-render would revert them.
+  if (activeStatCard === 'workers' || activeStatCard === 'revenue') return;
+  try {
+    const { data, error } = await db.rpc('admin_list_requests', { p_token: adminToken() });
+    if (error) return;
+    const requests = data || [];
+    if (adminRequestsSignature(requests) === lastAdminRequestsSignature) return; // nothing changed
+    allRequests = requests;
+    lastAdminRequestsSignature = adminRequestsSignature(requests);
+    updateHeroStats();
+    populateFilterStatuses();
+    updateCancellationBadge();
+    renderRequests();
+  } catch (_) {
+    // Transient network error — try again on the next tick.
+  }
+}
+
+setInterval(pollAdminRequests, 20000);
+
+// Refresh just the worker presence columns and recompute the snapshot so
+// Online / On Break / Busy / Offline stay live without reloading (and
+// re-rendering) the whole worker-management UI. Recomputing each tick also
+// ages stale heartbeats out to Offline.
+async function pollWorkerPresence() {
+  if (!adminToken() || !allEmployees.length) return;
+  try {
+    const { data, error } = await db
+      .from('employees_public')
+      .select('id,last_seen_at,presence_status');
+    if (error || !Array.isArray(data)) return;
+    const byId = new Map(data.map((e) => [e.id, e]));
+    allEmployees = allEmployees.map((e) => {
+      const p = byId.get(e.id);
+      return p ? { ...e, last_seen_at: p.last_seen_at || null, presence_status: p.presence_status || 'offline' } : e;
+    });
+    updateDashboardStatCards();
+  } catch (_) {
+    // Transient network error — try again next tick.
+  }
+}
+
+setInterval(pollWorkerPresence, 30000);
+
+document.querySelector('#cancellation-alert-badge')?.addEventListener('click', () => {
+  setActiveStatCard(null);
+  currentView = 'inprogress';
+  showAllTime = false;
+  switchAdminTab('requests');
+  renderRequests();
+  document.querySelector('#request-list')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+});
 
 function renderReviews(reviews, requestMap = new Map(), starFilter = null) {
   if (!reviewList) return;

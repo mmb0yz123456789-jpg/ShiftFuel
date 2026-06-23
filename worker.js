@@ -21,6 +21,9 @@ const workerPhotoCropChoose = document.querySelector('#worker-photo-crop-choose'
 const workerPhotoCropCancel = document.querySelector('#worker-photo-crop-cancel');
 const workerPhotoCropStatus = document.querySelector('#worker-photo-crop-status');
 const workerSignoutBtn = document.querySelector('#worker-signout-btn');
+const workerBreakToggle = document.querySelector('#worker-break-toggle');
+const workerPresenceIndicator = document.querySelector('#worker-presence-indicator');
+const workerPresenceLabel = document.querySelector('#worker-presence-label');
 const openChangePasswordBtn = document.querySelector('#open-change-password-btn');
 const workerRefreshJobsBtn = document.querySelector('#worker-refresh-jobs-btn');
 const workerPasswordModal = document.querySelector('#worker-password-modal');
@@ -61,12 +64,63 @@ const workerJobList = document.querySelector('#worker-job-list');
 const workerReviewList = document.querySelector('#worker-review-list');
 
 workerSignoutBtn?.addEventListener('click', () => {
+  // Best-effort: mark offline immediately so the admin snapshot updates without
+  // waiting for the heartbeat to go stale. Fire-and-forget; never block sign-out.
+  sendWorkerHeartbeat('offline');
   sessionStorage.removeItem('shiftfuel_worker');
   sessionStorage.removeItem('shiftfuel_worker_id');
   sessionStorage.removeItem('shiftfuel_worker_token');
   sessionStorage.removeItem('shiftfuel_worker_expires');
   sessionStorage.removeItem('shiftfuel_worker_must_change_pw');
   window.location.href = 'worker-login.html';
+});
+
+// ── Live presence heartbeat ──────────────────────────────────────────────────
+// Pings worker_heartbeat() so the admin "Worker Snapshot" reflects who is
+// actually online. Status is 'online' normally, 'on_break' when the worker
+// toggles a break. If the app is closed the heartbeat goes stale and the admin
+// ages the worker out to Offline automatically.
+let workerPresenceStatus = 'online';
+let workerHeartbeatTimer = null;
+
+async function sendWorkerHeartbeat(status) {
+  const token = (typeof SESSION_WORKER_TOKEN !== 'undefined' && SESSION_WORKER_TOKEN) || '';
+  if (!token) return;
+  try {
+    await workerDb.rpc('worker_heartbeat', { p_token: token, p_status: status || workerPresenceStatus });
+  } catch (err) {
+    // Non-fatal: a missed heartbeat just ages out to Offline.
+    console.warn('Worker heartbeat failed:', err);
+  }
+}
+
+function renderPresenceControls() {
+  const onBreak = workerPresenceStatus === 'on_break';
+  if (workerPresenceIndicator) {
+    workerPresenceIndicator.hidden = false;
+    workerPresenceIndicator.classList.toggle('is-on-break', onBreak);
+  }
+  if (workerPresenceLabel) workerPresenceLabel.textContent = onBreak ? 'On break' : 'Online';
+  if (workerBreakToggle) {
+    workerBreakToggle.hidden = false;
+    workerBreakToggle.textContent = onBreak ? 'End break' : 'Take a break';
+  }
+}
+
+function startWorkerHeartbeat() {
+  renderPresenceControls();
+  if (workerHeartbeatTimer) return;
+  sendWorkerHeartbeat();
+  workerHeartbeatTimer = setInterval(() => sendWorkerHeartbeat(), 30000);
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) sendWorkerHeartbeat();
+  });
+}
+
+workerBreakToggle?.addEventListener('click', () => {
+  workerPresenceStatus = workerPresenceStatus === 'on_break' ? 'online' : 'on_break';
+  renderPresenceControls();
+  sendWorkerHeartbeat();
 });
 
 document.querySelector('#worker-progress-job-label')?.addEventListener('click', async () => {
@@ -1003,6 +1057,7 @@ async function loadWorkerProfile() {
     await loadWorkerSchedule();
     await loadWorkerJobs();
     startWorkerJobsPoll();
+    startWorkerHeartbeat();
     await loadWorkerReviews();
   } catch (error) {
     console.error('Could not load worker profile:', error);
@@ -1314,8 +1369,8 @@ function renderWorkerJobRow(request, mode) {
   const vehicle = [request.vehicle_year, request.vehicle_make, request.vehicle_model].filter(Boolean).join(' ');
   const rows = [`
     <tr class="queue-row${isExpanded ? ' is-expanded' : ''}" data-request-id="${escapeHtml(request.id)}">
-      <td>${escapeHtml(formatWorkerJobTime(request))}</td>
-      <td>
+      <td data-label="Time">${escapeHtml(formatWorkerJobTime(request))}</td>
+      <td data-label="Customer">
         <div class="queue-customer-cell">
           <span class="queue-avatar">${escapeHtml(workerQueueInitials(request.customer_name))}</span>
           <div>
@@ -1324,9 +1379,9 @@ function renderWorkerJobRow(request, mode) {
           </div>
         </div>
       </td>
-      <td>${escapeHtml(request.service_label || request.service_type || '')}</td>
-      <td><span class="status-pill">${escapeHtml(workerStatusLabels[request.status] || request.status || '')}</span></td>
-      <td>
+      <td data-label="Service">${escapeHtml(request.service_label || request.service_type || '')}</td>
+      <td data-label="Status"><span class="status-pill">${escapeHtml(workerStatusLabels[request.status] || request.status || '')}</span></td>
+      <td data-label="Action">
         <div class="queue-next-action-cell">
           <button class="button secondary worker-row-toggle" data-id="${escapeHtml(request.id)}" type="button">${workerJobNextActionLabel(request, mode)}</button>
           <button class="queue-row-kebab worker-row-toggle" data-id="${escapeHtml(request.id)}" type="button" aria-label="More">&#8942;</button>

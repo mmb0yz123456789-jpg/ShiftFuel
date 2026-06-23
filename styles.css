@@ -7139,6 +7139,36 @@ justify-self: start;
   line-height: 1.45;
 }
 
+/* Customer-cancellation alert badge in the admin Requests Queue toolbar. */
+.cancellation-alert-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+  padding: 6px 12px;
+  border: 1px solid #f0b4a8;
+  border-radius: 999px;
+  background: #fdece8;
+  color: #b42318;
+  font-size: 0.82rem;
+  font-weight: 800;
+  cursor: pointer;
+  animation: cancellation-badge-pulse 1.8s ease-in-out infinite;
+}
+
+.cancellation-alert-badge:hover {
+  background: #fbdcd4;
+}
+
+.cancellation-alert-badge[hidden] {
+  display: none;
+}
+
+@keyframes cancellation-badge-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(180, 35, 24, 0.28); }
+  50% { box-shadow: 0 0 0 6px rgba(180, 35, 24, 0); }
+}
+
 /* Admin portal redesign */
 .admin-portal-page {
   --admin-ink: #062f2d;
@@ -8593,6 +8623,31 @@ justify-self: start;
 
 .unified-portal-header.worker-top-nav .portal-header-actions {
   margin-left: auto;
+}
+
+/* Worker live-presence indicator (header) */
+.worker-presence-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+  font-size: 0.82rem;
+  font-weight: 800;
+  white-space: nowrap;
+}
+.worker-presence-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: #28c76f;
+  box-shadow: 0 0 0 4px rgba(40, 199, 111, 0.22);
+}
+.worker-presence-indicator.is-on-break .worker-presence-dot {
+  background: #f5a623;
+  box-shadow: 0 0 0 4px rgba(245, 166, 35, 0.22);
 }
 
 /* Keep customer-facing sub pages aligned with the header/footer width.
