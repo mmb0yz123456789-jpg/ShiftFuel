@@ -270,39 +270,67 @@ END;
 $$;
 
 -- ─────────────────────────────────────────────────────────────────────────────
--- 3) Customer: track a request (returns pending_customer_info rows first so an
---    admin-created request floats to the top of the customer's Track page)
+-- 3) Customer: track a request.
+--    IMPORTANT: p_request_id is TEXT, not uuid. The customer enters the short
+--    "SF-XXXXXXXX" ticket (or a full UUID, or nothing) — never a bare uuid type.
+--    A uuid-typed overload here is what caused PostgREST PGRST203
+--    ("could not choose the best candidate function") and broke every Track
+--    lookup, so we drop it before (re)creating the single text version.
 -- ─────────────────────────────────────────────────────────────────────────────
+drop function if exists public.public_track_request(uuid, text, text);
+
 CREATE OR REPLACE FUNCTION public.public_track_request(
-  p_request_id uuid DEFAULT NULL,
-  p_phone      text DEFAULT '',
-  p_email      text DEFAULT ''
+  p_request_id text DEFAULT NULL,
+  p_phone      text DEFAULT NULL,
+  p_email      text DEFAULT NULL
 )
-RETURNS SETOF service_requests
-LANGUAGE sql
+RETURNS SETOF public.service_requests
+LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = public, pg_temp
 AS $$
+DECLARE
+  v_request       text := upper(trim(coalesce(p_request_id, '')));
+  v_ticket_prefix text := null;
+  v_phone         text := regexp_replace(coalesce(p_phone, ''), '\D', '', 'g');
+  v_email         text := lower(trim(coalesce(p_email, '')));
+  v_count         int  := 0;
+BEGIN
+  -- Require at least two identifiers for customer tracking.
+  IF v_phone   <> '' THEN v_count := v_count + 1; END IF;
+  IF v_email   <> '' THEN v_count := v_count + 1; END IF;
+  IF v_request <> '' THEN v_count := v_count + 1; END IF;
+  IF v_count < 2 THEN
+    RETURN;
+  END IF;
+
+  -- Convert SF-32617DA1 or 32617DA1 into the UUID prefix 32617da1.
+  IF v_request LIKE 'SF-%' THEN
+    v_ticket_prefix := lower(substring(v_request FROM 4 FOR 8));
+  ELSIF v_request ~ '^[A-F0-9]{8}$' THEN
+    v_ticket_prefix := lower(v_request);
+  END IF;
+
+  RETURN QUERY
   SELECT sr.*
-  FROM service_requests sr
-  WHERE (
-      p_request_id IS NOT NULL
-      AND sr.id = p_request_id
-      AND (
-        public.clean_phone(sr.customer_phone) = public.clean_phone(p_phone)
-        OR lower(COALESCE(sr.customer_email, '')) = lower(COALESCE(p_email, ''))
-      )
+  FROM public.service_requests sr
+  WHERE
+    (
+      -- Full UUID exact match.
+      (v_request <> '' AND v_ticket_prefix IS NULL AND sr.id::text = lower(v_request))
+      -- Customer-facing SF short ticket match.
+      OR (v_ticket_prefix IS NOT NULL AND sr.id::text LIKE v_ticket_prefix || '%')
+      -- Contact-only lookup (phone + email) when no ticket is supplied.
+      OR (v_request = '')
     )
-    OR (
-      p_request_id IS NULL
-      AND public.clean_phone(sr.customer_phone) = public.clean_phone(p_phone)
-      AND lower(COALESCE(sr.customer_email, '')) = lower(COALESCE(p_email, ''))
-    )
+    AND (v_phone = '' OR regexp_replace(coalesce(sr.customer_phone, ''), '\D', '', 'g') = v_phone)
+    AND (v_email = '' OR lower(coalesce(sr.customer_email, '')) = v_email)
   ORDER BY
     -- pending_customer_info requests float to the top
     CASE WHEN sr.status = 'pending_customer_info' THEN 0 ELSE 1 END,
     sr.created_at DESC
   LIMIT 10;
+END;
 $$;
 
 -- ─────────────────────────────────────────────────────────────────────────────
@@ -324,7 +352,7 @@ grant  execute on function public.customer_complete_booking(
   text, text, numeric, numeric, text
 ) to anon, service_role;
 
-revoke execute on function public.public_track_request(uuid, text, text) from public, authenticated;
-grant  execute on function public.public_track_request(uuid, text, text) to anon, service_role;
+revoke execute on function public.public_track_request(text, text, text) from public, authenticated;
+grant  execute on function public.public_track_request(text, text, text) to anon, service_role;
 
 commit;
