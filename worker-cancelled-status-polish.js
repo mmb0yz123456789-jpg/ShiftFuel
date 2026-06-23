@@ -227,18 +227,24 @@
   }, true);
 
   document.addEventListener('DOMContentLoaded', applyCancelledStatusPolish);
-  const observer = new MutationObserver(applyCancelledStatusPolish);
-  observer.observe(document.body, { childList: true, subtree: true, characterData: true });
-})();
 
-// Load optional live GPS tracking after the worker portal has fully initialized.
-(() => {
-  if (!document.body?.classList.contains('worker-portal-page')) return;
-  window.addEventListener('load', () => {
-    if (document.querySelector('script[data-worker-gps-tracking]')) return;
-    const script = document.createElement('script');
-    script.src = 'worker-gps-tracking.js';
-    script.dataset.workerGpsTracking = '1';
-    document.body.appendChild(script);
-  });
+  // All of the elements this polish touches (.status-pill, .guided-step,
+  // .service-unable-panel, .keys-returned-panel) only ever render inside the
+  // job list, which gets fully replaced on every refresh. Watching that
+  // container instead of the whole document avoids re-scanning the entire
+  // page (including unrelated things like typing in inputs) on every change.
+  let observerTarget = null;
+  const observer = new MutationObserver(applyCancelledStatusPolish);
+
+  function attachObserver() {
+    const jobList = document.querySelector('#worker-job-list');
+    const target = jobList || document.body;
+    if (target === observerTarget) return;
+    observer.disconnect();
+    observer.observe(target, { childList: true, subtree: true });
+    observerTarget = target;
+  }
+
+  attachObserver();
+  document.addEventListener('DOMContentLoaded', attachObserver);
 })();

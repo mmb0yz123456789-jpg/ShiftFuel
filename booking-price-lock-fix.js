@@ -339,16 +339,6 @@
       setTimeout(() => updateFrozenQuoteCopy(document), 0);
     });
 
-    document.addEventListener('click', (event) => {
-      const submit = event.target.closest('[data-submit-booking]');
-      if (!submit) return;
-      const panel = submit.closest('.booking-accordion-card');
-      if (!panel) return;
-      event.preventDefault();
-      event.stopImmediatePropagation();
-      submitWithFrozenQuote(panel, submit);
-    }, true);
-
     window.addEventListener('unhandledrejection', (event) => {
       debugError('Unhandled promise rejection caught', event.reason);
       const panel = document.querySelector('.booking-accordion-card.is-active');
@@ -365,6 +355,8 @@
   }
 
   window.unlockBookingPage = unlockBookingPage;
+  window.freezeAuthorizedQuote = freezeAuthorizedQuote;
+  window.makePayloadFromFrozenQuote = makePayloadFromFrozenQuote;
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start);
   else start();
