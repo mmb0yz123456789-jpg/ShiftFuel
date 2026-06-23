@@ -685,3 +685,72 @@
   body.worker-portal-page .worker-portal-hero .actions,
   body.worker-portal-page .worker-profile-actions { display: grid; gap: 8px; }
 }
+
+/* ─────────────────────────────────────────────────────────────────────────
+   App "screens" — each bottom tab shows ONLY its section (phones).
+   Driven by body[data-app-view] + section [data-app-view].
+   ───────────────────────────────────────────────────────────────────────── */
+@media (max-width: 760px) {
+  body.worker-portal-page[data-app-view] [data-app-view] { display: none !important; }
+  body.worker-portal-page[data-app-view="jobs"]     [data-app-view="jobs"],
+  body.worker-portal-page[data-app-view="progress"] [data-app-view="progress"],
+  body.worker-portal-page[data-app-view="profile"]  [data-app-view="profile"] {
+    display: block !important;
+  }
+}
+
+/* ─────────────────────────────────────────────────────────────────────────
+   Worker job-detail: stop giant buttons + tighten the flow so the worker
+   reaches photo upload with far less scrolling.
+   ───────────────────────────────────────────────────────────────────────── */
+@media (max-width: 760px) {
+  /* Action buttons (Back / status) and the GPS button must be a normal height,
+     not full-height boxes. align-self:center stops the flex stretch. */
+  body.worker-portal-page .guided-step .admin-button-row .button,
+  body.worker-portal-page .gps-tracking-panel .admin-button-row .button,
+  body.worker-portal-page .gps-tracking-panel .button {
+    min-height: 50px !important;
+    height: 50px !important;
+    align-self: center !important;
+    flex: 1 1 auto !important;
+  }
+
+  /* Compact the status + GPS cards so they don't each fill a screen. */
+  body.worker-portal-page .guided-step { padding: 14px !important; margin-bottom: 12px !important; }
+  body.worker-portal-page .gps-tracking-panel { padding: 12px 14px !important; margin: 10px 0 !important; }
+  body.worker-portal-page .gps-tracking-panel h4 { margin-bottom: 4px !important; }
+
+  /* The reference details (customer/address/parking/vehicle) are read-only info —
+     tighten them so they take less room above the action. */
+  body.worker-portal-page .worker-job-card .request-details { margin: 6px 0 !important; }
+  body.worker-portal-page .worker-job-card .request-details p { margin: 4px 0 !important; font-size: 0.92rem; }
+}
+
+/* Fix: `.admin-button-row { display:flex }` overrode the [hidden] attribute, so
+   rows hidden in JS (e.g. the GPS "Resume" button once tracking is active) stayed
+   visible. Make [hidden] win. Applies on all widths. */
+.admin-button-row[hidden] { display: none !important; }
+
+/* Collapsible "Job details" on worker job cards — collapsed by default so the
+   action (photos/receipt/inspection) is near the top. */
+.worker-job-details { margin: 6px 0 2px; }
+.worker-job-details > summary {
+  list-style: none;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  border: 1px solid rgba(13, 59, 59, 0.16);
+  border-radius: 999px;
+  font-weight: 800;
+  font-size: 0.86rem;
+  color: var(--sf-teal-dark, #0d3b3b);
+  background: rgba(167, 191, 166, 0.14);
+}
+.worker-job-details > summary::-webkit-details-marker { display: none; }
+.worker-job-details > summary::after { content: " ▾"; font-size: 0.8em; }
+.worker-job-details[open] > summary::after { content: " ▴"; }
+
+/* Once GPS is actively tracking, drop the intro paragraph (keep the status line). */
+.gps-tracking-panel.is-tracking > p.field-help:not(.gps-tracking-status) { display: none; }

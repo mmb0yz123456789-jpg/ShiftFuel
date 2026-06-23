@@ -2900,8 +2900,13 @@ async function loadRequests() {
 const CANCELLATION_ALERT_STATUSES = ['cancelled_pending_key_return', 'return_requested', 'customer_return_requested'];
 
 function isCancellationAlert(request) {
+  // Only OPEN tickets need attention. Once a ticket is closed/terminal (key
+  // returned, cancellation completed, denied, etc.) it no longer alerts — even
+  // though the return-request marker (return_requested_at / notes) stays on the
+  // row.
+  if (!request || !isOpen(request)) return false;
   return hasCustomerReturnRequestAlert(request)
-    || CANCELLATION_ALERT_STATUSES.includes(request?.status);
+    || CANCELLATION_ALERT_STATUSES.includes(request.status);
 }
 
 function updateCancellationBadge() {
@@ -3004,6 +3009,11 @@ document.querySelector('#cancellation-alert-badge')?.addEventListener('click', (
   setActiveStatCard(null);
   currentView = 'inprogress';
   showAllTime = false;
+  // Flagged tickets may be from earlier days; the date range is a global queue
+  // filter, so widen it to All time or the badge would hide older open ones.
+  dashboardRange = 'all';
+  if (dashboardRangeSelect) dashboardRangeSelect.value = 'all';
+  updateDashboardStatCards();
   switchAdminTab('requests');
   renderRequests();
   document.querySelector('#request-list')?.scrollIntoView({ behavior: 'smooth', block: 'start' });

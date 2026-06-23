@@ -217,9 +217,9 @@
   function panelHtml(request) {
     const active = activeWatches.has(request.id);
     return `
-      <section class="gps-tracking-panel" data-request-id="${request.id}">
+      <section class="gps-tracking-panel${active ? ' is-tracking' : ''}" data-request-id="${request.id}">
         <h4>Live GPS tracking</h4>
-        <p class="field-help">Required. Your phone GPS stays on for this job until it is complete or the vehicle is returned. It cannot be turned off while the job is active.</p>
+        <p class="field-help">Required — your phone GPS stays on until the key/vehicle is returned.</p>
         <div class="admin-button-row" ${active ? 'hidden' : ''}>
           <button class="button primary start-gps-tracking" data-request-id="${request.id}" type="button">Resume GPS tracking</button>
         </div>
