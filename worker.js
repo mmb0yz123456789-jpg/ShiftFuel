@@ -1351,6 +1351,10 @@ function workerFormatService(request) {
 }
 
 let expandedWorkerJobId = null;
+// Tracks whether we've already auto-opened the active job's full card once, so
+// the background poll (and later reloads) never re-expand it after a worker has
+// deliberately collapsed it.
+let hasAutoExpandedCurrentJob = false;
 
 function workerQueueInitials(name) {
   const parts = String(name || '').trim().split(/\s+/).filter(Boolean);
@@ -2113,10 +2117,17 @@ async function pollWorkerJobs() {
 function startWorkerJobsPoll() {
   if (workerJobsPollTimer) return;
   workerJobsPollTimer = setInterval(pollWorkerJobs, 20000);
-  // Refresh immediately when the worker returns to the tab.
-  document.addEventListener('visibilitychange', () => {
-    if (!document.hidden) pollWorkerJobs();
-  });
+  // Refresh immediately when the worker returns to the app. iOS standalone PWAs
+  // FREEZE setInterval while the app is backgrounded/locked, and they don't
+  // reliably fire `visibilitychange` on resume from the lock screen — so a change
+  // made elsewhere (e.g. a customer cancelling on the website) could sit unseen
+  // until a full reload. `pageshow` (incl. bfcache restore) and window `focus`
+  // fire dependably when the PWA regains the foreground, so we listen to all
+  // three and poll once on resume to catch anything missed while suspended.
+  const refreshOnResume = () => { if (!document.hidden) pollWorkerJobs(); };
+  document.addEventListener('visibilitychange', refreshOnResume);
+  window.addEventListener('pageshow', refreshOnResume);
+  window.addEventListener('focus', refreshOnResume);
 }
 
 async function loadWorkerJobs(silent = false) {
@@ -2179,14 +2190,40 @@ async function loadWorkerJobs(silent = false) {
     return;
   }
 
+  // "Current Job" = the claimed job actually underway (key received or beyond).
+  // Everything else claimed is the day's schedule. This mirrors the app design:
+  // lead with the one job the worker is acting on, then upcoming, then new work.
+  const currentJob = claimedJobs.find((job) => workerProgressStepForStatus(job.status) >= 2) || null;
+  const scheduleJobs = currentJob ? claimedJobs.filter((job) => job.id !== currentJob.id) : claimedJobs;
+
+  // Open the current job's full card by default — once — so its details and next
+  // action are visible without a tap. Never during a silent poll, and never again
+  // after the first time, so it can't reopen on a worker who has collapsed it.
+  if (!silent && currentJob && !hasAutoExpandedCurrentJob && expandedWorkerJobId === null) {
+    expandedWorkerJobId = currentJob.id;
+    hasAutoExpandedCurrentJob = true;
+  }
+
   workerJobList.innerHTML = `
-    <h3>Available Jobs${availableJobs.length ? ` (${availableJobs.length})` : ''}</h3>
-    ${availableJobs.length ? renderWorkerJobTable(availableJobs, 'available') : '<p class="field-help">No new available requests right now.</p>'}
-    <h3>My Claimed Jobs${claimedJobs.length ? ` (${claimedJobs.length})` : ''}</h3>
-    ${claimedJobs.length ? renderWorkerJobTable(claimedJobs, 'mine') : '<p class="field-help">No jobs currently assigned to you.</p>'}
+    ${currentJob ? `
+      <section class="worker-jobs-section worker-jobs-current">
+        <h3>Current Job</h3>
+        ${renderWorkerJobTable([currentJob], 'mine')}
+      </section>
+    ` : ''}
+    <section class="worker-jobs-section">
+      <h3>Today's Schedule${scheduleJobs.length ? ` (${scheduleJobs.length})` : ''}</h3>
+      ${scheduleJobs.length ? renderWorkerJobTable(scheduleJobs, 'mine') : '<p class="field-help">No more jobs scheduled today.</p>'}
+    </section>
+    <section class="worker-jobs-section">
+      <h3>Available Requests${availableJobs.length ? ` (${availableJobs.length})` : ''}</h3>
+      ${availableJobs.length ? renderWorkerJobTable(availableJobs, 'available') : '<p class="field-help">No new available requests right now.</p>'}
+    </section>
     ${cancelledReturnJobs.length ? `
-      <h3>Cancelled / Return Required Jobs (${cancelledReturnJobs.length})</h3>
-      ${renderWorkerJobTable(cancelledReturnJobs, 'mine')}
+      <section class="worker-jobs-section worker-jobs-cancelled">
+        <h3>Cancelled / Return Required (${cancelledReturnJobs.length})</h3>
+        ${renderWorkerJobTable(cancelledReturnJobs, 'mine')}
+      </section>
     ` : ''}
   `;
 
