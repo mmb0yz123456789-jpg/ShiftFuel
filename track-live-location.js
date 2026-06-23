@@ -32,10 +32,6 @@
   ]);
 
   const liveState = new Map();
-  // Cache credentials so DOM re-renders don't blank them mid-poll.
-  let cachedPhone = '';
-  let cachedEmail = '';
-
   function db() {
     return window.ShiftFuelSupabase;
   }
@@ -45,15 +41,16 @@
   }
 
   function emailValue() {
-    const live = document.querySelector('#tracking-email')?.value.trim().toLowerCase() || '';
-    if (live) cachedEmail = live;
-    return cachedEmail;
+    // Prefer the verified contact set by track.js; fall back to the search input.
+    return window._trackingContact?.email ||
+      document.querySelector('#tracking-email')?.value.trim().toLowerCase() || '';
   }
 
   function phoneValue() {
-    const live = cleanPhone(document.querySelector('#tracking-phone')?.value || '');
-    if (live) cachedPhone = live;
-    return cachedPhone;
+    return cleanPhone(
+      window._trackingContact?.phone ||
+      document.querySelector('#tracking-phone')?.value || ''
+    );
   }
 
   function requestList() {

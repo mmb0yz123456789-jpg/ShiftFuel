@@ -2736,19 +2736,34 @@ initBookingFlow();
     panel?.querySelectorAll('fieldset').forEach((fieldset) => { fieldset.disabled = false; });
   }
 
+  let updatingFrozenQuoteCopy = false;
   function updateFrozenQuoteCopy(root = document) {
+    // Re-entrancy guard: this function writes textContent, which is itself a DOM
+    // mutation. The MutationObserver below would otherwise re-invoke us on our own
+    // writes and spin into an infinite loop, locking up the page on the Review step.
+    if (updatingFrozenQuoteCopy) return;
     let quote = null;
     try { quote = bookingState.payment.authorizedQuote; } catch (_) {}
     if (!quote) return;
 
-    root.querySelectorAll('[data-review-summary] .review-summary-list div, [data-payment-summary] .review-summary-list div').forEach((row) => {
-      const label = row.querySelector('dt')?.textContent?.trim().toLowerCase() || '';
-      const value = row.querySelector('dd');
-      if (!value) return;
-      if (label === 'estimated total' || label === 'payment authorization total') value.textContent = money(quote.estimatedTotal);
-    });
-    const sidebarTotal = root.querySelector('.summary-total-amount');
-    if (sidebarTotal) sidebarTotal.textContent = money(quote.estimatedTotal);
+    updatingFrozenQuoteCopy = true;
+    try {
+      const frozenTotal = money(quote.estimatedTotal);
+      root.querySelectorAll('[data-review-summary] .review-summary-list div, [data-payment-summary] .review-summary-list div').forEach((row) => {
+        const label = row.querySelector('dt')?.textContent?.trim().toLowerCase() || '';
+        const value = row.querySelector('dd');
+        if (!value) return;
+        // Only write when the value actually differs, so we don't generate
+        // needless mutations that keep the observer firing.
+        if ((label === 'estimated total' || label === 'payment authorization total') && value.textContent !== frozenTotal) {
+          value.textContent = frozenTotal;
+        }
+      });
+      const sidebarTotal = root.querySelector('.summary-total-amount');
+      if (sidebarTotal && sidebarTotal.textContent !== frozenTotal) sidebarTotal.textContent = frozenTotal;
+    } finally {
+      updatingFrozenQuoteCopy = false;
+    }
   }
 
   function start() {
