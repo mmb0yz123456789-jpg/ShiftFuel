@@ -2584,6 +2584,7 @@ trackForm.addEventListener("submit", async (event) => {
 
     clearTrackAttempts();
     verifiedTrackingContact = { phone, email };
+    window._trackingContact = verifiedTrackingContact;
     trackMessage.textContent = "";
     if (refreshStatusBtn) refreshStatusBtn.hidden = false;
     window._trackingRequests = matchedRequests;
