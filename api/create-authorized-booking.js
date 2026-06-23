@@ -41,6 +41,10 @@ function roundMoney(value) {
   return Math.round((Number(value) || 0) * 100) / 100;
 }
 
+function isUuid(value) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(value || '').trim());
+}
+
 const ALLOWED_BOOKING_FIELDS = [
   'customer_name', 'customer_phone', 'customer_email', 'customer_id',
   'vehicle_year', 'vehicle_make', 'vehicle_model', 'vehicle_color', 'license_plate', 'vehicle_id',
@@ -57,7 +61,46 @@ const ALLOWED_BOOKING_FIELDS = [
   'authorized_amount', 'booking_source', 'notes',
 ];
 
+const NUMERIC_FIELDS = [
+  'vehicle_year', 'estimated_gallons', 'selected_fuel_gallons', 'authorization_fuel_gallons',
+  'price_per_gallon', 'estimated_fuel_amount', 'fuel_convenience_fee', 'wash_fee', 'wash_convenience_fee',
+  'quick_inspection_fee', 'service_fee', 'estimated_total', 'base_fuel_service_fee', 'base_car_wash_service_fee',
+  'base_inspection_fee', 'payment_operating_recovery_amount', 'displayed_fuel_service_fee',
+  'displayed_car_wash_service_fee', 'displayed_inspection_fee', 'net_target_amount',
+  'gross_total_before_rounding', 'rounded_customer_total', 'authorized_amount',
+];
+
+const UUID_FIELDS = ['customer_id', 'vehicle_id', 'user_id'];
 const ALLOWED_SERVICE_TYPES = ['fuel', 'car-wash', 'car-wash-fuel', 'fuel-only', 'wash-only'];
+
+function sanitizeBookingRow(row) {
+  for (const key of Object.keys(row)) {
+    if (row[key] === '') row[key] = null;
+  }
+
+  for (const field of UUID_FIELDS) {
+    if (row[field] && !isUuid(row[field])) delete row[field];
+    if (row[field] == null) delete row[field];
+  }
+
+  for (const field of NUMERIC_FIELDS) {
+    if (!Object.prototype.hasOwnProperty.call(row, field)) continue;
+    if (row[field] == null || row[field] === '') {
+      delete row[field];
+      continue;
+    }
+    const parsed = Number(row[field]);
+    if (Number.isFinite(parsed)) row[field] = parsed;
+    else delete row[field];
+  }
+
+  if (typeof row.quick_inspection === 'string') {
+    row.quick_inspection = row.quick_inspection === 'true' || row.quick_inspection === '1' || row.quick_inspection === 'on';
+  }
+
+  if (row.service_date == null) delete row.service_date;
+  if (row.desired_return_time == null) delete row.desired_return_time;
+}
 
 async function attachLegacyUserAndVehicle(db, row) {
   if (row.user_id && row.vehicle_id) return true;
@@ -198,18 +241,18 @@ function buildBookingRow(body, intent) {
   row.estimated_total = authorizedTotal;
   row.authorized_amount = authorizedTotal;
   row.rounded_customer_total = authorizedTotal;
-
   row.gross_total_before_rounding = row.gross_total_before_rounding ?? authorizedTotal;
   row.net_target_amount = row.net_target_amount ?? authorizedTotal;
   row.service_fee = row.service_fee ?? roundMoney(Number(row.displayed_fuel_service_fee || 0) + Number(row.displayed_car_wash_service_fee || 0));
   row.parking_spot = row.parking_spot || row.parking_location || 'See parking location';
   row.key_handoff_method = row.key_handoff_method || row.key_handoff_details || 'See key handoff details';
   row.notes = [row.notes || '', `[quote_frozen ${new Date().toISOString()}] Authorized quote ${authorizedTotal.toFixed(2)}.`].filter(Boolean).join('\n');
+  sanitizeBookingRow(row);
   return row;
 }
 
 async function insertBookingRow(db, row) {
-  const maxInsertAttempts = Object.keys(row).length + 5;
+  const maxInsertAttempts = Object.keys(row).length + 8;
   for (let attempt = 0; attempt < maxInsertAttempts; attempt += 1) {
     console.log('[create-authorized-booking] Supabase insert attempt', attempt + 1);
     const { data, error } = await db.from('service_requests').insert(row).select().maybeSingle();
@@ -224,12 +267,36 @@ async function insertBookingRow(db, row) {
 
     const column = message.match(/Could not find the '([^']+)' column/i)?.[1]
       || message.match(/column "([^"]+)" of relation/i)?.[1]
-      || message.match(/record has no field "([^"]+)"/i)?.[1];
+      || message.match(/record has no field "([^"]+)"/i)?.[1]
+      || message.match(/invalid input syntax for type [^:]+: .*column "([^"]+)"/i)?.[1];
     if (column && Object.prototype.hasOwnProperty.call(row, column)) {
-      console.warn('[create-authorized-booking] Dropping unsupported column and retrying:', column);
+      console.warn('[create-authorized-booking] Dropping unsupported/invalid column and retrying:', column);
       delete row[column];
       continue;
     }
+
+    if (/invalid input syntax for type uuid/i.test(message)) {
+      let removed = false;
+      for (const field of UUID_FIELDS) {
+        if (Object.prototype.hasOwnProperty.call(row, field) && !isUuid(row[field])) {
+          delete row[field];
+          removed = true;
+        }
+      }
+      if (removed) continue;
+    }
+
+    if (/invalid input syntax for type (numeric|double precision|integer|bigint)/i.test(message)) {
+      let removed = false;
+      for (const field of NUMERIC_FIELDS) {
+        if (Object.prototype.hasOwnProperty.call(row, field) && !Number.isFinite(Number(row[field]))) {
+          delete row[field];
+          removed = true;
+        }
+      }
+      if (removed) continue;
+    }
+
     throw error;
   }
   throw new Error('Could not create booking after retrying unsupported columns.');
@@ -304,7 +371,7 @@ module.exports = async function handler(req, res) {
     }
 
     const row = buildBookingRow(body, intent);
-    console.log('[create-authorized-booking] Supabase insert started for PI', intent.id);
+    console.log('[create-authorized-booking] Supabase insert started for PI', intent.id, 'fields', Object.keys(row));
     const data = await insertBookingRow(db, row);
     console.log('[create-authorized-booking] Supabase insert succeeded', data?.id);
 
