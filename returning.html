@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Returning Customer | ShiftFuel Concierge</title>
     <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="layout-width-polish.css">
   </head>
   <body class="landing-page booking-page returning-page">
     <header class="site-header landing-header">
@@ -20,7 +21,7 @@
         <a href="index.html#how">How It Works</a>
         <a href="index.html#services">Services &amp; Pricing</a>
         <a href="index.html#trust">Safety &amp; Trust</a>
-        <a class="nav-cta" href="book.html#booking-flow">Book Now</a>
+        <a class="nav-cta" href="book.html">Book Now</a>
         <a class="nav-returning" href="returning.html" aria-current="page">Returning Customer</a>
         <a class="nav-outline" href="track.html">Track My Vehicle</a>
       </nav>
@@ -29,32 +30,34 @@
     <main class="booking-flow-shell">
       <section class="booking-flow-hero">
         <div class="booking-flow-hero-copy">
-          <p class="eyebrow">Returning Customer</p>
-          <h1>Book faster with saved details.</h1>
-          <p>Verify your account, choose a saved service address and vehicle, and continue through the same seamless booking flow.</p>
-          <div class="hero-trust-row">
-            <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="5" y="10.5" width="14" height="9.5" rx="1.6"/><path d="M8 10.5V8a4 4 0 0 1 8 0v2.5"/></svg>Secure &amp; private</span>
-            <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="8.5"/><path d="M12 7v5l3.5 2"/></svg>Save time</span>
-            <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3l7 3v6c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6l7-3z"/></svg>Same great service</span>
-          </div>
+          <p class="eyebrow">Welcome back</p>
+          <h1>Book again faster.</h1>
+          <p>Verify your details, choose a saved service address and vehicle, then authorize your next ShiftFuel request.</p>
         </div>
         <figure class="booking-flow-hero-image">
           <img src="https://images.unsplash.com/photo-1560179707-f14e90ef3623?auto=format&fit=crop&w=1200&q=80" alt="Professional vehicle handoff near a workplace parking area">
         </figure>
       </section>
-
-      <section id="booking-flow" class="booking-flow" data-booking-flow="returning" aria-label="Returning Customer flow"></section>
+      <section id="booking-flow" class="booking-flow" data-booking-flow="returning" aria-label="Returning customer flow"></section>
     </main>
 
     <footer class="site-footer">
-      <p class="footer-copy">&copy; <span id="year"></span> ShiftFuel Concierge. All rights reserved.</p>
+      <div class="footer-main">
+        <p class="footer-copy">&copy; <span id="year"></span> ShiftFuel Concierge. All rights reserved.</p>
+        <nav class="footer-links" aria-label="Legal links">
+          <a href="privacy.html">Privacy Policy</a>
+          <a href="terms.html">Terms of Service</a>
+          <a href="liability-waiver.html">Liability Waiver</a>
+        </nav>
+      </div>
     </footer>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="supabase-client.js"></script>
     <script src="returning-supabase-rpc-patch.js"></script>
     <script src="https://js.stripe.com/v3/"></script>
-    <script src="booking-stripe-remount.js"></script>
     <script src="booking-flow.js"></script>
+    <script src="booking-submit-hardening.js"></script>
     <script src="booking-flow-ui-fixes.js"></script>
+    <script src="booking-price-lock-fix.js"></script>
   </body>
 </html>

@@ -60,12 +60,15 @@ const bookingState = {
     authorized: false,
     paymentIntentId: "",
     clientSecret: "",
+    authorizedAmountCents: 0,
     status: "",
     statusType: "",
   },
   submitted: false,
   submitting: false,
   submittedRequestNumber: "",
+  bookedSlots: new Set(),
+  availabilitySlots: null,
 };
 
 const stepCopy = {
@@ -127,7 +130,7 @@ const stepCopy = {
         <label><span>Make <span class="required-mark">Required</span></span><select data-required name="vehicleMake"><option value="">Select make</option></select></label>
         <label><span>Model <span class="required-mark">Required</span></span><select data-required name="vehicleModel"><option value="">Select year and make first</option></select></label>
         <label><span>Color <span class="required-mark">Required</span></span><input data-required name="vehicleColor" type="text" placeholder="Blue"></label>
-        <label><span>License plate <span class="required-mark">Required</span></span><input data-required name="licensePlate" type="text" placeholder="TEST"></label>
+        <label><span>License plate <span class="required-mark">Required</span></span><input data-required name="licensePlate" type="text" placeholder="123456"></label>
       </div>
     `,
   },
@@ -189,15 +192,11 @@ const stepCopy = {
   },
   Payment: {
     title: "Payment Authorization",
-    intro: "Authorize your payment method now. You will only be charged after your service is completed.",
+    intro: "Authorize your payment method now. You are not charged until service is complete.",
     fields: `
       <div class="payment-placeholder" data-payment-summary></div>
-      <div class="payment-card-box">
-        <label><span>Card information</span><div id="booking-card-element" class="booking-card-element"></div></label>
-        <p id="booking-card-errors" class="booking-validation-message" data-status="error"></p>
-      </div>
-      <p class="payment-notice">Your payment method will be authorized now. You will only be charged after your service is completed.</p>
-      <p class="field-help">Do not capture payment at booking. Do not capture payment when worker clicks Return Vehicle. Capture payment only when service is confirmed complete. Void authorization if the request is denied or cancelled.</p>
+      <p class="payment-notice">Your card is authorized now. You are not charged until service is complete, unless you cancel after the worker has received your keys or service has started.</p>
+      <p class="field-help">This places a temporary hold for the estimated amount. The request is not booked until you review and submit it on the next step.</p>
       <button class="button secondary" type="button" data-authorize-payment>Authorize payment</button>
       <p class="booking-validation-message" data-payment-status></p>
     `,
@@ -210,7 +209,10 @@ const stepCopy = {
         <strong>Review summary</strong>
       </div>
       <label class="booking-check"><input data-required type="checkbox" name="reviewConfirmed"><span>I confirm that the information above is accurate and authorize ShiftFuel Concierge to pick up, service, and return my vehicle using the instructions provided.</span></label>
-      <button class="button primary" type="button" data-submit-booking>Submit Booking</button>
+      <div class="admin-button-row">
+        <button class="button primary" type="button" data-submit-booking>Book request</button>
+        <button class="button secondary" type="button" data-cancel-authorization>Cancel authorization</button>
+      </div>
       <p class="booking-validation-message" data-submit-status></p>
     `,
   },
@@ -231,11 +233,11 @@ function isValidEmail(value) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value || "").trim());
 }
 
-const PRICE_PER_GALLON = 3.799;
-const FUEL_SERVICE_FEE = 15;
-const CAR_WASH_SERVICE_FEE = 15;
-const QUICK_CARE_FEE = 5;
-const WASH_PACKAGES = [
+let PRICE_PER_GALLON = 3.799;
+let FUEL_SERVICE_FEE = 15;
+let CAR_WASH_SERVICE_FEE = 15;
+let QUICK_CARE_FEE = 5;
+let WASH_PACKAGES = [
   {
     value: "buff-shine", label: "Buff & Shine", price: 27,
     includes: ["Fire Bath", "Super Hard Shell Ceramic Finish", "Buff N' Shine", "ICE® Instant Shine", "Salt Shield", "Tire Shine", "Triple Wheel Cleaning", "Tri-Foam Conditioner", "Blazin' Glaze Clear Coat", "High pH Presoak", "Low pH Presoak", "Double Tire & Wheel Cleaning", "Drying Agent", "Spot Free Rinse"],
@@ -253,6 +255,44 @@ const WASH_PACKAGES = [
     includes: ["High pH Presoak", "Low pH Presoak", "Double Tire & Wheel Cleaning", "Drying Agent", "Spot Free Rinse"],
   },
 ];
+const WASH_PACKAGE_INCLUDES = {
+  "buff-shine": WASH_PACKAGES[0].includes,
+  "shine-protect": WASH_PACKAGES[1].includes,
+  shine: WASH_PACKAGES[2].includes,
+  "double-wash": WASH_PACKAGES[3].includes,
+};
+
+async function loadLivePricing() {
+  if (!window.ShiftFuelSupabase) return;
+  try {
+    const [fuelResult, serviceResult] = await Promise.all([
+      window.ShiftFuelSupabase.rpc("public_get_fuel_prices"),
+      window.ShiftFuelSupabase.rpc("public_get_service_pricing"),
+    ]);
+
+    const fuelData = fuelResult?.data;
+    if (!fuelResult?.error && fuelData && fuelData.regular_price != null) {
+      PRICE_PER_GALLON = Number(fuelData.regular_price);
+    }
+
+    const serviceData = serviceResult?.data;
+    if (!serviceResult?.error && serviceData) {
+      FUEL_SERVICE_FEE = Number(serviceData.fuel_service_fee);
+      CAR_WASH_SERVICE_FEE = Number(serviceData.wash_service_fee);
+      QUICK_CARE_FEE = Number(serviceData.quick_inspection_fee);
+      WASH_PACKAGES = [
+        { value: "buff-shine", label: "Buff & Shine", price: Number(serviceData.wash_buff_shine_price), includes: WASH_PACKAGE_INCLUDES["buff-shine"] },
+        { value: "shine-protect", label: "Shine & Protect", price: Number(serviceData.wash_shine_protect_price), includes: WASH_PACKAGE_INCLUDES["shine-protect"] },
+        { value: "shine", label: "Shine", price: Number(serviceData.wash_shine_price), includes: WASH_PACKAGE_INCLUDES.shine },
+        { value: "double-wash", label: "Double Wash", price: Number(serviceData.wash_double_wash_price), includes: WASH_PACKAGE_INCLUDES["double-wash"] },
+      ];
+    }
+  } catch (err) {
+    console.error("Could not load live pricing, using defaults:", err);
+  }
+}
+
+const livePricingReady = loadLivePricing();
 const VEHICLE_POPULAR_MAKES = ["Chevrolet", "Ford", "Honda", "Hyundai", "Jeep", "Kia", "Nissan", "Subaru", "Tesla", "Toyota"];
 const VEHICLE_OTHER_MAKES = ["Acura", "Alfa Romeo", "Audi", "BMW", "Buick", "Cadillac", "Chrysler", "Dodge", "Fiat", "Genesis", "GMC", "Infiniti", "Jaguar", "Land Rover", "Lexus", "Lincoln", "Mazda", "Mercedes-Benz", "Mini", "Mitsubishi", "Porsche", "Ram", "Volkswagen", "Volvo"];
 const VEHICLE_FALLBACK_MODELS = {
@@ -286,12 +326,20 @@ const VEHICLE_FALLBACK_MODELS = {
   Volkswagen: ["Atlas", "Golf", "ID.4", "Jetta", "Passat", "Taos", "Tiguan"],
   Volvo: ["S60", "S90", "V60", "XC40", "XC60", "XC90"],
 };
-const FUEL_RANGES = {
+const FUEL_SELECTED_GALLONS = {
   "0-5": 5,
   "5-10": 10,
   "10-15": 15,
   "15-20": 20,
   "20-25": 25,
+  "25+": 40,
+};
+const FUEL_AUTHORIZATION_GALLONS = {
+  "0-5": 10,
+  "5-10": 15,
+  "10-15": 20,
+  "15-20": 30,
+  "20-25": 30,
   "25+": 40,
 };
 const slotHoldingStatuses = new Set([
@@ -332,15 +380,58 @@ function selectedWashPackage() {
 }
 
 function calculateTotals() {
-  const fuelGallons = serviceNeedsFuel() ? FUEL_RANGES[bookingState.values.fuelPreference] || 0 : 0;
-  const fuelEstimate = fuelGallons * PRICE_PER_GALLON;
+  const selectedFuelGallons = serviceNeedsFuel() ? FUEL_SELECTED_GALLONS[bookingState.values.fuelPreference] || 0 : 0;
+  const authorizationFuelGallons = serviceNeedsFuel() ? FUEL_AUTHORIZATION_GALLONS[bookingState.values.fuelPreference] || 0 : 0;
+  const fuelGallons = authorizationFuelGallons;
+  const fuelEstimate = authorizationFuelGallons * PRICE_PER_GALLON;
   const washPackage = serviceNeedsWash() ? selectedWashPackage() : null;
   const washAmount = washPackage ? washPackage.price : 0;
-  const fuelFee = serviceNeedsFuel() ? FUEL_SERVICE_FEE : 0;
-  const washFee = serviceNeedsWash() ? CAR_WASH_SERVICE_FEE : 0;
+  const fuelBaseFee = serviceNeedsFuel() ? FUEL_SERVICE_FEE : 0;
+  const washBaseFee = serviceNeedsWash() ? CAR_WASH_SERVICE_FEE : 0;
   const quickFee = bookingState.values.quickCare ? QUICK_CARE_FEE : 0;
-  const estimatedTotal = Math.ceil(fuelEstimate + washAmount + fuelFee + washFee + quickFee);
-  return { fuelGallons, fuelEstimate, washPackage, washAmount, fuelFee, washFee, quickFee, estimatedTotal };
+  const netTarget = fuelEstimate + washAmount + fuelBaseFee + washBaseFee + quickFee;
+  const grossBeforeRounding = netTarget ? (netTarget + 0.30) / (1 - 0.029) : 0;
+  const estimatedTotal = netTarget ? Math.ceil(grossBeforeRounding) : 0;
+  const recovery = Math.round((estimatedTotal - netTarget) * 100) / 100;
+  let fuelRecovery = 0;
+  let washRecovery = 0;
+
+  if (serviceNeedsFuel() && serviceNeedsWash()) {
+    const recoveryCents = Math.round(recovery * 100);
+    const fuelBase = fuelEstimate + fuelBaseFee;
+    const washBase = washAmount + washBaseFee;
+    const totalServiceBase = fuelBase + washBase;
+    const fuelCents = totalServiceBase
+      ? Math.round(recoveryCents * (fuelBase / totalServiceBase))
+      : Math.round(recoveryCents / 2);
+    fuelRecovery = fuelCents / 100;
+    washRecovery = (recoveryCents - fuelCents) / 100;
+  } else if (serviceNeedsFuel()) {
+    fuelRecovery = recovery;
+  } else if (serviceNeedsWash()) {
+    washRecovery = recovery;
+  }
+
+  const fuelFee = Math.round((fuelBaseFee + fuelRecovery) * 100) / 100;
+  const washFee = Math.round((washBaseFee + washRecovery) * 100) / 100;
+
+  return {
+    fuelGallons,
+    selectedFuelGallons,
+    authorizationFuelGallons,
+    fuelEstimate,
+    washPackage,
+    washAmount,
+    fuelFee,
+    washFee,
+    quickFee,
+    estimatedTotal,
+    fuelBaseFee,
+    washBaseFee,
+    recovery,
+    netTarget,
+    grossBeforeRounding,
+  };
 }
 
 function timeLabel(hour, minute) {
@@ -353,20 +444,39 @@ function timeValue(hour, minute) {
   return `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
 }
 
+function normalizeTimeSlot(value) {
+  const text = String(value || "").trim();
+  const match = text.match(/^(\d{1,2}):(\d{2})/);
+  if (!match) return "";
+  return `${match[1].padStart(2, "0")}:${match[2]}`;
+}
+
+function isMissingRpcError(error) {
+  const message = String(error?.message || "").toLowerCase();
+  return ["PGRST202", "PGRST204", "42883"].includes(error?.code)
+    || message.includes("could not find the function")
+    || (message.includes("function") && message.includes("does not exist"));
+}
+
 function availableTimeOptions() {
   const selectedDate = bookingState.values.serviceDate || "";
   const now = new Date();
   const isToday = selectedDate === todayValue();
   const bookedSlots = bookingState.bookedSlots || new Set();
+  const availabilitySlots = bookingState.availabilitySlots;
+  const hasAvailabilityLookup = availabilitySlots instanceof Set;
   const options = [];
-  for (let hour = 9; hour <= 18; hour += 1) {
+  for (let hour = 7; hour <= 22; hour += 1) {
     for (const minute of [0, 30]) {
-      if (hour === 18 && minute > 0) continue;
+      if (hour === 22 && minute > 0) continue;
       const value = timeValue(hour, minute);
       const optionDate = new Date(`${selectedDate || todayValue()}T${value}:00`);
       const past = isToday && optionDate <= now;
       const booked = bookedSlots.has(value);
-      options.push({ value, label: timeLabel(hour, minute), disabled: past || booked });
+      const unavailable = hasAvailabilityLookup ? !availabilitySlots.has(value) : (hour < 9 || hour > 17 || (hour === 17 && minute > 0));
+      if (!unavailable || bookingState.values.returnTime === value) {
+        options.push({ value, label: timeLabel(hour, minute), disabled: past || booked || unavailable });
+      }
     }
   }
   return options;
@@ -374,17 +484,37 @@ function availableTimeOptions() {
 
 async function loadBookedSlots() {
   bookingState.bookedSlots = new Set();
+  bookingState.availabilitySlots = null;
   if (!window.ShiftFuelSupabase || !bookingState.values.serviceDate) return;
   try {
-    const { data, error } = await window.ShiftFuelSupabase.rpc("public_booked_return_slots", {
-      p_service_date: bookingState.values.serviceDate,
-    });
+    const [bookedResult, availabilityResult] = await Promise.all([
+      window.ShiftFuelSupabase.rpc("public_booked_return_slots", {
+        p_service_date: bookingState.values.serviceDate,
+      }),
+      window.ShiftFuelSupabase.rpc("public_worker_availability_slots", {
+        p_service_date: bookingState.values.serviceDate,
+        p_hospital: "",
+      }),
+    ]);
+
+    const { data, error } = bookedResult || {};
     if (error) throw error;
     (data || []).forEach((row) => {
       if (slotHoldingStatuses.has(row.status) && row.desired_return_time) {
-        bookingState.bookedSlots.add(String(row.desired_return_time).slice(0, 5));
+        bookingState.bookedSlots.add(normalizeTimeSlot(row.desired_return_time));
       }
     });
+
+    if (availabilityResult?.error) {
+      if (!isMissingRpcError(availabilityResult.error)) {
+        console.warn("Could not load worker availability slots:", availabilityResult.error);
+        bookingState.availabilitySlots = new Set();
+      }
+    } else {
+      bookingState.availabilitySlots = new Set((availabilityResult?.data || [])
+        .map((row) => normalizeTimeSlot(row.slot))
+        .filter(Boolean));
+    }
   } catch (error) {
     console.warn("Could not load booked return slots:", error);
   }
@@ -399,6 +529,57 @@ function mountCardIfNeeded() {
   cardElement.on("change", (event) => {
     const display = document.querySelector("#booking-card-errors");
     if (display) display.textContent = event.error ? event.error.message : "";
+  });
+}
+
+function closePaymentModal() {
+  const modal = document.querySelector("#booking-payment-modal");
+  if (!modal) return;
+  if (cardElement && cardMounted) {
+    cardElement.unmount();
+    cardMounted = false;
+  }
+  modal.remove();
+  document.body.classList.remove("payment-modal-open");
+}
+
+function openPaymentModal(panel) {
+  closePaymentModal();
+
+  const modal = document.createElement("div");
+  modal.id = "booking-payment-modal";
+  modal.className = "booking-payment-modal";
+  modal.innerHTML = `
+    <div class="booking-payment-backdrop" data-close-payment-modal></div>
+    <div class="booking-payment-dialog" role="dialog" aria-modal="true" aria-labelledby="booking-payment-title">
+      <button class="booking-payment-close" type="button" aria-label="Close payment authorization" data-close-payment-modal>&times;</button>
+      <p class="eyebrow">Secure payment authorization</p>
+      <h3 id="booking-payment-title">Enter card information</h3>
+      <p class="field-help">Your card is authorized now. You are not charged until service is complete, unless you cancel after the worker has received your keys or service has started.</p>
+      <div class="payment-card-box">
+        <label><span>Card information</span><div id="booking-card-element" class="booking-card-element"></div></label>
+        <p id="booking-card-errors" class="booking-validation-message" data-status="error"></p>
+      </div>
+      <div class="admin-button-row">
+        <button class="button secondary" type="button" data-close-payment-modal>Cancel</button>
+        <button class="button primary" type="button" data-confirm-payment-authorization>Authorize payment</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(modal);
+  document.body.classList.add("payment-modal-open");
+  mountCardIfNeeded();
+  if (cardElement?.clear) cardElement.clear();
+
+  modal.addEventListener("click", async (event) => {
+    if (event.target.closest("[data-close-payment-modal]")) {
+      closePaymentModal();
+      return;
+    }
+
+    const confirmButton = event.target.closest("[data-confirm-payment-authorization]");
+    if (!confirmButton) return;
+    await confirmPaymentAuthorization(panel, confirmButton);
   });
 }
 
@@ -986,7 +1167,7 @@ function returningVehicleForm() {
         <label><span>Make <span class="required-mark">Required</span></span><select data-returning-vehicle-field name="returningVehicleMake"><option value="">Select make</option></select></label>
         <label><span>Model <span class="required-mark">Required</span></span><select data-returning-vehicle-field name="returningVehicleModel"><option value="">Select year and make first</option></select></label>
         <label><span>Color <span class="required-mark">Required</span></span><input data-returning-vehicle-field name="returningVehicleColor" type="text" placeholder="Blue"></label>
-        <label><span>License plate <span class="required-mark">Required</span></span><input data-returning-vehicle-field name="returningLicensePlate" type="text" placeholder="TEST"></label>
+        <label><span>License plate <span class="required-mark">Required</span></span><input data-returning-vehicle-field name="returningLicensePlate" type="text" placeholder="123456"></label>
         <label><span>Fuel type</span><select data-returning-vehicle-field name="returningFuelType">
           <option value="">Select fuel type later if needed</option>
           <option>Regular</option>
@@ -1210,7 +1391,11 @@ function renderScheduleFields(panel) {
   if (bookingState.values.serviceDate) dateInput.value = bookingState.values.serviceDate;
 
   const selectedTime = bookingState.values.returnTime || "";
-  timeSelect.innerHTML = `<option value="">Select return time</option>${availableTimeOptions().map((option) => `
+  const options = availableTimeOptions();
+  const placeholder = bookingState.values.serviceDate && options.length === 0
+    ? "No return times available for this date"
+    : "Select return time";
+  timeSelect.innerHTML = `<option value="">${placeholder}</option>${options.map((option) => `
     <option value="${option.value}" ${option.disabled ? "disabled" : ""} ${option.value === selectedTime && !option.disabled ? "selected" : ""}>${option.label}${option.disabled ? " - unavailable" : ""}</option>
   `).join("")}`;
   if (selectedTime && !Array.from(timeSelect.options).some((option) => option.value === selectedTime && !option.disabled)) {
@@ -1229,7 +1414,7 @@ function renderPaymentSummary(panel) {
       ${serviceNeedsFuel() ? `<div><dt>Fuel service fee</dt><dd>${formatMoney(totals.fuelFee)}</dd></div>` : ""}
       ${serviceNeedsWash() ? `<div><dt>Car wash service fee</dt><dd>${formatMoney(totals.washFee)}</dd></div>` : ""}
       ${bookingState.values.quickCare ? `<div><dt>Quick Vehicle Care add-on</dt><dd>${formatMoney(totals.quickFee)}</dd></div>` : ""}
-      ${serviceNeedsFuel() ? `<div><dt>Estimated fuel</dt><dd>${totals.fuelGallons} gal x ${formatMoney(PRICE_PER_GALLON)}/gal = ${formatMoney(totals.fuelEstimate)}</dd></div>` : ""}
+      ${serviceNeedsFuel() ? `<div><dt>Estimated fuel</dt><dd>${escapeHtml(bookingState.values.fuelPreference || "Selected range")} selected. We authorize a ${totals.authorizationFuelGallons} gallon buffer just in case: ${totals.authorizationFuelGallons} gal x ${formatMoney(PRICE_PER_GALLON)}/gal = ${formatMoney(totals.fuelEstimate)}</dd></div>` : ""}
       ${totals.washPackage ? `<div><dt>Car wash package</dt><dd>${escapeHtml(totals.washPackage.label)} - ${formatMoney(totals.washAmount)}</dd></div>` : ""}
       <div><dt>Estimated total</dt><dd>${formatMoney(totals.estimatedTotal)}</dd></div>
     </dl>
@@ -1239,7 +1424,11 @@ function renderPaymentSummary(panel) {
     status.dataset.status = bookingState.payment.statusType || "";
     status.textContent = bookingState.payment.status || "";
   }
-  mountCardIfNeeded();
+  const button = panel.querySelector("[data-authorize-payment]");
+  if (button) {
+    button.disabled = bookingState.payment.authorized;
+    button.textContent = bookingState.payment.authorized ? "Payment authorized" : "Authorize payment";
+  }
 }
 
 async function authorizePayment(panel) {
@@ -1263,6 +1452,29 @@ async function authorizePayment(panel) {
     setStatus("error", "Please complete service details before authorizing payment.");
     return;
   }
+  openPaymentModal(panel);
+}
+
+async function confirmPaymentAuthorization(panel, button) {
+  savePanelValues(panel);
+  const status = panel.querySelector("[data-payment-status]");
+  const setStatus = (type, message) => {
+    bookingState.payment.statusType = type;
+    bookingState.payment.status = message;
+    if (status) {
+      status.dataset.status = type;
+      status.textContent = message;
+    }
+    const modalError = document.querySelector("#booking-card-errors");
+    if (modalError && type === "error") modalError.textContent = message;
+  };
+
+  if (!stripe || !cardElement || !cardMounted) {
+    setStatus("error", "Payment authorization is not available right now.");
+    return;
+  }
+
+  const totals = calculateTotals();
   if (button) {
     button.disabled = true;
     button.textContent = "Authorizing...";
@@ -1298,7 +1510,10 @@ async function authorizePayment(panel) {
     bookingState.payment.authorized = true;
     bookingState.payment.paymentIntentId = intent.payment_intent_id;
     bookingState.payment.clientSecret = intent.client_secret;
-    setStatus("success", "Payment authorized. You will only be charged after your service is completed.");
+    bookingState.payment.authorizedAmountCents = Math.round(totals.estimatedTotal * 100);
+    setStatus("success", "Payment authorized. You are not charged until service is complete.");
+    closePaymentModal();
+    flowRoot?.dispatchEvent(new CustomEvent("booking-payment-authorized"));
   } catch (error) {
     console.error("Payment authorization failed:", error);
     bookingState.payment.authorized = false;
@@ -1306,7 +1521,70 @@ async function authorizePayment(panel) {
   } finally {
     if (button) {
       button.disabled = false;
-      button.textContent = bookingState.payment.authorized ? "Payment authorized" : "Authorize payment";
+      button.textContent = "Authorize payment";
+    }
+  }
+}
+
+async function cancelPaymentAuthorization(panel) {
+  const status = panel.querySelector("[data-submit-status]") || panel.querySelector("[data-payment-status]");
+  const setStatus = (type, message) => {
+    if (status) {
+      status.dataset.status = type;
+      status.textContent = message;
+    }
+    bookingState.payment.statusType = type;
+    bookingState.payment.status = message;
+  };
+
+  if (!bookingState.payment.paymentIntentId || !bookingState.payment.clientSecret) {
+    bookingState.payment.authorized = false;
+    bookingState.payment.paymentIntentId = "";
+    bookingState.payment.clientSecret = "";
+    bookingState.payment.authorizedAmountCents = 0;
+    bookingState.values.reviewConfirmed = false;
+    setStatus("warning", "Payment authorization was cleared. No request was booked.");
+    return true;
+  }
+
+  const confirmed = confirm("Cancel this payment authorization? No request will be booked and the card hold will be released.");
+  if (!confirmed) return false;
+
+  const button = panel.querySelector("[data-cancel-authorization]");
+  if (button) {
+    button.disabled = true;
+    button.textContent = "Canceling...";
+  }
+  setStatus("warning", "Canceling payment authorization...");
+
+  try {
+    const res = await fetch("/api/payments", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        action: "cancel_authorization",
+        payment_intent_id: bookingState.payment.paymentIntentId,
+        client_secret: bookingState.payment.clientSecret,
+      }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || "Could not cancel payment authorization.");
+
+    bookingState.payment.authorized = false;
+    bookingState.payment.paymentIntentId = "";
+    bookingState.payment.clientSecret = "";
+    bookingState.payment.authorizedAmountCents = 0;
+    bookingState.values.reviewConfirmed = false;
+    setStatus("success", "Payment authorization canceled. No request was booked and the card hold was released.");
+    return true;
+  } catch (error) {
+    console.error("Payment authorization cancel failed:", error);
+    setStatus("error", error.message || "Could not cancel payment authorization. Please contact ShiftFuel.");
+    return false;
+  } finally {
+    if (button) {
+      button.disabled = false;
+      button.textContent = "Cancel authorization";
     }
   }
 }
@@ -1454,7 +1732,7 @@ function buildBookingPayload() {
 
   return {
     payment_intent_id: bookingState.payment.paymentIntentId,
-    amount_cents: Math.round(totals.estimatedTotal * 100),
+    amount_cents: bookingState.payment.authorizedAmountCents || Math.round(totals.estimatedTotal * 100),
     customer_name: customerName(),
     customer_id: bookingState.returning.requests[0]?.customer_id || null,
     customer_phone: formatPhone(bookingState.values.customerPhone || ""),
@@ -1482,6 +1760,8 @@ function buildBookingPayload() {
     fuel_type: serviceNeedsFuel() ? bookingState.values.fuelType || "" : "",
     estimated_fuel_range: serviceNeedsFuel() ? bookingState.values.fuelPreference || "" : "",
     estimated_gallons: totals.fuelGallons,
+    selected_fuel_gallons: totals.selectedFuelGallons,
+    authorization_fuel_gallons: totals.authorizationFuelGallons,
     price_per_gallon: PRICE_PER_GALLON,
     estimated_fuel_amount: totals.fuelEstimate,
     fuel_convenience_fee: totals.fuelFee,
@@ -1494,6 +1774,16 @@ function buildBookingPayload() {
     service_fee: totals.fuelFee + totals.washFee,
     estimated_total: totals.estimatedTotal,
     authorized_amount: totals.estimatedTotal,
+    base_fuel_service_fee: totals.fuelBaseFee,
+    base_car_wash_service_fee: totals.washBaseFee,
+    base_inspection_fee: totals.quickFee,
+    payment_operating_recovery_amount: totals.recovery,
+    displayed_fuel_service_fee: totals.fuelFee,
+    displayed_car_wash_service_fee: totals.washFee,
+    displayed_inspection_fee: totals.quickFee,
+    net_target_amount: totals.netTarget,
+    gross_total_before_rounding: totals.grossBeforeRounding,
+    rounded_customer_total: totals.estimatedTotal,
     booking_source: flowRoot?.dataset.bookingFlow === "returning" ? "returning_customer" : "book_now",
     notes,
   };
@@ -1549,6 +1839,10 @@ async function submitBooking(panel) {
           <h3>Request received.</h3>
           <p>Your request number is: <strong>${escapeHtml(bookingState.submittedRequestNumber)}</strong></p>
           <p>Use Track My Vehicle to follow your request.</p>
+          <div class="admin-button-row">
+            <button class="button primary" type="button" data-new-booking>Submit a new request</button>
+            <a class="button secondary" href="track.html">Track My Vehicle</a>
+          </div>
         </div>
       `;
     }
@@ -1561,7 +1855,7 @@ async function submitBooking(panel) {
     setStatus("error", error.message || "Could not submit booking. Please try again.");
     if (button) {
       button.disabled = false;
-      button.textContent = "Submit Booking";
+      button.textContent = "Book request";
     }
   } finally {
     bookingState.submitting = false;
@@ -1581,7 +1875,7 @@ function renderReviewSummary(panel) {
       <div><dt>Service address</dt><dd>${escapeHtml([values.street, values.unit, values.city, values.state, values.zip].filter(Boolean).join(", ") || "Not entered")}</dd></div>
       <div><dt>Vehicle</dt><dd>${escapeHtml([values.vehicleYear, values.vehicleMake, values.vehicleModel, values.vehicleColor].filter(Boolean).join(" ") || "Not entered")}${values.licensePlate ? ` | Plate: ${escapeHtml(values.licensePlate)}` : ""}${values.fuelType ? ` | Fuel: ${escapeHtml(values.fuelType)}` : ""}</dd></div>
       <div><dt>Selected services</dt><dd>${escapeHtml(serviceLabel())}</dd></div>
-      ${serviceNeedsFuel() ? `<div><dt>Fuel details</dt><dd>${escapeHtml(values.fuelType || "Not selected")}, ${escapeHtml(values.fuelPreference || "Not selected")} gallons</dd></div>` : ""}
+      ${serviceNeedsFuel() ? `<div><dt>Fuel details</dt><dd>${escapeHtml(values.fuelType || "Not selected")}, ${escapeHtml(values.fuelPreference || "Not selected")} gallons selected. Authorization uses a ${totals.authorizationFuelGallons} gallon buffer.</dd></div>` : ""}
       ${totals.washPackage ? `<div><dt>Car wash package</dt><dd>${escapeHtml(totals.washPackage.label)}</dd></div>` : ""}
       <div><dt>Add-ons</dt><dd>${escapeHtml(addOns)}</dd></div>
       <div><dt>Service date</dt><dd>${escapeHtml(values.serviceDate || "Not selected")}</dd></div>
@@ -1591,7 +1885,7 @@ function renderReviewSummary(panel) {
       <div><dt>Special instructions</dt><dd>${escapeHtml(values.specialInstructions || "None")}</dd></div>
       <div><dt>Payment authorization total</dt><dd>${formatMoney(totals.estimatedTotal)}</dd></div>
     </dl>
-    <p>Request status will be created as request_received. Customer, service address, and vehicle details are saved as a snapshot on the request.</p>
+    <p class="field-help">Your card is authorized now. You are not charged until service is complete, unless you cancel after the worker has received your keys or service has started. Choose Book request to send this booking to ShiftFuel, or Cancel authorization to release the hold and stop here.</p>
   `;
 }
 
@@ -1730,6 +2024,14 @@ function renderFlow(root) {
     updateContinue();
   });
 
+  root.addEventListener("booking-payment-authorized", () => {
+    const activePanel = root.querySelector(".booking-accordion-card.is-active");
+    if (activePanel) {
+      renderPaymentSummary(activePanel);
+      updateContinue();
+    }
+  });
+
   root.addEventListener("click", async (event) => {
     const railStep = event.target.closest("[data-rail-step]");
     if (railStep && !railStep.disabled) {
@@ -1759,6 +2061,11 @@ function renderFlow(root) {
     const panel = event.target.closest(".booking-accordion-card");
     if (!panel) return;
 
+    if (event.target.closest("[data-new-booking]")) {
+      window.location.reload();
+      return;
+    }
+
     if (event.target.closest("[data-verify-returning]")) {
       await verifyReturningCustomer(panel);
       savePanelValues(panel);
@@ -1782,6 +2089,17 @@ function renderFlow(root) {
     if (event.target.closest("[data-submit-booking]")) {
       await submitBooking(panel);
       updateContinue();
+      return;
+    }
+
+    if (event.target.closest("[data-cancel-authorization]")) {
+      const canceled = await cancelPaymentAuthorization(panel);
+      if (canceled) {
+        unlockedIndex = Math.min(unlockedIndex, steps.indexOf("Payment"));
+        goToStep(steps.indexOf("Payment"));
+      } else {
+        updateContinue();
+      }
       return;
     }
 
@@ -1870,4 +2188,10 @@ function renderFlow(root) {
   render();
 }
 
-if (flowRoot) renderFlow(flowRoot);
+async function initBookingFlow() {
+  if (!flowRoot) return;
+  await livePricingReady;
+  renderFlow(flowRoot);
+}
+
+initBookingFlow();

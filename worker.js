@@ -739,7 +739,7 @@ async function ensureWorkerProfile() {
     if (storedError) {
       const fallback = await workerDb
         .from('employees_public')
-        .select('id,full_name,phone,home_location')
+        .select('id,employee_code,full_name,phone,photo_url,original_photo_url,cropped_photo_url,home_location,started_at')
         .eq('id', storedEmployeeId)
         .limit(1);
 
@@ -768,7 +768,7 @@ async function ensureWorkerProfile() {
   if (error) {
     const fallback = await workerDb
       .from('employees_public')
-      .select('id,full_name,phone,home_location')
+      .select('id,employee_code,full_name,phone,photo_url,original_photo_url,cropped_photo_url,home_location,started_at')
       .eq('full_name', SESSION_WORKER_NAME)
       .limit(1);
 
@@ -815,8 +815,8 @@ function renderWorkerDaysGrid(workdays = []) {
   workerDaysGrid.innerHTML = workerDayOptions.map(({ dayOfWeek, label }) => {
     const savedDay = workdayMap.get(dayOfWeek);
     const enabled = savedDay ? 'checked' : '';
-    const startsAt = savedDay?.startsAt || '07:00';
-    const endsAt = savedDay?.endsAt || '22:00';
+    const startsAt = savedDay?.startsAt || '09:00';
+    const endsAt = savedDay?.endsAt || '17:00';
 
     return `
       <div class="worker-day-row" data-day-of-week="${dayOfWeek}">
@@ -848,8 +848,8 @@ function selectedWorkdaysFromForm() {
       const row = workerDaysGrid.querySelector(`.worker-day-row[data-day-of-week="${dayOfWeek}"]`);
       return {
         dayOfWeek,
-        startsAt: row?.querySelector('.worker-day-start')?.value || '07:00',
-        endsAt: row?.querySelector('.worker-day-end')?.value || '22:00',
+        startsAt: row?.querySelector('.worker-day-start')?.value || '09:00',
+        endsAt: row?.querySelector('.worker-day-end')?.value || '17:00',
       };
     })
     .filter((day) => day.startsAt && day.endsAt);
@@ -938,8 +938,8 @@ async function loadWorkerSchedule() {
     const rows = availability || [];
     renderWorkerDaysGrid(rows.map((row) => ({
       dayOfWeek: row.day_of_week,
-      startsAt: String(row.starts_at || '07:00').slice(0, 5),
-      endsAt: String(row.ends_at || '22:00').slice(0, 5),
+      startsAt: String(row.starts_at || '09:00').slice(0, 5),
+      endsAt: String(row.ends_at || '17:00').slice(0, 5),
     })));
 
     const scheduleLocation = rows.find((row) => row.work_location)?.work_location || currentEmployee.home_location || DEFAULT_WORK_LOCATION;
@@ -1202,7 +1202,7 @@ async function loadWorkerReviews() {
 
   const { data: requests, error: requestError } = await workerDb
     .rpc('worker_list_my_requests', { p_token: SESSION_WORKER_TOKEN })
-    .select('id,customer_name,vehicle_year,vehicle_make,vehicle_model,status,service_date');
+    .select('id,customer_name,vehicle_year,vehicle_make,vehicle_model,status,service_date,desired_return_time,updated_at,payment_status');
 
   if (requestError) {
     console.warn('Could not load assigned requests:', requestError);
@@ -1211,6 +1211,8 @@ async function loadWorkerReviews() {
   }
 
   updateWorkerStatCards(requests || []);
+  updateWorkerOnTimeRate(requests || []);
+  updateWorkerRecentUpdates(requests || []);
 
   const requestMap = new Map((requests || []).map((request) => [request.id, request]));
   const requestIds = Array.from(requestMap.keys());
@@ -1281,6 +1283,166 @@ function workerFormatService(request) {
   if (request.service_date) parts.push(request.service_date);
   if (request.desired_return_time) parts.push(`Return by: ${request.desired_return_time}`);
   return parts.filter(Boolean).join(' | ');
+}
+
+let expandedWorkerJobId = null;
+
+function workerQueueInitials(name) {
+  const parts = String(name || '').trim().split(/\s+/).filter(Boolean);
+  if (!parts.length) return '?';
+  return (parts[0][0] + (parts[1]?.[0] || '')).toUpperCase();
+}
+
+function workerJobNextActionLabel(request, mode) {
+  if (mode === 'available') return 'Claim job';
+  if (!isWorkerOpenStatus(request.status)) return 'View Summary';
+  return 'Continue';
+}
+
+function renderWorkerJobRow(request, mode) {
+  const isExpanded = expandedWorkerJobId === request.id;
+  const vehicle = [request.vehicle_year, request.vehicle_make, request.vehicle_model].filter(Boolean).join(' ');
+  const rows = [`
+    <tr class="queue-row${isExpanded ? ' is-expanded' : ''}" data-request-id="${escapeHtml(request.id)}">
+      <td>${escapeHtml(formatWorkerJobTime(request))}</td>
+      <td>
+        <div class="queue-customer-cell">
+          <span class="queue-avatar">${escapeHtml(workerQueueInitials(request.customer_name))}</span>
+          <div>
+            <strong>${escapeHtml(request.customer_name || 'Customer')}</strong>
+            <span class="field-help">${escapeHtml(vehicle)}</span>
+          </div>
+        </div>
+      </td>
+      <td>${escapeHtml(request.service_label || request.service_type || '')}</td>
+      <td><span class="status-pill">${escapeHtml(workerStatusLabels[request.status] || request.status || '')}</span></td>
+      <td>
+        <div class="queue-next-action-cell">
+          <button class="button secondary worker-row-toggle" data-id="${escapeHtml(request.id)}" type="button">${workerJobNextActionLabel(request, mode)}</button>
+          <button class="queue-row-kebab worker-row-toggle" data-id="${escapeHtml(request.id)}" type="button" aria-label="More">&#8942;</button>
+        </div>
+      </td>
+    </tr>
+  `];
+  if (isExpanded) {
+    rows.push(`
+      <tr class="queue-row-detail">
+        <td colspan="5">${renderWorkerJobCard(request, mode)}</td>
+      </tr>
+    `);
+  }
+  return rows.join('');
+}
+
+function renderWorkerJobTable(requests, mode) {
+  return `
+    <table class="admin-requests-table">
+      <thead>
+        <tr>
+          <th>Time</th>
+          <th>Customer</th>
+          <th>Service Type</th>
+          <th>Current Status</th>
+          <th>Next Action</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${requests.map((request) => renderWorkerJobRow(request, mode)).join('')}
+      </tbody>
+    </table>
+  `;
+}
+
+function workerProgressStepForStatus(status) {
+  if (status === 'complete') return 6;
+  const returnPhase = ['returned_location_pending', 'return_location_recorded', 'return_photos_needed', 'vehicle_returned', 'inspection_needed', 'inspection_recorded', 'final_payment_processed', 'awaiting_key_return', 'keys_returned', 'return_requested', 'customer_return_requested', 'cancelled_pending_key_return', 'payment_issue', 'authorization_too_low', 'pending_customer_payment'];
+  if (returnPhase.includes(status)) return 5;
+  const servicePhase = ['service_in_progress', 'fueling_in_progress', 'car_wash_in_progress', 'partial_service_complete', 'fueling_complete', 'car_wash_complete', 'fuel_receipt_uploaded', 'wash_receipt_uploaded', 'service_complete', 'receipts_recorded'];
+  if (servicePhase.includes(status)) return 4;
+  if (status === 'vehicle_picked_up') return 3;
+  if (status === 'key_received') return 2;
+  if (status === 'accepted') return 1;
+  return 0;
+}
+
+function updateWorkerProgressTimeline(myJobs) {
+  const line = document.querySelector('.worker-progress-line');
+  if (!line) return;
+  const spans = Array.from(line.querySelectorAll('span'));
+
+  const activeJobs = myJobs.filter((job) => isWorkerOpenStatus(job.status) && !['pending', 'request_received'].includes(job.status));
+  const activeJob = activeJobs.slice().sort((a, b) => {
+    const aKey = `${a.service_date || ''}T${String(a.desired_return_time || '').slice(0, 5)}`;
+    const bKey = `${b.service_date || ''}T${String(b.desired_return_time || '').slice(0, 5)}`;
+    return aKey.localeCompare(bKey);
+  })[0];
+
+  const step = activeJob ? workerProgressStepForStatus(activeJob.status) : 0;
+  spans.forEach((span, index) => {
+    const stepNumber = index + 1;
+    span.classList.remove('complete', 'active');
+    if (stepNumber < step) span.classList.add('complete');
+    else if (stepNumber === step) span.classList.add('active');
+  });
+}
+
+function workerUpdateDescription(job) {
+  if (job.payment_status === 'captured') return 'Payment received';
+  if (job.status === 'complete') return 'Job completed';
+  return workerStatusLabels[job.status] || job.status || 'Status updated';
+}
+
+function workerFormatClockTime(iso) {
+  if (!iso) return '';
+  return new Date(iso).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+}
+
+function updateWorkerRecentUpdates(myJobs) {
+  const list = document.querySelector('.worker-update-list');
+  if (!list) return;
+
+  const recent = myJobs
+    .filter((job) => job.updated_at)
+    .slice()
+    .sort((a, b) => new Date(b.updated_at) - new Date(a.updated_at))
+    .slice(0, 3);
+
+  if (!recent.length) {
+    list.innerHTML = '<li class="field-help">No recent activity yet.</li>';
+    return;
+  }
+
+  list.innerHTML = recent.map((job) => {
+    const vehicle = [job.vehicle_year, job.vehicle_make, job.vehicle_model].filter(Boolean).join(' ');
+    const description = workerUpdateDescription(job);
+    return `
+      <li>
+        <span>${escapeHtml(description.charAt(0))}</span>
+        <strong>${escapeHtml(description)}</strong>
+        <small>${escapeHtml(job.customer_name || 'Customer')}${vehicle ? ` &middot; ${escapeHtml(vehicle)}` : ''} &middot; ${escapeHtml(workerFormatClockTime(job.updated_at))}</small>
+      </li>
+    `;
+  }).join('');
+}
+
+function updateWorkerOnTimeRate(myJobs) {
+  const targets = [document.querySelector('#worker-stat-ontime'), document.querySelector('#worker-current-ontime')].filter(Boolean);
+  if (!targets.length) return;
+
+  const completed = myJobs.filter((job) => job.status === 'complete' && job.service_date && job.desired_return_time && job.updated_at);
+  if (!completed.length) {
+    targets.forEach((el) => { el.textContent = '—'; });
+    return;
+  }
+
+  const onTimeCount = completed.filter((job) => {
+    const deadline = new Date(`${job.service_date}T${String(job.desired_return_time).slice(0, 5)}`);
+    const actual = new Date(job.updated_at);
+    return actual <= deadline;
+  }).length;
+
+  const rate = Math.round((onTimeCount / completed.length) * 100);
+  targets.forEach((el) => { el.textContent = `${rate}%`; });
 }
 
 function renderWorkerJobCard(request, mode) {
@@ -1847,19 +2009,22 @@ async function loadWorkerJobs() {
 
   if (!myJobs.length && !availableJobs.length) {
     workerJobList.innerHTML = '<div class="empty-state"><p>No jobs available right now.</p></div>';
+    updateWorkerProgressTimeline([]);
     return;
   }
 
   workerJobList.innerHTML = `
     <h3>Available Jobs${availableJobs.length ? ` (${availableJobs.length})` : ''}</h3>
-    ${availableJobs.length ? availableJobs.map((job) => renderWorkerJobCard(job, 'available')).join('') : '<p class="field-help">No new available requests right now.</p>'}
+    ${availableJobs.length ? renderWorkerJobTable(availableJobs, 'available') : '<p class="field-help">No new available requests right now.</p>'}
     <h3>My Claimed Jobs${claimedJobs.length ? ` (${claimedJobs.length})` : ''}</h3>
-    ${claimedJobs.length ? claimedJobs.map((job) => renderWorkerJobCard(job, 'mine')).join('') : '<p class="field-help">No jobs currently assigned to you.</p>'}
+    ${claimedJobs.length ? renderWorkerJobTable(claimedJobs, 'mine') : '<p class="field-help">No jobs currently assigned to you.</p>'}
     ${cancelledReturnJobs.length ? `
       <h3>Cancelled / Return Required Jobs (${cancelledReturnJobs.length})</h3>
-      ${cancelledReturnJobs.map((job) => renderWorkerJobCard(job, 'mine')).join('')}
+      ${renderWorkerJobTable(cancelledReturnJobs, 'mine')}
     ` : ''}
   `;
+
+  updateWorkerProgressTimeline(myJobs);
 }
 
 async function claimWorkerJob(requestId) {
@@ -2432,6 +2597,13 @@ workerJobList?.addEventListener('click', async (event) => {
   if (!button) return;
 
   try {
+    if (button.classList.contains('worker-row-toggle')) {
+      const id = button.dataset.id;
+      expandedWorkerJobId = expandedWorkerJobId === id ? null : id;
+      await loadWorkerJobs();
+      return;
+    }
+
     if (button.classList.contains('claim-worker-job')) {
       button.disabled = true;
       button.textContent = 'Claiming...';
@@ -2932,6 +3104,29 @@ workerPasswordModal?.addEventListener('click', (event) => {
   if (event.target === workerPasswordModal) closePasswordModal();
 });
 
+function toggleWorkerPanel(sectionId, show) {
+  const overlay = document.getElementById(sectionId);
+  if (!overlay) return;
+  const shouldShow = show ?? overlay.hidden;
+  overlay.hidden = !shouldShow;
+}
+
+document.querySelector('#open-schedule-btn')?.addEventListener('click', () => toggleWorkerPanel('worker-availability', true));
+document.querySelector('#close-worker-availability')?.addEventListener('click', () => toggleWorkerPanel('worker-availability', false));
+
+document.querySelector('#open-edit-profile-btn')?.addEventListener('click', () => toggleWorkerPanel('worker-account', true));
+document.querySelector('#close-worker-account')?.addEventListener('click', () => toggleWorkerPanel('worker-account', false));
+
+document.querySelector('#worker-reviews-trigger')?.addEventListener('click', () => toggleWorkerPanel('worker-reviews-section', true));
+document.querySelector('#close-worker-reviews')?.addEventListener('click', () => toggleWorkerPanel('worker-reviews-section', false));
+
+['worker-availability', 'worker-reviews-section', 'worker-account'].forEach((id) => {
+  const overlay = document.getElementById(id);
+  overlay?.addEventListener('click', (event) => {
+    if (event.target === overlay) toggleWorkerPanel(id, false);
+  });
+});
+
 workerPasswordChangeForm?.addEventListener('submit', async (event) => {
   event.preventDefault();
 
@@ -2990,8 +3185,8 @@ workerDaysGrid?.addEventListener('click', (event) => {
 
   if (copyButton) {
     copiedWorkerDaySchedule = {
-      startsAt: startInput?.value || '07:00',
-      endsAt: endInput?.value || '22:00',
+      startsAt: startInput?.value || '09:00',
+      endsAt: endInput?.value || '17:00',
       enabled: Boolean(checkbox?.checked),
     };
     refreshWorkerPasteButtons();
@@ -3064,4 +3259,3 @@ renderWorkerDaysGrid([]);
 renderWorkerDaysOffCalendar();
 window.ShiftFuelPhoto?.initPhotoModal();
 loadVehiclePsiGuides().finally(loadWorkerProfile);
-

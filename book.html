@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Book Now | ShiftFuel Concierge</title>
     <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="layout-width-polish.css">
   </head>
   <body class="landing-page booking-page">
     <header class="site-header landing-header">
@@ -48,13 +49,21 @@
     </main>
 
     <footer class="site-footer">
-      <p class="footer-copy">&copy; <span id="year"></span> ShiftFuel Concierge. All rights reserved.</p>
+      <div class="footer-main">
+        <p class="footer-copy">&copy; <span id="year"></span> ShiftFuel Concierge. All rights reserved.</p>
+        <nav class="footer-links" aria-label="Legal links">
+          <a href="privacy.html">Privacy Policy</a>
+          <a href="terms.html">Terms of Service</a>
+          <a href="liability-waiver.html">Liability Waiver</a>
+        </nav>
+      </div>
     </footer>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="supabase-client.js"></script>
     <script src="https://js.stripe.com/v3/"></script>
-    <script src="booking-stripe-remount.js"></script>
     <script src="booking-flow.js"></script>
+    <script src="booking-submit-hardening.js"></script>
     <script src="booking-flow-ui-fixes.js"></script>
+    <script src="booking-price-lock-fix.js"></script>
   </body>
 </html>

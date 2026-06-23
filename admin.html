@@ -18,12 +18,11 @@
       }
     </script>
 
-    <header class="portal-header admin-top-nav">
+    <header class="portal-header unified-portal-header admin-top-nav">
       <a class="logo" href="index.html">
         <span class="logo-mark">S</span>
         <span>ShiftFuel Concierge</span>
       </a>
-      <!-- Page-level tab nav -->
       <nav class="admin-page-tabs" aria-label="Admin pages">
         <button class="admin-page-tab active" data-page="dashboard">Dashboard</button>
         <button class="admin-page-tab" data-page="requests">Requests</button>
@@ -40,29 +39,9 @@
       </div>
     </header>
 
-    <aside class="admin-sidebar" aria-label="Admin portal navigation">
-      <p class="admin-sidebar-label">Admin Portal</p>
-      <nav class="admin-sidebar-nav">
-        <button class="admin-page-tab active" data-page="dashboard" type="button"><span>01</span> Overview</button>
-        <button class="admin-page-tab" data-page="requests" type="button"><span>02</span> Requests</button>
-        <button class="admin-page-tab" data-page="workers" type="button"><span>03</span> Workers</button>
-        <button class="admin-page-tab" data-page="services" type="button"><span>04</span> Services</button>
-        <button class="admin-page-tab" data-page="reports" type="button"><span>05</span> Reports</button>
-        <button class="admin-page-tab" data-page="settings" type="button"><span>06</span> Settings</button>
-      </nav>
-      <p class="admin-sidebar-label admin-sidebar-tools-label">Tools</p>
-      <nav class="admin-sidebar-nav">
-        <button class="admin-page-tab" data-page="create-request" type="button"><span>+</span> Create Request</button>
-        <button id="sidebar-find-tickets-btn" type="button"><span>?</span> Find Tickets</button>
-      </nav>
-      <div class="admin-help-card">
-        <strong>Need help?</strong>
-        <p>Contact support or view the admin guide.</p>
-        <button class="button secondary" type="button">View Help Center</button>
-      </div>
-    </aside>
-
     <main class="admin-main">
+      <div class="admin-page-row">
+      <div class="admin-page-content">
 
       <!-- â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• DASHBOARD PAGE â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• -->
 
@@ -72,16 +51,54 @@
             <p class="eyebrow">Admin Portal</p>
             <h1>Admin Portal</h1>
             <p>Overview of operations and service management.</p>
-          </div>
-          <div class="admin-hero-stats" id="admin-hero-stats">
-            <div class="hero-stat">
-              <span class="hero-stat-value" id="admin-avg-rating">â€”</span>
-              <span class="hero-stat-label">Avg rating</span>
+            <div class="admin-hero-stats" id="admin-hero-stats">
+              <div class="hero-stat">
+                <span class="hero-stat-value" id="admin-avg-rating">â€”</span>
+                <span class="hero-stat-label">Avg rating</span>
+              </div>
+              <div class="hero-stat-divider"></div>
+              <div class="hero-stat">
+                <span class="hero-stat-value" id="admin-completed-count">0</span>
+                <span class="hero-stat-label">Completed all-time</span>
+              </div>
             </div>
-            <div class="hero-stat-divider"></div>
-            <div class="hero-stat">
-              <span class="hero-stat-value" id="admin-completed-count">0</span>
-              <span class="hero-stat-label">Completed</span>
+          </div>
+          <div class="admin-hero-controls">
+            <button id="hero-find-tickets-btn" class="button secondary admin-find-tickets-btn" type="button">
+              <span class="find-tickets-icon">&#x1F50D;</span> Find Tickets
+            </button>
+            <label class="admin-date-range">
+              <span class="sr-only">Date range</span>
+              <select id="dashboard-range">
+                <option value="today">Today</option>
+                <option value="week">This week</option>
+                <option value="month">This month</option>
+                <option value="all">All time</option>
+              </select>
+            </label>
+            <div class="admin-filters-wrap">
+              <button id="dashboard-filters-btn" class="button secondary admin-filters-btn" type="button" aria-expanded="false" aria-controls="dashboard-filters-panel">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 6h16M7 12h10M10 18h4"/></svg>
+                Filters
+              </button>
+              <div id="dashboard-filters-panel" class="admin-filters-panel" hidden>
+                <label>Service type
+                  <select id="filter-service-type">
+                    <option value="">All services</option>
+                    <option value="fuel">Fuel</option>
+                    <option value="car-wash">Car Wash</option>
+                    <option value="car-wash-fuel">Car Wash + Fuel</option>
+                  </select>
+                </label>
+                <label>Assignment
+                  <select id="filter-assignment">
+                    <option value="">Any</option>
+                    <option value="unassigned">Unassigned</option>
+                    <option value="assigned">Assigned</option>
+                  </select>
+                </label>
+                <button id="filter-clear-btn" class="button secondary" type="button">Clear filters</button>
+              </div>
             </div>
           </div>
         </div>
@@ -103,7 +120,7 @@
           </div>
           <div class="admin-stat-card">
             <div>
-              <span class="admin-stat-label">Completed Today</span>
+              <span class="admin-stat-label" id="stat-completed-label">Completed Today</span>
               <span class="admin-stat-value" id="stat-completed-today">0</span>
             </div>
             <span class="admin-stat-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3l7 3v6c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6l7-3z"/><path d="M9 12l2 2 4-4"/></svg></span>
@@ -117,78 +134,35 @@
           </div>
           <div class="admin-stat-card">
             <div>
-              <span class="admin-stat-label">Revenue Today</span>
-              <span class="admin-stat-value" id="stat-revenue-today">$0</span>
+              <span class="admin-stat-label" id="stat-revenue-label">Net Revenue Today</span>
+              <span class="admin-stat-value" id="stat-net-revenue">$0</span>
             </div>
             <span class="admin-stat-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="8.5"/><path d="M12 7v10M9.5 9.5a2.5 2 0 0 1 2.5-1.5c1.4 0 2.5.7 2.5 1.8 0 2.4-5 1.4-5 4 0 1.1 1.1 1.8 2.5 1.8s2.5-.7 2.5-1.7"/></svg></span>
           </div>
         </div>
       </section>
 
-      <section class="section admin-section admin-dashboard-grid" data-page-section="dashboard">
-        <div class="admin-dashboard-main">
-          <section class="admin-queue-card" data-tab-panel="requests">
-        <div class="admin-toolbar">
-          <div>
-            <p class="eyebrow" id="request-queue-eyebrow">Requests Queue</p>
-            <h2 id="request-queue-heading">Requests Queue</h2>
-          </div>
-          <div class="admin-button-row">
-            <button id="admin-refresh-btn" class="button secondary" type="button">Refresh</button>
-            <button id="show-all-time-btn" class="button secondary" style="display:none" type="button">Show all time</button>
-          </div>
-        </div>
-        <div class="admin-request-tabs">
-          <button id="show-open" class="summary-button active" type="button">All Requests <span id="open-requests">0</span></button>
-          <button class="summary-button" type="button">Open</button>
-          <button class="summary-button" type="button">In Progress</button>
-          <button id="show-complete" class="summary-button" type="button">Completed <span id="complete-requests">0</span></button>
-          <button id="show-denied" class="summary-button" type="button">On Hold <span id="denied-requests">0</span></button>
-        </div>
-        <div id="request-list" class="request-list"></div>
-          </section>
-          <div class="admin-shortcut-grid">
-            <button class="admin-shortcut-card admin-page-tab" data-page="workers" type="button"><strong>Workers</strong><span>Manage your team and performance.</span><em>View Workers â†’</em></button>
-            <button class="admin-shortcut-card admin-page-tab" data-page="create-request" type="button"><strong>Create Request</strong><span>Add a new customer request.</span><em>Create New â†’</em></button>
-            <button class="admin-shortcut-card admin-page-tab" data-page="reports" type="button"><strong>Reports</strong><span>View performance and operations.</span><em>View Reports â†’</em></button>
-            <button class="admin-shortcut-card admin-page-tab" data-page="settings" type="button"><strong>Settings</strong><span>Manage services, pricing, and more.</span><em>Open Settings â†’</em></button>
-          </div>
-        </div>
-        <aside class="admin-dashboard-side">
-          <section class="admin-side-card">
-            <h2>Quick Actions</h2>
-            <button class="admin-action-card" type="button" data-page-action="workers"><strong>Assign Worker</strong><span>Assign an available worker</span></button>
-            <button class="admin-action-card" type="button" data-page-action="requests"><strong>Edit Request</strong><span>Update request details</span></button>
-            <button class="admin-action-card admin-page-tab" data-page="create-request" type="button"><strong>Create Request</strong><span>Add a new customer request</span></button>
-            <button class="admin-action-card" id="admin-side-refresh-btn" type="button"><strong>Refresh Dashboard</strong><span>Update all data</span></button>
-          </section>
-          <section class="admin-side-card">
-            <div class="admin-side-card-head">
-              <h2>Worker Snapshot</h2>
-              <button class="admin-link-button admin-page-tab" data-page="workers" type="button">View all</button>
+      <section class="section admin-section admin-queue-section" data-page-section="dashboard requests">
+        <section class="admin-queue-card" data-tab-panel="requests">
+          <div class="admin-toolbar">
+            <div>
+              <p class="eyebrow" id="request-queue-eyebrow">Requests Queue</p>
+              <h2 id="request-queue-heading">Requests Queue</h2>
             </div>
-            <ul class="worker-snapshot-list">
-              <li><span class="dot online"></span>Online <strong id="worker-snapshot-online">0</strong></li>
-              <li><span class="dot break"></span>On Break <strong>0</strong></li>
-              <li><span class="dot busy"></span>Busy <strong id="worker-snapshot-busy">0</strong></li>
-              <li><span class="dot offline"></span>Offline <strong id="worker-snapshot-offline">0</strong></li>
-            </ul>
-          </section>
-          <section class="admin-side-card admin-summary compact">
-            <button id="show-reviews" class="summary-card summary-button">
-              <span id="total-reviews">0</span>
-              <p>Total Reviews</p>
-            </button>
-            <button id="show-applicants" class="summary-card summary-button">
-              <span id="total-applicants">0</span>
-              <p>Applicants</p>
-            </button>
-            <button id="find-tickets-btn" class="summary-card summary-button">
-              <span class="find-tickets-icon">&#x1F50D;</span>
-              <p>Find Tickets</p>
-            </button>
-          </section>
-        </aside>
+            <div class="admin-button-row">
+              <button id="admin-refresh-btn" class="button secondary" type="button">Refresh</button>
+              <button id="show-all-time-btn" class="button secondary" style="display:none" type="button">Show all time</button>
+            </div>
+          </div>
+          <div class="admin-request-tabs">
+            <button id="show-all" class="summary-button active" type="button">All Requests <span id="all-requests-count">0</span></button>
+            <button id="show-open" class="summary-button" type="button">Open <span id="open-requests">0</span></button>
+            <button id="show-inprogress" class="summary-button" type="button">In Progress <span id="inprogress-requests">0</span></button>
+            <button id="show-complete" class="summary-button" type="button">Completed <span id="complete-requests">0</span></button>
+            <button id="show-denied" class="summary-button" type="button">Closed <span id="denied-requests">0</span></button>
+          </div>
+          <div id="request-list" class="request-list"></div>
+        </section>
       </section>
 
       <section class="section admin-section" data-tab-panel="reviews" data-page-section="dashboard" hidden>
@@ -204,246 +178,158 @@
               <button class="star-filter-btn" data-stars="5">&#9733;&#9733;&#9733;&#9733;&#9733;</button>
               <button class="star-filter-btn" data-stars="4">&#9733;&#9733;&#9733;&#9733;</button>
               <button class="star-filter-btn" data-stars="3">&#9733;&#9733;&#9733;</button>
-              <button class="star-filter-btn" data-stars="2">&#9733;&#9733;</button>
-              <button class="star-filter-btn" data-stars="1">&#9733;</button>
-              <button class="star-filter-btn star-filter-all active" data-stars="">All</button>
+              <button class="star-filter-btn" data-stars="all">All</button>
             </div>
           </div>
         </div>
-        <div id="review-list" class="request-list"></div>
+        <div id="reviews-list" class="reviews-list"></div>
       </section>
 
       <section class="section admin-section" data-tab-panel="applicants" data-page-section="dashboard" hidden>
         <div class="admin-toolbar">
           <div>
-            <p class="eyebrow">Hiring</p>
-            <h2>Applicants</h2>
+            <p class="eyebrow">Recruiting</p>
+            <h2>Worker Applications</h2>
           </div>
-          <button id="admin-applicants-refresh-btn" class="button secondary" type="button">Refresh</button>
         </div>
-        <div id="applicant-list" class="request-list"></div>
+        <div id="applicants-list" class="request-list"></div>
       </section>
 
-      <!-- â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• WORKERS PAGE â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• -->
+      <section class="section admin-section" data-tab-panel="reports" data-page-section="reports" hidden>
+        <div class="admin-toolbar">
+          <div>
+            <p class="eyebrow">Reporting</p>
+            <h2>Request Report</h2>
+          </div>
+          <button id="admin-report-refresh-btn" class="button secondary" type="button">Refresh report</button>
+        </div>
+        <div id="admin-report-list" class="request-list"></div>
+      </section>
 
-      <section class="section admin-section" data-page-section="workers" hidden>
+      <section class="section admin-section" data-tab-panel="services" data-page-section="services" hidden>
+        <div class="admin-toolbar">
+          <div>
+            <p class="eyebrow">Catalog</p>
+            <h2>Services</h2>
+          </div>
+          <p class="field-help">Update the customer-facing service prices. These values are saved in Supabase and used on the Book Now page.</p>
+        </div>
+        <form id="services-settings-form" class="booking-card admin-services-settings-card">
+          <div id="services-settings-list" class="services-settings-list"></div>
+          <button class="button primary" type="submit">Save service pricing</button>
+          <p id="services-settings-status" class="form-status" role="status"></p>
+        </form>
+      </section>
+
+      <section class="section admin-section" data-tab-panel="workers" data-page-section="workers" hidden>
         <div class="admin-toolbar">
           <div>
             <p class="eyebrow">Team</p>
-            <h2>Worker profiles</h2>
+            <h2>Workers</h2>
           </div>
-          <button id="admin-workers-refresh-btn" class="button secondary" type="button">Refresh</button>
         </div>
-        <div class="admin-edit-panel worker-profile-search-panel">
-          <label>Find active worker
-            <select id="worker-profile-select-active">
-              <option value="">Select active worker</option>
-            </select>
-          </label>
-          <label>Find inactive worker
-            <select id="worker-profile-select-inactive">
-              <option value="">Select inactive worker</option>
-            </select>
-          </label>
-        </div>
-        <div id="worker-profile-list" class="request-list"></div>
+        <div id="admin-worker-profile-list" class="worker-profile-list"></div>
       </section>
 
-      <section class="section admin-section" data-page-section="workers" hidden>
+      <section class="section admin-section" data-tab-panel="settings" data-page-section="settings" hidden>
         <div class="admin-toolbar">
           <div>
-            <p class="eyebrow">Schedule</p>
-            <h2>Worker availability</h2>
+            <p class="eyebrow">Configuration</p>
+            <h2>Settings</h2>
           </div>
         </div>
-        <form id="worker-schedule-form" class="admin-edit-panel">
-          <div class="field-grid">
-            <label>Worker
-              <select id="worker-select" required>
-                <option value="">Select worker</option>
-              </select>
+        <div class="settings-grid">
+          <form class="settings-card" id="admin-password-form">
+            <h3>Change Admin Password</h3>
+            <label>Current password
+              <input type="password" id="admin-current-password" autocomplete="current-password" required>
             </label>
-            <label>Work location
-              <select id="worker-location" required>
-                <option value="">Select service location</option>
-              </select>
+            <label>New password
+              <input type="password" id="admin-new-password" autocomplete="new-password" minlength="8" required>
             </label>
-          </div>
-          <div class="worker-schedule-actions">
-            <button id="open-workdays-panel" class="button primary" type="button">Work Days and Shift Times</button>
-            <button id="open-days-off-panel" class="button primary" type="button">Days Off</button>
-          </div>
-
-          <div id="workdays-panel" class="worker-availability-window" hidden>
-            <div class="worker-window-heading">
-              <h3>Work Days and Shift Times</h3>
-              <button id="close-workdays-panel" class="button" type="button">Close</button>
-            </div>
-            <div id="worker-days-grid" class="worker-days-grid"></div>
-            <button id="save-workdays" class="button primary" type="button">Save work days</button>
-          </div>
-
-          <div id="days-off-panel" class="worker-availability-window" hidden>
-            <div class="worker-window-heading">
-              <h3>Days Off</h3>
-              <button id="close-days-off-panel" class="button" type="button">Close</button>
-            </div>
-            <p class="field-help">Click any date in the 3-month booking window to make that day unbookable.</p>
-            <div id="worker-days-off-calendar" class="worker-days-off-calendar"></div>
-            <p id="worker-days-off-summary" class="field-help"></p>
-            <button id="save-days-off" class="button primary" type="button">Save days off</button>
-          </div>
-          <p id="worker-schedule-status" class="field-help"></p>
-        </form>
+            <label>Confirm new password
+              <input type="password" id="admin-confirm-password" autocomplete="new-password" minlength="8" required>
+            </label>
+            <button class="button primary" type="submit">Update password</button>
+            <p class="form-status" id="admin-password-status" role="status"></p>
+          </form>
+        </div>
       </section>
 
-      <!-- â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• SETTINGS PAGE â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• -->
-
-      <section class="section admin-section" data-page-section="settings" hidden>
+      <section class="section admin-section" data-tab-panel="create-request" data-page-section="create-request" hidden>
         <div class="admin-toolbar">
           <div>
-            <p class="eyebrow">Settings</p>
-            <h2>Fuel prices</h2>
+            <p class="eyebrow">Admin create</p>
+            <h2>Create Request</h2>
+            <p class="field-help">Create a request for a customer. It will appear in their Track My Vehicle page as awaiting payment info.</p>
           </div>
         </div>
-        <form id="admin-fuel-prices-form" class="admin-edit-panel booking-form">
-          <p class="field-help">Set local area fuel price averages used in booking estimates. Update manually when prices change.</p>
-          <div class="field-grid">
-            <label>Regular (per gallon)
-              <input id="fp-regular" type="number" step="0.001" min="0" max="20" placeholder="3.799">
-            </label>
-            <label>Mid-grade (per gallon)
-              <input id="fp-midgrade" type="number" step="0.001" min="0" max="20" placeholder="4.199">
-            </label>
-            <label>Premium (per gallon)
-              <input id="fp-premium" type="number" step="0.001" min="0" max="20" placeholder="4.499">
-            </label>
-            <label>Diesel (per gallon)
-              <input id="fp-diesel" type="number" step="0.001" min="0" max="20" placeholder="4.199">
-            </label>
-              <label>Pricing area label
-              <input id="fp-area" type="text" maxlength="80" placeholder="Primary pricing area">
-            </label>
-          </div>
-          <div class="admin-button-row">
-            <button class="button primary" type="submit">Save fuel prices</button>
-          </div>
-          <p id="fuel-prices-status" class="form-status"></p>
-          <p id="fuel-prices-last-updated" class="field-help"></p>
-        </form>
-      </section>
-
-      <!-- â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• CREATE REQUEST PAGE â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• -->
-
-      <section class="section admin-hero" data-page-section="create-request" hidden>
-        <div class="section-heading">
-          <p class="eyebrow">Create Request</p>
-          <h1>Start a request for a customer</h1>
-          <p>The customer will complete vehicle details and payment on the Track page before the request enters the worker queue.</p>
-        </div>
-
-        <form id="admin-create-request-form" class="booking-form">
+        <form id="admin-create-request-form" class="booking-card admin-create-card">
           <fieldset>
             <legend>Customer</legend>
             <div class="field-grid">
-              <label>Customer name <span class="required-mark">Required</span>
-                <input id="cr-customer-name" type="text" placeholder="Full name" required>
+              <label>Name
+                <input id="cr-customer-name" type="text" required>
               </label>
-              <label>Phone number <span class="required-mark">Required</span>
-                <input id="cr-customer-phone" type="tel" placeholder="(302) 555-0100" required>
+              <label>Phone
+                <input id="cr-customer-phone" type="tel" required>
               </label>
-              <label>Email <span class="required-mark">Required</span>
-                <input id="cr-customer-email" type="email" placeholder="customer@email.com" required>
+              <label>Email
+                <input id="cr-customer-email" type="email">
               </label>
             </div>
           </fieldset>
 
           <fieldset>
-            <legend>Service address</legend>
-            <p class="field-help">No address validation is required for admin-created requests.</p>
+            <legend>Service Address</legend>
             <div class="field-grid">
               <label>Street address
-                <input id="cr-address-street" type="text" placeholder="123 Main St">
+                <input id="cr-address-street" type="text" required>
               </label>
-              <label>Apt / suite
-                <input id="cr-address-apt" type="text" placeholder="Suite 100">
+              <label>Unit / suite
+                <input id="cr-address-unit" type="text">
               </label>
               <label>City
-                <input id="cr-address-city" type="text" placeholder="Newark">
+                <input id="cr-address-city" type="text" required>
               </label>
               <label>State
-                <input id="cr-address-state" type="text" placeholder="DE">
+                <select id="cr-address-state" required>
+                  <option value="DE">DE</option>
+                  <option value="PA">PA</option>
+                  <option value="NJ">NJ</option>
+                  <option value="MD">MD</option>
+                </select>
               </label>
               <label>ZIP
-                <input id="cr-address-zip" type="text" placeholder="19702">
-              </label>
-              <label>Parking location
-                <input id="cr-parking-location" type="text" placeholder="Lot C, row 3">
-              </label>
-              <label>Key handoff details
-                <input id="cr-key-handoff" type="text" placeholder="Keys in center console">
+                <input id="cr-address-zip" type="text" required>
               </label>
             </div>
           </fieldset>
 
           <fieldset>
-            <legend>Service</legend>
+            <legend>Service Details</legend>
             <div class="field-grid">
               <label>Service type
-                <select id="cr-service-type">
-                  <option value="">Select service</option>
-                  <option value="fuel">Fuel</option>
-                  <option value="car-wash">Car Wash</option>
-                  <option value="car-wash-fuel">Car Wash + Fuel</option>
+                <select id="cr-service-type" required>
+                  <option value="fuel">Fuel only</option>
+                  <option value="car-wash">Car wash only</option>
+                  <option value="car-wash-fuel">Fuel + car wash</option>
                 </select>
               </label>
-              <label class="cr-wash-control conditional-control" hidden>Car wash package
-                <select id="cr-wash-package">
-                  <option value="">Select wash package</option>
-                  <option value="buff-shine">Buff & Shine - $27</option>
-                  <option value="shine-protect">Shine & Protect - $20</option>
-                  <option value="shine">Shine - $16</option>
-                  <option value="double-wash">Double Wash - $12</option>
-                </select>
+              <label>Fuel type
+                <input id="cr-fuel-type" type="text" placeholder="Regular">
               </label>
-              <label class="cr-fuel-control conditional-control" hidden>Fuel type
-                <select id="cr-fuel-type">
-                  <option value="">Select fuel type</option>
-                  <option>Regular</option>
-                  <option>Mid-grade</option>
-                  <option>Premium</option>
-                  <option>Diesel</option>
-                </select>
-              </label>
-              <label class="cr-fuel-control conditional-control" hidden>Estimated fuel needed, in gallons
-                <select id="cr-fuel-estimate">
-                  <option value="">Select fuel range</option>
-                  <option value="5">5 gallons or less</option>
-                  <option value="10">5-10 gallons</option>
-                  <option value="15">10-15 gallons</option>
-                  <option value="20">15-20 gallons</option>
-                  <option value="25">20-25 gallons</option>
-                  <option value="30">25+ gallons</option>
-                </select>
-              </label>
-              <label>Service date
-                <div id="cr-service-date-picker" class="sfp-host">
-                  <input type="hidden" id="cr-service-date">
-                </div>
+              <label>Car wash package
+                <input id="cr-car-wash-package" type="text" placeholder="Exterior wash">
               </label>
               <label>Desired return time
-                <select id="cr-return-time">
-                  <option value="">Select a date first</option>
-                </select>
-                <span id="cr-time-help" class="field-help">Choose a service date to load available return times.</span>
+                <input id="cr-desired-return-time" type="text" placeholder="Before 4:00 PM">
               </label>
-              <div class="inspection-addon-control">
-                <label class="checkbox-label">
-                  <input id="cr-quick-inspection" type="checkbox" value="yes">
-                  <span>Add a quick vehicle inspection for $5 <span class="optional-mark">Optional</span></span>
-                </label>
-              </div>
             </div>
+            <label class="checkbox-label">
+              <input id="cr-inspection" type="checkbox">
+              <span>Add quick vehicle inspection</span>
+            </label>
           </fieldset>
 
           <fieldset>
@@ -477,6 +363,47 @@
         </form>
       </section>
 
+      </div>
+      <aside class="admin-dashboard-side">
+        <section class="admin-side-card">
+          <h2>Quick Actions</h2>
+          <button class="admin-action-card" type="button" data-page-action="requests" data-request-view="unassigned"><strong>Assign Worker</strong><span>Assign an available worker</span></button>
+          <button class="admin-action-card" type="button" data-page-action="requests" data-request-view="all"><strong>Edit Request</strong><span>Update request details</span></button>
+          <button class="admin-action-card admin-page-tab" data-page="create-request" type="button"><strong>Create Request</strong><span>Add a new customer request</span></button>
+          <button class="admin-action-card" id="admin-side-refresh-btn" type="button"><strong>Refresh Dashboard</strong><span>Update all data</span></button>
+        </section>
+        <section class="admin-side-card">
+          <div class="admin-side-card-head">
+            <h2>Worker Snapshot</h2>
+            <button class="admin-link-button admin-page-tab" data-page="workers" type="button">View all</button>
+          </div>
+          <ul class="worker-snapshot-list">
+            <li><span class="dot online"></span>Online <strong id="worker-snapshot-online">0</strong></li>
+            <li><span class="dot break"></span>On Break <strong>0</strong></li>
+            <li><span class="dot busy"></span>Busy <strong id="worker-snapshot-busy">0</strong></li>
+            <li><span class="dot offline"></span>Offline <strong id="worker-snapshot-offline">0</strong></li>
+          </ul>
+        </section>
+        <section class="admin-side-card admin-summary compact">
+          <button id="show-reviews" class="summary-card summary-button">
+            <span id="total-reviews">0</span>
+            <p>Total Reviews</p>
+          </button>
+          <button id="show-applicants" class="summary-card summary-button">
+            <span id="total-applicants">0</span>
+            <p>Applicants</p>
+          </button>
+        </section>
+      </aside>
+      </div>
+
+      <div class="admin-shortcut-grid">
+        <button class="admin-shortcut-card admin-page-tab" data-page="workers" type="button"><strong>Workers</strong><span>Manage your team and performance.</span><em>View Workers &rarr;</em></button>
+        <button class="admin-shortcut-card admin-page-tab" data-page="create-request" type="button"><strong>Create Request</strong><span>Add a new customer request.</span><em>Create New &rarr;</em></button>
+        <button class="admin-shortcut-card admin-page-tab" data-page="reports" type="button"><strong>Reports</strong><span>View performance and operations.</span><em>View Reports &rarr;</em></button>
+        <button class="admin-shortcut-card admin-page-tab" data-page="settings" type="button"><strong>Settings</strong><span>Manage services, pricing, and more.</span><em>Open Settings &rarr;</em></button>
+      </div>
+
     </main>
 
     <section class="portal-closing-banner">
@@ -494,7 +421,14 @@
     </section>
 
     <footer class="site-footer">
-      <p class="footer-copy">&copy; <span id="year"></span> ShiftFuel Concierge. All rights reserved.</p>
+      <div class="footer-main">
+        <p class="footer-copy">&copy; <span id="year"></span> ShiftFuel Concierge. All rights reserved.</p>
+        <nav class="footer-links" aria-label="Legal links">
+          <a href="privacy.html">Privacy Policy</a>
+          <a href="terms.html">Terms of Service</a>
+          <a href="liability-waiver.html">Liability Waiver</a>
+        </nav>
+      </div>
     </footer>
 
     <!-- Find Tickets modal -->
@@ -565,4 +499,3 @@
   <script defer src="/_vercel/speed-insights/script.js"></script>
   </body>
 </html>
-

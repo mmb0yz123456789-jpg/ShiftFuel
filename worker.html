@@ -18,21 +18,11 @@
       }
     </script>
 
-    <header class="portal-header worker-top-nav">
+    <header class="portal-header unified-portal-header worker-top-nav">
       <a class="logo" href="index.html">
         <span class="logo-mark">S</span>
         <span>ShiftFuel Concierge</span>
       </a>
-      <nav class="worker-public-nav" aria-label="Worker portal navigation">
-        <a href="index.html#how">How It Works</a>
-        <a href="index.html#services">Services &amp; Pricing</a>
-        <a href="index.html#trust">Safety &amp; Trust</a>
-      </nav>
-      <div class="worker-portal-links">
-        <a class="button primary" href="book.html#booking-flow">Book Now</a>
-        <a class="button secondary" href="track.html">Track My Vehicle</a>
-        <a class="button secondary" href="returning.html">Returning Customer</a>
-      </div>
       <div class="portal-header-actions">
         <span class="portal-header-label">Worker Portal</span>
         <button class="portal-signout-btn" id="worker-signout-btn" type="button">Sign out</button>
@@ -49,7 +39,6 @@
           <div class="actions">
             <a class="button primary" href="#worker-jobs">View jobs</a>
             <button class="button secondary" id="worker-refresh-jobs-btn" type="button">Refresh jobs</button>
-            <a class="button secondary" href="#worker-availability">Availability</a>
           </div>
         </div>
 
@@ -63,7 +52,7 @@
             <div><dt>Location</dt><dd id="worker-current-location">ShiftFuel</dd></div>
             <div><dt>Jobs today</dt><dd id="worker-current-jobs-today">0</dd></div>
             <div><dt>Rating</dt><dd id="worker-current-rating">&mdash;</dd></div>
-            <div><dt>On-time rate</dt><dd>98%</dd></div>
+            <div><dt>On-time rate</dt><dd id="worker-current-ontime">&mdash;</dd></div>
           </dl>
         </aside>
         </div>
@@ -77,7 +66,6 @@
                 <h2>My Jobs</h2>
                 <span class="worker-soft-pill"><span id="worker-stat-jobs-today">0</span> Today</span>
               </div>
-              <a class="admin-link-button" href="#worker-account">Profile</a>
             </div>
             <div id="worker-job-list" class="request-list worker-job-list"></div>
           </section>
@@ -108,13 +96,13 @@
                 <span class="worker-stat-label">Jobs Completed</span>
               </div>
               <div class="worker-stat-card">
-                <span class="worker-stat-value">98%</span>
+                <span class="worker-stat-value" id="worker-stat-ontime">&mdash;</span>
                 <span class="worker-stat-label">On-time Rate</span>
               </div>
-              <div class="worker-stat-card">
+              <button class="worker-stat-card worker-stat-clickable" id="worker-reviews-trigger" type="button">
                 <span class="worker-stat-value" id="worker-stat-rating">&mdash;</span>
                 <span class="worker-stat-label">Customer Rating</span>
-              </div>
+              </button>
             </div>
           </section>
 
@@ -138,8 +126,12 @@
               <div>
                 <h2 id="worker-dashboard-name">Worker</h2>
                 <p class="worker-verified-badge">Verified</p>
-                <button class="button secondary" id="open-change-password-btn" type="button">Change password</button>
               </div>
+            </div>
+            <div class="worker-profile-actions">
+              <button class="button secondary" id="open-change-password-btn" type="button">Change password</button>
+              <button class="button secondary" id="open-schedule-btn" type="button">Schedule</button>
+              <button class="button secondary" id="open-edit-profile-btn" type="button">Edit profile</button>
             </div>
             <dl class="worker-profile-facts">
               <div><dt>Location</dt><dd id="worker-dashboard-location">ShiftFuel</dd></div>
@@ -149,128 +141,6 @@
         </aside>
       </section>
 
-      <section id="worker-availability" class="section admin-section">
-        <div class="admin-toolbar">
-          <div>
-            <p class="eyebrow">Schedule</p>
-            <h2>My availability</h2>
-          </div>
-        </div>
-        <form id="worker-schedule-form" class="admin-edit-panel">
-          <label>Work location
-            <select id="worker-location" required>
-              <option value="">Select service center</option>
-            </select>
-          </label>
-          <div class="worker-schedule-actions">
-            <button id="open-workdays-panel" class="button primary" type="button">Work Days and Shift Times</button>
-            <button id="open-days-off-panel" class="button primary" type="button">Days Off</button>
-          </div>
-
-          <div id="workdays-panel" class="worker-availability-window" hidden>
-            <div class="worker-window-heading">
-              <h3>Work Days and Shift Times</h3>
-              <button id="close-workdays-panel" class="button" type="button">Close</button>
-            </div>
-            <div id="worker-days-grid" class="worker-days-grid"></div>
-            <button id="save-workdays" class="button primary" type="button">Save work days</button>
-          </div>
-
-          <div id="days-off-panel" class="worker-availability-window" hidden>
-            <div class="worker-window-heading">
-              <h3>Days Off</h3>
-              <button id="close-days-off-panel" class="button" type="button">Close</button>
-            </div>
-            <p class="field-help">Click any date in the 3-month booking window to make that day unbookable.</p>
-            <div id="worker-days-off-calendar" class="worker-days-off-calendar"></div>
-            <p id="worker-days-off-summary" class="field-help"></p>
-            <button id="save-days-off" class="button primary" type="button">Save days off</button>
-          </div>
-          <p id="worker-schedule-status" class="field-help"></p>
-        </form>
-      </section>
-
-      <section class="section admin-section">
-        <div class="admin-toolbar">
-          <div>
-            <p class="eyebrow">Reviews</p>
-            <h2>My service reviews</h2>
-          </div>
-        </div>
-        <div id="worker-review-list" class="request-list"></div>
-      </section>
-
-      <section id="worker-account" class="section admin-section worker-account-section">
-        <div class="admin-toolbar">
-          <div>
-            <p class="eyebrow">Account</p>
-            <h2>Worker profile</h2>
-          </div>
-        </div>
-
-        <form id="worker-profile-form" class="booking-form worker-profile-form">
-          <fieldset>
-            <legend>Worker profile</legend>
-
-            <div class="worker-profile-preview">
-              <div class="worker-profile-photo-frame">
-                <img id="worker-profile-photo-preview" class="worker-profile-photo" alt="Worker profile photo" hidden>
-                <div id="worker-profile-photo-placeholder" class="worker-profile-photo-placeholder">No photo</div>
-              </div>
-            </div>
-
-            <div class="field-grid">
-              <label>
-                Worker name
-                <input id="worker-profile-name" type="text" required>
-              </label>
-              <label>
-                Phone number
-                <input id="worker-profile-phone" type="tel" placeholder="(302) 555-0100">
-              </label>
-              <label>
-                Work location
-                <select id="worker-profile-location">
-                  <option value="">Select service center</option>
-                </select>
-              </label>
-              <label>
-                Started
-                <input id="worker-profile-started" type="date" disabled>
-              </label>
-            </div>
-
-            <div class="profile-photo-actions">
-              <span>Profile photo</span>
-              <button id="edit-worker-photo" class="button secondary" type="button">Edit profile photo</button>
-              <input id="worker-profile-photo" class="visually-hidden-file" type="file" accept="image/*">
-            </div>
-            <div id="worker-photo-editor-actions" class="worker-photo-editor-actions" hidden>
-              <button id="upload-new-worker-photo" class="button secondary" type="button">Upload new photo</button>
-              <button id="edit-worker-framing" class="button secondary" type="button">Edit current framing</button>
-            </div>
-            <div id="worker-photo-boundary-panel" class="photo-boundary-panel" hidden>
-              <p class="eyebrow">Profile picture boundary</p>
-              <div id="worker-photo-boundary-preview" class="photo-boundary-preview">
-                <img id="worker-photo-boundary-image" alt="Selected worker profile photo">
-                <span class="photo-boundary-overlay" aria-hidden="true"></span>
-              </div>
-              <label>
-                Preview zoom
-                <input id="worker-photo-display-zoom" type="range" min="1" max="2.5" step="0.05" value="1">
-              </label>
-              <p class="field-help">The uploaded photo stays whole. The clear circle shows what customers will see as the profile picture.</p>
-              <p class="field-help">Zoom in, then drag the photo to center it inside the circle.</p>
-            </div>
-
-            <div class="form-action-row">
-              <button class="button primary" type="submit">Save worker profile</button>
-            </div>
-            <p id="worker-profile-status" class="form-status" role="status"></p>
-          </fieldset>
-        </form>
-
-      </section>
     </main>
 
     <section class="portal-closing-banner">
@@ -288,8 +158,145 @@
     </section>
 
     <footer class="site-footer">
-      <p class="footer-copy">&copy; <span id="year"></span> ShiftFuel Concierge. All rights reserved.</p>
+      <div class="footer-main">
+        <p class="footer-copy">&copy; <span id="year"></span> ShiftFuel Concierge. All rights reserved.</p>
+        <nav class="footer-links" aria-label="Legal links">
+          <a href="privacy.html">Privacy Policy</a>
+          <a href="terms.html">Terms of Service</a>
+          <a href="liability-waiver.html">Liability Waiver</a>
+        </nav>
+      </div>
     </footer>
+
+    <!-- Schedule / availability modal -->
+    <div id="worker-availability" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="wa-title" hidden>
+      <div class="modal-dialog worker-modal-wide">
+        <div class="modal-header">
+          <h2 id="wa-title">My availability</h2>
+          <button class="modal-close" id="close-worker-availability" type="button" aria-label="Close">&times;</button>
+        </div>
+        <div class="modal-body">
+          <form id="worker-schedule-form" class="admin-edit-panel">
+            <label>Work location
+              <select id="worker-location" required>
+                <option value="">Select service center</option>
+              </select>
+            </label>
+            <div class="worker-schedule-actions">
+              <button id="open-workdays-panel" class="button primary" type="button">Work Days and Shift Times</button>
+              <button id="open-days-off-panel" class="button primary" type="button">Days Off</button>
+            </div>
+
+            <div id="workdays-panel" class="worker-availability-window" hidden>
+              <div class="worker-window-heading">
+                <h3>Work Days and Shift Times</h3>
+                <button id="close-workdays-panel" class="button" type="button">Close</button>
+              </div>
+              <div id="worker-days-grid" class="worker-days-grid"></div>
+              <button id="save-workdays" class="button primary" type="button">Save work days</button>
+            </div>
+
+            <div id="days-off-panel" class="worker-availability-window" hidden>
+              <div class="worker-window-heading">
+                <h3>Days Off</h3>
+                <button id="close-days-off-panel" class="button" type="button">Close</button>
+              </div>
+              <p class="field-help">Click any date in the 3-month booking window to make that day unbookable.</p>
+              <div id="worker-days-off-calendar" class="worker-days-off-calendar"></div>
+              <p id="worker-days-off-summary" class="field-help"></p>
+              <button id="save-days-off" class="button primary" type="button">Save days off</button>
+            </div>
+            <p id="worker-schedule-status" class="field-help"></p>
+          </form>
+        </div>
+      </div>
+    </div>
+
+    <!-- My service reviews modal -->
+    <div id="worker-reviews-section" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="wr-title" hidden>
+      <div class="modal-dialog worker-modal-wide">
+        <div class="modal-header">
+          <h2 id="wr-title">My service reviews</h2>
+          <button class="modal-close" id="close-worker-reviews" type="button" aria-label="Close">&times;</button>
+        </div>
+        <div class="modal-body">
+          <div id="worker-review-list" class="request-list"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Worker profile / account modal -->
+    <div id="worker-account" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="wacc-title" hidden>
+      <div class="modal-dialog worker-modal-wide">
+        <div class="modal-header">
+          <h2 id="wacc-title">Worker profile</h2>
+          <button class="modal-close" id="close-worker-account" type="button" aria-label="Close">&times;</button>
+        </div>
+        <div class="modal-body">
+          <form id="worker-profile-form" class="booking-form worker-profile-form">
+            <fieldset>
+              <legend>Worker profile</legend>
+
+              <div class="worker-profile-preview">
+                <div class="worker-profile-photo-frame">
+                  <img id="worker-profile-photo-preview" class="worker-profile-photo" alt="Worker profile photo" hidden>
+                  <div id="worker-profile-photo-placeholder" class="worker-profile-photo-placeholder">No photo</div>
+                </div>
+              </div>
+
+              <div class="field-grid">
+                <label>
+                  Worker name
+                  <input id="worker-profile-name" type="text" required>
+                </label>
+                <label>
+                  Phone number
+                  <input id="worker-profile-phone" type="tel" placeholder="(302) 555-0100">
+                </label>
+                <label>
+                  Work location
+                  <select id="worker-profile-location">
+                    <option value="">Select service center</option>
+                  </select>
+                </label>
+                <label>
+                  Started
+                  <input id="worker-profile-started" type="date" disabled>
+                </label>
+              </div>
+
+              <div class="profile-photo-actions">
+                <span>Profile photo</span>
+                <button id="edit-worker-photo" class="button secondary" type="button">Edit profile photo</button>
+                <input id="worker-profile-photo" class="visually-hidden-file" type="file" accept="image/*">
+              </div>
+              <div id="worker-photo-editor-actions" class="worker-photo-editor-actions" hidden>
+                <button id="upload-new-worker-photo" class="button secondary" type="button">Upload new photo</button>
+                <button id="edit-worker-framing" class="button secondary" type="button">Edit current framing</button>
+              </div>
+              <div id="worker-photo-boundary-panel" class="photo-boundary-panel" hidden>
+                <p class="eyebrow">Profile picture boundary</p>
+                <div id="worker-photo-boundary-preview" class="photo-boundary-preview">
+                  <img id="worker-photo-boundary-image" alt="Selected worker profile photo">
+                  <span class="photo-boundary-overlay" aria-hidden="true"></span>
+                </div>
+                <label>
+                  Preview zoom
+                  <input id="worker-photo-display-zoom" type="range" min="1" max="2.5" step="0.05" value="1">
+                </label>
+                <p class="field-help">The uploaded photo stays whole. The clear circle shows what customers will see as the profile picture.</p>
+                <p class="field-help">Zoom in, then drag the photo to center it inside the circle.</p>
+              </div>
+
+              <div class="form-action-row">
+                <button class="button primary" type="submit">Save worker profile</button>
+              </div>
+              <p id="worker-profile-status" class="form-status" role="status"></p>
+            </fieldset>
+          </form>
+        </div>
+      </div>
+    </div>
 
     <!-- Change password modal -->
     <div id="worker-password-modal" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="wpm-title" hidden>
@@ -324,7 +331,15 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="supabase-client.js"></script>
     <script src="photo-utils.js"></script>
+    <script>
+      function formatDate(value) {
+        if (!value) return '';
+        return new Intl.DateTimeFormat('en-US', { dateStyle: 'medium' }).format(new Date(value));
+      }
+    </script>
     <script src="worker.js"></script>
+    <script src="worker-cancelled-status-polish.js"></script>
+    <script defer src="worker-gps-tracking.js"></script>
     <script defer src="/_vercel/insights/script.js"></script>
     <script defer src="/_vercel/speed-insights/script.js"></script>
   </body>

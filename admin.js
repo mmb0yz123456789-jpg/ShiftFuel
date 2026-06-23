@@ -1,18 +1,21 @@
 const db = window.ShiftFuelSupabase;
 
 const requestList = document.querySelector('#request-list');
+const allRequestsCountEl = document.querySelector('#all-requests-count');
 const openRequests = document.querySelector('#open-requests');
+const inProgressRequestsCountEl = document.querySelector('#inprogress-requests');
 const completeRequests = document.querySelector('#complete-requests');
 const deniedRequests = document.querySelector('#denied-requests');
 const totalReviewsEl = document.querySelector('#total-reviews');
 const totalApplicantsEl = document.querySelector('#total-applicants');
+const showAll = document.querySelector('#show-all');
 const showOpen = document.querySelector('#show-open');
+const showInProgress = document.querySelector('#show-inprogress');
 const showComplete = document.querySelector('#show-complete');
 const showDenied = document.querySelector('#show-denied');
 const showReviews = document.querySelector('#show-reviews');
 const showApplicants = document.querySelector('#show-applicants');
-const findTicketsBtn = document.querySelector('#find-tickets-btn');
-const sidebarFindTicketsBtn = document.querySelector('#sidebar-find-tickets-btn');
+const heroFindTicketsBtn = document.querySelector('#hero-find-tickets-btn');
 const findTicketsModal = document.querySelector('#find-tickets-modal');
 const closeFindTicketsBtn = document.querySelector('#close-find-tickets');
 const findTicketsSearch = document.querySelector('#find-tickets-search');
@@ -32,8 +35,16 @@ const workerCountBadge = document.querySelector('#worker-count-badge');
 const statOpenRequests = document.querySelector('#stat-open-requests');
 const statInProgress = document.querySelector('#stat-in-progress');
 const statCompletedToday = document.querySelector('#stat-completed-today');
+const statCompletedLabel = document.querySelector('#stat-completed-label');
 const statActiveWorkers = document.querySelector('#stat-active-workers');
-const statRevenueToday = document.querySelector('#stat-revenue-today');
+const statNetRevenue = document.querySelector('#stat-net-revenue');
+const statRevenueLabel = document.querySelector('#stat-revenue-label');
+const dashboardRangeSelect = document.querySelector('#dashboard-range');
+const dashboardFiltersBtn = document.querySelector('#dashboard-filters-btn');
+const dashboardFiltersPanel = document.querySelector('#dashboard-filters-panel');
+const filterServiceTypeSelect = document.querySelector('#filter-service-type');
+const filterAssignmentSelect = document.querySelector('#filter-assignment');
+const filterClearBtn = document.querySelector('#filter-clear-btn');
 const workerSnapshotOnline = document.querySelector('#worker-snapshot-online');
 const workerSnapshotBusy = document.querySelector('#worker-snapshot-busy');
 const workerSnapshotOffline = document.querySelector('#worker-snapshot-offline');
@@ -57,15 +68,12 @@ const openDaysOffPanel = document.querySelector('#open-days-off-panel');
 const closeDaysOffPanel = document.querySelector('#close-days-off-panel');
 const daysOffPanel = document.querySelector('#days-off-panel');
 const saveDaysOffButton = document.querySelector('#save-days-off');
-const reviewList = document.querySelector('#review-list');
-const applicantList = document.querySelector('#applicant-list');
-const workerProfileList = document.querySelector('#worker-profile-list');
-const workerProfileSelectActive = document.querySelector('#worker-profile-select-active');
-const workerProfileSelectInactive = document.querySelector('#worker-profile-select-inactive');
+const reviewList = document.querySelector('#reviews-list');
+const applicantList = document.querySelector('#applicants-list');
+const workerProfileList = document.querySelector('#admin-worker-profile-list');
 const adminRefreshBtn = document.querySelector('#admin-refresh-btn');
-const adminWorkersRefreshBtn = document.querySelector('#admin-workers-refresh-btn');
 const adminReviewsRefreshBtn = document.querySelector('#admin-reviews-refresh-btn');
-const adminApplicantsRefreshBtn = document.querySelector('#admin-applicants-refresh-btn');
+const adminReportRefreshBtn = document.querySelector('#admin-report-refresh-btn');
 
 const PHOTO_BUCKET = 'service-photos';
 const DEFAULT_WORKER_NAME = 'Mark Urban';
@@ -90,13 +98,17 @@ let allReviews = [];
 let allReviewRequestMap = new Map();
 let allApplicantsList = [];
 let selectedScheduleEmployeeId = '';
-let currentView = 'open';
+let currentView = 'unassigned';
 let currentAdminTab = 'requests';
 let currentPageTab = 'dashboard';
 let currentReviewFilter = null;
 let showAllTime = false;
 let lastSearchResults = [];
 let vehiclePsiGuides = [];
+let expandedRequestId = null;
+let dashboardRange = 'today';
+let queueFilters = { serviceType: '', assignment: '' };
+const UNASSIGNED_STATUSES = ['pending', 'request_received'];
 
 function adminToken() {
   return sessionStorage.getItem('shiftfuel_admin_token');
@@ -117,7 +129,7 @@ function maxDateString() {
   return localDateString(d);
 }
 
-const CR_WASH_PACKAGES = [
+let CR_WASH_PACKAGES = [
   { value: 'buff-shine', label: 'Buff & Shine', price: 27 },
   { value: 'shine-protect', label: 'Shine & Protect', price: 20 },
   { value: 'shine', label: 'Shine', price: 16 },
@@ -132,7 +144,7 @@ const CR_FUEL_ESTIMATE_RANGES = [
   { value: '30', gallons: 30 },
 ];
 const CR_AVG_FUEL_PRICES = { Regular: 3.792, 'Mid-grade': 4.411, Premium: 4.701, Diesel: 4.967 };
-const CR_FEES = { fuelConvenience: 15, washConvenience: 15, quickInspection: 5 };
+let CR_FEES = { fuelConvenience: 15, washConvenience: 15, quickInspection: 5 };
 const slotHoldingStatuses = new Set([
   'accepted', 'key_received',
   'pickup_vehicle_photo_uploaded', 'pickup_odometer_photo_uploaded', 'pickup_fuel_gauge_photo_uploaded',
@@ -557,6 +569,37 @@ function isOpen(request) {
   return !terminalStatuses.includes(request.status);
 }
 
+function dashboardRangeStart(range) {
+  const now = new Date();
+  if (range === 'today') {
+    const d = new Date(now);
+    d.setHours(0, 0, 0, 0);
+    return d;
+  }
+  if (range === 'week') {
+    const d = new Date(now);
+    const dayIndex = (d.getDay() + 6) % 7;
+    d.setDate(d.getDate() - dayIndex);
+    d.setHours(0, 0, 0, 0);
+    return d;
+  }
+  if (range === 'month') {
+    return new Date(now.getFullYear(), now.getMonth(), 1);
+  }
+  return null;
+}
+
+function isInDashboardRange(request, range) {
+  const start = dashboardRangeStart(range);
+  if (!start) return true;
+  const stamp = new Date(request.updated_at || request.created_at);
+  return stamp >= start;
+}
+
+function dashboardRangeLabel(range) {
+  return { today: 'Today', week: 'This Week', month: 'This Month', all: 'All Time' }[range] || 'Today';
+}
+
 function serviceNeedsFuel(request) {
   return String(request.service_type || '').includes('fuel');
 }
@@ -590,9 +633,9 @@ function receiptTotalsFromNotes(request) {
 const RETURN_CANCELLATION_FEE = 15;
 const RETURN_RECOVERY_RATE = 0.029;
 const RETURN_RECOVERY_FIXED = 0.30;
-const BASE_FUEL_SERVICE_FEE = 15;
-const BASE_WASH_SERVICE_FEE = 15;
-const BASE_QUICK_INSPECTION_FEE = 5;
+let BASE_FUEL_SERVICE_FEE = 15;
+let BASE_WASH_SERVICE_FEE = 15;
+let BASE_QUICK_INSPECTION_FEE = 5;
 
 function roundMoneyValue(value) {
   return Math.round((Number(value) || 0) * 100) / 100;
@@ -886,6 +929,39 @@ function hasCustomerReturnRequestAlert(request) {
     || request?.status === 'return_requested'
     || request?.status === 'customer_return_requested'
     || String(request?.notes || '').includes('[customer_return_requested]');
+}
+
+const QUEUE_SERVICE_LABELS = { fuel: 'Fuel Concierge', 'car-wash': 'Car Wash', 'car-wash-fuel': 'Car Wash + Fuel' };
+
+function queueServiceLabel(request) {
+  return request.service_label || QUEUE_SERVICE_LABELS[request.service_type] || request.service_type || 'Service';
+}
+
+function queueStatusBucket(request) {
+  if (closedStatuses.includes(request.status)) return { label: 'Closed', cls: 'status-pill-denied' };
+  if (request.status === 'complete') return { label: 'Completed', cls: 'status-pill-complete' };
+  if (UNASSIGNED_STATUSES.includes(request.status)) return { label: 'Open', cls: 'status-pill-open' };
+  return { label: 'In Progress', cls: 'status-pill-progress' };
+}
+
+function queueNextActionLabel(bucket) {
+  if (bucket.label === 'Open') return 'Assign Worker';
+  if (bucket.label === 'Completed') return 'View Summary';
+  if (bucket.label === 'Closed') return 'Edit / Reopen';
+  return 'View Details';
+}
+
+function queueDateTime(request) {
+  if (request.service_date) {
+    return `${escapeHtml(request.service_date)}${request.desired_return_time ? ` &middot; ${escapeHtml(request.desired_return_time)}` : ''}`;
+  }
+  return escapeHtml(formatTimestamp(request.created_at));
+}
+
+function queueInitials(name) {
+  const parts = String(name || '').trim().split(/\s+/).filter(Boolean);
+  if (!parts.length) return '?';
+  return (parts[0][0] + (parts[1]?.[0] || '')).toUpperCase();
 }
 
 function requestCardDetails(request) {
@@ -1602,41 +1678,45 @@ function renderEditPanel(request) {
   `;
 }
 
-function isSameLocalDay(isoString, reference) {
-  if (!isoString) return false;
-  const d = new Date(isoString);
-  return d.getFullYear() === reference.getFullYear()
-    && d.getMonth() === reference.getMonth()
-    && d.getDate() === reference.getDate();
-}
-
 function updateDashboardStatCards() {
-  const today = new Date();
-  const unassignedStatuses = ['pending', 'request_received'];
-
-  const openCount = allRequests.filter((r) => unassignedStatuses.includes(r.status)).length;
-  const inProgressCount = allRequests.filter((r) => isOpen(r) && !unassignedStatuses.includes(r.status)).length;
-  const completedTodayCount = allRequests.filter((r) => r.status === 'complete' && isSameLocalDay(r.updated_at || r.created_at, today)).length;
+  const openCount = allRequests.filter((r) => UNASSIGNED_STATUSES.includes(r.status)).length;
+  const inProgressCount = allRequests.filter((r) => isOpen(r) && !UNASSIGNED_STATUSES.includes(r.status)).length;
+  const completedCount = allRequests.filter((r) => r.status === 'complete' && isInDashboardRange(r, dashboardRange)).length;
   const activeWorkerCount = allEmployees.filter((e) => e.active).length;
-  const revenueToday = allRequests
-    .filter((r) => r.payment_status === 'captured' && isSameLocalDay(r.updated_at || r.created_at, today))
-    .reduce((sum, r) => sum + Number(r.captured_amount ?? r.final_total ?? 0), 0);
+  const netRevenue = allRequests
+    .filter((r) => r.payment_status === 'captured' && isInDashboardRange(r, dashboardRange))
+    .reduce((sum, r) => sum + Number(r.displayed_fuel_service_fee || 0) + Number(r.displayed_car_wash_service_fee || 0) + Number(r.displayed_inspection_fee || 0), 0);
+
+  const rangeLabel = dashboardRangeLabel(dashboardRange);
+  if (statCompletedLabel) statCompletedLabel.textContent = `Completed ${rangeLabel}`;
+  if (statRevenueLabel) statRevenueLabel.textContent = `Net Revenue ${rangeLabel}`;
 
   if (statOpenRequests) statOpenRequests.textContent = openCount;
   if (statInProgress) statInProgress.textContent = inProgressCount;
-  if (statCompletedToday) statCompletedToday.textContent = completedTodayCount;
+  if (statCompletedToday) statCompletedToday.textContent = completedCount;
   if (statActiveWorkers) statActiveWorkers.textContent = activeWorkerCount;
-  if (statRevenueToday) statRevenueToday.textContent = `$${revenueToday.toFixed(2)}`;
+  if (statNetRevenue) statNetRevenue.textContent = `$${netRevenue.toFixed(2)}`;
   if (workerSnapshotOnline) workerSnapshotOnline.textContent = activeWorkerCount;
   if (workerSnapshotBusy) workerSnapshotBusy.textContent = allRequests.filter((r) => isOpen(r) && (r.assigned_employee_id || r.assigned_worker_name)).length;
   if (workerSnapshotOffline) workerSnapshotOffline.textContent = Math.max(0, allEmployees.length - activeWorkerCount);
+}
+
+function matchesQueueFilters(request) {
+  if (queueFilters.serviceType && request.service_type !== queueFilters.serviceType) return false;
+  const assigned = Boolean(request.assigned_employee_id || request.assigned_worker_name);
+  if (queueFilters.assignment === 'unassigned' && assigned) return false;
+  if (queueFilters.assignment === 'assigned' && !assigned) return false;
+  return true;
 }
 
 function renderRequests() {
   const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
 
   const filtered = allRequests.filter((request) => {
-    if (currentView === 'open') return isOpen(request);
+    if (!matchesQueueFilters(request)) return false;
+    if (currentView === 'all') return true;
+    if (currentView === 'unassigned') return UNASSIGNED_STATUSES.includes(request.status);
+    if (currentView === 'inprogress') return isOpen(request) && !UNASSIGNED_STATUSES.includes(request.status);
     if (currentView === 'complete') {
       if (!showAllTime && request.status === 'complete') {
         return (request.updated_at || request.created_at) >= sevenDaysAgo;
@@ -1652,11 +1732,15 @@ function renderRequests() {
     return true;
   });
 
-  const openCount = allRequests.filter(isOpen).length;
+  const allCount = allRequests.length;
+  const openCount = allRequests.filter((r) => UNASSIGNED_STATUSES.includes(r.status)).length;
+  const inProgressCount = allRequests.filter((r) => isOpen(r) && !UNASSIGNED_STATUSES.includes(r.status)).length;
   const completeCount = allRequests.filter((r) => r.status === 'complete').length;
   const closedCount = allRequests.filter((r) => closedStatuses.includes(r.status)).length;
 
+  if (allRequestsCountEl) allRequestsCountEl.textContent = allCount;
   if (openRequests) openRequests.textContent = openCount;
+  if (inProgressRequestsCountEl) inProgressRequestsCountEl.textContent = inProgressCount;
   if (completeRequests) completeRequests.textContent = completeCount;
   if (deniedRequests) deniedRequests.textContent = closedCount;
 
@@ -1666,16 +1750,18 @@ function renderRequests() {
   updateDashboardStatCards();
 
   // Update heading and show-all button
-  const headings = { open: 'Open requests', complete: 'Completed requests', closed: 'Closed requests' };
+  const headings = { all: 'All requests', unassigned: 'Open requests', inprogress: 'In progress requests', complete: 'Completed requests', closed: 'Closed requests' };
   if (requestQueueHeading) requestQueueHeading.textContent = headings[currentView] || 'Requests';
-  if (requestQueueEyebrow) requestQueueEyebrow.textContent = currentView === 'open' ? 'Queue' : 'History';
+  if (requestQueueEyebrow) requestQueueEyebrow.textContent = (currentView === 'complete' || currentView === 'closed') ? 'History' : 'Queue';
 
   const needsShowAll = (currentView === 'complete' || currentView === 'closed') && !showAllTime;
   if (showAllTimeBtn) showAllTimeBtn.style.display = needsShowAll ? '' : 'none';
 
   // Summary card active state
-  [showOpen, showComplete, showDenied].forEach((btn) => btn?.classList.remove('active'));
-  if (currentView === 'open') showOpen?.classList.add('active');
+  [showAll, showOpen, showInProgress, showComplete, showDenied].forEach((btn) => btn?.classList.remove('active'));
+  if (currentView === 'all') showAll?.classList.add('active');
+  if (currentView === 'unassigned') showOpen?.classList.add('active');
+  if (currentView === 'inprogress') showInProgress?.classList.add('active');
   if (currentView === 'complete') showComplete?.classList.add('active');
   if (currentView === 'closed') showDenied?.classList.add('active');
 
@@ -1687,20 +1773,70 @@ function renderRequests() {
     return;
   }
 
-  requestList.innerHTML = filtered.map((request) => `
-    <article class="request-card" data-request-id="${request.id}">
-      <div class="request-card-header">
-        <div>
-          <p class="eyebrow">${escapeHtml(request.id)}</p>
-          <h3>${escapeHtml(request.customer_name || 'Customer')}</h3>
-        </div>
-        <span class="status-pill">${escapeHtml(statusLabels[request.status] || request.status)}</span>
-      </div>
-      ${requestCardDetails(request)}
-      ${renderWorkerAssignment(request)}
-      ${renderActions(request)}
-    </article>
-  `).join('');
+  requestList.innerHTML = `
+    <table class="admin-requests-table">
+      <thead>
+        <tr>
+          <th>Customer</th>
+          <th>Service Type</th>
+          <th>Status</th>
+          <th>Worker</th>
+          <th>Date &amp; Time</th>
+          <th>Next Action</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${filtered.map((request) => {
+          const bucket = queueStatusBucket(request);
+          const isExpanded = expandedRequestId === request.id;
+          const rows = [`
+            <tr class="queue-row${isExpanded ? ' is-expanded' : ''}" data-request-id="${request.id}">
+              <td>
+                <div class="queue-customer-cell">
+                  <span class="queue-avatar">${escapeHtml(queueInitials(request.customer_name))}</span>
+                  <div>
+                    <strong>${escapeHtml(request.customer_name || 'Customer')}</strong>
+                    <span class="field-help">${escapeHtml(request.customer_email || '')}</span>
+                  </div>
+                </div>
+              </td>
+              <td>${escapeHtml(queueServiceLabel(request))}</td>
+              <td><span class="status-pill ${bucket.cls}">${escapeHtml(bucket.label)}</span></td>
+              <td>${request.assigned_worker_name ? escapeHtml(request.assigned_worker_name) : '<span class="field-help">Unassigned</span>'}</td>
+              <td>${queueDateTime(request)}</td>
+              <td>
+                <div class="queue-next-action-cell">
+                  <button class="button secondary queue-row-toggle" data-id="${request.id}" type="button">${queueNextActionLabel(bucket)}</button>
+                  <button class="queue-row-kebab queue-row-toggle" data-id="${request.id}" type="button" aria-label="More">&#8942;</button>
+                </div>
+              </td>
+            </tr>
+          `];
+          if (isExpanded) {
+            rows.push(`
+              <tr class="queue-row-detail">
+                <td colspan="6">
+                  <article class="request-card" data-request-id="${request.id}">
+                    <div class="request-card-header">
+                      <div>
+                        <p class="eyebrow">${escapeHtml(request.id)}</p>
+                        <h3>${escapeHtml(request.customer_name || 'Customer')}</h3>
+                      </div>
+                      <span class="status-pill">${escapeHtml(statusLabels[request.status] || request.status)}</span>
+                    </div>
+                    ${requestCardDetails(request)}
+                    ${renderWorkerAssignment(request)}
+                    ${renderActions(request)}
+                  </article>
+                </td>
+              </tr>
+            `);
+          }
+          return rows.join('');
+        }).join('')}
+      </tbody>
+    </table>
+  `;
 }
 
 async function ensureEmployee(fullName) {
@@ -1796,22 +1932,12 @@ async function loadEmployees() {
     renderWorkerProfiles();
     updateDashboardStatCards();
   } catch (error) {
-    console.warn('Could not load employees:', error);
-    allEmployees = [
-      normalizeEmployee({ id: 'local-mark-urban', full_name: DEFAULT_WORKER_NAME }),
-      normalizeEmployee({ id: 'local-test-worker', full_name: 'Test Worker' }),
-    ];
+    console.error('Could not load employees:', error);
+    allEmployees = [];
     renderWorkerSelect();
     renderWorkerProfiles();
-    renderWorkerDaysGrid(workerDayOptions.map(({ dayOfWeek }) => ({
-      dayOfWeek,
-      startsAt: '07:00',
-      endsAt: '22:00',
-    })));
-    selectedWorkerDaysOff = new Set();
-    renderWorkerDaysOffCalendar();
     if (workerScheduleStatus) {
-      workerScheduleStatus.textContent = 'Showing local fallback workers. Run supabase-operational-upgrades.sql so worker profiles and availability save live.';
+      workerScheduleStatus.textContent = `Could not load workers: ${error.message || error}. Refresh to try again.`;
     }
   }
 }
@@ -1824,23 +1950,39 @@ function renderWorkerProfiles() {
     return;
   }
 
-  if (!selectedScheduleEmployeeId) {
-    workerProfileList.innerHTML = '<div class="empty-state"><p>Select a worker to view or edit their profile.</p></div>';
-    return;
+  workerProfileList.innerHTML = `
+    <table class="admin-requests-table">
+      <thead>
+        <tr><th>Name</th><th>Employee ID</th><th>Phone</th><th>Status</th><th></th></tr>
+      </thead>
+      <tbody>
+        ${allEmployees.map((employee) => renderWorkerProfileRow(employee)).join('')}
+      </tbody>
+    </table>
+  `;
+  wireAdminPhotoEditor();
+}
+
+function renderWorkerProfileRow(employee) {
+  const isExpanded = selectedScheduleEmployeeId === employee.id;
+  const statusLabel = employee.active ? 'Active' : 'Inactive';
+  const rowStatusClass = employee.active ? 'status-pill-complete' : 'status-pill-denied';
+  const rows = [`
+    <tr class="queue-row${isExpanded ? ' is-expanded' : ''}" data-worker-id="${escapeHtml(employee.id)}">
+      <td><strong>${escapeHtml(employee.full_name || '')}</strong></td>
+      <td>${escapeHtml(employee.employee_code || '')}</td>
+      <td>${employee.phone ? escapeHtml(formatPhone(employee.phone)) : '<span class="field-help">Not provided</span>'}</td>
+      <td><span class="status-pill ${rowStatusClass}">${escapeHtml(statusLabel)}</span></td>
+      <td><button class="button secondary worker-row-toggle" data-id="${escapeHtml(employee.id)}" type="button">${isExpanded ? 'Close' : 'Edit'}</button></td>
+    </tr>
+  `];
+  if (isExpanded) {
+    rows.push(`<tr class="queue-row-detail"><td colspan="5">${renderWorkerProfileCard(employee)}</td></tr>`);
   }
+  return rows.join('');
+}
 
-  const employee = allEmployees.find((item) => item.id === selectedScheduleEmployeeId);
-
-  if (!employee) {
-    console.warn(`renderWorkerProfiles: "${selectedScheduleEmployeeId}" not found in allEmployees. Clearing selection.`);
-    selectedScheduleEmployeeId = '';
-    if (workerSelect) workerSelect.value = '';
-    if (workerProfileSelectActive) workerProfileSelectActive.value = '';
-    if (workerProfileSelectInactive) workerProfileSelectInactive.value = '';
-    workerProfileList.innerHTML = '<div class="empty-state"><p>Select a worker to view or edit their profile.</p></div>';
-    return;
-  }
-
+function renderWorkerProfileCard(employee) {
   const isLocal = String(employee.id).startsWith('local-');
   const statusLabel = employee.active ? 'Active' : 'Inactive';
   const statusClass = employee.active ? 'status-pill status-active' : 'status-pill status-inactive';
@@ -1853,7 +1995,7 @@ function renderWorkerProfiles() {
   if (adminCroppedPreviewUrl) { URL.revokeObjectURL(adminCroppedPreviewUrl); adminCroppedPreviewUrl = ''; }
   if (adminBoundaryPreviewUrl) { URL.revokeObjectURL(adminBoundaryPreviewUrl); adminBoundaryPreviewUrl = ''; }
 
-  workerProfileList.innerHTML = `
+  return `
     <article class="request-card worker-profile-card" data-worker-id="${escapeHtml(employee.id)}">
       <div class="request-card-header">
         <div>
@@ -1937,9 +2079,6 @@ function renderWorkerProfiles() {
       <p class="field-help admin-worker-status">${isLocal ? 'Run the Supabase worker upgrade before saving this worker.' : ''}</p>
     </article>
   `;
-
-  // Wire up photo editor after DOM is written
-  wireAdminPhotoEditor();
 }
 
 function applyAdminPhotoZoom() {
@@ -2100,23 +2239,12 @@ function wireAdminPhotoEditor() {
 function renderWorkerSelect() {
   const sel = selectedScheduleEmployeeId || workerSelect?.value;
   const activeEmployees = allEmployees.filter((e) => e.active);
-  const inactiveEmployees = allEmployees.filter((e) => !e.active);
 
   const toOption = (e) => `<option value="${escapeHtml(e.id)}" ${e.id === sel ? 'selected' : ''}>${escapeHtml(e.full_name)} (${escapeHtml(e.employee_code)})</option>`;
 
   // Schedule section: active workers only
   if (workerSelect) {
     workerSelect.innerHTML = `<option value="">Select worker</option>${activeEmployees.map(toOption).join('')}`;
-  }
-
-  // Profile active dropdown
-  if (workerProfileSelectActive) {
-    workerProfileSelectActive.innerHTML = `<option value="">Select active worker</option>${activeEmployees.map(toOption).join('')}`;
-  }
-
-  // Profile inactive dropdown
-  if (workerProfileSelectInactive) {
-    workerProfileSelectInactive.innerHTML = `<option value="">Select inactive worker</option>${inactiveEmployees.map(toOption).join('')}`;
   }
 
   if (sel && allEmployees.some((e) => e.id === sel)) {
@@ -2126,8 +2254,6 @@ function renderWorkerSelect() {
   }
 
   if (workerSelect) workerSelect.value = selectedScheduleEmployeeId || '';
-  if (workerProfileSelectActive) workerProfileSelectActive.value = selectedScheduleEmployeeId || '';
-  if (workerProfileSelectInactive) workerProfileSelectInactive.value = selectedScheduleEmployeeId || '';
 }
 
 function syncSelectedWorker(employeeId) {
@@ -2137,8 +2263,6 @@ function syncSelectedWorker(employeeId) {
 
   selectedScheduleEmployeeId = employeeId;
   if (workerSelect) workerSelect.value = employeeId;
-  if (workerProfileSelectActive) workerProfileSelectActive.value = employeeId;
-  if (workerProfileSelectInactive) workerProfileSelectInactive.value = employeeId;
   renderWorkerProfiles();
   return true;
 }
@@ -2153,8 +2277,8 @@ async function loadAdminWorkerSchedule(employeeId) {
   if (String(employeeId).startsWith('local-')) {
     renderWorkerDaysGrid(workerDayOptions.map(({ dayOfWeek }) => ({
       dayOfWeek,
-      startsAt: '07:00',
-      endsAt: '22:00',
+      startsAt: '09:00',
+      endsAt: '17:00',
     })));
     selectedWorkerDaysOff = new Set();
     renderWorkerDaysOffCalendar();
@@ -2177,8 +2301,8 @@ async function loadAdminWorkerSchedule(employeeId) {
     const rows = availability || [];
     renderWorkerDaysGrid(rows.map((row) => ({
       dayOfWeek: row.day_of_week,
-      startsAt: String(row.starts_at || '07:00').slice(0, 5),
-      endsAt: String(row.ends_at || '22:00').slice(0, 5),
+      startsAt: String(row.starts_at || '09:00').slice(0, 5),
+      endsAt: String(row.ends_at || '17:00').slice(0, 5),
     })));
 
     const location = rows.find((row) => row.work_location)?.work_location || employee.home_location || DEFAULT_WORK_LOCATION;
@@ -2453,8 +2577,6 @@ async function permanentlyDeleteInactiveWorker(button) {
   allEmployees = allEmployees.filter((e) => e.id !== employeeId);
   selectedScheduleEmployeeId = '';
   if (workerSelect) workerSelect.value = '';
-  if (workerProfileSelectActive) workerProfileSelectActive.value = '';
-  if (workerProfileSelectInactive) workerProfileSelectInactive.value = '';
 
   renderWorkerSelect();
   renderWorkerProfiles();
@@ -2492,7 +2614,8 @@ function renderReviews(reviews, requestMap = new Map(), starFilter = null) {
   // Update star filter button active state
   if (starFilterButtons) {
     starFilterButtons.querySelectorAll('.star-filter-btn').forEach((btn) => {
-      const btnStars = btn.dataset.stars === '' ? null : Number(btn.dataset.stars);
+      const value = btn.dataset.stars;
+      const btnStars = (!value || value === 'all') ? null : Number(value);
       btn.classList.toggle('active', btnStars === starFilter);
     });
   }
@@ -2740,6 +2863,14 @@ applicantList?.addEventListener('change', async (event) => {
 });
 
 workerProfileList?.addEventListener('click', async (event) => {
+  const toggleButton = event.target.closest('.worker-row-toggle');
+  if (toggleButton) {
+    const id = toggleButton.dataset.id;
+    selectedScheduleEmployeeId = selectedScheduleEmployeeId === id ? '' : id;
+    renderWorkerProfiles();
+    return;
+  }
+
   const saveButton = event.target.closest('.save-worker-profile');
   const deactivateButton = event.target.closest('.deactivate-worker-profile');
   const reactivateButton = event.target.closest('.reactivate-worker-profile');
@@ -2817,8 +2948,6 @@ async function handleWorkerSelection(employeeId, shouldScroll = false) {
   if (!employeeId) {
     selectedScheduleEmployeeId = '';
     if (workerSelect) workerSelect.value = '';
-    if (workerProfileSelectActive) workerProfileSelectActive.value = '';
-    if (workerProfileSelectInactive) workerProfileSelectInactive.value = '';
     renderWorkerProfiles();
     return;
   }
@@ -2833,20 +2962,6 @@ async function handleWorkerSelection(employeeId, shouldScroll = false) {
 
 workerSelect?.addEventListener('change', () => {
   handleWorkerSelection(workerSelect.value, true);
-});
-
-workerProfileSelectActive?.addEventListener('change', () => {
-  if (workerProfileSelectActive.value) {
-    if (workerProfileSelectInactive) workerProfileSelectInactive.value = '';
-    handleWorkerSelection(workerProfileSelectActive.value);
-  }
-});
-
-workerProfileSelectInactive?.addEventListener('change', () => {
-  if (workerProfileSelectInactive.value) {
-    if (workerProfileSelectActive) workerProfileSelectActive.value = '';
-    handleWorkerSelection(workerProfileSelectInactive.value);
-  }
 });
 
 async function updateRequestStatus(id, status) {
@@ -3942,6 +4057,13 @@ requestList.addEventListener('click', async (event) => {
   if (!button) return;
 
   try {
+    if (button.classList.contains('queue-row-toggle')) {
+      const id = button.dataset.id;
+      expandedRequestId = expandedRequestId === id ? null : id;
+      renderRequests();
+      return;
+    }
+
     if (button.classList.contains('inline-show-all')) {
       showAllTime = true;
       renderRequests();
@@ -4244,8 +4366,20 @@ requestList.addEventListener('input', (event) => {
     : '<p class="field-help">Type a code to preview what the customer will see.</p>';
 });
 
+showAll?.addEventListener('click', () => {
+  currentView = 'all';
+  showAllTime = false;
+  switchAdminTab('requests');
+  renderRequests();
+});
 showOpen?.addEventListener('click', () => {
-  currentView = 'open';
+  currentView = 'unassigned';
+  showAllTime = false;
+  switchAdminTab('requests');
+  renderRequests();
+});
+showInProgress?.addEventListener('click', () => {
+  currentView = 'inprogress';
   showAllTime = false;
   switchAdminTab('requests');
   renderRequests();
@@ -4271,22 +4405,68 @@ showAllTimeBtn?.addEventListener('click', () => {
   renderRequests();
 });
 
+dashboardRangeSelect?.addEventListener('change', () => {
+  dashboardRange = dashboardRangeSelect.value;
+  updateDashboardStatCards();
+});
+
+dashboardFiltersBtn?.addEventListener('click', () => {
+  if (!dashboardFiltersPanel) return;
+  dashboardFiltersPanel.hidden = !dashboardFiltersPanel.hidden;
+  dashboardFiltersBtn.setAttribute('aria-expanded', String(!dashboardFiltersPanel.hidden));
+});
+
+document.addEventListener('click', (event) => {
+  if (!dashboardFiltersPanel || dashboardFiltersPanel.hidden) return;
+  if (event.target.closest('.admin-filters-wrap')) return;
+  dashboardFiltersPanel.hidden = true;
+  dashboardFiltersBtn?.setAttribute('aria-expanded', 'false');
+});
+
+function updateFiltersButtonState() {
+  const hasActiveFilters = Boolean(queueFilters.serviceType || queueFilters.assignment);
+  dashboardFiltersBtn?.classList.toggle('has-active-filters', hasActiveFilters);
+}
+
+filterServiceTypeSelect?.addEventListener('change', () => {
+  queueFilters.serviceType = filterServiceTypeSelect.value;
+  updateFiltersButtonState();
+  renderRequests();
+});
+
+filterAssignmentSelect?.addEventListener('change', () => {
+  queueFilters.assignment = filterAssignmentSelect.value;
+  updateFiltersButtonState();
+  renderRequests();
+});
+
+filterClearBtn?.addEventListener('click', () => {
+  queueFilters = { serviceType: '', assignment: '' };
+  if (filterServiceTypeSelect) filterServiceTypeSelect.value = '';
+  if (filterAssignmentSelect) filterAssignmentSelect.value = '';
+  if (dashboardFiltersPanel) dashboardFiltersPanel.hidden = true;
+  dashboardFiltersBtn?.setAttribute('aria-expanded', 'false');
+  updateFiltersButtonState();
+  renderRequests();
+});
+
 function switchPageTab(page) {
-  const aliases = {
-    requests: 'dashboard',
-    reports: 'dashboard',
-    services: 'settings',
-  };
-  const targetPage = aliases[page] || page;
-  currentPageTab = targetPage;
+  currentPageTab = page;
   adminPageTabs.forEach((btn) => btn.classList.toggle('active', btn.dataset.page === page));
   document.querySelectorAll('[data-page-section]').forEach((el) => {
-    el.hidden = el.dataset.pageSection !== targetPage;
+    el.hidden = !el.dataset.pageSection.split(' ').includes(page);
   });
-  if (page === 'requests') switchAdminTab('requests');
-  if (page === 'reports') switchAdminTab('reviews');
-  if (page === 'dashboard') switchAdminTab('requests');
-  if (targetPage === 'settings') loadFuelPricesForAdmin();
+  if (page === 'requests') {
+    currentView = 'all';
+    switchAdminTab('requests');
+  }
+  if (page === 'dashboard') {
+    currentView = 'unassigned';
+    switchAdminTab('requests');
+  }
+  if (page === 'services') { loadFuelPricesForAdmin(); loadServicePricing(); }
+  if (page === 'reports') loadReportsPage();
+  renderRequests();
 }
 
 function switchAdminTab(tab) {
@@ -4305,17 +4485,21 @@ adminPageTabs.forEach((btn) => {
   btn.addEventListener('click', () => switchPageTab(btn.dataset.page));
 });
 document.querySelectorAll('[data-page-action]').forEach((btn) => {
-  btn.addEventListener('click', () => switchPageTab(btn.dataset.pageAction));
+  btn.addEventListener('click', () => {
+    switchPageTab(btn.dataset.pageAction);
+    if (btn.dataset.requestView) {
+      currentView = btn.dataset.requestView;
+      renderRequests();
+    }
+  });
 });
 adminRefreshBtn?.addEventListener('click', () => refreshAdminView(adminRefreshBtn));
 adminSideRefreshBtn?.addEventListener('click', () => refreshAdminView(adminSideRefreshBtn));
-adminWorkersRefreshBtn?.addEventListener('click', () => refreshAdminView(adminWorkersRefreshBtn));
 adminReviewsRefreshBtn?.addEventListener('click', () => refreshAdminView(adminReviewsRefreshBtn));
-adminApplicantsRefreshBtn?.addEventListener('click', () => refreshAdminView(adminApplicantsRefreshBtn));
+adminReportRefreshBtn?.addEventListener('click', () => loadReportsPage());
 
 // Find Tickets modal
-findTicketsBtn?.addEventListener('click', openFindTicketsModal);
-sidebarFindTicketsBtn?.addEventListener('click', openFindTicketsModal);
+heroFindTicketsBtn?.addEventListener('click', openFindTicketsModal);
 closeFindTicketsBtn?.addEventListener('click', closeFindTicketsModal);
 findTicketsModal?.addEventListener('click', (e) => { if (e.target === findTicketsModal) closeFindTicketsModal(); });
 
@@ -4635,7 +4819,8 @@ ticketDetailBody?.addEventListener('click', async (e) => {
 starFilterButtons?.addEventListener('click', (e) => {
   const btn = e.target.closest('.star-filter-btn');
   if (!btn) return;
-  currentReviewFilter = btn.dataset.stars === '' ? null : Number(btn.dataset.stars);
+  const starsValue = btn.dataset.stars;
+  currentReviewFilter = (!starsValue || starsValue === 'all') ? null : Number(starsValue);
   renderReviews(allReviews, allReviewRequestMap, currentReviewFilter);
 });
 
@@ -4668,8 +4853,8 @@ function renderWorkerDaysGrid(workdays = []) {
     .map(({ dayOfWeek, label }) => {
       const savedDay = workdayMap.get(dayOfWeek);
       const enabled = savedDay ? 'checked' : '';
-      const startsAt = savedDay?.startsAt || '07:00';
-      const endsAt = savedDay?.endsAt || '22:00';
+    const startsAt = savedDay?.startsAt || '09:00';
+    const endsAt = savedDay?.endsAt || '17:00';
 
       return `
         <div class="worker-day-row" data-day-of-week="${dayOfWeek}">
@@ -4710,13 +4895,13 @@ function normalizeSavedWorkdays(savedSchedule) {
   if (Array.isArray(savedSchedule?.workdays) && savedSchedule.workdays.length) {
     return savedSchedule.workdays.map((day) => ({
       dayOfWeek: Number(day.dayOfWeek),
-      startsAt: day.startsAt || '07:00',
-      endsAt: day.endsAt || '22:00',
+      startsAt: day.startsAt || '09:00',
+      endsAt: day.endsAt || '17:00',
     }));
   }
 
-  const startsAt = savedSchedule?.startsAt || '07:00';
-  const endsAt = savedSchedule?.endsAt || '22:00';
+  const startsAt = savedSchedule?.startsAt || '09:00';
+  const endsAt = savedSchedule?.endsAt || '17:00';
 
   return workerDayOptions.map(({ dayOfWeek }) => ({
     dayOfWeek,
@@ -4735,8 +4920,8 @@ function selectedWorkdaysFromForm() {
 
       return {
         dayOfWeek,
-        startsAt: row?.querySelector('.worker-day-start')?.value || '07:00',
-        endsAt: row?.querySelector('.worker-day-end')?.value || '22:00',
+        startsAt: row?.querySelector('.worker-day-start')?.value || '09:00',
+        endsAt: row?.querySelector('.worker-day-end')?.value || '17:00',
       };
     })
     .filter((day) => day.startsAt && day.endsAt);
@@ -4849,8 +5034,8 @@ workerDaysGrid?.addEventListener('click', (event) => {
 
   if (copyButton) {
     copiedWorkerDaySchedule = {
-      startsAt: startInput?.value || '07:00',
-      endsAt: endInput?.value || '22:00',
+      startsAt: startInput?.value || '09:00',
+      endsAt: endInput?.value || '17:00',
       enabled: Boolean(checkbox?.checked),
     };
 
@@ -5070,8 +5255,8 @@ saveDaysOffButton?.addEventListener('click', async () => {
 
 renderWorkerDaysGrid(workerDayOptions.map(({ dayOfWeek }) => ({
   dayOfWeek,
-  startsAt: '07:00',
-  endsAt: '22:00',
+  startsAt: '09:00',
+  endsAt: '17:00',
 })));
 renderWorkerDaysOffCalendar();
 
@@ -5081,6 +5266,7 @@ loadVehiclePsiGuides().finally(() => {
 });
 loadReviews();
 loadApplicants();
+loadServicePricing();
 
 // ── Create Request tab ────────────────────────────────────────────────────────
 
@@ -5095,24 +5281,16 @@ document.querySelector('#admin-create-request-form')?.addEventListener('submit',
   const serviceTypeValue = val('cr-service-type');
   const needsFuel = serviceTypeValue === 'fuel' || serviceTypeValue === 'car-wash-fuel';
   const needsWash = serviceTypeValue === 'car-wash' || serviceTypeValue === 'car-wash-fuel';
-  const washPackage = CR_WASH_PACKAGES.find((item) => item.value === val('cr-wash-package')) || null;
-  const fuelEstimate = CR_FUEL_ESTIMATE_RANGES.find((item) => item.value === val('cr-fuel-estimate')) || null;
-  const fuelTypeValue = val('cr-fuel-type');
-  const quickInspection = !!document.getElementById('cr-quick-inspection')?.checked;
-  const pricePerGallon = CR_AVG_FUEL_PRICES[fuelTypeValue] || CR_AVG_FUEL_PRICES.Regular;
-  const estimatedGallons = needsFuel && fuelEstimate ? fuelEstimate.gallons : null;
-  const estimatedFuelAmount = estimatedGallons ? estimatedGallons * pricePerGallon : 0;
-  const washFee = needsWash && washPackage ? washPackage.price : 0;
+  const washPackageLabel = val('cr-car-wash-package');
+  const fuelTypeValue = val('cr-fuel-type') || 'Regular';
+  const quickInspection = !!document.getElementById('cr-inspection')?.checked;
   const pricing = estimatePricingSummary({
     needsFuel,
-    needsWash: needsWash && !!washPackage,
-    fuelAmount: estimatedFuelAmount,
-    washAmount: washFee,
+    needsWash,
+    fuelAmount: 0,
+    washAmount: 0,
     quickInspection,
   });
-  const fuelConvenienceFee = pricing.fuel;
-  const washConvenienceFee = pricing.wash;
-  const quickInspectionFee = pricing.inspection;
   const estimatedTotal = pricing.total;
 
   const data = {
@@ -5120,27 +5298,20 @@ document.querySelector('#admin-create-request-form')?.addEventListener('submit',
     customer_phone:      formatPhone(val('cr-customer-phone')),
     customer_email:      val('cr-customer-email'),
     address_street:      val('cr-address-street'),
-    address_apt:         val('cr-address-apt'),
+    address_apt:         val('cr-address-unit'),
     address_city:        val('cr-address-city'),
     address_state:       val('cr-address-state'),
     address_zip:         val('cr-address-zip'),
-    parking_location:    val('cr-parking-location'),
-    key_handoff_details: val('cr-key-handoff'),
     service_type:        serviceTypeValue,
     service_label:       serviceTypeValue ? (serviceTypeValue === 'fuel' ? 'Fuel only' : serviceTypeValue === 'car-wash' ? 'Car wash only' : 'Car wash + Fuel') : '',
-    service_date:        val('cr-service-date'),
-    desired_return_time: val('cr-return-time'),
+    service_date:        new Date().toISOString().slice(0, 10),
+    desired_return_time: val('cr-desired-return-time'),
     fuel_type:           needsFuel ? fuelTypeValue : '',
-    estimated_gallons:   estimatedGallons,
-    price_per_gallon:    needsFuel ? pricePerGallon : null,
-    estimated_fuel_amount: needsFuel ? estimatedFuelAmount : null,
-    fuel_convenience_fee: needsFuel ? fuelConvenienceFee : 0,
-    wash_package:        needsWash ? val('cr-wash-package') : '',
-    wash_package_label:  needsWash ? (washPackage?.label || '') : '',
-    wash_fee:            needsWash ? washFee : 0,
-    wash_convenience_fee: needsWash ? washConvenienceFee : 0,
+    fuel_convenience_fee: needsFuel ? pricing.fuel : 0,
+    wash_package_label:  needsWash ? washPackageLabel : '',
+    wash_convenience_fee: needsWash ? pricing.wash : 0,
     quick_inspection:    quickInspection,
-    quick_inspection_fee: quickInspectionFee,
+    quick_inspection_fee: pricing.inspection,
     estimated_total:     estimatedTotal || null,
     vehicle_year:        val('cr-vehicle-year'),
     vehicle_make:        val('cr-vehicle-make'),
@@ -5181,9 +5352,35 @@ document.querySelector('#admin-create-request-form')?.addEventListener('submit',
   }
 });
 
-// ── Settings tab — Fuel Prices ────────────────────────────────────────────────
+// ── Services page — fuel + service pricing ─────────────────────────────────
+
+const SERVICE_PRICING_FIELDS = [
+  { id: 'fp-regular', label: 'Regular fuel ($/gal)', step: '0.001' },
+  { id: 'fp-midgrade', label: 'Mid-grade fuel ($/gal)', step: '0.001' },
+  { id: 'fp-premium', label: 'Premium fuel ($/gal)', step: '0.001' },
+  { id: 'fp-diesel', label: 'Diesel ($/gal)', step: '0.001' },
+  { id: 'sp-fuel-fee', label: 'Fuel concierge service fee ($)', step: '0.01' },
+  { id: 'sp-wash-fee', label: 'Car wash service fee ($)', step: '0.01' },
+  { id: 'sp-inspection-fee', label: 'Quick inspection fee ($)', step: '0.01' },
+  { id: 'sp-wash-buff-shine', label: 'Buff & Shine package ($)', step: '0.01' },
+  { id: 'sp-wash-shine-protect', label: 'Shine & Protect package ($)', step: '0.01' },
+  { id: 'sp-wash-shine', label: 'Shine package ($)', step: '0.01' },
+  { id: 'sp-wash-double', label: 'Double Wash package ($)', step: '0.01' },
+];
+
+function renderServicesSettingsList() {
+  const list = document.querySelector('#services-settings-list');
+  if (!list || list.dataset.rendered) return;
+  list.innerHTML = SERVICE_PRICING_FIELDS.map((field) => `
+    <label>${escapeHtml(field.label)}
+      <input id="${field.id}" type="number" step="${field.step}" min="0">
+    </label>
+  `).join('');
+  list.dataset.rendered = '1';
+}
 
 async function loadFuelPricesForAdmin() {
+  renderServicesSettingsList();
   try {
     const { data, error } = await db.rpc('public_get_fuel_prices');
     if (error || !data) return;
@@ -5192,54 +5389,189 @@ async function loadFuelPricesForAdmin() {
     if (v('fp-midgrade')) v('fp-midgrade').value = Number(data.midgrade_price).toFixed(3);
     if (v('fp-premium')) v('fp-premium').value = Number(data.premium_price).toFixed(3);
     if (v('fp-diesel')) v('fp-diesel').value = Number(data.diesel_price).toFixed(3);
-    if (v('fp-area')) v('fp-area').value = data.service_area_label || '';
-    const lastUpdated = document.getElementById('fuel-prices-last-updated');
-    if (lastUpdated && data.last_updated_at) {
-      const d = new Date(data.last_updated_at);
-      lastUpdated.textContent = `Last updated: ${d.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}`;
-    }
   } catch {
     // Non-fatal — form stays blank.
   }
 }
 
-document.querySelector('#admin-fuel-prices-form')?.addEventListener('submit', async (event) => {
+function applyServicePricing(data) {
+  if (!data) return;
+  BASE_FUEL_SERVICE_FEE = Number(data.fuel_service_fee);
+  BASE_WASH_SERVICE_FEE = Number(data.wash_service_fee);
+  BASE_QUICK_INSPECTION_FEE = Number(data.quick_inspection_fee);
+  CR_FEES = {
+    fuelConvenience: Number(data.fuel_service_fee),
+    washConvenience: Number(data.wash_service_fee),
+    quickInspection: Number(data.quick_inspection_fee),
+  };
+  CR_WASH_PACKAGES = [
+    { value: 'buff-shine', label: 'Buff & Shine', price: Number(data.wash_buff_shine_price) },
+    { value: 'shine-protect', label: 'Shine & Protect', price: Number(data.wash_shine_protect_price) },
+    { value: 'shine', label: 'Shine', price: Number(data.wash_shine_price) },
+    { value: 'double-wash', label: 'Double Wash', price: Number(data.wash_double_wash_price) },
+  ];
+}
+
+async function loadServicePricing() {
+  renderServicesSettingsList();
+  try {
+    const { data, error } = await db.rpc('public_get_service_pricing');
+    if (error || !data) return;
+    applyServicePricing(data);
+
+    const v = (id) => document.getElementById(id);
+    if (v('sp-fuel-fee')) v('sp-fuel-fee').value = Number(data.fuel_service_fee).toFixed(2);
+    if (v('sp-wash-fee')) v('sp-wash-fee').value = Number(data.wash_service_fee).toFixed(2);
+    if (v('sp-inspection-fee')) v('sp-inspection-fee').value = Number(data.quick_inspection_fee).toFixed(2);
+    if (v('sp-wash-buff-shine')) v('sp-wash-buff-shine').value = Number(data.wash_buff_shine_price).toFixed(2);
+    if (v('sp-wash-shine-protect')) v('sp-wash-shine-protect').value = Number(data.wash_shine_protect_price).toFixed(2);
+    if (v('sp-wash-shine')) v('sp-wash-shine').value = Number(data.wash_shine_price).toFixed(2);
+    if (v('sp-wash-double')) v('sp-wash-double').value = Number(data.wash_double_wash_price).toFixed(2);
+  } catch {
+    // Non-fatal — form keeps its defaults.
+  }
+}
+
+async function sha256Hex(value) {
+  const bytes = new TextEncoder().encode(value);
+  const digest = await crypto.subtle.digest('SHA-256', bytes);
+  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('');
+}
+
+document.querySelector('#admin-password-form')?.addEventListener('submit', async (event) => {
   event.preventDefault();
-  const statusEl = document.getElementById('fuel-prices-status');
+  const statusEl = document.querySelector('#admin-password-status');
+  const submitBtn = event.target.querySelector('[type="submit"]');
+
+  const currentPassword = document.querySelector('#admin-current-password')?.value || '';
+  const newPassword = document.querySelector('#admin-new-password')?.value || '';
+  const confirmPassword = document.querySelector('#admin-confirm-password')?.value || '';
+
+  if (newPassword.length < 8) {
+    if (statusEl) statusEl.textContent = 'New password must be at least 8 characters.';
+    return;
+  }
+  if (newPassword !== confirmPassword) {
+    if (statusEl) statusEl.textContent = 'New password and confirmation do not match.';
+    return;
+  }
+
+  if (statusEl) statusEl.textContent = 'Updating password...';
+  if (submitBtn) submitBtn.disabled = true;
+
+  try {
+    const [currentHash, newHash] = await Promise.all([sha256Hex(currentPassword), sha256Hex(newPassword)]);
+
+    const { error } = await db.rpc('admin_change_password', {
+      p_token: adminToken(),
+      p_current_password_hash: currentHash,
+      p_new_password_hash: newHash,
+    });
+
+    if (error) throw error;
+
+    event.target.reset();
+    if (statusEl) statusEl.textContent = 'Password updated.';
+  } catch (err) {
+    const msg = err?.message || '';
+    if (msg.includes('INVALID_CURRENT_PASSWORD')) {
+      if (statusEl) statusEl.textContent = 'Current password is incorrect.';
+    } else {
+      console.error('Admin password change failed:', err);
+      if (statusEl) statusEl.textContent = `Could not update password: ${msg || err}`;
+    }
+  } finally {
+    if (submitBtn) submitBtn.disabled = false;
+  }
+});
+
+document.querySelector('#services-settings-form')?.addEventListener('submit', async (event) => {
+  event.preventDefault();
+  const statusEl = document.getElementById('services-settings-status');
   const submitBtn = event.target.querySelector('[type="submit"]');
   if (statusEl) statusEl.textContent = 'Saving...';
   if (submitBtn) submitBtn.disabled = true;
 
   try {
     const val = (id) => parseFloat(document.getElementById(id)?.value || '0');
-    const area = document.getElementById('fp-area')?.value.trim() || null;
 
-    const { data, error } = await db.rpc('admin_update_fuel_prices', {
-      p_token: adminToken(),
-      p_regular: val('fp-regular'),
-      p_midgrade: val('fp-midgrade'),
-      p_premium: val('fp-premium'),
-      p_diesel: val('fp-diesel'),
-      p_service_area: area,
-    });
+    const [fuelResult, pricingResult] = await Promise.all([
+      db.rpc('admin_update_fuel_prices', {
+        p_token: adminToken(),
+        p_regular: val('fp-regular'),
+        p_midgrade: val('fp-midgrade'),
+        p_premium: val('fp-premium'),
+        p_diesel: val('fp-diesel'),
+        p_service_area: null,
+      }),
+      db.rpc('admin_update_service_pricing', {
+        p_token: adminToken(),
+        p_fuel_service_fee: val('sp-fuel-fee'),
+        p_wash_service_fee: val('sp-wash-fee'),
+        p_quick_inspection_fee: val('sp-inspection-fee'),
+        p_wash_buff_shine_price: val('sp-wash-buff-shine'),
+        p_wash_shine_protect_price: val('sp-wash-shine-protect'),
+        p_wash_shine_price: val('sp-wash-shine'),
+        p_wash_double_wash_price: val('sp-wash-double'),
+      }),
+    ]);
 
-    if (error) throw error;
+    if (fuelResult.error) throw fuelResult.error;
+    if (pricingResult.error) throw pricingResult.error;
 
-    if (statusEl) statusEl.textContent = 'Fuel prices saved.';
-    const lastUpdated = document.getElementById('fuel-prices-last-updated');
-    if (lastUpdated && data?.last_updated_at) {
-      const d = new Date(data.last_updated_at);
-      lastUpdated.textContent = `Last updated: ${d.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}`;
-    }
+    applyServicePricing(pricingResult.data);
+    if (statusEl) statusEl.textContent = 'Service pricing saved.';
   } catch (err) {
-    console.error('Fuel price save failed:', err);
+    console.error('Service pricing save failed:', err);
     if (statusEl) statusEl.textContent = `Could not save: ${err.message || err}`;
   } finally {
     if (submitBtn) submitBtn.disabled = false;
   }
 });
 
-// Load fuel prices when the Settings tab is opened.
-document.querySelectorAll('.admin-page-tab[data-page="settings"]').forEach((tab) => {
-  tab.addEventListener('click', loadFuelPricesForAdmin, { once: false });
-});
+// ── Reports page ──────────────────────────────────────────────────────────
+
+function requestTimestamp(request) {
+  return new Date(request.updated_at || request.created_at);
+}
+
+function loadReportsPage() {
+  const output = document.querySelector('#admin-report-list');
+  if (!output) return;
+
+  if (!allRequests.length) {
+    output.innerHTML = '<div class="empty-state"><p>No requests yet.</p></div>';
+    return;
+  }
+
+  const rows = allRequests.slice().sort((a, b) => requestTimestamp(b) - requestTimestamp(a));
+  const counts = { Open: 0, 'In Progress': 0, Completed: 0, Closed: 0 };
+  rows.forEach((r) => { counts[queueStatusBucket(r).label] += 1; });
+
+  output.innerHTML = `
+    <div class="admin-stat-grid report-volume-grid">
+      ${Object.entries(counts).map(([label, count]) => `
+        <div class="admin-stat-card">
+          <div>
+            <span class="admin-stat-label">${escapeHtml(label)}</span>
+            <span class="admin-stat-value">${count}</span>
+          </div>
+        </div>
+      `).join('')}
+    </div>
+    <table class="admin-requests-table">
+      <thead><tr><th>Date</th><th>Customer</th><th>Service Type</th><th>Worker</th><th>Status</th></tr></thead>
+      <tbody>
+        ${rows.map((r) => `
+          <tr>
+            <td>${escapeHtml(formatTimestamp(r.updated_at || r.created_at))}</td>
+            <td>${escapeHtml(r.customer_name || '')}</td>
+            <td>${escapeHtml(queueServiceLabel(r))}</td>
+            <td>${r.assigned_worker_name ? escapeHtml(r.assigned_worker_name) : '<span class="field-help">Unassigned</span>'}</td>
+            <td><span class="status-pill ${queueStatusBucket(r).cls}">${escapeHtml(queueStatusBucket(r).label)}</span></td>
+          </tr>
+        `).join('')}
+      </tbody>
+    </table>
+  `;
+}

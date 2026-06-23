@@ -4,3 +4,13 @@ const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
 const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 window.ShiftFuelSupabase = supabaseClient;
+
+(function loadSharedPolish() {
+  if (!document.querySelector('link[data-mobile-polish]')) {
+    const mobile = document.createElement('link');
+    mobile.rel = 'stylesheet';
+    mobile.href = 'mobile-polish.css';
+    mobile.dataset.mobilePolish = '1';
+    document.head.appendChild(mobile);
+  }
+})();

@@ -1,0 +1,170 @@
+/* Admin portal production refinements: polish only, no layout rebuild. */
+
+.admin-portal-page .admin-hero {
+  padding-top: clamp(22px, 3vw, 36px) !important;
+  padding-bottom: clamp(22px, 3vw, 36px) !important;
+}
+
+.admin-portal-page .admin-hero-top {
+  gap: 18px !important;
+}
+
+.admin-portal-page .section-heading h1 {
+  margin-bottom: 8px !important;
+}
+
+.admin-portal-page .admin-hero-stats {
+  margin-top: 14px !important;
+}
+
+.admin-last-updated {
+  display: inline-flex;
+  align-items: center;
+  min-height: 36px;
+  padding: 0 10px;
+  color: var(--sf-muted);
+  font-size: 0.82rem;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.admin-closed-breakdown {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: -6px 0 16px;
+}
+
+.admin-closed-breakdown span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 11px;
+  color: var(--sf-teal-dark);
+  background: rgba(234, 242, 234, 0.78);
+  border: 1px solid rgba(13, 59, 59, 0.09);
+  border-radius: var(--sf-radius-pill);
+  font-size: 0.78rem;
+  font-weight: 850;
+}
+
+.admin-closed-breakdown strong {
+  font-size: 0.88rem;
+  font-weight: 950;
+}
+
+.admin-page-tab .requests-attention-badge[hidden] {
+  display: none !important;
+}
+
+.admin-page-tab .requests-attention-badge {
+  margin-left: 6px;
+}
+
+.empty-state {
+  padding: 28px !important;
+  text-align: left !important;
+  background: linear-gradient(180deg, #ffffff, var(--sf-sage-light));
+  border: 1px dashed rgba(13, 59, 59, 0.20);
+  border-radius: var(--sf-radius-md);
+}
+
+.empty-state p {
+  margin-bottom: 16px;
+  color: var(--sf-muted);
+}
+
+.empty-state p strong {
+  display: inline-block;
+  margin-bottom: 4px;
+  color: var(--sf-teal-dark);
+  font-size: 1.05rem;
+}
+
+.empty-state-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.admin-action-card {
+  cursor: pointer;
+  transition: transform 160ms ease, box-shadow 160ms ease, border-color 160ms ease, background 160ms ease, opacity 160ms ease;
+}
+
+.admin-action-card:hover:not(:disabled):not(.is-disabled) {
+  transform: translateY(-2px);
+  border-color: rgba(255, 107, 90, 0.32) !important;
+  box-shadow: 0 14px 34px rgba(13, 59, 59, 0.12) !important;
+}
+
+.admin-action-card:active:not(:disabled):not(.is-disabled) {
+  transform: translateY(0) scale(0.99);
+  box-shadow: 0 8px 20px rgba(13, 59, 59, 0.10) !important;
+}
+
+.admin-action-card:focus-visible {
+  outline: 3px solid rgba(255, 107, 90, 0.28);
+  outline-offset: 3px;
+}
+
+.admin-action-card:disabled,
+.admin-action-card.is-disabled,
+.admin-action-card[aria-disabled="true"] {
+  cursor: not-allowed;
+  opacity: 0.48;
+  filter: grayscale(0.25);
+  box-shadow: none !important;
+}
+
+.admin-action-card:disabled strong,
+.admin-action-card.is-disabled strong,
+.admin-action-card[aria-disabled="true"] strong {
+  color: var(--sf-muted);
+}
+
+/* The card-driven dashboard detail panel belongs only on the Dashboard tab.
+   The Requests tab should always show the normal Requests Queue toolbar, filters, and request list. */
+.admin-portal-page:has(.admin-page-tab[data-page="requests"].active)
+  .admin-queue-card.dashboard-card-driven-mode[data-tab-panel="requests"] > #dashboard-detail-panel,
+.admin-portal-page:has(.admin-page-tab[data-page="requests"].active)
+  .admin-queue-card[data-tab-panel="requests"] > #dashboard-detail-panel {
+  display: none !important;
+  visibility: hidden !important;
+}
+
+.admin-portal-page:has(.admin-page-tab[data-page="requests"].active)
+  .admin-queue-card.dashboard-card-driven-mode[data-tab-panel="requests"] > .admin-toolbar,
+.admin-portal-page:has(.admin-page-tab[data-page="requests"].active)
+  .admin-queue-card[data-tab-panel="requests"] > .admin-toolbar {
+  display: flex !important;
+  visibility: visible !important;
+}
+
+.admin-portal-page:has(.admin-page-tab[data-page="requests"].active)
+  .admin-queue-card.dashboard-card-driven-mode[data-tab-panel="requests"] > .admin-request-tabs,
+.admin-portal-page:has(.admin-page-tab[data-page="requests"].active)
+  .admin-queue-card[data-tab-panel="requests"] > .admin-request-tabs {
+  display: flex !important;
+  visibility: visible !important;
+}
+
+.admin-portal-page:has(.admin-page-tab[data-page="requests"].active)
+  .admin-queue-card.dashboard-card-driven-mode[data-tab-panel="requests"] > #request-list,
+.admin-portal-page:has(.admin-page-tab[data-page="requests"].active)
+  .admin-queue-card[data-tab-panel="requests"] > #request-list {
+  display: block !important;
+  visibility: visible !important;
+}
+
+@media (max-width: 760px) {
+  .admin-last-updated {
+    width: 100%;
+    justify-content: flex-start;
+    padding-left: 0;
+  }
+
+  .empty-state-actions .button {
+    width: 100%;
+  }
+}

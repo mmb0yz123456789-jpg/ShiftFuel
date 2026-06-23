@@ -6,10 +6,11 @@
   <title>Track My Vehicle | ShiftFuel Concierge</title>
   <link rel="stylesheet" href="styles.css">
   <link rel="stylesheet" href="track-redesign.css">
+  <link rel="stylesheet" href="layout-width-polish.css">
 </head>
 <body class="track-page">
-	<header class="site-header landing-header">
-		<a class="logo" href="index.html" aria-label="ShiftFuel Concierge home">
+  <header class="site-header landing-header">
+    <a class="logo" href="index.html" aria-label="ShiftFuel Concierge home">
       <span class="logo-mark">S</span>
       <span>ShiftFuel Concierge</span>
     </a>
@@ -17,15 +18,15 @@
       <span>Menu</span>
       <span aria-hidden="true">&#9776;</span>
     </button>
-		<nav id="site-nav" class="nav" data-nav aria-label="Main navigation">
+    <nav id="site-nav" class="nav" data-nav aria-label="Main navigation">
       <a href="index.html#how">How It Works</a>
       <a href="index.html#services">Services &amp; Pricing</a>
       <a href="index.html#trust">Safety &amp; Trust</a>
-			<a class="nav-cta" href="book.html#booking-flow">Book Now</a>
-			<a class="nav-outline" href="track.html" aria-current="page">Track My Vehicle</a>
-			<a class="nav-returning" href="returning.html">Returning Customer</a>
-		</nav>
-	</header>
+      <a class="nav-cta" href="book.html#booking-flow">Book Now</a>
+      <a class="nav-returning" href="returning.html">Returning Customer</a>
+      <a class="nav-outline" href="track.html" aria-current="page">Track My Vehicle</a>
+    </nav>
+  </header>
 
   <main class="booking-flow-shell track-shell">
     <section class="booking-flow-hero track-hero-redesign">
@@ -35,7 +36,7 @@
         <p>Enter your phone number, email address, or request number to find your request and get real-time updates.</p>
       </div>
       <figure class="booking-flow-hero-image">
-        <img src="https://images.unsplash.com/photo-1560179707-f14e90ef3623?auto=format&fit=crop&w=1200&q=80" alt="Professional vehicle handoff near a workplace parking area">
+        <img src="https://images.unsplash.com/photo-1503376780353-7e6692767b70?auto=format&fit=crop&w=1600&q=80" alt="Concierge vehicle service pickup with a parked car">
       </figure>
     </section>
 
@@ -45,7 +46,7 @@
           <span class="track-search-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="11" cy="11" r="6.5"/><path d="M20 20l-4.5-4.5"/></svg></span>
           <div>
             <h2>Find your request</h2>
-            <p>Use any of the options below to look up your request.</p>
+            <p>Enter at least two options below to look up your request.</p>
           </div>
         </div>
 
@@ -62,7 +63,7 @@
 
           <label>
             Request / Ticket Number
-            <input id="tracking-id" type="text" placeholder="SF-123456">
+            <input id="tracking-id" type="text" placeholder="SF-DDDFBBC5">
           </label>
 
           <div class="track-search-actions">
@@ -95,7 +96,14 @@
   </section>
 
   <footer class="site-footer">
-    <p class="footer-copy">&copy; <span id="year"></span> ShiftFuel Concierge. All rights reserved.</p>
+    <div class="footer-main">
+      <p class="footer-copy">&copy; <span id="year"></span> ShiftFuel Concierge. All rights reserved.</p>
+      <nav class="footer-links" aria-label="Legal links">
+        <a href="privacy.html">Privacy Policy</a>
+        <a href="terms.html">Terms of Service</a>
+        <a href="index.html#trust">Contact Us</a>
+      </nav>
+    </div>
   </footer>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -105,8 +113,13 @@
   <script src="supabase-client.js"></script>
   <script src="photo-utils.js"></script>
   <script src="date-picker.js"></script>
+  <script src="track-two-criteria.js"></script>
   <script src="track.js"></script>
+  <script src="track-timeline-status-fix.js"></script>
+  <script src="track-service-issue-copy.js"></script>
+  <script src="track-cancelled-tab.js"></script>
   <script src="track-phone-formatting.js"></script>
+  <script defer src="track-live-location.js"></script>
   <script>
     const trackYear = document.querySelector("#year");
     if (trackYear) trackYear.textContent = new Date().getFullYear();

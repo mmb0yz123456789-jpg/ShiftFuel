@@ -13,48 +13,47 @@ test.describe('Landing page', () => {
   });
 
   test('Book Now section is present', async ({ page }) => {
-    const bookSection = page.locator('#book');
-    await expect(bookSection).toBeVisible();
+    const bookLink = page.locator('a[href="book.html#booking-flow"]').first();
+    await expect(bookLink).toBeVisible();
   });
 
   test('Services & Pricing section is present', async ({ page }) => {
-    const pricingSection = page.locator('#services-pricing');
+    const pricingSection = page.locator('#services');
     await expect(pricingSection).toBeVisible();
   });
 
-  test('address validation button exists', async ({ page }) => {
-    const btn = page.locator('#validate-address-btn');
-    await expect(btn).toBeVisible();
+  test('landing page does not embed the full booking form', async ({ page }) => {
+    await expect(page.locator('#booking-flow')).toHaveCount(0);
   });
 
-  test('vehicle fieldset is hidden before address validation', async ({ page }) => {
-    const fieldset = page.locator('#vehicle-fieldset');
-    await expect(fieldset).toBeHidden();
-  });
-
-  test('service fieldset is hidden before address validation', async ({ page }) => {
-    const fieldset = page.locator('#service-fieldset');
-    await expect(fieldset).toBeHidden();
-  });
-
-  test('payment fieldset is hidden before address validation', async ({ page }) => {
-    const fieldset = page.locator('#payment-fieldset');
-    await expect(fieldset).toBeHidden();
-  });
-
-  test('booking submit button is hidden before form completion', async ({ page }) => {
-    const btn = page.locator('#booking-submit-btn');
-    await expect(btn).toBeHidden();
+  test('Book Now routes to the booking flow page', async ({ page }) => {
+    await page.locator('a[href="book.html#booking-flow"]').first().click();
+    await expect(page).toHaveURL(/book\.html#booking-flow$/);
+    await expect(page.locator('#booking-flow[data-booking-flow="book-now"]')).toBeVisible();
   });
 
   test('nav contains Services & Pricing link', async ({ page }) => {
-    const link = page.locator('.nav a[href*="services-pricing"]');
+    const link = page.locator('.nav a[href="#services"]');
     await expect(link).toBeVisible();
   });
 
   test('nav does not contain "What we do" link', async ({ page }) => {
     const link = page.locator('.nav a[href*="#services"]:not([href*="services-pricing"])');
     await expect(link).toHaveCount(0);
+  });
+});
+
+test.describe('Book Now page', () => {
+  test('shared booking flow container is present', async ({ page }) => {
+    await page.goto('/book.html#booking-flow');
+    await expect(page.locator('#booking-flow[data-booking-flow="book-now"]')).toBeVisible();
+  });
+});
+
+test.describe('Returning Customer page', () => {
+  test('returning booking flow container is present', async ({ page }) => {
+    await page.goto('/returning.html');
+    await expect(page.locator('#booking-flow[data-booking-flow="returning"]')).toBeVisible();
   });
 });
 
@@ -170,8 +169,8 @@ test.describe('Mobile: tap target sizes', () => {
     }
   });
 
-  test('address validate button meets 44px minimum height', async ({ page }) => {
-    const btn = page.locator('#validate-address-btn');
+  test('Book Now button meets 44px minimum height', async ({ page }) => {
+    const btn = page.locator('a[href="book.html#booking-flow"]').first();
     const box = await btn.boundingBox();
     if (box) {
       expect(box.height).toBeGreaterThanOrEqual(44);

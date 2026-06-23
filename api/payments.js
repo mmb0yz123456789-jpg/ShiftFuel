@@ -36,9 +36,101 @@ function getStripe() {
 const RETURN_CANCELLATION_FEE = 15;
 const RETURN_RECOVERY_RATE = 0.029;
 const RETURN_RECOVERY_FIXED = 0.30;
+const BOOKING_PRICE_PER_GALLON = 3.799;
+const BOOKING_FUEL_SERVICE_FEE = 15;
+const BOOKING_CAR_WASH_SERVICE_FEE = 15;
+const BOOKING_QUICK_CARE_FEE = 5;
+const BOOKING_SELECTED_GALLONS = {
+  '0-5': 5,
+  '5-10': 10,
+  '10-15': 15,
+  '15-20': 20,
+  '20-25': 25,
+  '25+': 40,
+};
+const BOOKING_FUEL_AUTHORIZATION_GALLONS = {
+  '0-5': 10,
+  '5-10': 15,
+  '10-15': 20,
+  '15-20': 30,
+  '20-25': 30,
+  '25+': 40,
+};
+const BOOKING_WASH_PACKAGES = {
+  'buff-shine': { label: 'Buff & Shine', price: 27 },
+  'shine-protect': { label: 'Shine & Protect', price: 20 },
+  shine: { label: 'Shine', price: 16 },
+  'double-wash': { label: 'Double Wash', price: 12 },
+};
 
 function roundMoney(value) {
   return Math.round((Number(value) || 0) * 100) / 100;
+}
+
+function bookingNeedsFuel(serviceType) {
+  return ['fuel', 'fuel-only', 'car-wash-fuel'].includes(serviceType);
+}
+
+function bookingNeedsWash(serviceType) {
+  return ['wash', 'wash-only', 'car-wash', 'car-wash-fuel'].includes(serviceType);
+}
+
+function calculateBookingAuthorization(row) {
+  const needsFuel = bookingNeedsFuel(row.service_type);
+  const needsWash = bookingNeedsWash(row.service_type);
+  const fuelGallons = needsFuel ? BOOKING_FUEL_AUTHORIZATION_GALLONS[row.estimated_fuel_range] || 0 : 0;
+  const pricePerGallon = Number(row.price_per_gallon) > 0 ? Number(row.price_per_gallon) : BOOKING_PRICE_PER_GALLON;
+  const fuelEstimate = roundMoney(fuelGallons * pricePerGallon);
+  const washPackage = needsWash ? BOOKING_WASH_PACKAGES[row.wash_package] || null : null;
+  const washAmount = washPackage ? washPackage.price : 0;
+  const fuelBaseFee = needsFuel ? BOOKING_FUEL_SERVICE_FEE : 0;
+  const washBaseFee = needsWash ? BOOKING_CAR_WASH_SERVICE_FEE : 0;
+  const quickFee = row.quick_inspection ? BOOKING_QUICK_CARE_FEE : 0;
+  const netTarget = roundMoney(fuelEstimate + washAmount + fuelBaseFee + washBaseFee + quickFee);
+
+  if ((needsFuel && !fuelGallons) || (needsWash && !washPackage) || !netTarget) {
+    return { valid: false, error: 'Service pricing details are incomplete. Please review the booking.' };
+  }
+
+  const grossBeforeRounding = (netTarget + RETURN_RECOVERY_FIXED) / (1 - RETURN_RECOVERY_RATE);
+  const estimatedTotal = Math.ceil(grossBeforeRounding);
+  const recovery = roundMoney(estimatedTotal - netTarget);
+  let fuelRecovery = 0;
+  let washRecovery = 0;
+
+  if (needsFuel && needsWash) {
+    const recoveryCents = Math.round(recovery * 100);
+    const fuelBase = fuelEstimate + fuelBaseFee;
+    const washBase = washAmount + washBaseFee;
+    const totalServiceBase = fuelBase + washBase;
+    const fuelCents = totalServiceBase
+      ? Math.round(recoveryCents * (fuelBase / totalServiceBase))
+      : Math.round(recoveryCents / 2);
+    fuelRecovery = fuelCents / 100;
+    washRecovery = (recoveryCents - fuelCents) / 100;
+  } else if (needsFuel) {
+    fuelRecovery = recovery;
+  } else if (needsWash) {
+    washRecovery = recovery;
+  }
+
+  return {
+    valid: true,
+    amount_cents: Math.round(estimatedTotal * 100),
+    fuelGallons,
+    fuelEstimate,
+    washPackage,
+    washAmount,
+    fuelBaseFee,
+    washBaseFee,
+    quickFee,
+    fuelFee: roundMoney(fuelBaseFee + fuelRecovery),
+    washFee: roundMoney(washBaseFee + washRecovery),
+    recovery,
+    netTarget,
+    grossBeforeRounding,
+    estimatedTotal,
+  };
 }
 
 function receiptTotalsFromNotes(notes) {
@@ -221,7 +313,7 @@ const ALLOWED_BOOKING_FIELDS = [
   'parking_location', 'parking_spot', 'parking_map_url', 'key_handoff_details',
   'special_instructions',
   'service_type', 'service_label', 'service_date', 'desired_return_time',
-  'fuel_type', 'estimated_fuel_range', 'estimated_gallons', 'price_per_gallon', 'estimated_fuel_amount',
+  'fuel_type', 'estimated_fuel_range', 'estimated_gallons', 'selected_fuel_gallons', 'authorization_fuel_gallons', 'price_per_gallon', 'estimated_fuel_amount',
   'fuel_convenience_fee', 'wash_package', 'wash_package_label', 'wash_fee', 'wash_convenience_fee',
   'quick_inspection', 'quick_inspection_fee', 'service_fee', 'detailing_available_window',
   'estimated_total', 'notes', 'booking_source',
@@ -339,6 +431,50 @@ async function saveReusableBookingSnapshots(db, row) {
   }
 }
 
+async function attachLegacyUserAndVehicle(db, row) {
+  if (row.user_id && row.vehicle_id) return true;
+
+  const { data: user, error: userErr } = await db
+    .from('users')
+    .insert({
+      name: row.customer_name || 'Customer',
+      email: row.customer_email || null,
+      phone: row.customer_phone || '',
+      role: 'customer',
+    })
+    .select('id')
+    .maybeSingle();
+
+  if (userErr || !user?.id) {
+    console.error('[payments/create_authorized_booking] Legacy user fallback failed:', userErr?.message);
+    return false;
+  }
+
+  row.user_id = user.id;
+
+  const { data: vehicle, error: vehicleErr } = await db
+    .from('vehicles')
+    .insert({
+      user_id: user.id,
+      make: row.vehicle_make || 'Unknown',
+      model: row.vehicle_model || 'Unknown',
+      year: Number(row.vehicle_year) || new Date().getFullYear(),
+      color: row.vehicle_color || 'Unknown',
+      license_plate: row.license_plate || 'Unknown',
+      fuel_type: row.fuel_type || 'Regular',
+    })
+    .select('id')
+    .maybeSingle();
+
+  if (vehicleErr || !vehicle?.id) {
+    console.error('[payments/create_authorized_booking] Legacy vehicle fallback failed:', vehicleErr?.message);
+    return false;
+  }
+
+  row.vehicle_id = vehicle.id;
+  return true;
+}
+
 async function handleCreateAuthorizedBooking(body, res) {
   const { payment_intent_id, amount_cents, ...rawFields } = body;
 
@@ -369,6 +505,20 @@ async function handleCreateAuthorizedBooking(body, res) {
     return res.status(400).json({ error: 'Amount must be at least $0.50' });
   }
 
+  const serverPricing = calculateBookingAuthorization(row);
+  if (!serverPricing.valid) {
+    return res.status(400).json({ error: serverPricing.error });
+  }
+  if (serverPricing.amount_cents !== expectedCents) {
+    console.error('[payments/create_authorized_booking] Server total mismatch:', serverPricing.amount_cents, 'vs client', expectedCents, {
+      service_type: row.service_type,
+      estimated_fuel_range: row.estimated_fuel_range,
+      wash_package: row.wash_package,
+      quick_inspection: row.quick_inspection,
+    });
+    return res.status(400).json({ error: 'Payment total changed. Please review the payment authorization and try again.' });
+  }
+
   // ── Verify the PaymentIntent before activating the booking ────────────────
   let intent;
   try {
@@ -385,7 +535,10 @@ async function handleCreateAuthorizedBooking(body, res) {
   if (intent.status === 'canceled' || intent.status === 'requires_payment_method') {
     return res.status(400).json({ error: 'Payment authorization could not be verified. Please try again.' });
   }
-  if (intent.status !== 'requires_capture' && intent.status !== 'succeeded') {
+  if (intent.capture_method && intent.capture_method !== 'manual') {
+    return res.status(400).json({ error: 'Payment authorization could not be verified. Please try again.' });
+  }
+  if (intent.status !== 'requires_capture') {
     // requires_action (3D Secure not yet completed) or any other unexpected
     // state — the booking must not activate until authorization is final.
     return res.status(400).json({ error: 'Payment authorization could not be verified. Please try again.' });
@@ -398,17 +551,40 @@ async function handleCreateAuthorizedBooking(body, res) {
   row.status = 'request_received';
   row.payment_status = 'authorized';
   row.payment_intent_id = intent.id;
-  row.estimated_total = expectedCents / 100;
+  row.estimated_total = serverPricing.estimatedTotal;
   row.final_total = null;
   // authorized_amount is audit-only — always the Stripe-verified amount,
   // never trusted from the client even though it's in ALLOWED_BOOKING_FIELDS.
-  row.authorized_amount = expectedCents / 100;
+  row.authorized_amount = serverPricing.estimatedTotal;
+  row.estimated_gallons = serverPricing.fuelGallons;
+  row.authorization_fuel_gallons = serverPricing.fuelGallons;
+  row.selected_fuel_gallons = BOOKING_SELECTED_GALLONS?.[row.estimated_fuel_range] || row.selected_fuel_gallons || serverPricing.fuelGallons;
+  row.estimated_fuel_amount = serverPricing.fuelEstimate;
+  row.fuel_convenience_fee = serverPricing.fuelFee;
+  row.wash_fee = serverPricing.washAmount;
+  row.wash_package_label = serverPricing.washPackage?.label || row.wash_package_label || '';
+  row.wash_convenience_fee = serverPricing.washFee;
+  row.quick_inspection_fee = serverPricing.quickFee;
+  row.service_fee = roundMoney(serverPricing.fuelFee + serverPricing.washFee);
+  row.base_fuel_service_fee = serverPricing.fuelBaseFee;
+  row.base_car_wash_service_fee = serverPricing.washBaseFee;
+  row.base_inspection_fee = serverPricing.quickFee;
+  row.payment_operating_recovery_amount = serverPricing.recovery;
+  row.displayed_fuel_service_fee = serverPricing.fuelFee;
+  row.displayed_car_wash_service_fee = serverPricing.washFee;
+  row.displayed_inspection_fee = serverPricing.quickFee;
+  row.net_target_amount = serverPricing.netTarget;
+  row.gross_total_before_rounding = serverPricing.grossBeforeRounding;
+  row.rounded_customer_total = serverPricing.estimatedTotal;
+  row.parking_spot = row.parking_spot || row.parking_location || 'See parking location';
+  row.key_handoff_method = row.key_handoff_method || row.key_handoff_details || 'See key handoff details';
 
   const db = getSupabaseAdmin();
 
   // Mirror the frontend's old missing-column resilience: some deployments
   // lag behind on optional columns. Retry once per unsupported column.
-  for (let attempt = 0; attempt < 20; attempt += 1) {
+  const maxInsertAttempts = Object.keys(row).length + 5;
+  for (let attempt = 0; attempt < maxInsertAttempts; attempt += 1) {
     const { data, error } = await db.from('service_requests').insert(row).select().maybeSingle();
 
     if (!error) {
@@ -423,12 +599,36 @@ async function handleCreateAuthorizedBooking(body, res) {
       return res.status(200).json({ id: data?.id, status: 'request_received', payment_status: 'authorized' });
     }
 
-    const match = String(error.message || '').match(/'([^']+)' column/);
-    const column = match?.[1] || '';
-    if (error.code !== 'PGRST204' || !column || !(column in row)) {
-      console.error('[payments/create_authorized_booking] DB insert failed:', error.message);
+    const message = String(error.message || '');
+    if (/null value in column "(user_id|vehicle_id)"/i.test(message)) {
+      const attached = await attachLegacyUserAndVehicle(db, row);
+      if (attached) {
+        console.warn('[payments/create_authorized_booking] Attached legacy user/vehicle rows and retrying insert');
+        continue;
+      }
+    }
+
+    const column = message.match(/Could not find the '([^']+)' column/i)?.[1]
+      || message.match(/'([^']+)' column/i)?.[1]
+      || message.match(/column "([^"]+)"/i)?.[1]
+      || '';
+    const missingOptionalColumn = (
+      error.code === 'PGRST204'
+      || error.code === '42703'
+      || /schema cache|column/i.test(message)
+    ) && column && Object.prototype.hasOwnProperty.call(row, column);
+
+    if (!missingOptionalColumn) {
+      console.error('[payments/create_authorized_booking] DB insert failed:', {
+        code: error.code,
+        message: error.message,
+        details: error.details,
+        hint: error.hint,
+      });
       return res.status(500).json({ error: 'We could not finish saving your booking after payment authorization. Please try again or contact ShiftFuel.' });
     }
+
+    console.warn('[payments/create_authorized_booking] Dropping unsupported optional column and retrying:', column);
     delete row[column];
   }
 
@@ -928,7 +1128,7 @@ async function handleWorkerCapture(body, res) {
   const amountToCaptureInCents = Math.round(request.final_total * 100);
 
   try {
-    const intent = await stripe.paymentIntents.retrieve(piId);
+    let intent = await stripe.paymentIntents.retrieve(piId);
     if (intent.status === 'succeeded') {
       await markRequestComplete(db, request_id, piId, request.final_total);
       return res.status(200).json({ status: 'succeeded', already_captured: true });
@@ -1027,6 +1227,43 @@ async function handleCancelPayment(body, res) {
     await db.from('service_requests').update({ payment_status: 'payment_release_failed', updated_at: new Date().toISOString() }).eq('id', request_id).catch(() => {});
     console.error('[payments/cancel_payment] Stripe error:', err.message);
     return res.status(500).json({ error: 'Payment hold release failed. Please cancel the authorization manually in Stripe.', payment_status: 'payment_release_failed' });
+  }
+}
+
+async function handleCancelAuthorization(body, res) {
+  // Customer-side pre-booking cancel: void a manual-capture authorization before
+  // the service_request row is created.
+  const { payment_intent_id, client_secret } = body;
+
+  if (!payment_intent_id || !client_secret) {
+    return res.status(400).json({ error: 'payment_intent_id and client_secret are required' });
+  }
+
+  try {
+    const stripe = getStripe();
+    const intent = await stripe.paymentIntents.retrieve(payment_intent_id);
+    if (intent.client_secret !== client_secret) {
+      return res.status(403).json({ error: 'Payment authorization could not be verified' });
+    }
+
+    if (intent.status === 'canceled') {
+      return res.status(200).json({ status: 'already_canceled' });
+    }
+    if (intent.status === 'requires_capture') {
+      const canceled = await stripe.paymentIntents.cancel(payment_intent_id);
+      console.log('[payments/cancel_authorization] Canceled pre-booking authorization', payment_intent_id);
+      return res.status(200).json({ status: canceled.status });
+    }
+    if (['requires_payment_method', 'requires_confirmation', 'requires_action', 'processing'].includes(intent.status)) {
+      const canceled = await stripe.paymentIntents.cancel(payment_intent_id);
+      console.log('[payments/cancel_authorization] Canceled incomplete pre-booking authorization', payment_intent_id);
+      return res.status(200).json({ status: canceled.status });
+    }
+
+    return res.status(400).json({ error: 'This payment authorization can no longer be canceled automatically.' });
+  } catch (err) {
+    console.error('[payments/cancel_authorization] Stripe error:', err.message);
+    return res.status(500).json({ error: 'Payment authorization could not be canceled. Please contact ShiftFuel.' });
   }
 }
 
@@ -1129,6 +1366,18 @@ async function handleRefund(body, res) {
     if (amount_cents && amount_cents >= 50) refundParams.amount = Math.round(amount_cents);
     const refund = await stripe.refunds.create(refundParams);
     console.log('[payments/refund] Refund', refund.id, 'status:', refund.status, 'for request', request_id);
+    const { error: dbErr } = await db.from('service_requests').update({
+      payment_status: 'refunded',
+      updated_at: new Date().toISOString(),
+    }).eq('id', request_id);
+    if (dbErr) {
+      console.error('[payments/refund] DB update failed after Stripe refund:', dbErr.message);
+      return res.status(200).json({
+        status: refund.status,
+        amount_refunded: refund.amount,
+        warning: 'Stripe refund was created but database payment status was not updated. Contact support.',
+      });
+    }
     return res.status(200).json({ status: refund.status, amount_refunded: refund.amount });
   } catch (err) {
     console.error('[payments/refund] Error:', err.message);
@@ -1580,6 +1829,7 @@ const HANDLERS = {
   customer_cancel:       handleCustomerCancel,
   worker_confirm_cancellation_return: handleWorkerConfirmCancellationReturn,
   worker_capture:        handleWorkerCapture,
+  cancel_authorization:  handleCancelAuthorization,
   cancel_payment:        handleCancelPayment,
   capture_payment:       handleCapturePayment,
   refund:                handleRefund,
