@@ -787,10 +787,58 @@ function isStepDone(stepKey, request) {
     case 'keys_returned':
       return s === 'complete';
     case 'complete':
-      return false; // always the terminal arrow destination
+      return isFinalRequestComplete(request);
     default:
       return false;
   }
+}
+
+const FINAL_COMPLETE_STATUSES = new Set(['complete', 'completed', 'finalized']);
+
+function isFinalRequestComplete(request) {
+  return FINAL_COMPLETE_STATUSES.has(String(request?.status || '').toLowerCase());
+}
+
+function normalizeServiceFailureReason(value) {
+  return String(value || '').replace(/\s+/g, ' ').trim();
+}
+
+function serviceFailureReasons(request) {
+  const notes = String(request?.notes || '');
+  const reasons = serviceUnableReasonsFromNotes(request) || { fuel: '', wash: '' };
+  reasons.fuel = normalizeServiceFailureReason(reasons.fuel);
+  reasons.wash = normalizeServiceFailureReason(reasons.wash);
+
+  // Extra protection for older notes/copy formats.
+  for (const match of notes.matchAll(/\[service_unable\s+(fuel|wash)\][^\n:]*:\s*([^\n]+)/gi)) {
+    reasons[match[1].toLowerCase()] = normalizeServiceFailureReason(match[2]);
+  }
+  for (const match of notes.matchAll(/(fuel|gas|car wash|wash)[^\n.]*?(?:could not be completed|not completed|unavailable|unable)[^\n:]*:?\s*([^\n]*)/gi)) {
+    const rawType = match[1].toLowerCase();
+    const type = rawType.includes('wash') ? 'wash' : 'fuel';
+    const fallback = type === 'wash' ? 'Car wash unavailable' : 'Fuel service unavailable';
+    reasons[type] = normalizeServiceFailureReason(match[2] || fallback);
+  }
+
+  const cancellationReason = normalizeServiceFailureReason(request?.cancellation_reason);
+  if (cancellationReason) {
+    const lower = cancellationReason.toLowerCase();
+    if (!reasons.wash && /car wash|wash/.test(lower) && /unavailable|unable|not completed|cannot be completed|could not be completed/.test(lower)) {
+      reasons.wash = cancellationReason;
+    }
+    if (!reasons.fuel && /fuel|gas/.test(lower) && /unavailable|unable|not completed|cannot be completed|could not be completed/.test(lower)) {
+      reasons.fuel = cancellationReason;
+    }
+  }
+
+  return reasons;
+}
+
+function failedReasonForStep(step, request) {
+  const reasons = serviceFailureReasons(request);
+  if (['fueling', 'fuel_receipt_recorded'].includes(step.key) && reasons.fuel) return reasons.fuel;
+  if (['vehicle_cleaning', 'car_wash_receipt_recorded'].includes(step.key) && reasons.wash) return reasons.wash;
+  return '';
 }
 
 function getStatusMessage(request) {
@@ -866,10 +914,15 @@ function renderTimeline(request) {
   }
 
   const steps = buildStatusSteps(request);
+  const finalComplete = isFinalRequestComplete(request);
 
-  steps.forEach(step => { step.done = isStepDone(step.key, request); });
+  steps.forEach((step) => {
+    step.failedReason = failedReasonForStep(step, request);
+    step.failed = Boolean(step.failedReason);
+    step.done = !step.failed && isStepDone(step.key, request);
+  });
 
-  const firstIncompleteIdx = steps.findIndex(s => !s.done);
+  const firstIncompleteIdx = finalComplete ? -1 : steps.findIndex((step) => !step.done && !step.failed);
   const activeKey = firstIncompleteIdx >= 0 ? steps[firstIncompleteIdx].key : null;
   const total = steps.length;
   const currentStepNum = firstIncompleteIdx >= 0 ? firstIncompleteIdx + 1 : total;
@@ -886,13 +939,14 @@ function renderTimeline(request) {
   html += `<div class="timeline-progress-label">Step ${currentStepNum} of ${total}</div>`;
   html += `<ol class="customer-timeline">`;
 
-  steps.forEach(step => {
+  steps.forEach((step) => {
     const done = step.done;
-    const isActive = step.key === activeKey;
+    const failed = step.failed;
+    const isActive = !finalComplete && step.key === activeKey;
 
     // Show active arrow on the first incomplete nested child of an active parent
     let isActiveChild = false;
-    if (step.nested && step.parentKey && !done) {
+    if (!finalComplete && step.nested && step.parentKey && !done && !failed) {
       const parentActive = activeKey === step.parentKey;
       if (parentActive && !firstIncompleteChildClaimed[step.parentKey]) {
         isActiveChild = true;
@@ -900,17 +954,21 @@ function renderTimeline(request) {
       }
     }
 
-    let cls, icon;
-    if (done) {
+    let cls = 'future';
+    let icon = '○';
+    if (failed) {
+      cls = 'failed';
+      icon = '×';
+    } else if (done) {
       cls = 'done'; icon = '✓';
     } else if (isActive || isActiveChild) {
       cls = 'active'; icon = '➜';
-    } else {
-      cls = 'future'; icon = '○';
     }
 
     const nestedCls = step.nested ? ' timeline-step-nested' : '';
-    html += `<li class="timeline-step ${cls}${nestedCls}"><span class="timeline-icon">${icon}</span><p>${escapeHtml(step.label)}</p></li>`;
+    const reasonTitle = failed ? ` title="${escapeHtml(step.failedReason)}" aria-label="${escapeHtml(`${step.label}: ${step.failedReason}`)}"` : '';
+    const reasonText = failed ? `<small class="timeline-failure-reason">${escapeHtml(step.failedReason)}</small>` : '';
+    html += `<li class="timeline-step ${cls}${nestedCls}"${reasonTitle}><span class="timeline-icon">${icon}</span><p>${escapeHtml(step.label)}</p>${reasonText}</li>`;
   });
 
   html += `</ol>`;
@@ -918,19 +976,18 @@ function renderTimeline(request) {
 }
 
 function renderServiceIssueBanner(request) {
-  const unableReasons = serviceUnableReasonsFromNotes(request);
+  const unableReasons = serviceUnableReasonsFromNotes(request) || { fuel: '', wash: '' };
   const parts = [];
   if (unableReasons.fuel) parts.push({ service: 'Fuel Service', reason: unableReasons.fuel });
   if (unableReasons.wash) parts.push({ service: 'Car Wash Service', reason: unableReasons.wash });
-  if (!parts.length && request.status === 'unable_to_complete') {
+  if (!parts.length && request && request.status === 'unable_to_complete') {
     parts.push({ service: 'Service', reason: request.cancellation_reason || 'A service issue was reported.' });
   }
   if (!parts.length) return '';
 
-  return parts.map(p => `
+  return parts.map((p) => `
     <div class="service-issue-banner">
-      <strong>⚠ Service Issue — ${escapeHtml(p.service)}</strong>
-      <p>${escapeHtml(p.reason)}</p>
+      <strong>⚠ Unable to do ${escapeHtml(p.service)} — ${escapeHtml(p.reason)}</strong>
     </div>
   `).join('');
 }
@@ -2279,13 +2336,17 @@ function renderRequestCard(request, photos = [], review = null) {
   `;
 }
 
+const cancelledStatuses = new Set(['customer_canceled', 'canceled', 'cancelled', 'canceled_return_completed']);
+const deniedOnlyStatuses = new Set(['denied', 'unable_to_complete', 'auto_reversed', 'closed_no_charge']);
+
 async function renderAllRequests(requests, phone, email) {
   const inProgress = requests.filter(r => !terminalStatuses.includes(r.status));
   const completed  = requests.filter(r => r.status === 'complete');
-  // Denied Requests section covers denied + every cancellation/closed-without-charge
-  // status per the Track My Vehicle spec (cancelled, denied, and similar terminal
-  // non-complete outcomes all land here so nothing falls through the cracks).
-  const denied = requests.filter(r => closedStatuses.includes(r.status));
+  // Cancelled (customer-initiated) is shown separately from Denied (admin-closed
+  // without completion) — different customer-facing outcomes, shouldn't be lumped
+  // together even though both are part of closedStatuses internally.
+  const cancelled = requests.filter((r) => cancelledStatuses.has(r.status));
+  const denied = requests.filter((r) => deniedOnlyStatuses.has(r.status));
 
   let html = `<div class="track-sections">`;
 
@@ -2329,7 +2390,25 @@ async function renderAllRequests(requests, phone, email) {
   }
   html += `</div></details>`;
 
-  // Denied / cancelled section
+  // Cancelled section
+  html += `
+    <details class="track-section">
+      <summary class="track-section-header">
+        Cancelled requests
+        <span class="track-section-count">${cancelled.length}</span>
+      </summary>
+      <div class="track-section-body">
+  `;
+  if (cancelled.length === 0) {
+    html += `<p class="track-empty-msg">No cancelled requests found.</p>`;
+  } else {
+    for (const request of cancelled) {
+      html += renderDeniedCard(request);
+    }
+  }
+  html += `</div></details>`;
+
+  // Denied section
   html += `
     <details class="track-section">
       <summary class="track-section-header">
@@ -2339,7 +2418,7 @@ async function renderAllRequests(requests, phone, email) {
       <div class="track-section-body">
   `;
   if (denied.length === 0) {
-    html += `<p class="track-empty-msg">No denied or cancelled requests found.</p>`;
+    html += `<p class="track-empty-msg">No denied requests found.</p>`;
   } else {
     for (const request of denied) {
       html += renderDeniedCard(request);
@@ -2354,6 +2433,9 @@ async function renderAllRequests(requests, phone, email) {
     details.addEventListener('toggle', () => {
       if (details.open) mountVisibleCustomerPayCards(details);
     });
+  });
+  trackingResult.querySelectorAll('.track-section[open] .track-request-details[open]').forEach((details) => {
+    mountVisibleCustomerPayCards(details);
   });
 }
 

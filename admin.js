@@ -5266,7 +5266,6 @@ loadVehiclePsiGuides().finally(() => {
 });
 loadReviews();
 loadApplicants();
-loadServicePricing();
 
 // ── Create Request tab ────────────────────────────────────────────────────────
 
@@ -5575,3 +5574,7 @@ function loadReportsPage() {
     </table>
   `;
 }
+
+// Called here, after SERVICE_PRICING_FIELDS and its render/load functions are
+// declared above, to avoid a temporal-dead-zone error on the const.
+loadServicePricing();
