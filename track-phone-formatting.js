@@ -35,9 +35,18 @@
     });
   }
 
+  function loadLiveLocationScript() {
+    if (document.querySelector('script[data-track-live-location]')) return;
+    const script = document.createElement('script');
+    script.src = 'track-live-location.js';
+    script.dataset.trackLiveLocation = '1';
+    document.body.appendChild(script);
+  }
+
   function init() {
     bindPhoneInput(document.querySelector("#tracking-phone"));
     formatVisiblePhoneText(document);
+    loadLiveLocationScript();
 
     document.querySelector("#track-form")?.addEventListener("submit", (event) => {
       const input = document.querySelector("#tracking-phone");

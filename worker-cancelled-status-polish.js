@@ -248,4 +248,3 @@
   attachObserver();
   document.addEventListener('DOMContentLoaded', attachObserver);
 })();
-
