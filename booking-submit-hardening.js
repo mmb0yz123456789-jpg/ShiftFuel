@@ -62,6 +62,16 @@
   }
 
   function makePayload() {
+    // Prefer the more complete frozen-quote payload (full fee breakdown frozen
+    // at authorization time, not just the total) when it's available.
+    if (typeof window.freezeAuthorizedQuote === 'function' && typeof window.makePayloadFromFrozenQuote === 'function') {
+      window.freezeAuthorizedQuote();
+      const payload = window.makePayloadFromFrozenQuote();
+      log('Frozen quote total loaded', { amountCents: payload.amount_cents, total: payload.estimated_total });
+      log('Stripe authorization/payment intent loaded', { paymentIntentId: payload.payment_intent_id, amountCents: payload.amount_cents });
+      return payload;
+    }
+
     const totals = calculateTotals();
     const payload = buildBookingPayload();
     const amountCents = Math.round(Number(bookingState.payment.authorizedAmountCents || totals.estimatedTotal * 100));

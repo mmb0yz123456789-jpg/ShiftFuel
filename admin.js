@@ -68,15 +68,12 @@ const openDaysOffPanel = document.querySelector('#open-days-off-panel');
 const closeDaysOffPanel = document.querySelector('#close-days-off-panel');
 const daysOffPanel = document.querySelector('#days-off-panel');
 const saveDaysOffButton = document.querySelector('#save-days-off');
-const reviewList = document.querySelector('#review-list');
-const applicantList = document.querySelector('#applicant-list');
-const workerProfileList = document.querySelector('#worker-profile-list');
-const workerProfileSelectActive = document.querySelector('#worker-profile-select-active');
-const workerProfileSelectInactive = document.querySelector('#worker-profile-select-inactive');
+const reviewList = document.querySelector('#reviews-list');
+const applicantList = document.querySelector('#applicants-list');
+const workerProfileList = document.querySelector('#admin-worker-profile-list');
 const adminRefreshBtn = document.querySelector('#admin-refresh-btn');
-const adminWorkersRefreshBtn = document.querySelector('#admin-workers-refresh-btn');
 const adminReviewsRefreshBtn = document.querySelector('#admin-reviews-refresh-btn');
-const adminApplicantsRefreshBtn = document.querySelector('#admin-applicants-refresh-btn');
+const adminReportRefreshBtn = document.querySelector('#admin-report-refresh-btn');
 
 const PHOTO_BUCKET = 'service-photos';
 const DEFAULT_WORKER_NAME = 'Mark Urban';
@@ -1935,22 +1932,12 @@ async function loadEmployees() {
     renderWorkerProfiles();
     updateDashboardStatCards();
   } catch (error) {
-    console.warn('Could not load employees:', error);
-    allEmployees = [
-      normalizeEmployee({ id: 'local-mark-urban', full_name: DEFAULT_WORKER_NAME }),
-      normalizeEmployee({ id: 'local-test-worker', full_name: 'Test Worker' }),
-    ];
+    console.error('Could not load employees:', error);
+    allEmployees = [];
     renderWorkerSelect();
     renderWorkerProfiles();
-    renderWorkerDaysGrid(workerDayOptions.map(({ dayOfWeek }) => ({
-      dayOfWeek,
-      startsAt: '09:00',
-      endsAt: '17:00',
-    })));
-    selectedWorkerDaysOff = new Set();
-    renderWorkerDaysOffCalendar();
     if (workerScheduleStatus) {
-      workerScheduleStatus.textContent = 'Showing local fallback workers. Run supabase-operational-upgrades.sql so worker profiles and availability save live.';
+      workerScheduleStatus.textContent = `Could not load workers: ${error.message || error}. Refresh to try again.`;
     }
   }
 }
@@ -1963,23 +1950,39 @@ function renderWorkerProfiles() {
     return;
   }
 
-  if (!selectedScheduleEmployeeId) {
-    workerProfileList.innerHTML = '<div class="empty-state"><p>Select a worker to view or edit their profile.</p></div>';
-    return;
+  workerProfileList.innerHTML = `
+    <table class="admin-requests-table">
+      <thead>
+        <tr><th>Name</th><th>Employee ID</th><th>Phone</th><th>Status</th><th></th></tr>
+      </thead>
+      <tbody>
+        ${allEmployees.map((employee) => renderWorkerProfileRow(employee)).join('')}
+      </tbody>
+    </table>
+  `;
+  wireAdminPhotoEditor();
+}
+
+function renderWorkerProfileRow(employee) {
+  const isExpanded = selectedScheduleEmployeeId === employee.id;
+  const statusLabel = employee.active ? 'Active' : 'Inactive';
+  const rowStatusClass = employee.active ? 'status-pill-complete' : 'status-pill-denied';
+  const rows = [`
+    <tr class="queue-row${isExpanded ? ' is-expanded' : ''}" data-worker-id="${escapeHtml(employee.id)}">
+      <td><strong>${escapeHtml(employee.full_name || '')}</strong></td>
+      <td>${escapeHtml(employee.employee_code || '')}</td>
+      <td>${employee.phone ? escapeHtml(formatPhone(employee.phone)) : '<span class="field-help">Not provided</span>'}</td>
+      <td><span class="status-pill ${rowStatusClass}">${escapeHtml(statusLabel)}</span></td>
+      <td><button class="button secondary worker-row-toggle" data-id="${escapeHtml(employee.id)}" type="button">${isExpanded ? 'Close' : 'Edit'}</button></td>
+    </tr>
+  `];
+  if (isExpanded) {
+    rows.push(`<tr class="queue-row-detail"><td colspan="5">${renderWorkerProfileCard(employee)}</td></tr>`);
   }
+  return rows.join('');
+}
 
-  const employee = allEmployees.find((item) => item.id === selectedScheduleEmployeeId);
-
-  if (!employee) {
-    console.warn(`renderWorkerProfiles: "${selectedScheduleEmployeeId}" not found in allEmployees. Clearing selection.`);
-    selectedScheduleEmployeeId = '';
-    if (workerSelect) workerSelect.value = '';
-    if (workerProfileSelectActive) workerProfileSelectActive.value = '';
-    if (workerProfileSelectInactive) workerProfileSelectInactive.value = '';
-    workerProfileList.innerHTML = '<div class="empty-state"><p>Select a worker to view or edit their profile.</p></div>';
-    return;
-  }
-
+function renderWorkerProfileCard(employee) {
   const isLocal = String(employee.id).startsWith('local-');
   const statusLabel = employee.active ? 'Active' : 'Inactive';
   const statusClass = employee.active ? 'status-pill status-active' : 'status-pill status-inactive';
@@ -1992,7 +1995,7 @@ function renderWorkerProfiles() {
   if (adminCroppedPreviewUrl) { URL.revokeObjectURL(adminCroppedPreviewUrl); adminCroppedPreviewUrl = ''; }
   if (adminBoundaryPreviewUrl) { URL.revokeObjectURL(adminBoundaryPreviewUrl); adminBoundaryPreviewUrl = ''; }
 
-  workerProfileList.innerHTML = `
+  return `
     <article class="request-card worker-profile-card" data-worker-id="${escapeHtml(employee.id)}">
       <div class="request-card-header">
         <div>
@@ -2076,9 +2079,6 @@ function renderWorkerProfiles() {
       <p class="field-help admin-worker-status">${isLocal ? 'Run the Supabase worker upgrade before saving this worker.' : ''}</p>
     </article>
   `;
-
-  // Wire up photo editor after DOM is written
-  wireAdminPhotoEditor();
 }
 
 function applyAdminPhotoZoom() {
@@ -2239,23 +2239,12 @@ function wireAdminPhotoEditor() {
 function renderWorkerSelect() {
   const sel = selectedScheduleEmployeeId || workerSelect?.value;
   const activeEmployees = allEmployees.filter((e) => e.active);
-  const inactiveEmployees = allEmployees.filter((e) => !e.active);
 
   const toOption = (e) => `<option value="${escapeHtml(e.id)}" ${e.id === sel ? 'selected' : ''}>${escapeHtml(e.full_name)} (${escapeHtml(e.employee_code)})</option>`;
 
   // Schedule section: active workers only
   if (workerSelect) {
     workerSelect.innerHTML = `<option value="">Select worker</option>${activeEmployees.map(toOption).join('')}`;
-  }
-
-  // Profile active dropdown
-  if (workerProfileSelectActive) {
-    workerProfileSelectActive.innerHTML = `<option value="">Select active worker</option>${activeEmployees.map(toOption).join('')}`;
-  }
-
-  // Profile inactive dropdown
-  if (workerProfileSelectInactive) {
-    workerProfileSelectInactive.innerHTML = `<option value="">Select inactive worker</option>${inactiveEmployees.map(toOption).join('')}`;
   }
 
   if (sel && allEmployees.some((e) => e.id === sel)) {
@@ -2265,8 +2254,6 @@ function renderWorkerSelect() {
   }
 
   if (workerSelect) workerSelect.value = selectedScheduleEmployeeId || '';
-  if (workerProfileSelectActive) workerProfileSelectActive.value = selectedScheduleEmployeeId || '';
-  if (workerProfileSelectInactive) workerProfileSelectInactive.value = selectedScheduleEmployeeId || '';
 }
 
 function syncSelectedWorker(employeeId) {
@@ -2276,8 +2263,6 @@ function syncSelectedWorker(employeeId) {
 
   selectedScheduleEmployeeId = employeeId;
   if (workerSelect) workerSelect.value = employeeId;
-  if (workerProfileSelectActive) workerProfileSelectActive.value = employeeId;
-  if (workerProfileSelectInactive) workerProfileSelectInactive.value = employeeId;
   renderWorkerProfiles();
   return true;
 }
@@ -2592,8 +2577,6 @@ async function permanentlyDeleteInactiveWorker(button) {
   allEmployees = allEmployees.filter((e) => e.id !== employeeId);
   selectedScheduleEmployeeId = '';
   if (workerSelect) workerSelect.value = '';
-  if (workerProfileSelectActive) workerProfileSelectActive.value = '';
-  if (workerProfileSelectInactive) workerProfileSelectInactive.value = '';
 
   renderWorkerSelect();
   renderWorkerProfiles();
@@ -2631,7 +2614,8 @@ function renderReviews(reviews, requestMap = new Map(), starFilter = null) {
   // Update star filter button active state
   if (starFilterButtons) {
     starFilterButtons.querySelectorAll('.star-filter-btn').forEach((btn) => {
-      const btnStars = btn.dataset.stars === '' ? null : Number(btn.dataset.stars);
+      const value = btn.dataset.stars;
+      const btnStars = (!value || value === 'all') ? null : Number(value);
       btn.classList.toggle('active', btnStars === starFilter);
     });
   }
@@ -2879,6 +2863,14 @@ applicantList?.addEventListener('change', async (event) => {
 });
 
 workerProfileList?.addEventListener('click', async (event) => {
+  const toggleButton = event.target.closest('.worker-row-toggle');
+  if (toggleButton) {
+    const id = toggleButton.dataset.id;
+    selectedScheduleEmployeeId = selectedScheduleEmployeeId === id ? '' : id;
+    renderWorkerProfiles();
+    return;
+  }
+
   const saveButton = event.target.closest('.save-worker-profile');
   const deactivateButton = event.target.closest('.deactivate-worker-profile');
   const reactivateButton = event.target.closest('.reactivate-worker-profile');
@@ -2956,8 +2948,6 @@ async function handleWorkerSelection(employeeId, shouldScroll = false) {
   if (!employeeId) {
     selectedScheduleEmployeeId = '';
     if (workerSelect) workerSelect.value = '';
-    if (workerProfileSelectActive) workerProfileSelectActive.value = '';
-    if (workerProfileSelectInactive) workerProfileSelectInactive.value = '';
     renderWorkerProfiles();
     return;
   }
@@ -2972,20 +2962,6 @@ async function handleWorkerSelection(employeeId, shouldScroll = false) {
 
 workerSelect?.addEventListener('change', () => {
   handleWorkerSelection(workerSelect.value, true);
-});
-
-workerProfileSelectActive?.addEventListener('change', () => {
-  if (workerProfileSelectActive.value) {
-    if (workerProfileSelectInactive) workerProfileSelectInactive.value = '';
-    handleWorkerSelection(workerProfileSelectActive.value);
-  }
-});
-
-workerProfileSelectInactive?.addEventListener('change', () => {
-  if (workerProfileSelectInactive.value) {
-    if (workerProfileSelectActive) workerProfileSelectActive.value = '';
-    handleWorkerSelection(workerProfileSelectInactive.value);
-  }
 });
 
 async function updateRequestStatus(id, status) {
@@ -4519,9 +4495,8 @@ document.querySelectorAll('[data-page-action]').forEach((btn) => {
 });
 adminRefreshBtn?.addEventListener('click', () => refreshAdminView(adminRefreshBtn));
 adminSideRefreshBtn?.addEventListener('click', () => refreshAdminView(adminSideRefreshBtn));
-adminWorkersRefreshBtn?.addEventListener('click', () => refreshAdminView(adminWorkersRefreshBtn));
 adminReviewsRefreshBtn?.addEventListener('click', () => refreshAdminView(adminReviewsRefreshBtn));
-adminApplicantsRefreshBtn?.addEventListener('click', () => refreshAdminView(adminApplicantsRefreshBtn));
+adminReportRefreshBtn?.addEventListener('click', () => loadReportsPage());
 
 // Find Tickets modal
 heroFindTicketsBtn?.addEventListener('click', openFindTicketsModal);
@@ -4844,7 +4819,8 @@ ticketDetailBody?.addEventListener('click', async (e) => {
 starFilterButtons?.addEventListener('click', (e) => {
   const btn = e.target.closest('.star-filter-btn');
   if (!btn) return;
-  currentReviewFilter = btn.dataset.stars === '' ? null : Number(btn.dataset.stars);
+  const starsValue = btn.dataset.stars;
+  currentReviewFilter = (!starsValue || starsValue === 'all') ? null : Number(starsValue);
   renderReviews(allReviews, allReviewRequestMap, currentReviewFilter);
 });
 
@@ -5305,24 +5281,16 @@ document.querySelector('#admin-create-request-form')?.addEventListener('submit',
   const serviceTypeValue = val('cr-service-type');
   const needsFuel = serviceTypeValue === 'fuel' || serviceTypeValue === 'car-wash-fuel';
   const needsWash = serviceTypeValue === 'car-wash' || serviceTypeValue === 'car-wash-fuel';
-  const washPackage = CR_WASH_PACKAGES.find((item) => item.value === val('cr-wash-package')) || null;
-  const fuelEstimate = CR_FUEL_ESTIMATE_RANGES.find((item) => item.value === val('cr-fuel-estimate')) || null;
-  const fuelTypeValue = val('cr-fuel-type');
-  const quickInspection = !!document.getElementById('cr-quick-inspection')?.checked;
-  const pricePerGallon = CR_AVG_FUEL_PRICES[fuelTypeValue] || CR_AVG_FUEL_PRICES.Regular;
-  const estimatedGallons = needsFuel && fuelEstimate ? fuelEstimate.gallons : null;
-  const estimatedFuelAmount = estimatedGallons ? estimatedGallons * pricePerGallon : 0;
-  const washFee = needsWash && washPackage ? washPackage.price : 0;
+  const washPackageLabel = val('cr-car-wash-package');
+  const fuelTypeValue = val('cr-fuel-type') || 'Regular';
+  const quickInspection = !!document.getElementById('cr-inspection')?.checked;
   const pricing = estimatePricingSummary({
     needsFuel,
-    needsWash: needsWash && !!washPackage,
-    fuelAmount: estimatedFuelAmount,
-    washAmount: washFee,
+    needsWash,
+    fuelAmount: 0,
+    washAmount: 0,
     quickInspection,
   });
-  const fuelConvenienceFee = pricing.fuel;
-  const washConvenienceFee = pricing.wash;
-  const quickInspectionFee = pricing.inspection;
   const estimatedTotal = pricing.total;
 
   const data = {
@@ -5330,27 +5298,20 @@ document.querySelector('#admin-create-request-form')?.addEventListener('submit',
     customer_phone:      formatPhone(val('cr-customer-phone')),
     customer_email:      val('cr-customer-email'),
     address_street:      val('cr-address-street'),
-    address_apt:         val('cr-address-apt'),
+    address_apt:         val('cr-address-unit'),
     address_city:        val('cr-address-city'),
     address_state:       val('cr-address-state'),
     address_zip:         val('cr-address-zip'),
-    parking_location:    val('cr-parking-location'),
-    key_handoff_details: val('cr-key-handoff'),
     service_type:        serviceTypeValue,
     service_label:       serviceTypeValue ? (serviceTypeValue === 'fuel' ? 'Fuel only' : serviceTypeValue === 'car-wash' ? 'Car wash only' : 'Car wash + Fuel') : '',
-    service_date:        val('cr-service-date'),
-    desired_return_time: val('cr-return-time'),
+    service_date:        new Date().toISOString().slice(0, 10),
+    desired_return_time: val('cr-desired-return-time'),
     fuel_type:           needsFuel ? fuelTypeValue : '',
-    estimated_gallons:   estimatedGallons,
-    price_per_gallon:    needsFuel ? pricePerGallon : null,
-    estimated_fuel_amount: needsFuel ? estimatedFuelAmount : null,
-    fuel_convenience_fee: needsFuel ? fuelConvenienceFee : 0,
-    wash_package:        needsWash ? val('cr-wash-package') : '',
-    wash_package_label:  needsWash ? (washPackage?.label || '') : '',
-    wash_fee:            needsWash ? washFee : 0,
-    wash_convenience_fee: needsWash ? washConvenienceFee : 0,
+    fuel_convenience_fee: needsFuel ? pricing.fuel : 0,
+    wash_package_label:  needsWash ? washPackageLabel : '',
+    wash_convenience_fee: needsWash ? pricing.wash : 0,
     quick_inspection:    quickInspection,
-    quick_inspection_fee: quickInspectionFee,
+    quick_inspection_fee: pricing.inspection,
     estimated_total:     estimatedTotal || null,
     vehicle_year:        val('cr-vehicle-year'),
     vehicle_make:        val('cr-vehicle-make'),
@@ -5391,9 +5352,35 @@ document.querySelector('#admin-create-request-form')?.addEventListener('submit',
   }
 });
 
-// ── Settings tab — Fuel Prices ────────────────────────────────────────────────
+// ── Services page — fuel + service pricing ─────────────────────────────────
+
+const SERVICE_PRICING_FIELDS = [
+  { id: 'fp-regular', label: 'Regular fuel ($/gal)', step: '0.001' },
+  { id: 'fp-midgrade', label: 'Mid-grade fuel ($/gal)', step: '0.001' },
+  { id: 'fp-premium', label: 'Premium fuel ($/gal)', step: '0.001' },
+  { id: 'fp-diesel', label: 'Diesel ($/gal)', step: '0.001' },
+  { id: 'sp-fuel-fee', label: 'Fuel concierge service fee ($)', step: '0.01' },
+  { id: 'sp-wash-fee', label: 'Car wash service fee ($)', step: '0.01' },
+  { id: 'sp-inspection-fee', label: 'Quick inspection fee ($)', step: '0.01' },
+  { id: 'sp-wash-buff-shine', label: 'Buff & Shine package ($)', step: '0.01' },
+  { id: 'sp-wash-shine-protect', label: 'Shine & Protect package ($)', step: '0.01' },
+  { id: 'sp-wash-shine', label: 'Shine package ($)', step: '0.01' },
+  { id: 'sp-wash-double', label: 'Double Wash package ($)', step: '0.01' },
+];
+
+function renderServicesSettingsList() {
+  const list = document.querySelector('#services-settings-list');
+  if (!list || list.dataset.rendered) return;
+  list.innerHTML = SERVICE_PRICING_FIELDS.map((field) => `
+    <label>${escapeHtml(field.label)}
+      <input id="${field.id}" type="number" step="${field.step}" min="0">
+    </label>
+  `).join('');
+  list.dataset.rendered = '1';
+}
 
 async function loadFuelPricesForAdmin() {
+  renderServicesSettingsList();
   try {
     const { data, error } = await db.rpc('public_get_fuel_prices');
     if (error || !data) return;
@@ -5402,54 +5389,10 @@ async function loadFuelPricesForAdmin() {
     if (v('fp-midgrade')) v('fp-midgrade').value = Number(data.midgrade_price).toFixed(3);
     if (v('fp-premium')) v('fp-premium').value = Number(data.premium_price).toFixed(3);
     if (v('fp-diesel')) v('fp-diesel').value = Number(data.diesel_price).toFixed(3);
-    if (v('fp-area')) v('fp-area').value = data.service_area_label || '';
-    const lastUpdated = document.getElementById('fuel-prices-last-updated');
-    if (lastUpdated && data.last_updated_at) {
-      const d = new Date(data.last_updated_at);
-      lastUpdated.textContent = `Last updated: ${d.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}`;
-    }
   } catch {
     // Non-fatal — form stays blank.
   }
 }
-
-document.querySelector('#admin-fuel-prices-form')?.addEventListener('submit', async (event) => {
-  event.preventDefault();
-  const statusEl = document.getElementById('fuel-prices-status');
-  const submitBtn = event.target.querySelector('[type="submit"]');
-  if (statusEl) statusEl.textContent = 'Saving...';
-  if (submitBtn) submitBtn.disabled = true;
-
-  try {
-    const val = (id) => parseFloat(document.getElementById(id)?.value || '0');
-    const area = document.getElementById('fp-area')?.value.trim() || null;
-
-    const { data, error } = await db.rpc('admin_update_fuel_prices', {
-      p_token: adminToken(),
-      p_regular: val('fp-regular'),
-      p_midgrade: val('fp-midgrade'),
-      p_premium: val('fp-premium'),
-      p_diesel: val('fp-diesel'),
-      p_service_area: area,
-    });
-
-    if (error) throw error;
-
-    if (statusEl) statusEl.textContent = 'Fuel prices saved.';
-    const lastUpdated = document.getElementById('fuel-prices-last-updated');
-    if (lastUpdated && data?.last_updated_at) {
-      const d = new Date(data.last_updated_at);
-      lastUpdated.textContent = `Last updated: ${d.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}`;
-    }
-  } catch (err) {
-    console.error('Fuel price save failed:', err);
-    if (statusEl) statusEl.textContent = `Could not save: ${err.message || err}`;
-  } finally {
-    if (submitBtn) submitBtn.disabled = false;
-  }
-});
-
-// ── Settings — Service pricing ────────────────────────────────────────────
 
 function applyServicePricing(data) {
   if (!data) return;
@@ -5470,6 +5413,7 @@ function applyServicePricing(data) {
 }
 
 async function loadServicePricing() {
+  renderServicesSettingsList();
   try {
     const { data, error } = await db.rpc('public_get_service_pricing');
     if (error || !data) return;
@@ -5483,19 +5427,67 @@ async function loadServicePricing() {
     if (v('sp-wash-shine-protect')) v('sp-wash-shine-protect').value = Number(data.wash_shine_protect_price).toFixed(2);
     if (v('sp-wash-shine')) v('sp-wash-shine').value = Number(data.wash_shine_price).toFixed(2);
     if (v('sp-wash-double')) v('sp-wash-double').value = Number(data.wash_double_wash_price).toFixed(2);
-    const lastUpdated = document.getElementById('service-pricing-last-updated');
-    if (lastUpdated && data.last_updated_at) {
-      const d = new Date(data.last_updated_at);
-      lastUpdated.textContent = `Last updated: ${d.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}`;
-    }
   } catch {
     // Non-fatal — form keeps its defaults.
   }
 }
 
-document.querySelector('#admin-service-pricing-form')?.addEventListener('submit', async (event) => {
+async function sha256Hex(value) {
+  const bytes = new TextEncoder().encode(value);
+  const digest = await crypto.subtle.digest('SHA-256', bytes);
+  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('');
+}
+
+document.querySelector('#admin-password-form')?.addEventListener('submit', async (event) => {
   event.preventDefault();
-  const statusEl = document.getElementById('service-pricing-status');
+  const statusEl = document.querySelector('#admin-password-status');
+  const submitBtn = event.target.querySelector('[type="submit"]');
+
+  const currentPassword = document.querySelector('#admin-current-password')?.value || '';
+  const newPassword = document.querySelector('#admin-new-password')?.value || '';
+  const confirmPassword = document.querySelector('#admin-confirm-password')?.value || '';
+
+  if (newPassword.length < 8) {
+    if (statusEl) statusEl.textContent = 'New password must be at least 8 characters.';
+    return;
+  }
+  if (newPassword !== confirmPassword) {
+    if (statusEl) statusEl.textContent = 'New password and confirmation do not match.';
+    return;
+  }
+
+  if (statusEl) statusEl.textContent = 'Updating password...';
+  if (submitBtn) submitBtn.disabled = true;
+
+  try {
+    const [currentHash, newHash] = await Promise.all([sha256Hex(currentPassword), sha256Hex(newPassword)]);
+
+    const { error } = await db.rpc('admin_change_password', {
+      p_token: adminToken(),
+      p_current_password_hash: currentHash,
+      p_new_password_hash: newHash,
+    });
+
+    if (error) throw error;
+
+    event.target.reset();
+    if (statusEl) statusEl.textContent = 'Password updated.';
+  } catch (err) {
+    const msg = err?.message || '';
+    if (msg.includes('INVALID_CURRENT_PASSWORD')) {
+      if (statusEl) statusEl.textContent = 'Current password is incorrect.';
+    } else {
+      console.error('Admin password change failed:', err);
+      if (statusEl) statusEl.textContent = `Could not update password: ${msg || err}`;
+    }
+  } finally {
+    if (submitBtn) submitBtn.disabled = false;
+  }
+});
+
+document.querySelector('#services-settings-form')?.addEventListener('submit', async (event) => {
+  event.preventDefault();
+  const statusEl = document.getElementById('services-settings-status');
   const submitBtn = event.target.querySelector('[type="submit"]');
   if (statusEl) statusEl.textContent = 'Saving...';
   if (submitBtn) submitBtn.disabled = true;
@@ -5503,26 +5495,32 @@ document.querySelector('#admin-service-pricing-form')?.addEventListener('submit'
   try {
     const val = (id) => parseFloat(document.getElementById(id)?.value || '0');
 
-    const { data, error } = await db.rpc('admin_update_service_pricing', {
-      p_token: adminToken(),
-      p_fuel_service_fee: val('sp-fuel-fee'),
-      p_wash_service_fee: val('sp-wash-fee'),
-      p_quick_inspection_fee: val('sp-inspection-fee'),
-      p_wash_buff_shine_price: val('sp-wash-buff-shine'),
-      p_wash_shine_protect_price: val('sp-wash-shine-protect'),
-      p_wash_shine_price: val('sp-wash-shine'),
-      p_wash_double_wash_price: val('sp-wash-double'),
-    });
+    const [fuelResult, pricingResult] = await Promise.all([
+      db.rpc('admin_update_fuel_prices', {
+        p_token: adminToken(),
+        p_regular: val('fp-regular'),
+        p_midgrade: val('fp-midgrade'),
+        p_premium: val('fp-premium'),
+        p_diesel: val('fp-diesel'),
+        p_service_area: null,
+      }),
+      db.rpc('admin_update_service_pricing', {
+        p_token: adminToken(),
+        p_fuel_service_fee: val('sp-fuel-fee'),
+        p_wash_service_fee: val('sp-wash-fee'),
+        p_quick_inspection_fee: val('sp-inspection-fee'),
+        p_wash_buff_shine_price: val('sp-wash-buff-shine'),
+        p_wash_shine_protect_price: val('sp-wash-shine-protect'),
+        p_wash_shine_price: val('sp-wash-shine'),
+        p_wash_double_wash_price: val('sp-wash-double'),
+      }),
+    ]);
 
-    if (error) throw error;
+    if (fuelResult.error) throw fuelResult.error;
+    if (pricingResult.error) throw pricingResult.error;
 
-    applyServicePricing(data);
+    applyServicePricing(pricingResult.data);
     if (statusEl) statusEl.textContent = 'Service pricing saved.';
-    const lastUpdated = document.getElementById('service-pricing-last-updated');
-    if (lastUpdated && data?.last_updated_at) {
-      const d = new Date(data.last_updated_at);
-      lastUpdated.textContent = `Last updated: ${d.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}`;
-    }
   } catch (err) {
     console.error('Service pricing save failed:', err);
     if (statusEl) statusEl.textContent = `Could not save: ${err.message || err}`;
@@ -5533,92 +5531,24 @@ document.querySelector('#admin-service-pricing-form')?.addEventListener('submit'
 
 // ── Reports page ──────────────────────────────────────────────────────────
 
-function loadReportsPage() {
-  const select = document.querySelector('#report-worker-select');
-  if (select) {
-    const currentValue = select.value;
-    select.innerHTML = '<option value="">Select worker</option>' + allEmployees
-      .map((e) => `<option value="${escapeHtml(e.id)}">${escapeHtml(e.full_name)}${e.active ? '' : ' (inactive)'}</option>`)
-      .join('');
-    select.value = currentValue;
-  }
-}
-
-function reportDateRange(fromId, toId) {
-  const fromVal = document.getElementById(fromId)?.value;
-  const toVal = document.getElementById(toId)?.value;
-  const from = fromVal ? new Date(`${fromVal}T00:00:00`) : null;
-  const to = toVal ? new Date(`${toVal}T23:59:59`) : null;
-  return { from, to };
-}
-
 function requestTimestamp(request) {
   return new Date(request.updated_at || request.created_at);
 }
 
-document.querySelector('#report-worker-run')?.addEventListener('click', () => {
-  const output = document.querySelector('#report-worker-output');
+function loadReportsPage() {
+  const output = document.querySelector('#admin-report-list');
   if (!output) return;
-  const workerId = document.querySelector('#report-worker-select')?.value;
-  if (!workerId) {
-    output.innerHTML = '<p class="field-help">Select a worker first.</p>';
-    return;
-  }
-  const { from, to } = reportDateRange('report-worker-from', 'report-worker-to');
-  const worker = allEmployees.find((e) => e.id === workerId);
-  const rows = allRequests.filter((r) => {
-    if (r.assigned_employee_id !== workerId) return false;
-    const stamp = requestTimestamp(r);
-    if (from && stamp < from) return false;
-    if (to && stamp > to) return false;
-    return true;
-  }).sort((a, b) => requestTimestamp(b) - requestTimestamp(a));
 
-  if (!rows.length) {
-    output.innerHTML = `<p class="field-help">No requests found for ${escapeHtml(worker?.full_name || 'this worker')} in that range.</p>`;
+  if (!allRequests.length) {
+    output.innerHTML = '<div class="empty-state"><p>No requests yet.</p></div>';
     return;
   }
 
-  const completed = rows.filter((r) => r.status === 'complete').length;
-  output.innerHTML = `
-    <p class="field-help">${rows.length} request${rows.length === 1 ? '' : 's'} for ${escapeHtml(worker?.full_name || 'worker')} &middot; ${completed} completed</p>
-    <table class="admin-requests-table">
-      <thead><tr><th>Date</th><th>Customer</th><th>Service Type</th><th>Status</th></tr></thead>
-      <tbody>
-        ${rows.map((r) => `
-          <tr>
-            <td>${escapeHtml(formatTimestamp(r.updated_at || r.created_at))}</td>
-            <td>${escapeHtml(r.customer_name || '')}</td>
-            <td>${escapeHtml(queueServiceLabel(r))}</td>
-            <td><span class="status-pill ${queueStatusBucket(r).cls}">${escapeHtml(queueStatusBucket(r).label)}</span></td>
-          </tr>
-        `).join('')}
-      </tbody>
-    </table>
-  `;
-});
-
-document.querySelector('#report-volume-run')?.addEventListener('click', () => {
-  const output = document.querySelector('#report-volume-output');
-  if (!output) return;
-  const { from, to } = reportDateRange('report-volume-from', 'report-volume-to');
-  const rows = allRequests.filter((r) => {
-    const stamp = new Date(r.created_at);
-    if (from && stamp < from) return false;
-    if (to && stamp > to) return false;
-    return true;
-  });
-
-  if (!rows.length) {
-    output.innerHTML = '<p class="field-help">No tickets created in that range.</p>';
-    return;
-  }
-
+  const rows = allRequests.slice().sort((a, b) => requestTimestamp(b) - requestTimestamp(a));
   const counts = { Open: 0, 'In Progress': 0, Completed: 0, Closed: 0 };
   rows.forEach((r) => { counts[queueStatusBucket(r).label] += 1; });
 
   output.innerHTML = `
-    <p class="field-help">${rows.length} ticket${rows.length === 1 ? '' : 's'} created in this range</p>
     <div class="admin-stat-grid report-volume-grid">
       ${Object.entries(counts).map(([label, count]) => `
         <div class="admin-stat-card">
@@ -5629,5 +5559,19 @@ document.querySelector('#report-volume-run')?.addEventListener('click', () => {
         </div>
       `).join('')}
     </div>
+    <table class="admin-requests-table">
+      <thead><tr><th>Date</th><th>Customer</th><th>Service Type</th><th>Worker</th><th>Status</th></tr></thead>
+      <tbody>
+        ${rows.map((r) => `
+          <tr>
+            <td>${escapeHtml(formatTimestamp(r.updated_at || r.created_at))}</td>
+            <td>${escapeHtml(r.customer_name || '')}</td>
+            <td>${escapeHtml(queueServiceLabel(r))}</td>
+            <td>${r.assigned_worker_name ? escapeHtml(r.assigned_worker_name) : '<span class="field-help">Unassigned</span>'}</td>
+            <td><span class="status-pill ${queueStatusBucket(r).cls}">${escapeHtml(queueStatusBucket(r).label)}</span></td>
+          </tr>
+        `).join('')}
+      </tbody>
+    </table>
   `;
-});
+}
