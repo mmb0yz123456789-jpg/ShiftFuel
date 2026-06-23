@@ -45,7 +45,6 @@
         <aside class="worker-current-status-card">
           <div class="worker-card-heading">
             <h2>Current Status</h2>
-            <span class="worker-shift-pill">On Shift</span>
           </div>
           <dl>
             <div><dt>Working since</dt><dd id="worker-working-since">Today</dd></div>
@@ -73,7 +72,10 @@
 
         <aside class="worker-dashboard-side">
           <section class="worker-dashboard-card worker-progress-card">
-            <h2>Today's Progress</h2>
+            <div class="worker-card-heading">
+              <h2>Today's Progress</h2>
+              <button class="worker-progress-job-label" id="worker-progress-job-label" type="button" hidden>Continue</button>
+            </div>
             <div class="worker-progress-line" aria-label="Worker progress">
               <span class="complete">1</span>
               <span class="complete">2</span>
@@ -125,7 +127,6 @@
               </div>
               <div>
                 <h2 id="worker-dashboard-name">Worker</h2>
-                <p class="worker-verified-badge">Verified</p>
               </div>
             </div>
             <div class="worker-profile-actions">
@@ -338,7 +339,6 @@
       }
     </script>
     <script src="worker.js"></script>
-    <script src="worker-cancelled-status-polish.js"></script>
     <script defer src="worker-gps-tracking.js"></script>
     <script defer src="/_vercel/insights/script.js"></script>
     <script defer src="/_vercel/speed-insights/script.js"></script>

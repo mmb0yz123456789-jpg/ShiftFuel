@@ -426,3 +426,73 @@
     grid-template-columns: 1fr !important;
   }
 }
+
+/* Pass 3: admin dashboard + worker portal phone fixes (tables, control rows, modals). */
+@media (max-width: 760px) {
+  /* Data tables scroll inside their own box instead of forcing the whole page to
+     scroll sideways. display:block on the table (not its rows/cells) keeps the
+     columns aligned via the table's anonymous table boxes. */
+  .admin-requests-table,
+  .revenue-breakdown-table {
+    display: block;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    font-size: 0.82rem;
+  }
+
+  .admin-requests-table th,
+  .admin-requests-table td,
+  .revenue-breakdown-table th,
+  .revenue-breakdown-table td {
+    padding: 8px 10px;
+  }
+
+  /* Admin control / filter rows wrap instead of overflowing off-screen. */
+  .admin-toolbar,
+  .admin-filters-wrap,
+  .admin-hero-controls,
+  .review-filter-row,
+  .star-filter-buttons,
+  .find-tickets-search-row {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .find-tickets-search-row > * {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+
+  /* Tab strips scroll sideways rather than squashing their labels. */
+  .admin-request-tabs,
+  .admin-page-tabs {
+    overflow-x: auto;
+    flex-wrap: nowrap;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* Modals use the full phone width and scroll their body. */
+  .modal-overlay {
+    padding: 12px !important;
+  }
+
+  .modal-dialog,
+  .worker-modal-wide,
+  .find-tickets-dialog,
+  .ticket-detail-dialog,
+  .returning-modal-dialog {
+    width: 100% !important;
+    max-width: 100% !important;
+    max-height: 92vh;
+  }
+
+  .modal-body {
+    overflow-y: auto;
+  }
+
+  /* Settings + generic field grids collapse to a single column. */
+  .settings-grid,
+  .field-grid {
+    grid-template-columns: 1fr !important;
+  }
+}

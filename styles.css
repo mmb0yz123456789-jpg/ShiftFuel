@@ -316,7 +316,7 @@ line-height: 1;
 display: flex;
 flex-wrap: wrap;
 align-items: center;
-gap: 16px;
+gap: 20px;
 color: rgba(255, 255, 255, 0.86);
 font-size: 0.9rem;
 font-weight: 700;
@@ -324,6 +324,12 @@ font-weight: 700;
 
 .nav a:hover {
 color: var(--sf-white);
+}
+
+/* Separate the informational links from the action buttons so the cluster
+   doesn't read as one squished block. (Reset on mobile, where nav stacks.) */
+.site-header .nav-cta {
+margin-left: 10px;
 }
 
 .site-header .nav-outline {
@@ -1410,6 +1416,10 @@ font-size: 0.85rem;
     width: 100%;
   }
 
+  .site-header .nav-cta {
+    margin-left: 0;
+  }
+
   .landing-hero-copy {
     padding: 28px 22px;
   }
@@ -2051,6 +2061,18 @@ font-size: 0.85rem;
   background: #f8fbf9;
   border: 1px solid rgba(0, 59, 59, 0.12);
   border-radius: 10px;
+}
+
+.booking-legal-notice {
+  font-size: 0.75rem;
+  color: var(--text-secondary, #666);
+  margin: 0.25rem 0 0;
+  line-height: 1.5;
+}
+
+.booking-legal-notice a {
+  color: var(--sf-teal-dark, #003b3b);
+  text-decoration: underline;
 }
 
 .booking-validation-message {
@@ -3064,6 +3086,16 @@ font-size: 0.85rem;
   color: var(--muted);
 }
 
+.photo-proof-empty {
+  margin: 0;
+  padding: 18px;
+  color: var(--muted);
+  text-align: center;
+  border: 1px dashed var(--line);
+  border-radius: 10px;
+  background: var(--surface-soft);
+}
+
 #photo-lightbox {
   position: fixed;
   inset: 0;
@@ -3746,6 +3778,20 @@ font-size: 0.85rem;
   gap: 2px;
 }
 
+.hero-stat-btn {
+  background: none;
+  border: none;
+  padding: 6px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.hero-stat-btn:hover,
+.hero-stat-btn:focus-visible {
+  background: var(--hover, rgba(0,0,0,0.06));
+  outline: none;
+}
+
 .hero-stat-value {
   font-size: 1.5rem;
   font-weight: 800;
@@ -4057,10 +4103,9 @@ font-size: 0.85rem;
 }
 
 .find-tickets-icon {
-  display: block;
-  margin-bottom: 4px;
-  font-size: 1.8rem;
-  line-height: 1;
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
 }
 
 /* ─── Reviews section header ────────────────────────────────────── */
@@ -4402,6 +4447,10 @@ button.sfp-cell {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 18px;
+}
+
+.cr-hidden {
+  display: none !important;
 }
 
 .address-fields {
@@ -7057,8 +7106,12 @@ justify-self: start;
 }
 
 .admin-top-nav .logo {
-  flex: 0 0 auto;
+  justify-self: start;
   white-space: nowrap;
+}
+
+.admin-top-nav .portal-header-actions {
+  justify-self: end;
 }
 
 .admin-top-nav .logo,
@@ -7191,6 +7244,44 @@ justify-self: start;
   gap: 8px;
 }
 
+.admin-date-range-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.custom-range-inputs {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.custom-range-inputs[hidden] {
+  display: none;
+}
+
+.custom-range-inputs input[type="date"] {
+  padding: 9px 10px;
+  border: 1px solid var(--admin-line);
+  border-radius: 12px;
+  background: #fff;
+  color: var(--admin-ink);
+  font-weight: 700;
+  font-size: 0.82rem;
+}
+
+.custom-range-sep {
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--admin-muted, #5b6b6b);
+}
+
+.custom-range-apply {
+  padding: 9px 16px;
+  min-height: 0;
+}
+
 .admin-filters-wrap {
   position: relative;
 }
@@ -7238,11 +7329,37 @@ justify-self: start;
   color: var(--admin-ink);
 }
 
-.admin-filters-panel select {
+.admin-filters-panel select,
+.admin-filters-panel input[type="search"] {
+  width: 100%;
   padding: 9px 10px;
   border: 1px solid var(--admin-line);
   border-radius: 10px;
   font-size: 0.86rem;
+}
+
+.admin-filters-panel .filter-search-field {
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--admin-line);
+}
+
+.admin-filters-panel #filter-clear-btn {
+  margin-top: 2px;
+}
+
+.filter-count-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  margin-left: 2px;
+  padding: 0 5px;
+  border-radius: 9px;
+  background: var(--admin-green);
+  color: #fff;
+  font-size: 0.72rem;
+  font-weight: 800;
 }
 
 /* Shared portal header for admin, worker, and portal login pages */
@@ -7607,15 +7724,6 @@ justify-self: start;
 .admin-request-tabs .summary-button.active {
   border-bottom-color: var(--admin-green);
   color: var(--admin-ink);
-}
-
-.report-output {
-  margin-top: 18px;
-}
-
-.report-volume-grid {
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  margin-top: 12px;
 }
 
 .admin-requests-table {
@@ -8094,6 +8202,26 @@ justify-self: start;
   overflow: hidden;
 }
 
+.worker-progress-job-label {
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: #fff;
+  background: var(--sf-teal-dark, #003b3b);
+  border: none;
+  border-radius: 20px;
+  padding: 0.3rem 0.9rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 160px;
+  cursor: pointer;
+  letter-spacing: 0.01em;
+}
+
+.worker-progress-job-label:hover {
+  background: #005555;
+}
+
 .worker-progress-line {
   position: relative;
   display: grid;
@@ -8336,9 +8464,22 @@ justify-self: start;
 
 .site-header,
 .unified-portal-header.worker-top-nav,
-.unified-portal-header.admin-top-nav,
 .portal-login-header.unified-portal-header {
   display: flex;
+  align-items: center;
+  min-height: 84px;
+  width: min(var(--sf-page-width), calc(100% - 40px));
+  margin: 18px auto 0;
+  padding: 18px 22px;
+  border-radius: var(--sf-radius-sm);
+}
+
+/* 3-column grid: equal-width side columns (1fr) keep the middle nav column at
+   the true center of the header regardless of how wide the logo or actions
+   cluster are. Reverts to flex on mobile (see max-width:760px block below). */
+.unified-portal-header.admin-top-nav {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
   align-items: center;
   min-height: 84px;
   width: min(var(--sf-page-width), calc(100% - 40px));
@@ -8363,6 +8504,7 @@ justify-self: start;
   .unified-portal-header.worker-top-nav,
   .unified-portal-header.admin-top-nav,
   .portal-login-header.unified-portal-header {
+    display: flex;
     align-items: flex-start;
     flex-wrap: wrap;
     padding: 16px 18px;
@@ -8428,4 +8570,413 @@ justify-self: start;
 .worker-portal-page .portal-closing-banner {
   width: min(var(--sf-page-width), calc(100% - 40px));
   max-width: none;
+}
+
+/* ── Clickable stat cards ─────────────────────────────────────────────────── */
+
+.admin-stat-card--clickable {
+  cursor: pointer;
+  transition: box-shadow 0.15s ease, transform 0.15s ease, border-color 0.15s ease;
+}
+
+.admin-stat-card--clickable:hover {
+  border-color: rgba(0, 59, 59, 0.28);
+  box-shadow: 0 16px 40px rgba(0, 42, 42, 0.12);
+  transform: translateY(-2px);
+}
+
+.admin-stat-card--clickable:active {
+  transform: translateY(0);
+  box-shadow: 0 8px 20px rgba(0, 42, 42, 0.08);
+}
+
+.admin-stat-card--clickable.stat-card--active {
+  border-color: var(--sf-teal, #0d9488);
+  background: var(--sf-teal-lightest, #f0fdfa);
+  box-shadow: 0 0 0 2px var(--sf-teal, #0d9488);
+}
+
+.admin-stat-card--clickable:focus-visible {
+  outline: 2px solid var(--sf-teal);
+  outline-offset: 2px;
+}
+
+/* ── Net Revenue breakdown inline panel ───────────────────────────────────── */
+
+.revenue-breakdown-panel {
+  background: #fff;
+  border: 1px solid rgba(0, 59, 59, 0.1);
+  border-radius: 12px;
+  box-shadow: 0 8px 24px rgba(0, 42, 42, 0.07);
+  overflow: hidden;
+  margin-top: 14px;
+}
+
+.revenue-breakdown-panel[hidden] {
+  display: none;
+}
+
+.revenue-breakdown-panel-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 18px 20px 14px;
+  border-bottom: 1px solid rgba(0, 59, 59, 0.08);
+  background: rgba(167, 191, 166, 0.1);
+}
+
+.revenue-breakdown-panel-header h3 {
+  margin: 0 0 4px;
+  font-size: 1rem;
+  font-weight: 900;
+  color: var(--sf-teal-dark);
+}
+
+.modal-close-btn {
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
+  border: none;
+  background: none;
+  font-size: 1.2rem;
+  cursor: pointer;
+  color: var(--muted);
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+}
+
+.modal-close-btn:hover {
+  background: rgba(0, 59, 59, 0.07);
+  color: var(--sf-teal-dark);
+}
+
+.revenue-breakdown-formula {
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+#revenue-breakdown-body {
+  padding: 0 20px 20px;
+  overflow-x: auto;
+}
+
+.revenue-breakdown-empty {
+  padding: 32px 0;
+  text-align: center;
+  color: var(--muted);
+  font-size: 0.95rem;
+}
+
+.revenue-breakdown-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.88rem;
+  margin-top: 16px;
+}
+
+.revenue-breakdown-table th {
+  text-align: left;
+  padding: 8px 10px;
+  font-size: 0.75rem;
+  font-weight: 800;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  border-bottom: 2px solid rgba(0, 59, 59, 0.1);
+}
+
+.revenue-breakdown-table td {
+  padding: 10px 10px;
+  border-bottom: 1px solid rgba(0, 59, 59, 0.07);
+  color: var(--sf-teal-dark);
+  vertical-align: middle;
+}
+
+.revenue-breakdown-table tbody tr:hover td {
+  background: rgba(167, 191, 166, 0.1);
+}
+
+.revenue-row-total {
+  font-weight: 800;
+  color: var(--sf-teal-dark) !important;
+}
+
+.revenue-breakdown-table tfoot td {
+  padding: 12px 10px;
+  border-top: 2px solid rgba(0, 59, 59, 0.15);
+  border-bottom: none;
+}
+
+.revenue-grand-label {
+  font-weight: 800;
+  font-size: 0.9rem;
+  color: var(--sf-teal-dark);
+}
+
+.revenue-grand-total {
+  font-weight: 900;
+  font-size: 1.1rem;
+  color: var(--sf-teal-dark);
+}
+
+/* ── Completed request inline summary ────────────────────────────────────── */
+
+.queue-row-summary > td {
+  padding: 0 0 12px 0;
+  background: transparent;
+}
+
+.completed-summary-card {
+  background: var(--sf-white, #fff);
+  border: 1.5px solid var(--sf-border, #e2e8f0);
+  border-radius: 10px;
+  padding: 18px 20px 14px;
+  margin: 0 2px 2px;
+}
+
+.completed-summary-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 14px;
+}
+
+.completed-summary-title {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.completed-summary-id {
+  font-size: 0.78rem;
+}
+
+.completed-summary-cols {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 16px 24px;
+}
+
+.completed-summary-col {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.summary-section-label {
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--sf-teal, #0d9488);
+  margin: 8px 0 2px;
+}
+
+.completed-summary-col p:first-child.summary-section-label {
+  margin-top: 0;
+}
+
+.summary-kv {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 3px 0;
+  border-bottom: 1px solid var(--sf-border, #e2e8f0);
+  font-size: 0.88rem;
+}
+
+.summary-kv:last-child {
+  border-bottom: none;
+}
+
+.summary-kv--total {
+  margin-top: 4px;
+  font-size: 0.95rem;
+  color: var(--sf-teal-dark, #0f766e);
+}
+
+/* ── Dashboard drilldown mode ─────────────────────────────────────────────── */
+
+.admin-portal-page.dashboard--drilldown .admin-hero-top,
+.admin-portal-page.dashboard--drilldown .admin-stat-grid {
+  display: none;
+}
+
+.admin-portal-page.dashboard--drilldown aside.admin-dashboard-side {
+  display: none;
+}
+
+.admin-portal-page[data-drilldown="panel"] .admin-queue-section {
+  display: none;
+}
+
+#dashboard-drilldown {
+  padding: 0;
+}
+
+.drilldown-header {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 1.25rem;
+}
+
+.drilldown-header h2 {
+  margin: 0;
+  font-size: 1.4rem;
+}
+
+/* ── Admin Services pricing groups ────────────────────────────────────────── */
+.services-settings-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  margin-bottom: 1.5rem;
+}
+
+.pricing-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.pricing-group-card {
+  background: var(--sf-sage-light, #f4f7f4);
+  border: 1px solid rgba(13, 59, 59, 0.12);
+  border-radius: 12px;
+  padding: 1.25rem 1.25rem 1rem;
+}
+
+.pricing-group-label {
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--sf-teal-dark, #003b3b);
+  margin: 0 0 1rem;
+}
+
+.pricing-group-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.75rem 1rem;
+}
+
+.pricing-group-grid label,
+.pricing-fee-row,
+.pricing-group--single label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text-secondary, #555);
+}
+
+.pricing-group-grid label input,
+.pricing-fee-row input,
+.pricing-group--single label input {
+  font-size: 1rem;
+  font-weight: 500;
+  color: var(--text-primary, #1a1a1a);
+  background: #fff;
+  border: 1px solid rgba(13, 59, 59, 0.2);
+  border-radius: 8px;
+  padding: 0.55rem 0.75rem;
+  width: 100%;
+}
+
+.pricing-fee-row {
+  padding: 0.65rem 1rem;
+  background: rgba(13, 59, 59, 0.04);
+  border: 1px dashed rgba(13, 59, 59, 0.2);
+  border-radius: 8px;
+}
+
+.pricing-group--single label {
+  max-width: 260px;
+}
+
+@media (max-width: 540px) {
+  .pricing-group-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.pricing-effective-date-row {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid rgba(13, 59, 59, 0.1);
+  margin-top: 0.5rem;
+}
+
+.pricing-effective-label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text-secondary, #555);
+  max-width: 320px;
+}
+
+.pricing-effective-hint {
+  font-size: 0.72rem;
+  font-weight: 400;
+  color: var(--text-tertiary, #888);
+}
+
+.pricing-effective-label input[type="datetime-local"] {
+  font-size: 0.95rem;
+  color: var(--text-primary, #1a1a1a);
+  background: #fff;
+  border: 1px solid rgba(13, 59, 59, 0.2);
+  border-radius: 8px;
+  padding: 0.55rem 0.75rem;
+  width: 100%;
+}
+
+.pricing-pending-banner {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  background: #fffbeb;
+  border: 1px solid #f59e0b;
+  border-radius: 10px;
+  padding: 0.75rem 1rem;
+  font-size: 0.85rem;
+  color: #92400e;
+  flex-wrap: wrap;
+}
+
+.pricing-pending-banner[hidden] {
+  display: none;
+}
+
+.pricing-pending-icon {
+  font-size: 1.1rem;
+  flex-shrink: 0;
+}
+
+.pricing-pending-cancel {
+  margin-left: auto;
+  background: none;
+  border: 1px solid #f59e0b;
+  border-radius: 6px;
+  padding: 0.3rem 0.75rem;
+  font-size: 0.78rem;
+  color: #92400e;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.pricing-pending-cancel:hover {
+  background: #fef3c7;
 }

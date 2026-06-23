@@ -8,12 +8,27 @@
     'cancelled', 'unable_to_complete', 'auto_reversed', 'closed_no_charge', 'canceled_return_completed',
   ]);
 
+  // Show the worker's live location for the whole time they hold the customer's
+  // key/vehicle: from key pickup, through service, and across the return trip,
+  // until the key/vehicle is physically handed back. (No 'accepted' — that's
+  // before the key is picked up.)
   const ACTIVE_TRACKING_STATUSES = new Set([
-    'accepted', 'key_received', 'vehicle_picked_up', 'service_in_progress',
+    'key_received',
+    'pickup_vehicle_photo_uploaded', 'pickup_odometer_photo_uploaded', 'pickup_fuel_gauge_photo_uploaded',
+    'vehicle_picked_up', 'service_in_progress',
     'fueling_in_progress', 'car_wash_in_progress', 'partial_service_complete',
-    'fueling_complete', 'car_wash_complete', 'fuel_receipt_uploaded', 'wash_receipt_uploaded',
-    'service_complete', 'receipts_recorded', 'returned_location_pending',
-    'return_location_recorded', 'return_photos_needed',
+    'fueling_complete', 'car_wash_complete', 'fuel_and_wash_complete',
+    'fuel_receipt_uploaded', 'wash_receipt_uploaded',
+    'service_complete', 'receipts_recorded',
+    // Return trip — keep showing the worker until the key/vehicle is returned.
+    'returned_location_pending', 'return_location_recorded', 'return_photos_needed',
+    'dropoff_vehicle_photo_uploaded', 'dropoff_odometer_photo_uploaded', 'dropoff_fuel_gauge_photo_uploaded',
+    'vehicle_returned', 'inspection_needed', 'inspection_recorded', 'final_payment_processed',
+    'awaiting_key_return',
+    // Payment waits that happen before the key is returned.
+    'pending_customer_payment', 'payment_issue', 'authorization_too_low',
+    // Cancellation / return that still requires handing the key/vehicle back.
+    'cancelled_pending_key_return', 'return_requested', 'customer_return_requested',
   ]);
 
   const liveState = new Map();
