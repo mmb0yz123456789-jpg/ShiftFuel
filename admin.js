@@ -2283,11 +2283,15 @@ function renderWorkerProfileRow(employee) {
   const rowStatusClass = employee.active ? 'status-pill-complete' : 'status-pill-denied';
   const rows = [`
     <tr class="queue-row${isExpanded ? ' is-expanded' : ''}" data-worker-id="${escapeHtml(employee.id)}">
-      <td><strong>${escapeHtml(employee.full_name || '')}</strong></td>
-      <td>${escapeHtml(employee.employee_code || '')}</td>
-      <td>${employee.phone ? escapeHtml(formatPhone(employee.phone)) : '<span class="field-help">Not provided</span>'}</td>
-      <td><span class="status-pill ${rowStatusClass}">${escapeHtml(statusLabel)}</span></td>
-      <td><button class="button secondary worker-row-toggle" data-id="${escapeHtml(employee.id)}" type="button">${isExpanded ? 'Close' : 'Edit'}</button></td>
+      <td data-label="Name"><strong>${escapeHtml(employee.full_name || '')}</strong></td>
+      <td data-label="Employee ID">${escapeHtml(employee.employee_code || '')}</td>
+      <td data-label="Phone">${employee.phone ? escapeHtml(formatPhone(employee.phone)) : '<span class="field-help">Not provided</span>'}</td>
+      <td data-label="Status"><span class="status-pill ${rowStatusClass}">${escapeHtml(statusLabel)}</span></td>
+      <td data-label="Action">
+        <div class="queue-next-action-cell">
+          <button class="button secondary worker-row-toggle" data-id="${escapeHtml(employee.id)}" type="button">${isExpanded ? 'Close' : 'Edit'}</button>
+        </div>
+      </td>
     </tr>
   `];
   if (isExpanded) {
@@ -5136,6 +5140,10 @@ filterClearBtn?.addEventListener('click', () => {
 
 function switchPageTab(page) {
   currentPageTab = page;
+  // Expose the active page so CSS can hide the dashboard-only sidebar/shortcuts
+  // on mobile when viewing a non-dashboard tab (they're the persistent right
+  // rail on desktop, but stack onto every tab on phones).
+  document.body.dataset.adminPage = page;
   adminPageTabs.forEach((btn) => btn.classList.toggle('active', btn.dataset.page === page));
   document.querySelectorAll('[data-page-section]').forEach((el) => {
     el.hidden = !el.dataset.pageSection.split(' ').includes(page);

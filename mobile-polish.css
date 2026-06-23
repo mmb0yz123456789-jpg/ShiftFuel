@@ -755,3 +755,203 @@
 
 /* Once GPS is actively tracking, drop the intro paragraph (keep the status line). */
 .gps-tracking-panel.is-tracking > p.field-help:not(.gps-tracking-status) { display: none; }
+
+/* ─────────────────────────────────────────────────────────────────────────
+   Admin app mobile fixes (PWA on phones)
+
+   #1 Oversized toolbar buttons:
+      styles.css @820px flips `.admin-button-row` to `flex-direction: column`
+      but its buttons keep `flex: 1 1 180px` (a min-WIDTH meant for a horizontal
+      row). In a column that 180px becomes a vertical flex-basis, so each toolbar
+      control balloons into a ~180px-tall box (the giant "Find Tickets" box).
+      Reset toolbar controls to natural height, full width.
+
+   #2 Queue cards bleeding off the right edge:
+      the requests table is restyled into stacked cards, but flex value cells
+      default to min-width:auto and can't shrink, so long values (service, date,
+      action buttons) spill past the card and get clipped. Let them shrink/wrap.
+   ───────────────────────────────────────────────────────────────────────── */
+@media (max-width: 760px) {
+  /* #1 — toolbar controls: kill the inherited vertical flex-basis. */
+  .admin-toolbar .admin-button-row {
+    flex-direction: column;
+    width: 100%;
+  }
+  .admin-toolbar .admin-button-row > .button,
+  .admin-toolbar .admin-button-row > .admin-date-range-wrap,
+  .admin-toolbar .admin-button-row > .admin-filters-wrap,
+  .admin-toolbar .admin-find-tickets-btn,
+  .admin-toolbar .admin-filters-btn {
+    flex: 0 0 auto;
+    width: 100%;
+  }
+  .admin-toolbar .admin-find-tickets-btn,
+  .admin-toolbar .admin-filters-btn {
+    justify-content: center;
+    min-height: 44px;
+  }
+  .admin-toolbar .admin-date-range-wrap > .admin-date-range,
+  .admin-toolbar .admin-date-range select {
+    width: 100%;
+  }
+
+  /* #2 — stacked queue cards: let value cells shrink and wrap instead of
+     overflowing. Drop the leftover horizontal-scroll mode on the table. */
+  .admin-requests-table {
+    overflow-x: hidden !important;
+    width: 100% !important;
+  }
+  .admin-requests-table tr.queue-row td {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+  .admin-requests-table tr.queue-row td > * {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+
+  /* #3 — page-level right-edge bleed: the admin sections size as
+     `calc(100% - 40px)` of `.admin-main`, whose content box grows to contain
+     any overflowing descendant. So one wide child (e.g. the queue table cells)
+     inflates EVERY section's width uniformly and the whole page bleeds right.
+     Pin sections to the viewport (vw) so a wide child can't drag them out. */
+  .admin-portal-page .admin-hero,
+  .admin-portal-page .admin-section,
+  .admin-portal-page .admin-page-row {
+    width: min(var(--sf-page-width), calc(100vw - 2 * var(--sf-mobile-gutter))) !important;
+    max-width: 100% !important;
+    margin-left: auto !important;
+    margin-right: auto !important;
+  }
+  .admin-portal-page .admin-main {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+  }
+
+  /* Dashboard-only rail: the Quick Actions / Worker Snapshot / Reviews sidebar
+     and the Workers/Create/Settings shortcut grid have no data-page-section, so
+     the tab switcher leaves them visible on every tab. On desktop they're the
+     persistent right rail; on phones they stack onto each tab as clutter. Show
+     them only on the Home/dashboard tab. */
+  body.admin-portal-page[data-admin-page]:not([data-admin-page="dashboard"]) .admin-dashboard-side,
+  body.admin-portal-page[data-admin-page]:not([data-admin-page="dashboard"]) .admin-shortcut-grid {
+    display: none !important;
+  }
+}
+
+/* ─────────────────────────────────────────────────────────────────────────
+   #6 Oversized portal headers (worker + admin top nav)
+
+   The dark teal `.unified-portal-header` gets `min-height: 84px`,
+   `align-items: flex-start`, and `.portal-header-actions { width: 100% }` on
+   mobile. That drops the whole action cluster onto its own full-width row
+   BELOW the logo, so the bar balloons into a tall block:
+     • Admin — label + sign-out are hidden ≤640px, leaving a lone avatar
+       stranded across a full-width row (big empty band under the logo).
+     • Worker — the label, presence pill, "Take a break" and "Sign out" each
+       wrap onto their own line, a 4-row stack.
+   Collapse both back into a tidy, low single bar.
+   ───────────────────────────────────────────────────────────────────────── */
+@media (max-width: 760px) {
+  .unified-portal-header.admin-top-nav,
+  .unified-portal-header.worker-top-nav {
+    min-height: 0 !important;
+    align-items: center !important;
+    gap: 10px;
+    padding: 12px 16px !important;
+    margin-top: 12px;
+  }
+
+  /* Logo shares the top row rather than claiming 100% width. */
+  .unified-portal-header.admin-top-nav .logo,
+  .unified-portal-header.worker-top-nav .logo {
+    width: auto !important;
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+
+  /* Admin: pin the lone avatar inline on the right next to the logo. */
+  .unified-portal-header.admin-top-nav .portal-header-actions {
+    width: auto !important;
+    flex: 0 0 auto;
+    margin-left: auto;
+    justify-content: flex-end !important;
+  }
+
+  /* Worker: keep label + presence + buttons on one compact, left-aligned
+     wrapping row instead of a tall centered stack. */
+  .unified-portal-header.worker-top-nav .portal-header-actions {
+    width: 100%;
+    gap: 8px;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: flex-start !important;
+  }
+  .unified-portal-header.worker-top-nav .portal-header-label {
+    margin-right: auto;
+  }
+  .worker-top-nav .portal-signout-btn,
+  .worker-top-nav #worker-break-toggle {
+    min-height: 36px;
+    padding: 7px 14px;
+    flex: 0 0 auto;
+  }
+}
+
+/* ─────────────────────────────────────────────────────────────────────────
+   #7 Admin Dashboard cleanup (match the polished mockup)
+
+   The stat cards collapse to a single tall column ≤640px, which reads as a
+   long ribbon on a phone. The mockup's cleaner feel comes from a 2-up grid
+   with the wider "Net Revenue" card spanning the full row. Our card order
+   (Open | In Progress / Completed | Active Workers / Revenue) already lines
+   up with that layout — just restore the 2-column grid on phones and let the
+   revenue card span both columns. Also slim the hero so the cards lead.
+   ───────────────────────────────────────────────────────────────────────── */
+@media (max-width: 760px) {
+  .admin-portal-page .admin-stat-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 10px;
+  }
+  /* Net Revenue spans the full width beneath the 2x2 of counts. */
+  .admin-portal-page #stat-card-revenue {
+    grid-column: 1 / -1;
+  }
+  .admin-portal-page .admin-stat-card {
+    min-height: 82px;
+    padding: 14px;
+  }
+
+  /* Slim the dashboard hero text so the stat cards come up sooner, the way the
+     mockup leads straight into the cards. */
+  .admin-portal-page .admin-hero .section-heading h1 {
+    font-size: 1.55rem;
+    margin: 2px 0;
+  }
+  .admin-portal-page .admin-hero .section-heading > p {
+    font-size: 0.9rem;
+  }
+
+  /* Mockup touch: small line icons before the Service / Worker / Date labels on
+     each request card. The avatar circle is already rendered in the Customer
+     cell (.queue-avatar). Scoped by data-label so it only decorates the request
+     queue, never the worker list (which uses Name/Phone/Status labels). */
+  .admin-requests-table tr.queue-row td[data-label="Service"]::before,
+  .admin-requests-table tr.queue-row td[data-label="Worker"]::before,
+  .admin-requests-table tr.queue-row td[data-label="Date"]::before {
+    padding-left: 19px;
+    background-repeat: no-repeat;
+    background-position: left center;
+    background-size: 13px 13px;
+  }
+  .admin-requests-table tr.queue-row td[data-label="Service"]::before {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2360716d' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='5' y='4' width='14' height='17' rx='2'/%3E%3Cpath d='M9 3h6v3H9z'/%3E%3Cpath d='M9 11h6M9 15h4'/%3E%3C/svg%3E");
+  }
+  .admin-requests-table tr.queue-row td[data-label="Worker"]::before {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2360716d' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='8' r='4'/%3E%3Cpath d='M4 20c0-4 4-6 8-6s8 2 8 6'/%3E%3C/svg%3E");
+  }
+  .admin-requests-table tr.queue-row td[data-label="Date"]::before {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2360716d' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='3' y='5' width='18' height='16' rx='2'/%3E%3Cpath d='M3 9h18M8 3v4M16 3v4'/%3E%3C/svg%3E");
+  }
+}
