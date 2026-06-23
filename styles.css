@@ -6166,6 +6166,37 @@ legend {
   line-height: 1.55;
 }
 
+/* ── Password show/hide toggle ── */
+.password-field-wrap {
+  position: relative;
+  display: flex;
+  align-items: stretch;
+}
+.password-field-wrap input {
+  flex: 1;
+  padding-right: 44px;
+}
+.password-toggle-btn {
+  position: absolute;
+  right: 2px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: #7a9696;
+  padding: 0;
+  border-radius: 6px;
+  flex-shrink: 0;
+}
+.password-toggle-btn:hover { color: var(--sf-teal-dark, #0d3b3b); }
+.password-toggle-btn svg { width: 18px; height: 18px; display: block; }
+
 .portal-login-card .booking-form {
   display: grid;
   gap: 16px;
@@ -7746,6 +7777,51 @@ justify-self: start;
 
 .admin-queue-card {
   padding: 16px;
+}
+
+.admin-pending-auth-section .admin-queue-card {
+  border-color: #f0c36d;
+  background: #fffaf0;
+}
+
+.pending-auth-list {
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.pending-auth-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 12px 14px;
+  border: 1px solid var(--admin-line);
+  border-radius: 12px;
+  background: #fff;
+}
+
+.pending-auth-info {
+  min-width: 0;
+}
+
+.pending-auth-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 4px;
+  font-size: 0.85rem;
+  color: var(--admin-muted, #6b6b6b);
+}
+
+.pending-auth-meta .pending-auth-reason {
+  color: #a05a00;
+  font-weight: 600;
+}
+
+.pending-auth-void-btn {
+  flex: 0 0 auto;
 }
 
 .admin-dashboard-side {

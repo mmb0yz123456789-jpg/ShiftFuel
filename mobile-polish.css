@@ -694,7 +694,8 @@
   body.worker-portal-page[data-app-view] [data-app-view] { display: none !important; }
   body.worker-portal-page[data-app-view="jobs"]     [data-app-view="jobs"],
   body.worker-portal-page[data-app-view="progress"] [data-app-view="progress"],
-  body.worker-portal-page[data-app-view="profile"]  [data-app-view="profile"] {
+  body.worker-portal-page[data-app-view="profile"]  [data-app-view="profile"],
+  body.worker-portal-page[data-app-view="schedule"] [data-app-view="schedule"] {
     display: block !important;
   }
 }

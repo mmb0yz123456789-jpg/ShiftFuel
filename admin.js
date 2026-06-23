@@ -123,8 +123,35 @@ function adminToken() {
 
 document.querySelector('#admin-signout-btn')?.addEventListener('click', () => {
   sessionStorage.removeItem('shiftfuel_admin_token');
+  sessionStorage.removeItem('shiftfuel_admin_name');
   window.location.href = 'admin-login.html';
 });
+
+(function initAdminIdentity() {
+  const raw = sessionStorage.getItem('shiftfuel_admin_name') || '';
+  const displayName = raw
+    ? raw.charAt(0).toUpperCase() + raw.slice(1)
+    : 'Admin';
+  const initials = raw
+    .split(/\s+/)
+    .map((w) => w[0]?.toUpperCase())
+    .filter(Boolean)
+    .join('')
+    .slice(0, 2) || 'A';
+
+  const h = new Date().getHours();
+  const greeting = h < 12 ? 'Good morning,' : h < 17 ? 'Good afternoon,' : 'Good evening,';
+
+  const greetingEl = document.querySelector('#admin-greeting');
+  const nameEl = document.querySelector('#admin-portal-name');
+  const avatarEl = document.querySelector('#admin-avatar-initials');
+  const headerNameEl = document.querySelector('#admin-header-name');
+
+  if (greetingEl) greetingEl.textContent = greeting;
+  if (nameEl) nameEl.textContent = displayName;
+  if (avatarEl) avatarEl.textContent = initials;
+  if (headerNameEl) headerNameEl.textContent = displayName;
+})();
 
 // Service date helpers — used by booking form and admin create-request form.
 function localDateString(date) {
@@ -3657,6 +3684,106 @@ async function retryReleaseHold(button) {
   }
 }
 
+// ── Incomplete authorizations (dashboard card) ────────────────────────────────
+function formatHoldAge(iso) {
+  const created = new Date(iso).getTime();
+  if (!Number.isFinite(created)) return '';
+  const mins = Math.max(0, Math.round((Date.now() - created) / 60000));
+  if (mins < 60) return `${mins} min ago`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours}h ${mins % 60}m ago`;
+  return `${Math.floor(hours / 24)}d ${hours % 24}h ago`;
+}
+
+const PENDING_AUTH_REASON_LABELS = {
+  booking_failed: 'Booking failed after authorization',
+  abandoned: 'Customer left before booking',
+};
+
+async function loadPendingAuthorizations() {
+  const section = document.querySelector('#pending-auth-section');
+  const list = document.querySelector('#pending-auth-list');
+  if (!section || !list) return;
+
+  try {
+    const res = await fetch('/api/payments', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'admin_list_pending_authorizations', caller_token: adminToken() }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      // Don't surface a scary error on the dashboard for this backstop feature;
+      // just hide the card. (e.g. table not migrated yet.)
+      section.hidden = true;
+      return;
+    }
+    const rows = data.authorizations || [];
+    if (!rows.length) {
+      section.hidden = true;
+      list.innerHTML = '';
+      return;
+    }
+    section.hidden = false;
+    list.innerHTML = rows.map((row) => {
+      const pi = escapeHtml(row.payment_intent_id);
+      const amount = money((Number(row.amount_cents) || 0) / 100);
+      const who = escapeHtml(row.customer_name || 'Unknown customer');
+      const email = row.customer_email ? ` · ${escapeHtml(row.customer_email)}` : '';
+      const svc = row.service_label ? `<span class="pending-auth-svc">${escapeHtml(row.service_label)}</span>` : '';
+      const reason = row.reason && PENDING_AUTH_REASON_LABELS[row.reason]
+        ? `<span class="pending-auth-reason">${escapeHtml(PENDING_AUTH_REASON_LABELS[row.reason])}</span>` : '';
+      return `
+        <div class="pending-auth-row" data-pi="${pi}">
+          <div class="pending-auth-info">
+            <strong>${amount} hold</strong> — ${who}${email}
+            <div class="pending-auth-meta">${svc}<span class="pending-auth-age">${escapeHtml(formatHoldAge(row.created_at))}</span>${reason}</div>
+          </div>
+          <button class="button danger pending-auth-void-btn" data-pi="${pi}" type="button">Void hold</button>
+        </div>`;
+    }).join('');
+  } catch (err) {
+    console.warn('[pending-auth] load failed:', err.message);
+    section.hidden = true;
+  }
+}
+
+async function voidPendingAuthorization(button) {
+  const pi = button.dataset.pi;
+  if (!pi) return;
+  if (!window.confirm('Void this card hold now? This releases the customer’s authorization immediately and cannot be undone.')) return;
+  const originalText = button.textContent;
+  button.disabled = true;
+  button.textContent = 'Voiding…';
+  try {
+    const res = await fetch('/api/payments', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'admin_void_authorization', payment_intent_id: pi, caller_token: adminToken() }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (res.ok) {
+      await loadPendingAuthorizations();
+    } else if (res.status === 401 || res.status === 403) {
+      window.location.href = 'admin-login.html';
+    } else {
+      button.disabled = false;
+      button.textContent = originalText;
+      alert(`Could not void hold: ${data.error || 'Unknown error. Check Stripe directly.'}`);
+    }
+  } catch (err) {
+    button.disabled = false;
+    button.textContent = originalText;
+    alert('Network error. Please try again or void the hold in Stripe.');
+  }
+}
+
+document.querySelector('#pending-auth-refresh-btn')?.addEventListener('click', loadPendingAuthorizations);
+document.querySelector('#pending-auth-list')?.addEventListener('click', (event) => {
+  const button = event.target.closest('.pending-auth-void-btn');
+  if (button) voidPendingAuthorization(button);
+});
+
 async function saveDenyReason(button) {
   const id = button.dataset.id;
   const panel = button.closest('.deny-reason-panel');
@@ -5270,6 +5397,7 @@ async function refreshAdminView(button = null) {
       loadRequests(),
       loadReviews(),
       loadApplicants(),
+      loadPendingAuthorizations(),
     ]);
   } finally {
     if (button) {
@@ -5954,6 +6082,7 @@ loadVehiclePsiGuides().finally(() => {
 });
 loadReviews();
 loadApplicants();
+loadPendingAuthorizations();
 
 // ── Create Request tab ────────────────────────────────────────────────────────
 

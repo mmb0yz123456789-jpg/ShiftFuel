@@ -64,34 +64,5 @@ async function loadServicePricing() {
   }
 }
 
-function formatDisplayDollars(value) {
-  const amount = Number(value);
-  if (!Number.isFinite(amount)) return "$0";
-  return amount % 1 === 0 ? `$${amount.toFixed(0)}` : `$${amount.toFixed(2)}`;
-}
-
-function setPriceText(key, value) {
-  const el = document.querySelector(`[data-price="${key}"]`);
-  if (el) el.textContent = formatDisplayDollars(value);
-}
-
-async function loadServicePricing() {
-  if (!window.ShiftFuelSupabase) return;
-  try {
-    const { data, error } = await window.ShiftFuelSupabase.rpc("public_get_service_pricing");
-    if (error || !data) throw error || new Error("No service pricing data");
-
-    setPriceText("fuel-service-fee", data.fuel_service_fee);
-    setPriceText("wash-service-fee", data.wash_service_fee);
-    setPriceText("quick-care", data.quick_inspection_fee);
-    setPriceText("wash-buff-shine", data.wash_buff_shine_price);
-    setPriceText("wash-shine-protect", data.wash_shine_protect_price);
-    setPriceText("wash-shine", data.wash_shine_price);
-    setPriceText("wash-double", data.wash_double_wash_price);
-  } catch (error) {
-    console.warn("Could not load service pricing:", error);
-  }
-}
-
 loadFuelPrices();
 loadServicePricing();

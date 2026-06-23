@@ -73,6 +73,18 @@ const NUMERIC_FIELDS = [
 const UUID_FIELDS = ['customer_id', 'vehicle_id', 'user_id'];
 const ALLOWED_SERVICE_TYPES = ['fuel', 'car-wash', 'car-wash-fuel', 'fuel-only', 'wash-only'];
 
+// Service types that include a car wash. The wash closes at 7 PM, so the
+// latest a washed vehicle can be returned is capped at 6:00 PM (1h buffer for
+// the wash + drive-back). This mirrors the client-side cap in booking-flow.js.
+const WASH_SERVICE_TYPES = ['car-wash', 'car-wash-fuel', 'wash-only'];
+const WASH_LATEST_RETURN_MINUTES = 18 * 60; // 6:00 PM
+
+function returnTimeMinutes(value) {
+  const match = String(value || '').trim().match(/^(\d{1,2}):(\d{2})/);
+  if (!match) return null;
+  return Number(match[1]) * 60 + Number(match[2]);
+}
+
 function sanitizeBookingRow(row) {
   for (const key of Object.keys(row)) {
     if (row[key] === '') row[key] = null;
@@ -319,6 +331,19 @@ async function findExistingBookingForPayment(db, paymentIntentId) {
   return data || null;
 }
 
+// Best-effort: mark the tracked hold as booked once a request row exists, so it
+// drops off the admin "Incomplete authorizations" card. Never throws.
+async function markAuthorizationBooked(db, paymentIntentId) {
+  if (!paymentIntentId) return;
+  try {
+    await db.from('pending_authorizations')
+      .update({ status: 'booked', resolved_at: new Date().toISOString() })
+      .eq('payment_intent_id', paymentIntentId);
+  } catch (err) {
+    console.warn('[create-authorized-booking] pending_auth booked update failed:', err.message);
+  }
+}
+
 module.exports = async function handler(req, res) {
   setCorsHeaders(req, res);
   if (req.method === 'OPTIONS') return res.status(204).end();
@@ -337,6 +362,13 @@ module.exports = async function handler(req, res) {
     if (!body.customer_phone || !String(body.customer_phone).trim()) return res.status(400).json({ error: 'Customer phone is required' });
     if (!body.customer_email || !String(body.customer_email).trim()) return res.status(400).json({ error: 'Customer email is required' });
     if (!ALLOWED_SERVICE_TYPES.includes(body.service_type)) return res.status(400).json({ error: 'Invalid service type' });
+
+    if (WASH_SERVICE_TYPES.includes(body.service_type)) {
+      const returnMinutes = returnTimeMinutes(body.desired_return_time);
+      if (returnMinutes !== null && returnMinutes > WASH_LATEST_RETURN_MINUTES) {
+        return res.status(400).json({ error: 'Car wash bookings must be returned by 6:00 PM. Please choose an earlier return time.' });
+      }
+    }
 
     const stripe = getStripe();
     let intent;
@@ -367,6 +399,7 @@ module.exports = async function handler(req, res) {
     const existing = await findExistingBookingForPayment(db, intent.id);
     if (existing?.id) {
       console.log('[create-authorized-booking] Existing request found for PI', intent.id, existing.id);
+      await markAuthorizationBooked(db, intent.id);
       return res.status(200).json({ id: existing.id, status: existing.status, payment_status: existing.payment_status, existing: true });
     }
 
@@ -381,10 +414,25 @@ module.exports = async function handler(req, res) {
       console.warn('[create-authorized-booking] reusable snapshot skipped:', error.message);
     }
 
+    await markAuthorizationBooked(db, intent.id);
     console.log('[create-authorized-booking] Created request', data?.id, 'for PI', intent.id, 'amount', intent.amount);
     return res.status(200).json({ id: data?.id, status: 'request_received', payment_status: 'authorized' });
   } catch (error) {
     console.error('[create-authorized-booking] error:', error.message || error);
+    // The hold still exists in Stripe but no booking was created. Leave the
+    // tracked row 'pending' (so it shows in the admin card) and tag why.
+    const pendingPi = (req.body && req.body.payment_intent_id) || null;
+    if (pendingPi) {
+      try {
+        await getSupabaseAdmin()
+          .from('pending_authorizations')
+          .update({ reason: 'booking_failed' })
+          .eq('payment_intent_id', pendingPi)
+          .eq('status', 'pending');
+      } catch (tagErr) {
+        console.warn('[create-authorized-booking] pending_auth fail-tag skipped:', tagErr.message);
+      }
+    }
     return res.status(500).json({ error: 'Could not submit booking. Please try again.' });
   }
 };

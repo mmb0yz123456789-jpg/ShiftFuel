@@ -73,6 +73,7 @@
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="supabase-client.js"></script>
+  <script src="password-toggle.js"></script>
   <script>
     const adminLoginNavToggle = document.querySelector("[data-nav-toggle]");
     const adminLoginNav = document.querySelector("[data-nav]");
@@ -129,6 +130,7 @@
         sessionStorage.setItem("shiftfuel_admin", "true");
         sessionStorage.setItem("shiftfuel_admin_token", token);
         sessionStorage.setItem("shiftfuel_admin_expires", String(Date.now() + 8 * 60 * 60 * 1000));
+        sessionStorage.setItem("shiftfuel_admin_name", usernameInput.value.trim());
         window.location.href = "admin.html";
       } catch (err) {
         const msg = err?.message || "";
