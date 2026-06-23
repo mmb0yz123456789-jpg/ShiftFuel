@@ -1091,6 +1091,41 @@ font-size: 0.85rem;
   }
 }
 
+/* On phones, lay each step out as a compact row (number + icon left, text
+   right) instead of a tall centered stack, so the four steps don't each take
+   a full screen. */
+@media (max-width: 640px) {
+  .how-it-works-grid {
+    gap: 14px;
+    margin-top: 28px;
+  }
+
+  .how-it-works-grid li {
+    grid-template-columns: auto 1fr;
+    justify-items: start;
+    align-items: center;
+    gap: 4px 14px;
+    padding: 0;
+    text-align: left;
+  }
+
+  .step-number {
+    grid-row: 1 / 3;
+    margin-bottom: 0;
+    align-self: center;
+  }
+
+  .step-icon {
+    display: none;
+  }
+
+  .how-it-works-grid strong,
+  .how-it-works-grid p {
+    grid-column: 2;
+    max-width: none;
+  }
+}
+
 .landing-hero-image {
   position: relative;
   margin: 0;
@@ -7060,9 +7095,13 @@ justify-self: start;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
-  margin-bottom: 4px;
+  gap: 8px;
+  cursor: pointer;
+  list-style: none;
 }
+
+/* Hide the default disclosure triangle; we use our own caret. */
+.wash-summary-header::-webkit-details-marker { display: none; }
 
 .wash-summary-header strong,
 .wash-summary-header span {
@@ -7070,12 +7109,31 @@ justify-self: start;
   font-weight: 800;
 }
 
+/* Caret sits between the name and the price, rotating when open. */
+.wash-summary-header strong::after {
+  content: "";
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  margin-left: 8px;
+  border-right: 2px solid var(--muted, #56615f);
+  border-bottom: 2px solid var(--muted, #56615f);
+  transform: rotate(45deg) translateY(-2px);
+  transition: transform 0.15s ease;
+  vertical-align: middle;
+}
+
+.wash-summary-item[open] .wash-summary-header strong::after {
+  transform: rotate(-135deg) translateY(-1px);
+}
+
 .wash-summary-header span {
   white-space: nowrap;
+  margin-left: auto;
 }
 
 .wash-summary-item p {
-  margin: 0;
+  margin: 6px 0 0;
   color: var(--muted, #56615f);
   font-size: 0.88rem;
   line-height: 1.45;
@@ -8223,29 +8281,23 @@ justify-self: start;
 }
 
 .worker-progress-line {
-  position: relative;
   display: grid;
   grid-template-columns: repeat(6, 1fr);
   gap: 6px;
-  margin: 20px 0 10px;
+  margin: 20px 0;
 }
 
-.worker-progress-line::before {
-  content: "";
-  position: absolute;
-  left: 8%;
-  right: 8%;
-  top: 18px;
-  height: 2px;
-  background: #d8e4df;
+.worker-progress-step {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  text-align: center;
 }
 
-.worker-progress-line span {
-  position: relative;
-  z-index: 1;
+.worker-progress-dot {
   display: grid;
   place-items: center;
-  justify-self: center;
   width: 36px;
   height: 36px;
   border: 2px solid #d8e4df;
@@ -8256,26 +8308,26 @@ justify-self: start;
   font-weight: 900;
 }
 
-.worker-progress-line span.complete {
+.worker-progress-step.complete .worker-progress-dot {
   background: #2e8b57;
   border-color: #2e8b57;
   color: #fff;
 }
 
-.worker-progress-line span.active {
+.worker-progress-step.active .worker-progress-dot {
   border-color: var(--worker-green);
   color: var(--worker-green);
 }
 
-.worker-progress-labels {
-  display: grid;
-  grid-template-columns: repeat(6, 1fr);
-  gap: 6px;
-  margin-bottom: 20px;
+.worker-progress-caption {
   color: #4e5f5b;
-  font-size: 0.76rem;
+  font-size: 0.74rem;
   font-weight: 800;
-  text-align: center;
+  line-height: 1.2;
+}
+
+.worker-progress-step.active .worker-progress-caption {
+  color: var(--worker-green);
 }
 
 .worker-progress-card .worker-stat-grid {
@@ -8418,8 +8470,7 @@ justify-self: start;
   }
 
   .worker-job-card .request-details,
-  .worker-progress-card .worker-stat-grid,
-  .worker-progress-labels {
+  .worker-progress-card .worker-stat-grid {
     grid-template-columns: 1fr;
   }
 
