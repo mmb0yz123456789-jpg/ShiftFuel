@@ -1,0 +1,19 @@
+{
+  "name": "ShiftFuel Concierge",
+  "short_name": "ShiftFuel",
+  "description": "ShiftFuel Concierge — workday fuel & car wash concierge service.",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#0d3b3b",
+  "theme_color": "#0d3b3b",
+  "icons": [
+    {
+      "src": "app-icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

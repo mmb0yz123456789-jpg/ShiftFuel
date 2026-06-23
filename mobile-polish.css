@@ -496,3 +496,157 @@
     grid-template-columns: 1fr !important;
   }
 }
+
+/* ─────────────────────────────────────────────────────────────────────────
+   App shell — mobile bottom tab bar + portal "app feel"
+   (hidden on desktop; only kicks in on phones)
+   ───────────────────────────────────────────────────────────────────────── */
+.app-tabbar { display: none; }
+
+@media (max-width: 760px) {
+  .app-tabbar {
+    display: flex;
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 1200;
+    gap: 2px;
+    padding: 6px 6px calc(6px + env(safe-area-inset-bottom, 0px));
+    background: rgba(255, 255, 255, 0.97);
+    -webkit-backdrop-filter: blur(10px);
+    backdrop-filter: blur(10px);
+    border-top: 1px solid rgba(13, 59, 59, 0.12);
+    box-shadow: 0 -6px 24px rgba(6, 39, 39, 0.10);
+  }
+
+  .app-tab {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
+    min-height: 50px;
+    padding: 6px 4px;
+    border: 0;
+    border-radius: 12px;
+    background: none;
+    color: var(--sf-muted, #60716d);
+    font-size: 0.66rem;
+    font-weight: 800;
+    letter-spacing: 0.01em;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .app-tab svg { width: 22px; height: 22px; }
+
+  .app-tab.is-active {
+    color: var(--sf-teal-dark, #0d3b3b);
+    background: rgba(167, 191, 166, 0.18);
+  }
+
+  /* Leave room so content isn't hidden behind the fixed bar. */
+  body.worker-portal-page,
+  body.track-page,
+  body.admin-portal-page {
+    padding-bottom: calc(66px + env(safe-area-inset-bottom, 0px)) !important;
+  }
+
+  /* Declutter the worker portal into an app feel: drop pure-marketing chrome. */
+  body.worker-portal-page .portal-closing-banner { display: none !important; }
+  body.worker-portal-page .worker-portal-hero .actions { gap: 8px; }
+}
+
+@media (max-width: 760px) {
+  /* Customer Track — app feel: drop the marketing banner. */
+  body.track-page .portal-closing-banner { display: none !important; }
+
+  /* Admin — the bottom bar replaces the cramped top page-tab row on phones. */
+  body.admin-portal-page .admin-page-tabs { display: none !important; }
+  body.admin-portal-page .portal-closing-banner { display: none !important; }
+
+  /* Tighter tab labels so 5 admin tabs fit a narrow phone. */
+  body.admin-portal-page .app-tab { font-size: 0.62rem; padding: 6px 2px; }
+  body.admin-portal-page .app-tab svg { width: 21px; height: 21px; }
+}
+
+/* ─────────────────────────────────────────────────────────────────────────
+   Mobile: turn the wide request/job TABLE into stacked cards (no sideways
+   scroll). Works for both the worker job list and the admin queue because
+   they share .admin-requests-table; driven by each cell's data-label.
+   ───────────────────────────────────────────────────────────────────────── */
+@media (max-width: 760px) {
+  .admin-requests-table { border: 0 !important; }
+  .admin-requests-table thead { display: none !important; }
+  .admin-requests-table,
+  .admin-requests-table tbody { display: block; width: 100%; }
+
+  .admin-requests-table tr.queue-row {
+    display: block;
+    padding: 13px 14px;
+    margin: 0 0 10px;
+    border: 1px solid rgba(13, 59, 59, 0.12);
+    border-radius: 14px;
+    background: #fff;
+    box-shadow: 0 1px 4px rgba(6, 39, 39, 0.05);
+  }
+
+  /* Generic label : value row */
+  .admin-requests-table tr.queue-row td {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    width: auto;
+    padding: 5px 0;
+    border: none !important;
+    text-align: right;
+  }
+  .admin-requests-table tr.queue-row td::before {
+    content: attr(data-label);
+    flex: 0 0 auto;
+    text-align: left;
+    font-size: 0.7rem;
+    font-weight: 800;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+    color: var(--sf-muted, #60716d);
+  }
+
+  /* Customer is the card headline — full width, no label. */
+  .admin-requests-table tr.queue-row td[data-label="Customer"] {
+    display: block;
+    text-align: left;
+    padding-bottom: 9px;
+    margin-bottom: 5px;
+    border-bottom: 1px solid rgba(13, 59, 59, 0.08) !important;
+  }
+  .admin-requests-table tr.queue-row td[data-label="Customer"]::before { display: none; }
+  .admin-requests-table tr.queue-row td[data-label="Customer"] .queue-customer-cell strong { font-size: 1.02rem; }
+
+  /* Action row — full-width buttons, no label. */
+  .admin-requests-table tr.queue-row td[data-label="Action"] {
+    display: block;
+    text-align: left;
+    padding-top: 8px;
+  }
+  .admin-requests-table tr.queue-row td[data-label="Action"]::before { display: none; }
+  .admin-requests-table tr.queue-row td[data-label="Action"] .queue-next-action-cell { display: flex; gap: 8px; }
+  .admin-requests-table tr.queue-row td[data-label="Action"] .queue-next-action-cell .button { flex: 1; min-height: 44px; }
+  .admin-requests-table tr.queue-row td[data-label="Action"] .queue-row-kebab { flex: 0 0 44px; }
+
+  /* Status pill sits on the right of its row naturally. */
+  .admin-requests-table tr.queue-row td[data-label="Status"] .status-pill { white-space: nowrap; }
+
+  /* Expanded detail row spans full width as a panel (no card chrome). */
+  .admin-requests-table tr.queue-row-detail { display: block; }
+  .admin-requests-table tr.queue-row-detail td {
+    display: block;
+    width: auto;
+    padding: 0;
+    border: none !important;
+  }
+  .admin-requests-table tr.queue-row-detail td::before { display: none; }
+}

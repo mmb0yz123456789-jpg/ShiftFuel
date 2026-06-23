@@ -130,6 +130,7 @@
             <div>
               <p class="eyebrow" id="request-queue-eyebrow">Requests Queue</p>
               <h2 id="request-queue-heading">Requests Queue</h2>
+              <button id="cancellation-alert-badge" class="cancellation-alert-badge" type="button" hidden></button>
             </div>
             <div class="admin-button-row">
               <button id="hero-find-tickets-btn" class="button secondary admin-find-tickets-btn" type="button">
@@ -437,7 +438,7 @@
           </div>
           <ul class="worker-snapshot-list">
             <li><span class="dot online"></span>Online <strong id="worker-snapshot-online">0</strong></li>
-            <li><span class="dot break"></span>On Break <strong>0</strong></li>
+            <li><span class="dot break"></span>On Break <strong id="worker-snapshot-onbreak">0</strong></li>
             <li><span class="dot busy"></span>Busy <strong id="worker-snapshot-busy">0</strong></li>
             <li><span class="dot offline"></span>Offline <strong id="worker-snapshot-offline">0</strong></li>
           </ul>
@@ -487,6 +488,31 @@
         </nav>
       </div>
     </footer>
+
+    <!-- Mobile app-style bottom tab bar (phones only) -->
+    <nav class="app-tabbar" data-app-tabbar aria-label="Admin navigation">
+      <button class="app-tab is-active" data-tab data-tab-action=".admin-page-tabs [data-page='dashboard']" type="button">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 11l9-7 9 7"/><path d="M5 10v9h14v-9"/></svg>
+        <span>Home</span>
+      </button>
+      <button class="app-tab" data-tab data-tab-action=".admin-page-tabs [data-page='requests']" type="button">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="5" y="4" width="14" height="17" rx="1.6"/><path d="M9 8h6M9 12h6M9 16h4"/></svg>
+        <span>Requests</span>
+      </button>
+      <button class="app-tab" data-tab data-tab-action=".admin-page-tabs [data-page='workers']" type="button">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="9" cy="8" r="3"/><path d="M2.5 19c0-3 2.9-5.5 6.5-5.5s6.5 2.5 6.5 5.5"/><circle cx="17" cy="8.5" r="2.3"/><path d="M15.5 13.6c2.7.4 4.5 2.4 4.5 5"/></svg>
+        <span>Workers</span>
+      </button>
+      <button class="app-tab" data-tab data-tab-action=".admin-page-tabs [data-page='services']" type="button">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 7h16M4 12h16M4 17h10"/></svg>
+        <span>Services</span>
+      </button>
+      <button class="app-tab" data-tab data-tab-action=".admin-page-tabs [data-page='settings']" type="button">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="3"/><path d="M19.4 13.5a7.6 7.6 0 0 0 0-3l1.9-1.3-2-3.4-2.2.7a7.6 7.6 0 0 0-2.6-1.5L14 2.5h-4l-.5 2.5a7.6 7.6 0 0 0-2.6 1.5l-2.2-.7-2 3.4 1.9 1.3a7.6 7.6 0 0 0 0 3l-1.9 1.3 2 3.4 2.2-.7a7.6 7.6 0 0 0 2.6 1.5l.5 2.5h4l.5-2.5a7.6 7.6 0 0 0 2.6-1.5l2.2.7 2-3.4z"/></svg>
+        <span>Settings</span>
+      </button>
+    </nav>
+    <script defer src="app-tabbar.js"></script>
 
     <!-- Find Tickets modal -->
     <div id="find-tickets-modal" class="modal-overlay" hidden aria-modal="true" role="dialog" aria-labelledby="find-tickets-title">

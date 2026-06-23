@@ -25,6 +25,11 @@
       </a>
       <div class="portal-header-actions">
         <span class="portal-header-label">Worker Portal</span>
+        <span class="worker-presence-indicator" id="worker-presence-indicator" hidden>
+          <span class="worker-presence-dot"></span>
+          <span id="worker-presence-label">Online</span>
+        </span>
+        <button class="portal-signout-btn" id="worker-break-toggle" type="button" hidden>Take a break</button>
         <button class="portal-signout-btn" id="worker-signout-btn" type="button">Sign out</button>
       </div>
     </header>
@@ -160,6 +165,27 @@
         </nav>
       </div>
     </footer>
+
+    <!-- Mobile app-style bottom tab bar (phones only) -->
+    <nav class="app-tabbar" data-app-tabbar aria-label="Quick navigation">
+      <button class="app-tab" data-tab data-tab-target="#worker-jobs" type="button">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="5" y="4" width="14" height="17" rx="1.6"/><path d="M9 8h6M9 12h6M9 16h4"/></svg>
+        <span>Jobs</span>
+      </button>
+      <button class="app-tab" data-tab data-tab-target=".worker-progress-card" type="button">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 19V5M4 14l5-4 4 3 7-7"/></svg>
+        <span>Progress</span>
+      </button>
+      <button class="app-tab" data-tab data-tab-action="#open-schedule-btn" type="button">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="5" width="16" height="16" rx="2"/><path d="M4 9h16M8 3v4M16 3v4"/></svg>
+        <span>Schedule</span>
+      </button>
+      <button class="app-tab" data-tab data-tab-target=".worker-profile-snapshot" type="button">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="8" r="3.4"/><path d="M5 20c0-3.3 3.1-6 7-6s7 2.7 7 6"/></svg>
+        <span>Profile</span>
+      </button>
+    </nav>
+    <script defer src="app-tabbar.js"></script>
 
     <!-- Schedule / availability modal -->
     <div id="worker-availability" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="wa-title" hidden>
