@@ -578,12 +578,26 @@ async function insertBookingWithColumnRetry(db, row, logTag) {
     if (!error) return data;
 
     const message = String(error.message || '');
-    if (/null value in column "(user_id|vehicle_id)"/i.test(message)) {
+    // Returning customers can submit a vehicle_id/customer_id from the saved
+    // snapshot tables that don't reference a real vehicles/users row → FK
+    // violation. Treat that like a missing value: drop the bad ids and create
+    // fresh legacy rows, then retry.
+    const fkViolation = error.code === '23503' || /foreign key constraint/i.test(message);
+    const fkOnUserOrVehicle = fkViolation && /(user_id|vehicle_id)/i.test(message);
+    if (/null value in column "(user_id|vehicle_id)"/i.test(message) || fkOnUserOrVehicle) {
+      if (fkOnUserOrVehicle) { delete row.user_id; delete row.vehicle_id; }
       const attached = await attachLegacyUserAndVehicle(db, row);
       if (attached) {
         console.warn(`[payments/${logTag}] Attached legacy user/vehicle rows and retrying insert`);
         continue;
       }
+    }
+    // A stale customer_id from the returning-customer snapshot can also fail its
+    // FK. It's optional metadata — drop it and retry.
+    if (fkViolation && /customer_id/i.test(message) && Object.prototype.hasOwnProperty.call(row, 'customer_id')) {
+      console.warn(`[payments/${logTag}] Dropping invalid customer_id and retrying`);
+      delete row.customer_id;
+      continue;
     }
 
     const column = message.match(/Could not find the '([^']+)' column/i)?.[1]
