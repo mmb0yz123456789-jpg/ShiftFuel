@@ -597,6 +597,20 @@
   border-color: var(--sf-white);
 }
 
+/* Keep "Join the Team" filled green here too — the generic outlined override
+   above otherwise strips the primary green fill (equal specificity, later file). */
+.portal-closing-banner .portal-button-primary {
+  color: var(--sf-white);
+  background: linear-gradient(135deg, var(--sf-green), var(--sf-green-dark));
+  border-color: var(--sf-green-dark);
+}
+
+.portal-closing-banner .portal-button-primary:hover {
+  color: var(--sf-white);
+  background: linear-gradient(135deg, #239155, var(--sf-green-dark));
+  border-color: var(--sf-green-dark);
+}
+
 .track-page .site-footer {
   width: min(var(--sf-page-width), calc(100% - 40px));
   margin: 0 auto 22px;
