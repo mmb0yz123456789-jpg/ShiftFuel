@@ -11,26 +11,6 @@
     <meta name="apple-mobile-web-app-title" content="SF Admin">
     <link rel="apple-touch-icon" href="icon-admin.svg">
     <link rel="stylesheet" href="styles.css">
-    <style>
-      /* Service Area editor (loaded inside the Settings modal) */
-      .service-area-dialog { width: min(1100px, 96vw); max-width: 96vw; }
-      .sa-editor { display: grid; grid-template-columns: 280px 1fr; gap: 16px; }
-      .sa-controls { display: flex; flex-direction: column; gap: 10px; }
-      .sa-controls .sa-row { display: flex; flex-direction: column; gap: 4px; }
-      .sa-controls label { font-size: 12px; font-weight: 700; }
-      .sa-controls select, .sa-controls input[type="number"] {
-        min-height: 38px; padding: 8px 10px; border: 1px solid #d8e1dc; border-radius: 8px; font: inherit; background: #fff;
-      }
-      .sa-two { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-      .sa-map { width: 100%; height: 60vh; min-height: 380px; border-radius: 10px; overflow: hidden; border: 1px solid #d8e1dc; }
-      .sa-status { font-size: 12px; padding: 9px 10px; border-radius: 8px; background: #f1f6f3; color: #2c4a3d; min-height: 18px; }
-      .sa-status.err { background: #fdecea; color: #b42318; }
-      .sa-status.ok { background: #e7f5ec; color: #176b39; }
-      .sa-hint { font-size: 11px; color: #6b7a73; line-height: 1.45; }
-      .sa-anchor { font-size: 11px; color: #5b6b64; }
-      .sa-banner { display: none; background: #fff4e5; border: 1px solid #f0c987; color: #7a4f00; padding: 8px 10px; border-radius: 8px; font-size: 11px; line-height: 1.4; }
-      @media (max-width: 760px) { .sa-editor { grid-template-columns: 1fr; } .sa-map { height: 46vh; } }
-    </style>
   </head>
 
   <body class="admin-portal-page">
@@ -392,12 +372,6 @@
             <p class="form-status" id="admin-username-status" role="status"></p>
           </form>
           <section class="settings-card">
-            <h3>Service Area</h3>
-            <p class="field-help">Define where bookings are accepted using a drive-time or drive-distance area on a map.</p>
-            <p class="form-status" id="service-area-summary">Loading…</p>
-            <button class="button primary" id="open-service-area-editor" type="button">Open map editor</button>
-          </section>
-          <section class="settings-card">
             <h3>Account</h3>
             <button class="button secondary" id="admin-settings-logout-btn" type="button">Log out</button>
             <nav class="settings-legal" aria-label="Legal links">
@@ -699,67 +673,12 @@
       </div>
     </div>
 
-    <!-- Service Area map editor modal -->
-    <div id="service-area-modal" class="modal-overlay" hidden aria-modal="true" role="dialog" aria-labelledby="service-area-title">
-      <div class="modal-dialog service-area-dialog">
-        <div class="modal-header">
-          <h2 id="service-area-title">Service Area</h2>
-          <button id="close-service-area" class="modal-close" aria-label="Close">&times;</button>
-        </div>
-        <div class="modal-body">
-          <div id="sa-token-banner" class="sa-banner">
-            Base map can’t load — this Mapbox token is URL-restricted. Add this site’s URL to the token allowlist in your Mapbox account. Generating &amp; editing still work.
-          </div>
-          <div class="sa-editor">
-            <div class="sa-controls">
-              <div class="sa-row">
-                <label>Center (drag the marker)</label>
-                <div class="sa-anchor" id="sa-anchor">—</div>
-              </div>
-              <div class="sa-row">
-                <label for="sa-profile">Travel profile</label>
-                <select id="sa-profile">
-                  <option value="driving" selected>Driving</option>
-                  <option value="driving-traffic">Driving (typical traffic)</option>
-                  <option value="cycling">Cycling</option>
-                  <option value="walking">Walking</option>
-                </select>
-              </div>
-              <div class="sa-two">
-                <div class="sa-row">
-                  <label for="sa-mode">Measure by</label>
-                  <select id="sa-mode">
-                    <option value="meters" selected>Distance (mi)</option>
-                    <option value="minutes">Time (min)</option>
-                  </select>
-                </div>
-                <div class="sa-row">
-                  <label for="sa-value" id="sa-value-label">Miles</label>
-                  <input type="number" id="sa-value" min="1" max="60" value="20">
-                </div>
-              </div>
-              <div class="sa-row">
-                <label for="sa-generalize">Edge smoothing (m)</label>
-                <input type="number" id="sa-generalize" min="0" max="2000" step="50" value="500">
-              </div>
-              <button class="button primary" id="sa-generate" type="button">Generate area from center</button>
-              <button class="button primary" id="sa-save" type="button">Save service area</button>
-              <div class="sa-status" id="sa-status">Loading current service area…</div>
-              <p class="sa-hint">Click the polygon to select it, then drag any vertex to fine-tune. Use the trash tool (top-right of the map) to delete and redraw.</p>
-            </div>
-            <div class="sa-map" id="sa-map"></div>
-          </div>
-        </div>
-      </div>
-    </div>
-
 	<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 	<script src="supabase-client.js"></script>
 	<script src="password-toggle.js"></script>
 	<script src="photo-utils.js"></script>
 	<script src="date-picker.js"></script>
 	<script src="admin.js"></script>
-	<script src="admin-service-area.js"></script>
   <script defer src="/_vercel/insights/script.js"></script>
   <script defer src="/_vercel/speed-insights/script.js"></script>
   </body>
