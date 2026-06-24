@@ -1605,6 +1605,17 @@
   }
   /* Full Timeline holds the wide 7-step horizontal stepper — give it both columns. */
   .track-page .tk-detail-grid > .tk-sub-acc:first-child { grid-column: 1 / -1; }
+
+  /* Desktop: detail sections render open (see detailsOpen in track.js) and stay
+     open — disable the toggle and drop the chevron so they read as plain cards.
+     Mobile keeps the normal collapsible accordion behavior. */
+  .track-page .tk-detail-grid > .tk-sub-acc > .tk-sub-acc-head {
+    pointer-events: none;
+    cursor: default;
+  }
+  .track-page .tk-detail-grid > .tk-sub-acc > .tk-sub-acc-head .tk-sub-acc-chevron {
+    display: none;
+  }
 }
 
 /* Photo viewer: prev/next paging controls + counter (added in track.js). */

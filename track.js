@@ -168,6 +168,20 @@ document.addEventListener('keydown', (e) => {
 
 initPhotoLightbox();
 
+// Desktop detail sections are locked open via CSS. If the viewport crosses into
+// desktop width after render (e.g. the user maximizes the window), force their
+// open attribute so they can't be stuck closed with no chevron to reopen them.
+(function keepDesktopSectionsOpen() {
+  if (typeof window === 'undefined' || !window.matchMedia) return;
+  const mq = window.matchMedia('(min-width: 1000px)');
+  const apply = () => {
+    if (!mq.matches) return;
+    document.querySelectorAll('.tk-detail-grid > .tk-sub-acc').forEach((d) => { d.open = true; });
+  };
+  if (mq.addEventListener) mq.addEventListener('change', apply);
+  else if (mq.addListener) mq.addListener(apply);
+})();
+
 // Friendly labels for every status — keep in sync with admin.js and worker.js.
 // Raw database status strings must never be shown to a customer.
 const statusLabels = {
