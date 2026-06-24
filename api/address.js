@@ -51,6 +51,62 @@ function haversineMiles(lat1, lon1, lat2, lon2) {
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
+// Drive-distance service-area polygon, precomputed from the Mapbox Isochrone API
+// (driving profile, 20-mile contour). Checking a point against this polygon is
+// far more accurate than a straight-line radius near water/state lines — e.g. a
+// crow-flies 20-mile circle reaches into NJ across the Delaware, but no one can
+// actually drive there in 20 miles, so the polygon correctly excludes it.
+// Regenerate with: node api/generate-service-area.js  (see that file).
+let SERVICE_AREA = null;
+try {
+  SERVICE_AREA = require('./service-area.json');
+} catch (e) {
+  console.warn('[address] service-area.json missing — falling back to radius check.');
+}
+
+// Ray-casting point-in-ring test. ring = array of [lon, lat] pairs.
+function pointInRing(lon, lat, ring) {
+  let inside = false;
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const xi = ring[i][0], yi = ring[i][1];
+    const xj = ring[j][0], yj = ring[j][1];
+    const intersects = (yi > lat) !== (yj > lat) &&
+      lon < ((xj - xi) * (lat - yi)) / (yj - yi) + xi;
+    if (intersects) inside = !inside;
+  }
+  return inside;
+}
+
+// polygon = array of rings: [0] is the outer ring, any others are holes.
+function pointInPolygon(lon, lat, polygon) {
+  if (!polygon.length || !pointInRing(lon, lat, polygon[0])) return false;
+  for (let i = 1; i < polygon.length; i++) {
+    if (pointInRing(lon, lat, polygon[i])) return false; // inside a hole = outside
+  }
+  return true;
+}
+
+// Returns true/false if the polygon is available, or null if it isn't (so the
+// caller can fall back to the straight-line radius check).
+function pointInServiceArea(lat, lon) {
+  const geom = SERVICE_AREA?.geometry;
+  if (!geom) return null;
+  if (geom.type === 'Polygon') return pointInPolygon(lon, lat, geom.coordinates);
+  if (geom.type === 'MultiPolygon') return geom.coordinates.some((poly) => pointInPolygon(lon, lat, poly));
+  return null;
+}
+
+// Single source of truth for "do we serve this point?": prefers the drive-time
+// polygon, falls back to the straight-line radius if the polygon isn't loaded.
+function checkServiceArea(lat, lon) {
+  const distanceMiles = Math.round(haversineMiles(SERVICE_ANCHOR_LAT, SERVICE_ANCHOR_LON, lat, lon) * 10) / 10;
+  const inPolygon = pointInServiceArea(lat, lon);
+  if (inPolygon === null) {
+    return { inArea: distanceMiles <= SERVICE_MAX_MILES, distanceMiles, method: 'radius' };
+  }
+  return { inArea: inPolygon, distanceMiles, method: 'drive' };
+}
+
 async function nominatimSearch(query) {
   const url = `https://nominatim.openstreetmap.org/search?format=json&addressdetails=1&q=${encodeURIComponent(query)}&limit=1`;
   const response = await fetch(url, {
@@ -61,23 +117,23 @@ async function nominatimSearch(query) {
   return results?.length ? results[0] : null;
 }
 
-// Run the radius check against a known lat/lon and return the standard
+// Run the service-area check against a known lat/lon and return the standard
 // valid/invalid response. Shared by the geocode path and the Mapbox-coords
 // fast path (which skips geocoding entirely).
 function respondForCoords(res, lat, lon, canonicalAddress) {
-  const distanceMiles = haversineMiles(SERVICE_ANCHOR_LAT, SERVICE_ANCHOR_LON, lat, lon);
-  if (distanceMiles > SERVICE_MAX_MILES) {
+  const { inArea, distanceMiles } = checkServiceArea(lat, lon);
+  if (!inArea) {
     return res.status(200).json({
       valid: false,
       message: 'We currently do not serve this area.',
-      distanceMiles: Math.round(distanceMiles * 10) / 10,
+      distanceMiles,
     });
   }
   return res.status(200).json({
     valid: true,
     message: 'Address verified.',
     canonicalAddress: canonicalAddress || undefined,
-    distanceMiles: Math.round(distanceMiles * 10) / 10,
+    distanceMiles,
   });
 }
 
@@ -91,7 +147,7 @@ async function handleValidateServiceArea(body, res) {
   // otherwise-valid addresses to fail verification.
 
   // Fast path: a Mapbox suggestion was selected, so we already have exact
-  // coordinates. Skip the Nominatim round-trip and just check the radius.
+  // coordinates. Skip the Nominatim round-trip and check the service area.
   const lat = Number(body.lat);
   const lon = Number(body.lon);
   if (Number.isFinite(lat) && Number.isFinite(lon) && (lat !== 0 || lon !== 0)) {
@@ -119,16 +175,13 @@ async function handleValidateServiceArea(body, res) {
       });
     }
 
-    const distanceMiles = haversineMiles(
-      SERVICE_ANCHOR_LAT, SERVICE_ANCHOR_LON,
-      Number(result.lat), Number(result.lon)
-    );
+    const { inArea, distanceMiles } = checkServiceArea(Number(result.lat), Number(result.lon));
 
-    if (distanceMiles > SERVICE_MAX_MILES) {
+    if (!inArea) {
       return res.status(200).json({
         valid: false,
         message: 'We currently do not serve this area.',
-        distanceMiles: Math.round(distanceMiles * 10) / 10,
+        distanceMiles,
       });
     }
 
@@ -144,7 +197,7 @@ async function handleValidateServiceArea(body, res) {
       valid: true,
       message: 'Address verified.',
       canonicalAddress,
-      distanceMiles: Math.round(distanceMiles * 10) / 10,
+      distanceMiles,
     });
   } catch (err) {
     console.error('[address/validate_service_area] Error:', err.message);
