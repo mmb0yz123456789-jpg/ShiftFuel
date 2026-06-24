@@ -1,5 +1,12 @@
 const Stripe = require('stripe');
 const { createClient } = require('@supabase/supabase-js');
+const { notifyRequest } = require('./_push');
+const { placeScheduledHold } = require('./_scheduled-auth');
+
+// Place the off-session hold for advance (saved-card) bookings this many days
+// before the service date — fresh enough to stay inside Stripe's ~7-day capture
+// window, with a day of slack to chase any failed authorization.
+const AUTH_LEAD_DAYS = 2;
 
 // Statuses that mean the request was handled — skip reversal
 const SKIP_STATUSES = new Set([
@@ -155,7 +162,92 @@ module.exports = async (req, res) => {
     }
   }
 
-  console.log(`[auto-reverse] Done. Reversed: ${results.reversed.length}, Skipped: ${results.skipped.length}, Failed: ${results.failed.length}, OrphansVoided: ${results.orphansVoided.length}`);
+  // ── Third pass: authorize upcoming saved-card (advance) bookings ───────────
+  // These have no hold yet (the card was saved at booking time). Place the real
+  // off-session manual-capture hold ~AUTH_LEAD_DAYS before the service date.
+  results.scheduledAuthorized = [];
+  results.scheduledFailed = [];
+  const authCutoff = new Date();
+  authCutoff.setDate(authCutoff.getDate() + AUTH_LEAD_DAYS);
+  const authCutoffStr = authCutoff.toISOString().slice(0, 10);
+
+  const { data: scheduled, error: scheduledErr } = await supabase
+    .from('service_requests')
+    .select('id, estimated_total, service_date')
+    .eq('payment_status', 'payment_scheduled')
+    .lte('service_date', authCutoffStr)
+    .order('service_date', { ascending: true })
+    .limit(50);
+
+  if (scheduledErr) {
+    console.error('[auto-reverse] scheduled-auth query error:', scheduledErr.message);
+  } else {
+    for (const reqRow of scheduled || []) {
+      // Optimistic claim: flip to 'authorizing' only while still 'payment_scheduled'.
+      // If nothing comes back, another run already claimed it — skip.
+      const { data: claimed, error: claimErr } = await supabase
+        .from('service_requests')
+        .update({ payment_status: 'authorizing' })
+        .eq('id', reqRow.id)
+        .eq('payment_status', 'payment_scheduled')
+        .select('id')
+        .maybeSingle();
+      if (claimErr || !claimed) continue;
+
+      const failReauth = async (reason, attempts) => {
+        await supabase.from('service_requests').update({ payment_status: 'needs_reauth' }).eq('id', reqRow.id);
+        await supabase.from('request_payment_methods')
+          .update({ auth_error: String(reason), auth_attempts: (attempts || 0) + 1, updated_at: new Date().toISOString() })
+          .eq('request_id', reqRow.id);
+        await notifyRequest(reqRow.id, 'reauth_needed');
+        results.scheduledFailed.push({ id: reqRow.id, reason: String(reason) });
+      };
+
+      // Pull the saved card from the service-role-only side table.
+      const { data: pm, error: pmErr } = await supabase
+        .from('request_payment_methods')
+        .select('stripe_customer_id, stripe_payment_method_id, auth_attempts')
+        .eq('request_id', reqRow.id)
+        .maybeSingle();
+      if (pmErr || !pm || !pm.stripe_customer_id || !pm.stripe_payment_method_id) {
+        console.error(`[auto-reverse] scheduled-auth: no saved card for ${reqRow.id}`);
+        await failReauth('no_saved_card', 0);
+        continue;
+      }
+
+      const amountCents = Math.round(Number(reqRow.estimated_total) * 100);
+      if (!amountCents || amountCents < 50) {
+        console.error(`[auto-reverse] scheduled-auth: invalid amount for ${reqRow.id}`);
+        await failReauth('invalid_amount', pm.auth_attempts);
+        continue;
+      }
+
+      // Stable idempotency key + the optimistic claim together prevent a
+      // duplicate hold across reruns.
+      const result = await placeScheduledHold({
+        db: supabase,
+        stripe,
+        request: reqRow,
+        pm,
+        idempotencyKey: `sched-auth-${reqRow.id}`,
+      });
+
+      if (result.status === 'authorized') {
+        results.scheduledAuthorized.push({ id: reqRow.id, payment_intent_id: result.paymentIntentId });
+      } else if (result.status === 'needs_reauth') {
+        // Card decline / authentication_required / non-usable PI status — customer must act.
+        await failReauth(result.reason, pm.auth_attempts);
+      } else {
+        // Transient (network/Stripe outage) — release the claim so the next
+        // daily run retries.
+        console.error(`[auto-reverse] scheduled-auth transient error for ${reqRow.id}:`, result.message);
+        await supabase.from('service_requests').update({ payment_status: 'payment_scheduled' }).eq('id', reqRow.id);
+        results.scheduledFailed.push({ id: reqRow.id, reason: `transient:${result.reason}` });
+      }
+    }
+  }
+
+  console.log(`[auto-reverse] Done. Reversed: ${results.reversed.length}, Skipped: ${results.skipped.length}, Failed: ${results.failed.length}, OrphansVoided: ${results.orphansVoided.length}, ScheduledAuthorized: ${results.scheduledAuthorized.length}, ScheduledFailed: ${results.scheduledFailed.length}`);
   res.status(200).json(results);
 };
 

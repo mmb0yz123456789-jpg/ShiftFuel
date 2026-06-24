@@ -71,6 +71,9 @@ function authorizationAmountForEstimate({ needsFuel, fuelRange, pricePerGallon, 
   }).total;
 }
 
+let _lightboxItems = [];
+let _lightboxIndex = 0;
+
 function initPhotoLightbox() {
   if (document.getElementById('photo-lightbox')) return;
   const el = document.createElement('div');
@@ -80,24 +83,57 @@ function initPhotoLightbox() {
     <div class="photo-lightbox-backdrop"></div>
     <div class="photo-lightbox-dialog" role="dialog" aria-modal="true" aria-label="Photo">
       <button class="photo-lightbox-close" type="button" aria-label="Close">&times;</button>
+      <button class="photo-lightbox-nav photo-lightbox-prev" type="button" aria-label="Previous photo">&#8249;</button>
       <img class="photo-lightbox-img" src="" alt="">
+      <button class="photo-lightbox-nav photo-lightbox-next" type="button" aria-label="Next photo">&#8250;</button>
       <p class="photo-lightbox-caption"></p>
+      <p class="photo-lightbox-counter"></p>
     </div>
   `;
   document.body.appendChild(el);
   el.querySelector('.photo-lightbox-backdrop').addEventListener('click', closePhotoLightbox);
   el.querySelector('.photo-lightbox-close').addEventListener('click', closePhotoLightbox);
+  el.querySelector('.photo-lightbox-prev').addEventListener('click', () => stepLightbox(-1));
+  el.querySelector('.photo-lightbox-next').addEventListener('click', () => stepLightbox(1));
 }
 
-function openPhotoLightbox(src, label) {
+function showLightboxAt(index) {
   const el = document.getElementById('photo-lightbox');
-  if (!el) return;
+  if (!el || !_lightboxItems.length) return;
+  _lightboxIndex = (index + _lightboxItems.length) % _lightboxItems.length;
+  const item = _lightboxItems[_lightboxIndex];
   const img = el.querySelector('.photo-lightbox-img');
-  img.src = src;
-  img.alt = label;
-  el.querySelector('.photo-lightbox-caption').textContent = label;
+  img.src = item.src;
+  img.alt = item.label;
+  el.querySelector('.photo-lightbox-caption').textContent = item.label;
+  const multi = _lightboxItems.length > 1;
+  el.querySelector('.photo-lightbox-counter').textContent = multi ? `${_lightboxIndex + 1} of ${_lightboxItems.length}` : '';
+  el.querySelectorAll('.photo-lightbox-nav').forEach((b) => { b.hidden = !multi; });
   el.hidden = false;
   document.body.style.overflow = 'hidden';
+}
+
+function stepLightbox(delta) {
+  if (_lightboxItems.length) showLightboxAt(_lightboxIndex + delta);
+}
+
+// Back-compat: open a single photo with no paging.
+function openPhotoLightbox(src, label) {
+  _lightboxItems = [{ src, label: label || '' }];
+  showLightboxAt(0);
+}
+
+// Open from a tapped thumbnail and page through the photos in the SAME gallery
+// the user tapped — the recent strip or the full grouped grid, not both (photos
+// appear in both, and the full grid may be hidden). Skip hidden thumbnails.
+function openLightboxFromCard(card) {
+  const scope = card.closest('.tk-photo-strip, .tk-photos-full')
+    || card.closest('.track-request-card')
+    || document;
+  const thumbs = Array.from(scope.querySelectorAll('[data-lightbox-src]'))
+    .filter((t) => t === card || t.offsetParent !== null);
+  _lightboxItems = thumbs.map((t) => ({ src: t.dataset.lightboxSrc, label: t.dataset.lightboxLabel || '' }));
+  showLightboxAt(Math.max(0, thumbs.indexOf(card)));
 }
 
 function closePhotoLightbox() {
@@ -109,13 +145,17 @@ function closePhotoLightbox() {
 }
 
 document.addEventListener('keydown', (e) => {
+  const el = document.getElementById('photo-lightbox');
+  if (!el || el.hidden) return;
   if (e.key === 'Escape') closePhotoLightbox();
+  else if (e.key === 'ArrowLeft') stepLightbox(-1);
+  else if (e.key === 'ArrowRight') stepLightbox(1);
 });
 
 document.addEventListener('click', (e) => {
   const card = e.target.closest('[data-lightbox-src]');
   if (!card) return;
-  openPhotoLightbox(card.dataset.lightboxSrc, card.dataset.lightboxLabel || '');
+  openLightboxFromCard(card);
 });
 
 document.addEventListener('keydown', (e) => {
@@ -123,10 +163,24 @@ document.addEventListener('keydown', (e) => {
   const card = e.target.closest('[data-lightbox-src]');
   if (!card) return;
   e.preventDefault();
-  openPhotoLightbox(card.dataset.lightboxSrc, card.dataset.lightboxLabel || '');
+  openLightboxFromCard(card);
 });
 
 initPhotoLightbox();
+
+// Desktop detail sections are locked open via CSS. If the viewport crosses into
+// desktop width after render (e.g. the user maximizes the window), force their
+// open attribute so they can't be stuck closed with no chevron to reopen them.
+(function keepDesktopSectionsOpen() {
+  if (typeof window === 'undefined' || !window.matchMedia) return;
+  const mq = window.matchMedia('(min-width: 1000px)');
+  const apply = () => {
+    if (!mq.matches) return;
+    document.querySelectorAll('.tk-detail-grid > .tk-sub-acc').forEach((d) => { d.open = true; });
+  };
+  if (mq.addEventListener) mq.addEventListener('change', apply);
+  else if (mq.addListener) mq.addListener(apply);
+})();
 
 // Friendly labels for every status — keep in sync with admin.js and worker.js.
 // Raw database status strings must never be shown to a customer.
@@ -658,10 +712,21 @@ async function loadVerifiedWorkers(requests) {
   try {
     const { data, error } = await shiftFuelDb
       .from('employees_public')
-      .select('id,background_verified')
+      .select('id,background_verified,photo_url,cropped_photo_url,original_photo_url')
       .in('id', ids);
     if (error || !Array.isArray(data)) return; // pre-migration: leave badge off
     verifiedWorkerIds = new Set(data.filter((e) => e.background_verified).map((e) => e.id));
+    // Attach the worker's CURRENT photo to each request so the customer view shows
+    // it even if it was uploaded/changed after the job was accepted (the value
+    // denormalized onto the request at accept time can be stale or empty).
+    const byId = new Map(data.map((e) => [e.id, e]));
+    (requests || []).forEach((r) => {
+      const emp = r.assigned_employee_id ? byId.get(r.assigned_employee_id) : null;
+      if (!emp) return;
+      const photo = emp.cropped_photo_url || emp.photo_url || '';
+      if (photo) r.assigned_worker_photo_url = photo;
+      if (emp.original_photo_url) r.assigned_worker_original_photo_url = emp.original_photo_url;
+    });
   } catch (_) {
     // Network hiccup — keep the previous set rather than flashing badges off.
   }
@@ -2267,6 +2332,32 @@ function renderPendingPaymentCard(request) {
   `;
 }
 
+// Advance (saved-card) booking whose off-session authorization failed. The
+// customer places a fresh hold on-session via the shared card modal.
+function renderReauthCard(request) {
+  const amount = request.estimated_total != null ? formatCurrency(request.estimated_total) : '';
+  const serviceDate = request.service_date
+    ? new Date(request.service_date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+    : '';
+  return `
+    <article class="track-request-card track-payment-card" data-request-id="${escapeHtml(request.id)}">
+      <details class="track-request-details" open>
+        ${requestSummaryHtml(request, { statusLabel: "Re-authorize payment", statusClass: "status-pill-payment" })}
+        <div class="track-request-body">
+          <div class="action-required-banner">
+            <strong>⚡ Action required — re-authorize payment</strong>
+            <p>We couldn't authorize your card for your upcoming service${serviceDate ? ` on ${escapeHtml(serviceDate)}` : ''}. Please re-authorize so we can complete it. You're not charged until the service is done.</p>
+          </div>
+          ${request.service_label ? `<p><strong>Service:</strong> ${escapeHtml(request.service_label)}</p>` : ''}
+          ${amount ? `<div class="estimated-total-card"><span class="estimated-total-label">Authorization total</span><span class="estimated-total-amount">${amount}</span></div>` : ''}
+          <button class="button primary track-reauth-btn" data-id="${escapeHtml(request.id)}" type="button">Re-authorize payment</button>
+          <p class="form-status" data-reauth-status="${escapeHtml(request.id)}"></p>
+        </div>
+      </details>
+    </article>
+  `;
+}
+
 function renderReturnCompletedNotice(request) {
   if (request.status !== 'canceled_return_completed') return '';
   if (request.cancellation_fee_applied) {
@@ -2403,6 +2494,79 @@ function renderCurrentStatusCard(request) {
   `;
 }
 
+// App-like hero: names the current stage, shows a segmented progress bar, and the
+// key at-a-glance info (concierge + return time). Reuses buildSimpleSteps so it
+// stays in lockstep with the detailed timeline.
+function renderTrackHero(request) {
+  const steps = buildSimpleSteps(request);
+  const total = steps.length;
+  const doneCount = steps.filter((s) => s.done).length;
+  const activeIdx = steps.findIndex((s) => s.active);
+  const finalComplete = isFinalRequestComplete(request);
+  const stepNum = finalComplete ? total : (activeIdx >= 0 ? activeIdx + 1 : Math.min(doneCount + 1, total));
+  const nextStep = activeIdx >= 0 ? steps[activeIdx + 1] : null;
+
+  const label = friendlyStatusLabel(request.status);
+  const msg = getStatusMessage(request) || '';
+
+  const segs = steps.map((s) => {
+    const cls = s.done ? 'filled' : (s.active ? 'current' : '');
+    return `<span class="tk-hero-seg ${cls}"></span>`;
+  }).join('');
+
+  const progressNote = finalComplete
+    ? 'All steps complete'
+    : `Step ${stepNum} of ${total}${nextStep ? ` &middot; next: ${escapeHtml(String(nextStep.label).toLowerCase())}` : ''}`;
+
+  const returnTime = formatReturnTime(request.desired_return_time);
+  const worker = request.assigned_worker_name;
+  const quick = [];
+  if (worker) {
+    const isVerified = Boolean(request.assigned_employee_id) && verifiedWorkerIds.has(request.assigned_employee_id);
+    const avatar = request.assigned_worker_photo_url
+      ? `<img class="tk-hero-avatar tk-hero-avatar-photo" src="${escapeHtml(request.assigned_worker_photo_url)}" alt="${escapeHtml(worker)}">`
+      : `<span class="tk-hero-avatar" aria-hidden="true">${escapeHtml(worker.charAt(0).toUpperCase())}</span>`;
+    const canCall = isValidPhone(request.assigned_worker_phone);
+    quick.push(`
+      <div class="tk-hero-quick tk-hero-concierge">
+        <span class="tk-hero-quick-label">Your concierge</span>
+        <div class="tk-hero-concierge-row">
+          ${avatar}
+          <div class="tk-hero-concierge-info">
+            <span class="tk-hero-quick-val">${escapeHtml(worker)}</span>
+            ${isVerified ? '<span class="tk-hero-verified">&#10003; Verified ShiftFuel employee</span>' : ''}
+          </div>
+        </div>
+        ${canCall ? `<a class="tk-hero-call" href="tel:${escapeHtml(cleanPhone(request.assigned_worker_phone))}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M5 4h3l1.5 5-2 1a11 11 0 0 0 5 5l1-2 5 1.5v3a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2z"/></svg>Call</a>` : ''}
+      </div>`);
+  }
+  if (returnTime) {
+    quick.push(`<div class="tk-hero-quick"><span class="tk-hero-quick-label">Back by</span><span class="tk-hero-quick-val">${escapeHtml(returnTime)}</span></div>`);
+  }
+
+  const icon = finalComplete
+    ? '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true"><path d="M5 12.5l4 4 10-10"/></svg>'
+    : '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M5 11l1.5-4.2A2 2 0 0 1 8.4 5.5h7.2a2 2 0 0 1 1.9 1.3L19 11"/><path d="M3 11h18v5a1 1 0 0 1-1 1h-1.5a1 1 0 0 1-1-1v-1H6.5v1a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1z"/><circle cx="7" cy="14" r="1"/><circle cx="17" cy="14" r="1"/></svg>';
+
+  return `
+    <section class="tk-hero">
+      <div class="tk-hero-head">
+        <span class="tk-hero-icon" aria-hidden="true">${icon}</span>
+        <div class="tk-hero-headline">
+          <p class="tk-hero-stage">${escapeHtml(label)}</p>
+          ${msg ? `<p class="tk-hero-desc">${escapeHtml(msg)}</p>` : ''}
+        </div>
+        <button class="tk-hero-refresh" type="button" data-track-refresh aria-label="Refresh status">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true"><path d="M20 11A8 8 0 1 0 18 16.5"/><path d="M20 5v6h-6"/></svg>
+        </button>
+      </div>
+      <div class="tk-hero-progress" role="img" aria-label="${progressNote.replace(/&middot;/g, ',').replace(/<[^>]+>/g, '')}">${segs}</div>
+      <p class="tk-hero-progress-note">${progressNote}</p>
+      ${quick.length ? `<div class="tk-hero-quickrow">${quick.join('')}</div>` : ''}
+    </section>
+  `;
+}
+
 function renderLiveUpdatesFeed(request) {
   const steps = buildSimpleSteps(request).filter((s) => s.done || s.active);
   if (!steps.length) return '<p class="tk-empty">Updates will appear here as your service progresses.</p>';
@@ -2416,6 +2580,24 @@ function renderLiveUpdatesFeed(request) {
       </div>
       ${s.time ? `<span class="tk-update-time">${escapeHtml(s.time)}</span>` : ''}
     </li>`).join('')}</ul>`;
+}
+
+// Live GPS panel. The live map (injected by track-live-location.js into the
+// mount) is only relevant while the worker holds the vehicle — i.e. after the
+// keys are received and before the vehicle is returned. Outside that window we
+// show a plain status note instead.
+function renderGpsTracking(request) {
+  const keysReceived = isStepDone('key_received', request);
+  const vehicleReturned = isStepDone('vehicle_returned', request) || isFinalRequestComplete(request);
+
+  if (!keysReceived) {
+    return `<div class="tk-gps-state tk-gps-off"><span class="tk-gps-dot" aria-hidden="true"></span>GPS is not currently on — keys not received</div>`;
+  }
+  if (vehicleReturned) {
+    return `<div class="tk-gps-state tk-gps-done"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M5 12.5l4 4 10-10"/></svg>Keys returned — GPS is no longer needed</div>`;
+  }
+  // Active service window — the live map injects into this mount.
+  return `<div class="track-live-location-mount"></div>`;
 }
 
 function renderPartnerCard(request) {
@@ -2811,6 +2993,9 @@ function renderRequestCard(request, photos = [], review = null, { expanded = fal
   if (request.status === 'pending_customer_info') {
     return renderPendingCompletionCard(request);
   }
+  if (request.payment_status === 'needs_reauth') {
+    return renderReauthCard(request);
+  }
   if (needsCustomerPaymentAction(request)) {
     return renderPendingPaymentCard(request);
   }
@@ -2836,6 +3021,10 @@ function renderRequestCard(request, photos = [], review = null, { expanded = fal
 
   const hasWorker = Boolean(request.assigned_worker_name);
   const hasPhotos = Array.isArray(photos) && photos.length > 0;
+  // Desktop: open every detail section by default so the two-column dashboard is
+  // filled. Mobile keeps them collapsed for the cleaner app-like feel.
+  const detailsOpen = typeof window !== 'undefined' && typeof window.matchMedia === 'function'
+    && window.matchMedia('(min-width: 1000px)').matches;
 
   return `
     <article class="track-request-card track-dashboard-card" data-request-id="${escapeHtml(request.id)}">
@@ -2848,33 +3037,34 @@ function renderRequestCard(request, photos = [], review = null, { expanded = fal
           ${renderReturnCompletedNotice(request)}
           ${request.status === 'auto_reversed' ? `<p class="track-auto-reversed-note">Your service was not completed on the scheduled date, so your payment has been reversed.</p>` : ''}
 
-          ${tkSubAcc('Current Status', `
-            <section class="tk-card tk-status">${renderCurrentStatusCard(request)}</section>
-            ${hasWorker ? `<section class="tk-card tk-partner">${renderPartnerCard(request)}</section>` : ''}
-            <section class="tk-card tk-help">${renderHelpCard()}</section>
-          `, { open: true })}
+          ${renderTrackHero(request)}
+
+          <div class="tk-detail-grid">
+          ${tkSubAcc('Full Timeline', `
+            <section class="tk-card tk-status">${renderStatusStepper(request)}</section>
+          `, { open: detailsOpen })}
 
           ${tkSubAcc('Vehicle & Service Details', `
             <section class="tk-card tk-vehicle">${renderVehicleCard(request)}</section>
-          `)}
+          `, { open: detailsOpen })}
 
           ${tkSubAcc('Live Updates', `
-            <section class="tk-card tk-updates"><p class="tk-eyebrow">Live Updates</p>${renderLiveUpdatesFeed(request)}</section>
-          `)}
+            <section class="tk-card tk-updates"><p class="tk-eyebrow">Live GPS tracking</p>${renderGpsTracking(request)}</section>
+          `, { open: detailsOpen })}
 
           ${tkSubAcc('Photos', `
             <div class="tk-photos-lazy"><p class="tk-empty">Loading photos…</p></div>
-          `)}
+          `, { open: detailsOpen })}
 
           ${tkSubAcc('Service Details', [
             isReturned ? renderReturnDetails(request) : '',
             serviceTimingFromNotes(request),
             inspectionSummaryFromNotes(request),
             request.status === 'complete' ? serviceSummaryFromRequest(request) : '',
-          ].filter(Boolean).join(''))}
+          ].filter(Boolean).join(''), { open: detailsOpen })}
 
-          <!-- Live location mounts here while the worker holds the key/vehicle. -->
-          <div class="track-live-location-mount"></div>
+          ${tkSubAcc('Help', `<section class="tk-card tk-help">${renderHelpCard()}</section>`, { open: detailsOpen })}
+          </div>
 
           ${renderReviewPrompt(request, review)}
           ${canCustomerCancel(request) ? `
@@ -2997,6 +3187,21 @@ async function renderAllRequests(requests, phone, email) {
   html += `</div>`;
   trackingResult.innerHTML = html;
 
+  // After a successful lookup, condense the search form to a slim bar so the
+  // result cards get the space. Tapping the bar re-expands it for a new search.
+  const searchCard = document.querySelector('.track-search-card');
+  if (searchCard && requests && requests.length) {
+    searchCard.classList.add('is-condensed');
+    if (!searchCard.dataset.toggleWired) {
+      searchCard.dataset.toggleWired = '1';
+      searchCard.addEventListener('click', () => {
+        if (!searchCard.classList.contains('is-condensed')) return;
+        searchCard.classList.remove('is-condensed');
+        searchCard.querySelector('input')?.focus();
+      });
+    }
+  }
+
   // Map for lazy photo loading
   const requestMap = new Map(requests.map((r) => [r.id, r]));
 
@@ -3041,6 +3246,9 @@ async function renderAllRequests(requests, phone, email) {
         });
       }
       mountVisibleCustomerPayCards(details);
+      // Photos may be open-by-default (desktop), so their own toggle won't fire —
+      // load them whenever the request expands.
+      await loadPhotosInto(details);
     });
   });
 
@@ -4049,6 +4257,51 @@ trackingResult.addEventListener('submit', async (event) => {
     rpcFn,
     statusEl,
     submitBtn,
+  );
+});
+
+// ── Re-authorize a saved-card booking whose off-session hold failed ───────────
+trackingResult?.addEventListener('click', async (event) => {
+  const button = event.target.closest('.track-reauth-btn');
+  if (!button) return;
+  const requestId = button.dataset.id;
+  const request = (window._trackingRequests || []).find((r) => r.id === requestId);
+  if (!request) return;
+
+  const statusEl = document.querySelector(`[data-reauth-status="${requestId}"]`);
+  const authAmountCents = Math.max(Math.round((Number(request.estimated_total) || 1) * 100), 50);
+
+  // _openCbModal creates a manual-capture intent + confirms the card (a hold),
+  // then calls this with the new PaymentIntent id. We attach it to the request.
+  const rpcFn = async (paymentIntentId) => {
+    if (!paymentIntentId) return new Error('Payment was not authorized. Please try again.');
+    const res = await fetch('/api/payments', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'customer_reauthorize_scheduled',
+        request_id: requestId,
+        phone: verifiedTrackingContact?.phone || '',
+        email: verifiedTrackingContact?.email || '',
+        new_payment_intent_id: paymentIntentId,
+      }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) return new Error(data.error || 'Could not re-authorize payment.');
+    setTimeout(() => { refreshTrackedRequestsAfterAction(); }, 1000);
+    return null;
+  };
+
+  _openCbModal(
+    {
+      authAmountCents,
+      serviceLabel:  request.service_label || 'ShiftFuel service',
+      customerName:  request.customer_name || '',
+      customerEmail: request.customer_email || '',
+    },
+    rpcFn,
+    statusEl,
+    button,
   );
 });
 

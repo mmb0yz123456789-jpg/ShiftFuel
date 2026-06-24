@@ -2,6 +2,7 @@
 
 const workerProfileForm = document.querySelector('#worker-profile-form');
 const workerProfileName = document.querySelector('#worker-profile-name');
+const workerProfileUsername = document.querySelector('#worker-profile-username');
 const workerProfilePhone = document.querySelector('#worker-profile-phone');
 const workerProfileLocation = document.querySelector('#worker-profile-location');
 const workerProfileStarted = document.querySelector('#worker-profile-started');
@@ -144,6 +145,32 @@ workerEnableAlertsBtn?.addEventListener('click', async () => {
     workerEnableAlertsBtn.disabled = false;
     workerEnableAlertsBtn.textContent = original;
   }
+});
+
+// Reflect an existing push subscription on load so the button doesn't imply you
+// must re-enable alerts every sign-in — the subscription persists in the browser.
+(async function reflectExistingPushSubscription() {
+  try {
+    if (!('serviceWorker' in navigator) || !('PushManager' in window) || !workerEnableAlertsBtn) return;
+    const reg = await navigator.serviceWorker.getRegistration();
+    const sub = reg && (await reg.pushManager.getSubscription());
+    if (sub) workerEnableAlertsBtn.textContent = 'Alerts on ✓ (tap to test)';
+  } catch (_) {}
+})();
+
+// Profile "View all reviews" reuses the existing reviews modal trigger.
+document.querySelector('#worker-reviews-viewall')?.addEventListener('click', () => {
+  document.querySelector('#worker-reviews-trigger')?.click();
+});
+// Dashboard aside cards: reviews → modal, availability → Schedule tab, header → sign out.
+document.querySelector('#worker-dash-reviews-all')?.addEventListener('click', () => {
+  document.querySelector('#worker-reviews-trigger')?.click();
+});
+document.querySelector('#worker-snapshot-schedule')?.addEventListener('click', () => {
+  document.querySelector('[data-tab-view="schedule"]')?.click();
+});
+document.querySelector('#worker-header-signout')?.addEventListener('click', () => {
+  document.querySelector('#worker-signout-btn')?.click();
 });
 
 document.querySelector('#worker-progress-job-label')?.addEventListener('click', async () => {
@@ -543,6 +570,17 @@ function roundMoneyValue(value) {
   return Math.round((Number(value) || 0) * 100) / 100;
 }
 
+// Worker's estimated take-home for a job: the service fees (fuel + wash +
+// inspection) minus the Stripe processing fee (2.9% + $0.30 per transaction).
+// Never negative.
+function workerNetPayout(request) {
+  const fees = feeSummary(request);
+  const gross = fees.fuel + fees.wash + fees.inspection;
+  if (gross <= 0) return 0;
+  const stripe = roundMoneyValue(gross * PAYMENT_RECOVERY_RATE + PAYMENT_RECOVERY_FIXED);
+  return roundMoneyValue(Math.max(0, gross - stripe));
+}
+
 function transactionPricingSummary(request, receiptTotals = { fuel: 0, wash: 0 }) {
   // A service is chargeable if it was actually performed (has a receipt) or
   // admin/worker explicitly chose to charge the fee anyway for an
@@ -818,7 +856,7 @@ async function ensureWorkerProfile() {
   if (storedEmployeeId) {
     let { data: stored, error: storedError } = await workerDb
       .from('employees_public')
-      .select('id,employee_code,full_name,phone,photo_url,original_photo_url,cropped_photo_url,photo_zoom,photo_position_x,photo_position_y,home_location,started_at,active')
+      .select('id,employee_code,full_name,phone,photo_url,original_photo_url,cropped_photo_url,photo_zoom,photo_position_x,photo_position_y,home_location,started_at,active,background_verified')
       .eq('id', storedEmployeeId)
       .limit(1);
 
@@ -906,19 +944,21 @@ function renderWorkerDaysGrid(workdays = []) {
 
     return `
       <div class="worker-day-row" data-day-of-week="${dayOfWeek}">
-        <label class="checkbox-label worker-day-toggle">
+        <span class="worker-day-handle" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="currentColor"><circle cx="9" cy="6" r="1.4"/><circle cx="9" cy="12" r="1.4"/><circle cx="9" cy="18" r="1.4"/><circle cx="15" cy="6" r="1.4"/><circle cx="15" cy="12" r="1.4"/><circle cx="15" cy="18" r="1.4"/></svg>
+        </span>
+        <label class="worker-day-toggle">
           <input class="worker-day-enabled" type="checkbox" data-day-of-week="${dayOfWeek}" ${enabled}>
-          <span>${label}</span>
-        </label>
-        <label>Start
-          <input class="worker-day-start" type="time" data-day-of-week="${dayOfWeek}" value="${startsAt}">
-        </label>
-        <label>End
-          <input class="worker-day-end" type="time" data-day-of-week="${dayOfWeek}" value="${endsAt}">
+          <span class="worker-day-name">${label.slice(0, 3)}</span>
         </label>
         <div class="worker-day-copy-actions">
           <button class="button worker-copy-day" type="button">Copy</button>
           <button class="button worker-paste-day" type="button" ${copiedWorkerDaySchedule ? '' : 'disabled'}>Paste</button>
+        </div>
+        <div class="worker-day-times">
+          <input class="worker-day-start" type="time" data-day-of-week="${dayOfWeek}" value="${startsAt}" aria-label="${label} start time">
+          <span class="worker-day-dash" aria-hidden="true">&ndash;</span>
+          <input class="worker-day-end" type="time" data-day-of-week="${dayOfWeek}" value="${endsAt}" aria-label="${label} end time">
         </div>
       </div>
     `;
@@ -1009,6 +1049,40 @@ function renderWorkerDaysOffCalendar() {
   updateWorkerDaysOffSummary();
 }
 
+let workerAvailabilityRows = [];
+
+function workerTimeToMinutes(t) {
+  const [h, m] = String(t || '00:00').slice(0, 5).split(':').map(Number);
+  return (Number.isFinite(h) ? h : 0) * 60 + (Number.isFinite(m) ? m : 0);
+}
+
+// Today's availability as a 24-hour timeline bar (desktop dashboard aside).
+function renderWorkerAvailabilitySnapshot() {
+  const container = document.querySelector('#worker-availability-snapshot');
+  if (!container) return;
+  const today = new Date();
+  const todayRow = workerAvailabilityRows.find((r) => Number(r.day_of_week) === today.getDay());
+  const dateLabel = today.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' });
+  let fill = '';
+  if (todayRow && todayRow.starts_at && todayRow.ends_at) {
+    const startMin = workerTimeToMinutes(todayRow.starts_at);
+    const endMin = workerTimeToMinutes(todayRow.ends_at);
+    if (endMin > startMin) {
+      fill = `<span class="worker-avail-fill" style="left:${(startMin / 1440) * 100}%;width:${((endMin - startMin) / 1440) * 100}%"></span>`;
+    }
+  }
+  container.innerHTML = `
+    <p class="worker-avail-date">Today &middot; ${escapeHtml(dateLabel)}</p>
+    <div class="worker-avail-bar">${fill}</div>
+    <div class="worker-avail-axis"><span>12 AM</span><span>6 AM</span><span>12 PM</span><span>6 PM</span><span>12 AM</span></div>
+    <div class="worker-avail-legend">
+      <span><span class="worker-avail-key is-on"></span>Available</span>
+      <span><span class="worker-avail-key is-off"></span>Unavailable</span>
+    </div>
+    ${!todayRow ? '<p class="field-help" style="margin-top:10px">Not scheduled to work today.</p>' : ''}
+  `;
+}
+
 async function loadWorkerSchedule() {
   if (!currentEmployee) return;
 
@@ -1019,9 +1093,11 @@ async function loadWorkerSchedule() {
 
   if (availabilityError) {
     console.warn('Could not load worker availability:', availabilityError);
+    workerAvailabilityRows = [];
     renderWorkerDaysGrid([]);
   } else {
     const rows = availability || [];
+    workerAvailabilityRows = rows;
     renderWorkerDaysGrid(rows.map((row) => ({
       dayOfWeek: row.day_of_week,
       startsAt: String(row.starts_at || '09:00').slice(0, 5),
@@ -1031,6 +1107,8 @@ async function loadWorkerSchedule() {
     const scheduleLocation = rows.find((row) => row.work_location)?.work_location || currentEmployee.home_location || DEFAULT_WORK_LOCATION;
     if (workerLocation) workerLocation.value = scheduleLocation;
   }
+
+  renderWorkerAvailabilitySnapshot();
 
   const { data: daysOff, error: daysOffError } = await workerDb
     .from('employee_days_off')
@@ -1055,7 +1133,16 @@ async function loadWorkerProfile() {
 
     if (workerPortalHeading) workerPortalHeading.textContent = workerName;
     if (workerDashboardName) workerDashboardName.textContent = workerName;
+    const profileStatusBadge = document.querySelector('#worker-profile-status-badge');
+    if (profileStatusBadge) profileStatusBadge.hidden = currentEmployee.active === false;
+    const verifiedBadge = document.querySelector('#worker-verified-badge');
+    if (verifiedBadge) verifiedBadge.hidden = !currentEmployee.background_verified;
+    const headerName = document.querySelector('#worker-header-name');
+    if (headerName) headerName.textContent = workerName;
+    const headerAvatar = document.querySelector('#worker-header-avatar');
+    if (headerAvatar) headerAvatar.textContent = (workerName.trim().charAt(0) || 'W').toUpperCase();
     if (workerProfileName) workerProfileName.value = workerName;
+    if (workerProfileUsername) workerProfileUsername.value = currentEmployee.username || '';
     if (workerProfilePhone) workerProfilePhone.value = formatPhone(currentEmployee.phone || '');
     if (workerProfileLocation) workerProfileLocation.value = currentEmployee.home_location || DEFAULT_WORK_LOCATION;
     if (workerProfileStarted) workerProfileStarted.value = currentEmployee.started_at || '';
@@ -1283,6 +1370,26 @@ function updateWorkerStatCards(requests) {
   }
 }
 
+// Compact review item for the Profile "Recent Reviews" card.
+function renderProfileReview(review) {
+  const name = review.customer_name || 'Customer';
+  const initial = escapeHtml((name.trim().charAt(0) || 'C').toUpperCase());
+  const rounded = Math.max(0, Math.min(5, Math.round(Number(review.rating) || 0)));
+  const stars = '★'.repeat(rounded) + '☆'.repeat(5 - rounded);
+  return `
+    <div class="worker-review-item">
+      <span class="worker-avatar worker-avatar-sm" aria-hidden="true">${initial}</span>
+      <div class="worker-review-body">
+        <div class="worker-review-top">
+          <strong>${escapeHtml(name)}</strong>
+          <span class="worker-review-stars" aria-label="${rounded} out of 5 stars">${stars}</span>
+        </div>
+        <span class="worker-review-time">${escapeHtml(formatDateTime(review.submitted_at))}</span>
+        <p class="worker-review-comment">${escapeHtml(review.comments || 'No comments provided.')}</p>
+      </div>
+    </div>`;
+}
+
 async function loadWorkerReviews() {
   if (!workerReviewList || !currentEmployee) return;
 
@@ -1353,6 +1460,20 @@ async function loadWorkerReviews() {
       </article>
     `;
   }).join('');
+
+  // Surface rating + the latest few reviews on the Profile tab.
+  const profileRatingRow = document.querySelector('#worker-profile-rating-row');
+  const profileRating = document.querySelector('#worker-profile-rating');
+  const profileReviewCount = document.querySelector('#worker-profile-review-count');
+  const profileReviewsCard = document.querySelector('#worker-profile-reviews-card');
+  const profileReviews = document.querySelector('#worker-profile-reviews');
+  if (profileRating) profileRating.textContent = averageRating;
+  if (profileReviewCount) profileReviewCount.textContent = `${reviews.length} review${reviews.length === 1 ? '' : 's'}`;
+  if (profileRatingRow) profileRatingRow.hidden = false;
+  if (profileReviews) profileReviews.innerHTML = reviews.slice(0, 3).map(renderProfileReview).join('');
+  if (profileReviewsCard) profileReviewsCard.hidden = false;
+  const dashReviews = document.querySelector('#worker-dash-reviews');
+  if (dashReviews) dashReviews.innerHTML = reviews.slice(0, 2).map(renderProfileReview).join('');
 }
 
 function workerFormatAddress(request) {
@@ -1423,22 +1544,27 @@ function workerReturnByLabel(request) {
 // Available request card (spec: cards, not a table). Shows service, vehicle,
 // location, return time, estimated fee, status badge, and a single Accept button.
 function renderWorkerAvailableCard(request) {
-  const fees = feeSummary(request);
-  const estPayout = fees.fuel + fees.wash + fees.inspection;
+  const estPayout = workerNetPayout(request);
   const returnBy = workerReturnByLabel(request);
+  const service = request.service_label || request.service_type || 'Service';
+  const initial = escapeHtml((service.trim().charAt(0) || 'S').toUpperCase());
   return `
     <article class="worker-card worker-available-card">
-      <div class="worker-card-top">
-        <span class="worker-open-flag"><span class="worker-open-badge-dot"></span>Open</span>
-        ${workerStatusBadge(request)}
+      <div class="worker-job-head">
+        <span class="worker-avatar" aria-hidden="true">${initial}</span>
+        <div class="worker-job-head-main">
+          <h4 class="worker-current-job-name">${escapeHtml(service)}</h4>
+          <p class="worker-card-vehicle">${escapeHtml(workerVehicleSummary(request) || 'Vehicle on file')}</p>
+        </div>
+        <div class="worker-job-head-meta">
+          <span class="worker-open-flag"><span class="worker-open-badge-dot"></span>Open</span>
+          ${estPayout > 0 ? `<span class="worker-est-fee">${money(estPayout)}</span>` : ''}
+        </div>
       </div>
-      <h4 class="worker-card-service">${escapeHtml(request.service_label || request.service_type || 'Service')}</h4>
-      <p class="worker-card-vehicle">${escapeHtml(workerVehicleSummary(request) || 'Vehicle on file')}</p>
-      <dl class="worker-card-facts">
-        ${returnBy ? `<div><dt>When</dt><dd>${escapeHtml(returnBy)}</dd></div>` : ''}
-        <div><dt>Service address</dt><dd>${escapeHtml(workerFormatAddress(request))}</dd></div>
-        ${estPayout > 0 ? `<div><dt>Est. fee</dt><dd>${money(estPayout)}</dd></div>` : ''}
-      </dl>
+      <div class="worker-job-facts">
+        ${workerFactRow(WK_ICONS.pin, 'Service address', escapeHtml(workerFormatAddress(request)))}
+        ${returnBy ? workerFactRow(WK_ICONS.clock, 'When', escapeHtml(returnBy)) : ''}
+      </div>
       <button class="button primary worker-card-action claim-worker-job" data-id="${escapeHtml(request.id)}" type="button">Accept Request</button>
     </article>
   `;
@@ -1479,25 +1605,53 @@ function renderWorkerJobTable(requests, mode) {
 // Large "Current Job" card — always expanded, leads the dashboard. Surfaces the
 // key facts up top, then the workflow's single next-action button, then a small
 // secondary row (call customer / view full details).
+// Inline icons for the iconographic job-card detail rows (mockup style).
+const WK_ICONS = {
+  pin: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s7-5.6 7-11a7 7 0 1 0-14 0c0 5.4 7 11 7 11z"/><circle cx="12" cy="10" r="2.5"/></svg>',
+  car: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 13l1.8-4.6A2 2 0 0 1 6.7 7h10.6a2 2 0 0 1 1.9 1.4L21 13v5a1 1 0 0 1-1 1h-1.2a1 1 0 0 1-1-1v-1H6.2v1a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1z"/><circle cx="7.5" cy="16" r="1"/><circle cx="16.5" cy="16" r="1"/></svg>',
+  key: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="3.4"/><path d="M10.4 10.4 19 19m-3-3 2 2m-4-4 2 2"/></svg>',
+  clock: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 1.8"/></svg>',
+};
+
+// One iconographic detail row. `value` is expected pre-escaped by the caller.
+function workerFactRow(icon, label, value) {
+  return `
+    <div class="worker-fact-row">
+      <span class="worker-fact-icon">${icon}</span>
+      <div class="worker-fact-text">
+        <span class="worker-fact-label">${escapeHtml(label)}</span>
+        <span class="worker-fact-value">${value}</span>
+      </div>
+    </div>`;
+}
+
 function renderWorkerCurrentJobCard(request) {
   const keyHandoff = request.key_handoff_details ? escapeHtml(request.key_handoff_details) : 'Not provided';
   const parking = [request.parking_location, request.parking_spot ? `spot ${request.parking_spot}` : ''].filter(Boolean).map(escapeHtml).join(', ') || 'Not provided';
   const returnBy = workerReturnByLabel(request);
   const phone = request.customer_phone ? normalizePhone(request.customer_phone) : '';
+  const name = request.customer_name || 'Customer';
+  const initial = escapeHtml((name.trim().charAt(0) || 'C').toUpperCase());
+  const vehicleLine = [workerVehicleSummary(request) || 'Vehicle on file', request.service_label || request.service_type]
+    .filter(Boolean).map(escapeHtml).join(' &middot; ');
   return `
     <article class="worker-card worker-current-job-card" data-current-job-id="${escapeHtml(request.id)}">
-      <div class="worker-card-top">
-        <h3 class="worker-current-job-name">${escapeHtml(request.customer_name || 'Customer')}</h3>
-        ${workerStatusBadge(request)}
+      <div class="worker-job-statusrow">${workerStatusBadge(request)}</div>
+      <div class="worker-job-grid">
+        <div class="worker-job-identity">
+          <span class="worker-avatar" aria-hidden="true">${initial}</span>
+          <div class="worker-job-head-main">
+            <h3 class="worker-current-job-name">${escapeHtml(name)}</h3>
+            <p class="worker-card-vehicle">${vehicleLine}</p>
+          </div>
+        </div>
+        <div class="worker-job-facts">
+          ${workerFactRow(WK_ICONS.pin, 'Service address', `<span class="worker-job-address-value">${escapeHtml(workerFormatAddress(request))}</span>`)}
+          ${workerFactRow(WK_ICONS.car, 'Parking', parking)}
+          ${workerFactRow(WK_ICONS.key, 'Key handoff', keyHandoff)}
+          ${returnBy ? workerFactRow(WK_ICONS.clock, 'Desired return', escapeHtml(returnBy)) : ''}
+        </div>
       </div>
-      <p class="worker-card-vehicle">${escapeHtml(workerVehicleSummary(request) || 'Vehicle on file')}</p>
-      <p class="worker-card-service">${escapeHtml(request.service_label || request.service_type || '')}</p>
-      <dl class="worker-card-facts worker-current-job-facts">
-        <div><dt>Service address</dt><dd class="worker-job-address-value">${escapeHtml(workerFormatAddress(request))}</dd></div>
-        <div><dt>Parking</dt><dd>${parking}</dd></div>
-        <div><dt>Key handoff</dt><dd>${keyHandoff}</dd></div>
-        ${returnBy ? `<div><dt>Desired return</dt><dd>${escapeHtml(returnBy)}</dd></div>` : ''}
-      </dl>
       ${renderWorkerJobActions(request)}
       <div class="worker-secondary-actions">
         ${phone ? `<a class="button secondary worker-secondary-btn" href="tel:${escapeHtml(phone)}">Call customer</a>` : ''}
@@ -1510,6 +1664,96 @@ function renderWorkerCurrentJobCard(request) {
         </div>
       ` : ''}
     </article>
+  `;
+}
+
+// Mirror today's claimed jobs (already time-ordered) onto the Dashboard, each
+// with its full guided baby-step card, so the worker lands straight on
+// "what to do next" without digging into the Jobs tab. Reuses the same card +
+// document-delegated handlers, so no job/GPS/push logic is duplicated.
+function renderWorkerDashboardToday(focusJobs, upcomingJobs) {
+  const container = document.querySelector('#worker-dashboard-today');
+  if (!container) return;
+  focusJobs = focusJobs || [];
+  upcomingJobs = upcomingJobs || [];
+  if (!focusJobs.length && !upcomingJobs.length) {
+    container.innerHTML = '<div class="worker-state-card worker-state-empty"><p>No jobs scheduled today. You’re all caught up.</p></div>';
+    return;
+  }
+  const focusHtml = focusJobs.map(renderWorkerCurrentJobCard).join('');
+  const upcomingHtml = upcomingJobs.length ? `
+    <div class="worker-upcoming-block">
+      <h3 class="worker-upcoming-heading">Upcoming &middot; ${upcomingJobs.length}</h3>
+      ${upcomingJobs.map(renderWorkerUpcomingRow).join('')}
+    </div>` : '';
+  container.innerHTML = focusHtml + upcomingHtml;
+}
+
+// Quiet, action-free row for a claimed job you can't start yet (one job at a time).
+function renderWorkerUpcomingRow(request) {
+  const initial = escapeHtml(((request.customer_name || 'C').trim().charAt(0) || 'C').toUpperCase());
+  const when = workerReturnByLabel(request);
+  const sub = [workerVehicleSummary(request), request.service_label || request.service_type]
+    .filter(Boolean).map(escapeHtml).join(' &middot; ');
+  const address = workerFormatAddress(request);
+  return `
+    <article class="worker-card worker-upcoming-row">
+      <span class="worker-avatar worker-avatar-sm" aria-hidden="true">${initial}</span>
+      <div class="worker-upcoming-main">
+        <strong>${escapeHtml(request.customer_name || 'Customer')}</strong>
+        <span class="worker-card-sub">${sub}</span>
+        ${address ? `<span class="worker-upcoming-addr">${WK_ICONS.pin}<span>${escapeHtml(address)}</span></span>` : ''}
+      </div>
+      ${when ? `<span class="worker-upcoming-when">${escapeHtml(when)}</span>` : ''}
+    </article>`;
+}
+
+// Today's Schedule strip on the Today's Job tab — a quick count of the day's
+// work by bucket. Accepted = jobs you're actively working; Upcoming = open jobs
+// you can still claim; Completed = done today; Cancelled = cancelled/return-required.
+function renderWorkerTodayCounts(counts) {
+  const container = document.querySelector('#worker-today-counts');
+  if (!container) return;
+  const cells = [
+    { label: 'Accepted', value: counts.accepted, cls: 'is-accepted' },
+    { label: 'Upcoming', value: counts.upcoming, cls: 'is-upcoming' },
+    { label: 'Completed', value: counts.completed, cls: 'is-completed' },
+    { label: 'Cancelled', value: counts.cancelled, cls: 'is-cancelled' },
+  ];
+  container.innerHTML = cells.map((c) => `
+    <div class="worker-count-cell ${c.cls}">
+      <span class="worker-count-value">${c.value}</span>
+      <span class="worker-count-label">${c.label}</span>
+    </div>`).join('');
+}
+
+// Earnings tab: completed jobs with their net take-home (service fees minus
+// Stripe processing), plus a running total for the day.
+function renderWorkerEarnings(completed) {
+  const container = document.querySelector('#worker-earnings-list');
+  if (!container) return;
+  if (!completed.length) {
+    container.innerHTML = '<div class="worker-state-card worker-state-empty"><p>No completed jobs yet today.</p></div>';
+    return;
+  }
+  const total = completed.reduce((sum, job) => sum + workerNetPayout(job), 0);
+  container.innerHTML = `
+    <div class="worker-earnings-summary">
+      <span class="worker-earnings-total-label">Today's earnings</span>
+      <span class="worker-earnings-total">${money(total)}</span>
+      <span class="worker-earnings-sub">${completed.length} job${completed.length === 1 ? '' : 's'} completed &middot; net of card processing</span>
+    </div>
+    <div class="worker-card-list">
+      ${completed.map((job) => `
+        <article class="worker-card worker-earnings-row">
+          <div class="worker-card-summary-main">
+            <strong>${escapeHtml(job.customer_name || 'Customer')}</strong>
+            <span class="worker-card-sub">${escapeHtml(job.service_label || job.service_type || '')}${job.updated_at ? ` &middot; ${escapeHtml(workerFormatClockTime(job.updated_at))}` : ''}</span>
+          </div>
+          <span class="worker-earnings-amount">${money(workerNetPayout(job))}</span>
+        </article>
+      `).join('')}
+    </div>
   `;
 }
 
@@ -2362,8 +2606,18 @@ async function loadWorkerJobs(silent = false) {
   // "Current Job" = the claimed job actually underway (key received or beyond).
   // Everything else claimed is the day's schedule. Lead with the one job the
   // worker is acting on, then upcoming, then new work, then completed.
-  const currentJob = claimedJobs.find((job) => workerProgressStepForStatus(job.status) >= 2) || null;
-  const scheduleJobs = currentJob ? claimedJobs.filter((job) => job.id !== currentJob.id) : claimedJobs;
+  // One-job-at-a-time model:
+  //  • activeJobs       = jobs in progress (key received+) — you're holding the car/keys.
+  //  • cancelledReturn  = cancelled jobs still awaiting the car/key handback.
+  //  • pendingAccepted  = jobs you've accepted but NOT started yet (status 'accepted').
+  // While you have a job needing action you can't start or claim another, so the
+  // dashboard shows ONE focus card with actions and the rest as a quiet Upcoming list.
+  const activeJobs = claimedJobs.filter((job) => workerProgressStepForStatus(job.status) >= 2);
+  const pendingAccepted = claimedJobs.filter((job) => workerProgressStepForStatus(job.status) < 2);
+  const needsAction = [...cancelledReturnJobs, ...activeJobs];
+  const hasActiveJob = needsAction.length > 0;
+  const focusJobs = hasActiveJob ? needsAction : pendingAccepted.slice(0, 1);
+  const upcomingJobs = hasActiveJob ? pendingAccepted : pendingAccepted.slice(1);
 
   workerJobList.innerHTML = `
     ${profileIncomplete ? `
@@ -2373,39 +2627,30 @@ async function loadWorkerJobs(silent = false) {
         <button class="button primary worker-complete-profile-btn" type="button">Complete Profile</button>
       </div>
     ` : ''}
-    <section class="worker-jobs-section worker-jobs-current">
-      <h3>Current Job</h3>
-      ${currentJob
-        ? renderWorkerCurrentJobCard(currentJob)
-        : '<div class="worker-state-card worker-state-empty"><p>You do not have an active job right now.</p></div>'}
-    </section>
     <section class="worker-jobs-section">
-      <h3>Today's Schedule${scheduleJobs.length ? ` (${scheduleJobs.length})` : ''}</h3>
-      ${scheduleJobs.length ? renderWorkerJobTable(scheduleJobs, 'mine') : '<p class="field-help">No more jobs scheduled today.</p>'}
+      <h3>Available to Claim${(!hasActiveJob && availableJobs.length) ? ` (${availableJobs.length})` : ''}</h3>
+      ${hasActiveJob
+        ? `<div class="worker-state-card worker-state-empty"><p>Finish your current job before claiming another.</p></div>`
+        : (availableJobs.length
+          ? renderWorkerJobTable(availableJobs, 'available')
+          : `<div class="worker-state-card worker-state-empty">
+              <p>No available requests right now.</p>
+              <button class="button secondary worker-refresh-inline" type="button" aria-label="Refresh worker dashboard">Refresh</button>
+            </div>`)}
     </section>
-    <section class="worker-jobs-section">
-      <h3>Available Requests${availableJobs.length ? ` (${availableJobs.length})` : ''}</h3>
-      ${availableJobs.length
-        ? renderWorkerJobTable(availableJobs, 'available')
-        : `<div class="worker-state-card worker-state-empty">
-            <p>No available requests right now.</p>
-            <button class="button secondary worker-refresh-inline" type="button" aria-label="Refresh worker dashboard">Refresh</button>
-          </div>`}
-    </section>
-    <section class="worker-jobs-section worker-jobs-completed">
-      <h3>Completed Today${completedToday.length ? ` (${completedToday.length})` : ''}</h3>
-      ${completedToday.length
-        ? `<div class="worker-card-list">${completedToday.map(renderWorkerCompletedCard).join('')}</div>`
-        : '<p class="field-help">No jobs completed yet today.</p>'}
-    </section>
-    ${cancelledReturnJobs.length ? `
-      <section class="worker-jobs-section worker-jobs-cancelled">
-        <h3>Cancelled / Return Required (${cancelledReturnJobs.length})</h3>
-        ${renderWorkerJobTable(cancelledReturnJobs, 'mine')}
-      </section>
-    ` : ''}
   `;
 
+  renderWorkerDashboardToday(focusJobs, upcomingJobs);
+  renderWorkerEarnings(completedToday);
+  renderWorkerTodayCounts({
+    // The job you're handling now (the focus card) counts as Accepted — unless it's
+    // a cancellation, which is counted under Cancelled instead. Other claimed jobs
+    // waiting behind it are Upcoming.
+    accepted: focusJobs.filter((job) => job.status !== 'cancelled_pending_key_return').length,
+    upcoming: upcomingJobs.length,
+    completed: completedToday.length,
+    cancelled: cancelledReturnJobs.length,
+  });
   updateWorkerProgressTimeline(myJobs);
 }
 
@@ -2416,7 +2661,7 @@ async function loadWorkerCompletedToday() {
   const today = new Date().toISOString().slice(0, 10);
   const { data, error } = await workerDb
     .rpc('worker_list_my_requests', { p_token: SESSION_WORKER_TOKEN })
-    .select('id,customer_name,service_type,status,final_total,updated_at,service_date');
+    .select('id,customer_name,service_type,service_label,status,final_total,updated_at,service_date,fuel_convenience_fee,wash_convenience_fee,quick_inspection,quick_inspection_fee');
   if (error) {
     console.warn('Could not load completed-today jobs:', error);
     return [];
@@ -2991,7 +3236,9 @@ async function submitWorkerKeysReturned(button) {
   }
 }
 
-workerJobList?.addEventListener('click', async (event) => {
+// Delegated on document (not just #worker-job-list) because the same job cards
+// now render on the Today's Job dashboard too — both surfaces must respond.
+document.addEventListener('click', async (event) => {
   const button = event.target.closest('button');
   if (!button) return;
 
@@ -3157,7 +3404,7 @@ workerJobList?.addEventListener('click', async (event) => {
   }
 });
 
-workerJobList?.addEventListener('change', (event) => {
+document.addEventListener('change', (event) => {
   if (event.target.matches('input[type="file"]')) {
     const control = event.target.closest('.file-button-control');
     const label = control?.querySelector('.selected-file-name');
@@ -3187,7 +3434,7 @@ workerJobList?.addEventListener('change', (event) => {
   }
 });
 
-workerJobList?.addEventListener('input', (event) => {
+document.addEventListener('input', (event) => {
   if (!event.target.classList.contains('inspection-trouble-code')) return;
 
   const code = normalizeTroubleCode(event.target.value);
@@ -3217,6 +3464,7 @@ workerProfileForm?.addEventListener('submit', async (event) => {
     const photoPositionX = Number(workerProfilePhotoPosition.x || 0);
     const photoPositionY = Number(workerProfilePhotoPosition.y || 0);
     const fullName = workerProfileName?.value.trim() || currentEmployee.full_name;
+    const username = (workerProfileUsername?.value || '').trim();
     const phoneInputValue = workerProfilePhone?.value.trim() || null;
     const phone = phoneInputValue ? formatPhone(phoneInputValue) : null;
     const homeLocation = workerProfileLocation?.value || currentEmployee.home_location || DEFAULT_WORK_LOCATION;
@@ -3270,6 +3518,7 @@ workerProfileForm?.addEventListener('submit', async (event) => {
 
     const employeeUpdates = {
       full_name: fullName,
+      username: username || null,
       phone,
       home_location: homeLocation,
       photo_url: photoUrl,
@@ -3294,6 +3543,7 @@ workerProfileForm?.addEventListener('submit', async (event) => {
     if (workerPortalHeading) workerPortalHeading.textContent = currentEmployee.full_name;
     workerProfileForm.reset();
     if (workerProfileName) workerProfileName.value = currentEmployee.full_name;
+    if (workerProfileUsername) workerProfileUsername.value = currentEmployee.username || '';
     if (workerProfilePhone) workerProfilePhone.value = formatPhone(currentEmployee.phone || '');
     if (workerProfileLocation) workerProfileLocation.value = currentEmployee.home_location || DEFAULT_WORK_LOCATION;
     if (workerProfileStarted) workerProfileStarted.value = currentEmployee.started_at || '';
@@ -3310,7 +3560,13 @@ workerProfileForm?.addEventListener('submit', async (event) => {
     setWorkerStatus('Worker profile saved.');
   } catch (error) {
     console.error('Worker profile save failed:', error);
-    setWorkerStatus(`Could not save worker profile: ${error.message || 'Make sure employee profile columns and storage are set up.'}`);
+    const msg = String(error.message || '');
+    if (error.code === '23505' || /employees_username|duplicate key|already exists/i.test(msg)) {
+      setWorkerStatus('That username is already taken. Please choose a different one.');
+      workerProfileUsername?.focus();
+      return;
+    }
+    setWorkerStatus(`Could not save worker profile: ${msg || 'Make sure employee profile columns and storage are set up.'}`);
   }
 });
 
@@ -3532,12 +3788,40 @@ document.querySelector('#close-worker-account')?.addEventListener('click', () =>
 document.querySelector('#worker-reviews-trigger')?.addEventListener('click', () => toggleWorkerPanel('worker-reviews-section', true));
 document.querySelector('#close-worker-reviews')?.addEventListener('click', () => toggleWorkerPanel('worker-reviews-section', false));
 
-['worker-reviews-section', 'worker-account'].forEach((id) => {
+['worker-reviews-section', 'worker-account', 'worker-legal-modal'].forEach((id) => {
   const overlay = document.getElementById(id);
   overlay?.addEventListener('click', (event) => {
     if (event.target === overlay) toggleWorkerPanel(id, false);
   });
 });
+
+// Legal documents open in a worker-styled modal instead of navigating to the
+// public marketing site. Content is fetched from the existing legal pages
+// (their .legal-card block) so there's a single source of truth.
+const WORKER_LEGAL_TITLES = {
+  'privacy.html': 'Privacy Policy',
+  'terms.html': 'Terms of Service',
+  'liability-waiver.html': 'Liability Waiver',
+};
+async function openWorkerLegal(page) {
+  const content = document.querySelector('#worker-legal-content');
+  if (!content) return;
+  const title = document.querySelector('#worker-legal-title');
+  if (title) title.textContent = WORKER_LEGAL_TITLES[page] || 'Legal';
+  content.innerHTML = '<p class="field-help">Loading…</p>';
+  toggleWorkerPanel('worker-legal-modal', true);
+  try {
+    const html = await (await fetch(page)).text();
+    const card = new DOMParser().parseFromString(html, 'text/html').querySelector('.legal-card');
+    content.innerHTML = card ? card.innerHTML : '<p class="field-help">Could not load this document.</p>';
+  } catch (_) {
+    content.innerHTML = '<p class="field-help">Could not load this document. Check your connection and try again.</p>';
+  }
+}
+document.querySelectorAll('.worker-legal-link').forEach((btn) => {
+  btn.addEventListener('click', () => openWorkerLegal(btn.dataset.legal));
+});
+document.querySelector('#close-worker-legal')?.addEventListener('click', () => toggleWorkerPanel('worker-legal-modal', false));
 
 workerPasswordChangeForm?.addEventListener('submit', async (event) => {
   event.preventDefault();
@@ -3925,4 +4209,115 @@ loadVehiclePsiGuides().finally(loadWorkerProfile);
 
   attachObserver();
   document.addEventListener('DOMContentLoaded', attachObserver);
+})();
+
+// ============================================================
+// Uber-style worker job-card redesign (presentation only).
+// Reshapes the existing job card so the CURRENT ACTION is
+// unmistakable: one big labeled "what's next" callout + a
+// full-width, tall action button, with the header / progress
+// stepper / details quieted down around it. No job logic, GPS,
+// or push wiring is touched — this is pure CSS over the classes
+// worker.js already renders.
+// ============================================================
+(() => {
+  if (!document.body?.classList.contains('worker-portal-page')) return;
+  const style = document.createElement('style');
+  style.id = 'worker-card-redesign-style';
+  style.textContent = `
+    /* Card: calmer, roomier container so the action stands out. */
+    .worker-portal-page .worker-job-card {
+      border-radius: 18px !important;
+      padding: 18px !important;
+      box-shadow: 0 8px 24px rgba(13,59,59,.07) !important;
+    }
+    .worker-portal-page .worker-job-card .request-card-header { align-items: center !important; }
+    .worker-portal-page .worker-job-card .request-card-header h3 {
+      font-size: 1.25rem !important;
+      margin: 2px 0 0 !important;
+    }
+    .worker-portal-page .worker-job-card .request-card-header .eyebrow {
+      font-size: .72rem !important; letter-spacing: .06em !important;
+    }
+    .worker-portal-page .worker-job-card .status-pill {
+      font-weight: 700 !important; border-radius: 999px !important;
+    }
+
+    /* Progress stepper: compact + quiet — it's context, not the focus. */
+    .worker-portal-page .worker-vstepper { margin: 14px 0 !important; }
+    .worker-portal-page .worker-vstep { padding: 4px 0 !important; }
+    .worker-portal-page .worker-vstep-dot {
+      width: 22px !important; height: 22px !important; font-size: .72rem !important;
+    }
+    .worker-portal-page .worker-vstep.is-upcoming { opacity: .5 !important; }
+
+    /* "Job details": a clean, quiet, obviously-tappable disclosure row. */
+    .worker-portal-page .worker-job-details > summary {
+      padding: 12px 14px !important;
+      border-radius: 12px !important;
+      background: rgba(7,50,51,.04) !important;
+      font-weight: 700 !important;
+      cursor: pointer !important;
+    }
+
+    /* ── The hero: the guided-step action panel ── */
+    .worker-portal-page .guided-step {
+      margin-top: 16px !important;
+      padding: 18px !important;
+      border-radius: 16px !important;
+      border: 1px solid rgba(7,50,51,.12) !important;
+      background: linear-gradient(180deg, #ffffff, #f1f7f3) !important;
+    }
+    .worker-portal-page .guided-step .eyebrow {
+      font-size: .7rem !important; letter-spacing: .08em !important;
+      text-transform: uppercase !important; color: #5b6b67 !important;
+      margin: 0 0 2px !important;
+    }
+    .worker-portal-page .guided-step h4 {
+      font-size: 1.15rem !important; font-weight: 800 !important;
+      color: #073233 !important; margin: 0 0 10px !important;
+    }
+    /* The "do this now" instruction, as a labeled callout — the thing the
+       worker's eye should land on. */
+    .worker-portal-page .guided-step .next-action-label {
+      font-size: 1rem !important; line-height: 1.5 !important; color: #1c2b28 !important;
+      background: #ffffff !important;
+      border-left: 4px solid #16a34a !important;
+      border-radius: 0 10px 10px 0 !important;
+      padding: 12px 14px !important; margin: 0 0 16px !important;
+    }
+    .worker-portal-page .guided-step .next-action-label strong {
+      display: block !important; font-size: .7rem !important;
+      text-transform: uppercase !important; letter-spacing: .06em !important;
+      color: #16a34a !important; margin-bottom: 3px !important;
+    }
+
+    /* The big action: stacked, full-width, tall — Uber's one-obvious-tap. */
+    .worker-portal-page .guided-step .admin-button-row {
+      display: flex !important; flex-direction: column !important;
+      gap: 10px !important; margin: 0 !important;
+    }
+    .worker-portal-page .guided-step .admin-button-row .button {
+      width: 100% !important; min-height: 56px !important;
+      font-size: 1.05rem !important; font-weight: 800 !important;
+      border-radius: 14px !important;
+      display: inline-flex !important; align-items: center !important; justify-content: center !important;
+    }
+    .worker-portal-page .guided-step .admin-button-row .button.primary {
+      order: 1 !important;
+      background: #073233 !important;
+      box-shadow: 0 6px 16px rgba(7,50,51,.22) !important;
+    }
+    .worker-portal-page .guided-step .admin-button-row .button.primary:active { transform: translateY(1px); }
+    /* Back / secondary: present but visibly quieter, always below the primary. */
+    .worker-portal-page .guided-step .admin-button-row .button.secondary {
+      order: 2 !important; min-height: 46px !important;
+      font-size: .95rem !important; font-weight: 700 !important;
+      background: transparent !important;
+      border: 1px solid rgba(7,50,51,.2) !important;
+      color: #073233 !important; box-shadow: none !important;
+    }
+    .worker-portal-page .guided-step .admin-button-row .button.danger { order: 3 !important; }
+  `;
+  document.head.appendChild(style);
 })();

@@ -58,7 +58,7 @@ const bookingState = {
   address: {
     validated: false,
     status: "warning",
-    message: "Please validate your service address before continuing.",
+    message: "Start typing your street address and pick it from the list to verify your service area.",
   },
   returning: {
     verified: false,
@@ -84,6 +84,11 @@ const bookingState = {
     authorizedAmountCents: 0,
     status: "",
     statusType: "",
+    // Advance bookings save the card now instead of holding funds (see
+    // NEAR_TERM_DAYS). The cron places the real hold ~2 days before service.
+    cardSaved: false,
+    setupIntentId: "",
+    stripeCustomerId: "",
   },
   submitted: false,
   submitting: false,
@@ -110,15 +115,14 @@ const stepCopy = {
     intro: "Add the workplace or approved service location where the vehicle will be serviced.",
     fields: `
       <div class="booking-field-grid">
-        <label class="span-2"><span>Street address <span class="required-mark">Required</span></span><input data-required data-address-field name="street" type="text" autocomplete="address-line1" placeholder="123 Main Street"></label>
+        <label class="span-2"><span>Street address <span class="required-mark">Required</span></span><span class="address-autocomplete"><input data-required data-address-field data-address-autocomplete name="street" type="text" autocomplete="off" placeholder="Start typing your address…"><ul class="address-suggest" data-address-suggest hidden></ul></span></label>
         <label><span>Unit/suite/apartment</span><input data-address-field name="unit" type="text" autocomplete="address-line2" placeholder="Optional"></label>
         <label><span>City <span class="required-mark">Required</span></span><input data-required data-address-field name="city" type="text" autocomplete="address-level2" placeholder="Wilmington"></label>
         <label><span>State <span class="required-mark">Required</span></span><input data-required data-address-field name="state" type="text" autocomplete="address-level1" placeholder="DE" value="DE"></label>
         <label><span>ZIP code <span class="required-mark">Required</span></span><input data-required data-address-field name="zip" type="text" autocomplete="postal-code" inputmode="numeric" placeholder="19804"></label>
       </div>
       <div class="address-validation-panel">
-        <button class="button secondary" type="button" data-validate-address>Validate Address</button>
-        <p class="booking-validation-message" data-address-status data-status="warning">Please validate your service address before continuing.</p>
+        <p class="booking-validation-message" data-address-status data-status="warning">Start typing your street address and pick it from the list to verify your service area.</p>
       </div>
     `,
   },
@@ -587,6 +591,13 @@ function closePaymentModal() {
 function openPaymentModal(panel) {
   closePaymentModal();
 
+  const advance = serviceIsAdvanceBooking();
+  const svcDate = bookingState.values.serviceDate || "your service date";
+  const helpCopy = advance
+    ? `Your card is saved now — no charge today. We'll authorize your estimated total about 2 days before ${svcDate}, and you're only charged once service is complete.`
+    : "Your card is authorized now. You are not charged until service is complete, unless you cancel after the worker has received your keys or service has started.";
+  const confirmCopy = advance ? "Save card" : "Authorize payment";
+
   const modal = document.createElement("div");
   modal.id = "booking-payment-modal";
   modal.className = "booking-payment-modal";
@@ -596,14 +607,14 @@ function openPaymentModal(panel) {
       <button class="booking-payment-close" type="button" aria-label="Close payment authorization" data-close-payment-modal>&times;</button>
       <p class="eyebrow">Secure payment authorization</p>
       <h3 id="booking-payment-title">Enter card information</h3>
-      <p class="field-help">Your card is authorized now. You are not charged until service is complete, unless you cancel after the worker has received your keys or service has started.</p>
+      <p class="field-help">${helpCopy}</p>
       <div class="payment-card-box">
         <label><span>Card information</span><div id="booking-card-element" class="booking-card-element"></div></label>
         <p id="booking-card-errors" class="booking-validation-message" data-status="error"></p>
       </div>
       <div class="admin-button-row">
         <button class="button secondary" type="button" data-close-payment-modal>Cancel</button>
-        <button class="button primary" type="button" data-confirm-payment-authorization>Authorize payment</button>
+        <button class="button primary" type="button" data-confirm-payment-authorization>${confirmCopy}</button>
       </div>
     </div>
   `;
@@ -656,8 +667,13 @@ function inputValue(input) {
 }
 
 function invalidatePaymentAuthorization() {
-  if (!bookingState.payment.authorized) return;
+  if (!bookingState.payment.authorized && !bookingState.payment.cardSaved) return;
   bookingState.payment.authorized = false;
+  // Also clear any saved-card (advance booking) state — changing details,
+  // including the service date, can flip the near-term/advance tier.
+  bookingState.payment.cardSaved = false;
+  bookingState.payment.setupIntentId = "";
+  bookingState.payment.stripeCustomerId = "";
   bookingState.payment.statusType = "warning";
   bookingState.payment.status = "Booking details changed. Please authorize payment again.";
   bookingState.payment.paymentIntentId = "";
@@ -903,7 +919,6 @@ function renderSummarySidebar(steps, flowName, unlockedIndex) {
         </span>
         <span class="summary-total-amount">${formatMoney(totals.estimatedTotal)}</span>
       </div>
-      <button type="button" class="button primary summary-jump-review" data-jump-review ${reachedReview ? "" : "disabled"}>Continue to Review &rarr;</button>
       <p class="summary-secure-note">Secure, encrypted, and trusted.</p>
     </aside>
   `;
@@ -964,6 +979,8 @@ async function callAddressValidator(address) {
       city: address.city || "",
       state: address.state || "",
       zip: address.zip || "",
+      lat: address.lat || "",
+      lon: address.lon || "",
     }),
   });
   const data = await res.json().catch(() => ({}));
@@ -992,6 +1009,8 @@ async function validateAddress(panel) {
       city: bookingState.values.city,
       state: bookingState.values.state,
       zip: bookingState.values.zip,
+      lat: bookingState.values.address_lat,
+      lon: bookingState.values.address_lon,
     });
     if (!ok || !data.valid) {
       bookingState.address.validated = false;
@@ -1010,6 +1029,115 @@ async function validateAddress(panel) {
       button.textContent = "Validate Address";
     }
   }
+}
+
+// ---------------------------------------------------------------------------
+// Mapbox address autocomplete. We proxy through /api/address so the browser
+// never carries a token. A session_token groups suggest calls + one retrieve
+// into a single Mapbox billable session; we mint a fresh one after each pick.
+// ---------------------------------------------------------------------------
+
+let addressSessionToken = newAddressSession();
+let addressSuggestTimer = null;
+let addressSuggestSeq = 0;
+// Set on suggestion mousedown (fires before the input's blur) so the blur-driven
+// fallback validation doesn't race the Mapbox retrieve+validate of a pick.
+let addressPickInProgress = false;
+
+function newAddressSession() {
+  if (window.crypto?.randomUUID) return window.crypto.randomUUID();
+  return `sf-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+function closeAddressSuggest(listEl) {
+  if (!listEl) return;
+  listEl.hidden = true;
+  listEl.innerHTML = "";
+}
+
+async function fetchAddressSuggestions(query, listEl) {
+  const seq = ++addressSuggestSeq;
+  try {
+    const res = await fetch("/api/address", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "address_suggest", q: query, session_token: addressSessionToken }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (seq !== addressSuggestSeq) return; // a newer keystroke superseded this one
+    renderAddressSuggestions(listEl, data.suggestions || []);
+  } catch (error) {
+    closeAddressSuggest(listEl);
+  }
+}
+
+function renderAddressSuggestions(listEl, suggestions) {
+  if (!listEl) return;
+  if (!suggestions.length) {
+    closeAddressSuggest(listEl);
+    return;
+  }
+  listEl.innerHTML = suggestions
+    .map(
+      (s) => `
+      <li>
+        <button type="button" class="address-suggest-item" data-suggest-id="${escapeHtml(s.mapbox_id)}">
+          <span class="address-suggest-name">${escapeHtml(s.name)}</span>
+          <span class="address-suggest-place">${escapeHtml(s.place)}</span>
+        </button>
+      </li>`
+    )
+    .join("");
+  listEl.hidden = false;
+}
+
+async function selectAddressSuggestion(panel, mapboxId) {
+  const listEl = panel.querySelector("[data-address-suggest]");
+  closeAddressSuggest(listEl);
+  try {
+    const res = await fetch("/api/address", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "address_retrieve", mapbox_id: mapboxId, session_token: addressSessionToken }),
+    });
+    const data = await res.json().catch(() => ({}));
+    addressSessionToken = newAddressSession(); // session spent on this retrieve
+    if (!data.ok || !data.address) return;
+
+    const a = data.address;
+    const setField = (name, value) => {
+      const input = panel.querySelector(`[name="${name}"]`);
+      if (input && value) input.value = value;
+      bookingState.values[name] = value || bookingState.values[name] || "";
+    };
+    setField("street", a.street);
+    setField("city", a.city);
+    setField("state", a.state);
+    setField("zip", a.zip);
+    bookingState.values.address_lat = a.lat ?? "";
+    bookingState.values.address_lon = a.lon ?? "";
+
+    // We already have exact coordinates — validate instantly (radius check only).
+    savePanelValues(panel);
+    await validateAddress(panel);
+    panel.dispatchEvent(new Event("booking-address-picked", { bubbles: true }));
+  } catch (error) {
+    console.error("Address retrieve failed:", error);
+  } finally {
+    addressPickInProgress = false;
+  }
+}
+
+// Auto-validate a hand-typed address (no Mapbox pick) once all required fields
+// are filled, so the removed "Validate Address" button isn't needed. Skipped
+// while a suggestion pick is mid-flight (that path validates with exact coords).
+// Returns the validation promise (or null) so callers can refresh the UI after.
+function maybeAutoValidateAddress(panel) {
+  if (panel.dataset.currentStep !== "Address") return null;
+  if (addressPickInProgress) return null;
+  if (bookingState.address.validated) return null;
+  if (!requiredInputsComplete(panel)) return null;
+  return validateAddress(panel);
 }
 
 function requestAddressFromRecord(record) {
@@ -1515,6 +1643,7 @@ function renderPaymentSummary(panel) {
       ${serviceNeedsFuel() ? `<div><dt>Estimated fuel</dt><dd>${escapeHtml(bookingState.values.fuelPreference || "Selected range")} selected. We authorize a ${totals.authorizationFuelGallons} gallon buffer just in case: ${totals.authorizationFuelGallons} gal x ${formatMoney(PRICE_PER_GALLON)}/gal = ${formatMoney(totals.fuelEstimate)}</dd></div>` : ""}
       ${totals.washPackage ? `<div><dt>Car wash package</dt><dd>${escapeHtml(totals.washPackage.label)} - ${formatMoney(totals.washAmount)}</dd></div>` : ""}
       <div><dt>Estimated total</dt><dd>${formatMoney(totals.estimatedTotal)}</dd></div>
+      ${serviceIsAdvanceBooking() ? `<div><dt>Scheduled authorization</dt><dd>Your card is saved now — no charge today. We authorize ${formatMoney(totals.estimatedTotal)} about 2 days before your service date, and you're only charged once service is complete.</dd></div>` : ""}
     </dl>
   `;
   const status = panel.querySelector("[data-payment-status]");
@@ -1524,9 +1653,33 @@ function renderPaymentSummary(panel) {
   }
   const button = panel.querySelector("[data-authorize-payment]");
   if (button) {
-    button.disabled = bookingState.payment.authorized;
-    button.textContent = bookingState.payment.authorized ? "Payment authorized" : "Authorize payment";
+    const done = bookingState.payment.authorized || bookingState.payment.cardSaved;
+    button.disabled = done;
+    button.textContent = bookingState.payment.cardSaved
+      ? "Card saved"
+      : (bookingState.payment.authorized ? "Payment authorized" : "Authorize payment");
   }
+}
+
+// A Stripe authorization hold expires in ~7 days, so it can't cover a booking
+// made further out. At/under NEAR_TERM_DAYS we authorize now (today's hold flow);
+// beyond it we save the card now and the daily cron places the hold ~2 days
+// before the service date.
+const NEAR_TERM_DAYS = 5;
+
+function daysUntilServiceDate() {
+  const raw = bookingState.values.serviceDate || "";
+  if (!raw) return null;
+  const svc = new Date(`${raw}T00:00:00`);
+  if (Number.isNaN(svc.getTime())) return null;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  return Math.round((svc - today) / 86400000);
+}
+
+function serviceIsAdvanceBooking() {
+  const days = daysUntilServiceDate();
+  return days != null && days > NEAR_TERM_DAYS;
 }
 
 async function authorizePayment(panel) {
@@ -1577,8 +1730,48 @@ async function confirmPaymentAuthorization(panel, button) {
     button.disabled = true;
     button.textContent = "Authorizing...";
   }
-  setStatus("warning", "Authorizing payment method...");
+  setStatus("warning", serviceIsAdvanceBooking() ? "Saving card..." : "Authorizing payment method...");
   try {
+    if (serviceIsAdvanceBooking()) {
+      // Advance booking: save the card now (no hold placed). The daily cron
+      // authorizes the real hold ~2 days before the service date.
+      const setupRes = await fetch("/api/payments", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "create_setup_intent",
+          customer_name: customerName(),
+          customer_email: bookingState.values.customerEmail,
+          customer_phone: bookingState.values.customerPhone,
+          service_label: serviceLabel(),
+        }),
+      });
+      const setup = await setupRes.json().catch(() => ({}));
+      if (!setupRes.ok) throw new Error(setup.error || "Could not start card setup.");
+
+      const result = await stripe.confirmCardSetup(setup.client_secret, {
+        payment_method: {
+          card: cardElement,
+          billing_details: {
+            name: customerName(),
+            email: bookingState.values.customerEmail || undefined,
+            phone: normalizePhone(bookingState.values.customerPhone) || undefined,
+          },
+        },
+      });
+      if (result.error) throw new Error(result.error.message);
+
+      bookingState.payment.cardSaved = true;
+      bookingState.payment.setupIntentId = result.setupIntent?.id || "";
+      bookingState.payment.stripeCustomerId = setup.customer_id || "";
+      bookingState.payment.authorizedAmountCents = Math.round(totals.estimatedTotal * 100);
+      const svcDate = bookingState.values.serviceDate || "your service date";
+      setStatus("success", `Card saved. We'll authorize ${formatMoney(totals.estimatedTotal)} about 2 days before ${svcDate}. You are not charged until service is complete.`);
+      closePaymentModal();
+      flowRoot?.dispatchEvent(new CustomEvent("booking-payment-authorized"));
+      return;
+    }
+
     const createRes = await fetch("/api/payments", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -1640,6 +1833,11 @@ async function cancelPaymentAuthorization(panel) {
     bookingState.payment.paymentIntentId = "";
     bookingState.payment.clientSecret = "";
     bookingState.payment.authorizedAmountCents = 0;
+    // Advance booking saved a card instead of a hold — nothing to release in
+    // Stripe, just clear the local state.
+    bookingState.payment.cardSaved = false;
+    bookingState.payment.setupIntentId = "";
+    bookingState.payment.stripeCustomerId = "";
     bookingState.values.reviewConfirmed = false;
     setStatus("warning", "Payment authorization was cleared. No request was booked.");
     return true;
@@ -2054,6 +2252,12 @@ function renderFlow(root) {
     scrollToActive();
   };
 
+  // mousedown fires before the street input's blur, so we can flag a pick in
+  // progress and stop the blur fallback from running a redundant validation.
+  root.addEventListener("mousedown", (event) => {
+    if (event.target.closest("[data-suggest-id]")) addressPickInProgress = true;
+  });
+
   root.addEventListener("input", (event) => {
     const panel = event.target.closest(".booking-accordion-card");
     if (!panel) return;
@@ -2064,11 +2268,26 @@ function renderFlow(root) {
 
     if (event.target.matches("[data-address-field]")) {
       bookingState.address.validated = false;
-      setAddressStatus(panel, "warning", "Please validate your service address before continuing.");
+      setAddressStatus(panel, "warning", "Start typing your street address and pick it from the list to verify your service area.");
+      // Hand-editing any field drops the Mapbox coordinates so we don't reuse a
+      // stale pin for a typed address.
+      bookingState.values.address_lat = "";
+      bookingState.values.address_lon = "";
       // Editing the address after it was validated re-locks every later step
       // until it is validated again. Materializes on the next render.
       const addrIdx = steps.indexOf("Address");
       if (addrIdx >= 0 && unlockedIndex > addrIdx) unlockedIndex = addrIdx;
+    }
+
+    if (event.target.matches("[data-address-autocomplete]")) {
+      const listEl = panel.querySelector("[data-address-suggest]");
+      const query = event.target.value.trim();
+      window.clearTimeout(addressSuggestTimer);
+      if (query.length < 3) {
+        closeAddressSuggest(listEl);
+      } else {
+        addressSuggestTimer = window.setTimeout(() => fetchAddressSuggestions(query, listEl), 250);
+      }
     }
 
     // Live-clear an inline validation message once the field becomes valid.
@@ -2134,6 +2353,21 @@ function renderFlow(root) {
     if (input?.matches?.("input[data-required], input[data-phone], input[data-email]")) {
       showFieldMessage(input);
     }
+    if (input?.matches?.("[data-address-autocomplete]")) {
+      const listEl = input.closest(".booking-accordion-card")?.querySelector("[data-address-suggest]");
+      // Delay so a click on a suggestion lands before the list is removed.
+      window.setTimeout(() => closeAddressSuggest(listEl), 150);
+    }
+    // When a hand-typed address loses focus, auto-verify it (no button needed).
+    // Small delay lets a suggestion click set the in-progress guard first.
+    if (input?.matches?.("[data-address-field]")) {
+      const panel = input.closest(".booking-accordion-card");
+      if (panel) {
+        window.setTimeout(() => {
+          maybeAutoValidateAddress(panel)?.then(() => updateContinue());
+        }, 180);
+      }
+    }
   });
 
   root.addEventListener("booking-payment-authorized", () => {
@@ -2173,6 +2407,13 @@ function renderFlow(root) {
     const panel = event.target.closest(".booking-accordion-card");
     if (!panel) return;
 
+    const suggestItem = event.target.closest("[data-suggest-id]");
+    if (suggestItem) {
+      await selectAddressSuggestion(panel, suggestItem.dataset.suggestId);
+      updateContinue();
+      return;
+    }
+
     if (event.target.closest("[data-new-booking]")) {
       window.location.reload();
       return;
@@ -2180,13 +2421,6 @@ function renderFlow(root) {
 
     if (event.target.closest("[data-verify-returning]")) {
       await verifyReturningCustomer(panel);
-      savePanelValues(panel);
-      updateContinue();
-      return;
-    }
-
-    if (event.target.closest("[data-validate-address]")) {
-      await validateAddress(panel);
       savePanelValues(panel);
       updateContinue();
       return;
@@ -2434,7 +2668,9 @@ initBookingFlow();
       bookingState.submitting = true;
       savePanelValues(panel);
       log('Validation started');
-      if (!bookingState.payment.authorized || !bookingState.payment.paymentIntentId) {
+      // Advance bookings have a saved card (no hold) instead of an authorized PI.
+      const isScheduled = Boolean(bookingState.payment.cardSaved && bookingState.payment.setupIntentId);
+      if (!isScheduled && (!bookingState.payment.authorized || !bookingState.payment.paymentIntentId)) {
         setStatus(panel, 'error', 'Please authorize payment before submitting.');
         return;
       }
@@ -2443,26 +2679,44 @@ initBookingFlow();
         return;
       }
       log('Validation passed');
-      const stored = sessionStorage.getItem(`shiftfuel_booking_request_${bookingState.payment.paymentIntentId}`);
+      const idemKey = bookingState.payment.paymentIntentId || bookingState.payment.setupIntentId;
+      const stored = sessionStorage.getItem(`shiftfuel_booking_request_${idemKey}`);
       if (stored) {
         const data = JSON.parse(stored);
         if (data?.id) { showSuccess(panel, data); submitted = true; return; }
       }
-      const payload = makePayload();
       button.disabled = true;
       button.textContent = 'Submitting...';
       setStatus(panel, 'warning', 'Submitting booking...');
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
       log('Supabase insert started');
-      const response = await Promise.race([
-        fetch('/api/create-authorized-booking', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload), signal: controller.signal }),
-        new Promise((_, reject) => setTimeout(() => reject(new Error('Booking is taking longer than expected.')), TIMEOUT_MS)),
-      ]).finally(() => clearTimeout(timer));
+      let response;
+      if (isScheduled) {
+        // Card saved, no hold yet — create the request in payment_scheduled
+        // state; the daily cron places the real hold ~2 days before service.
+        const totals = calculateTotals();
+        const amountCents = Math.round(Number(bookingState.payment.authorizedAmountCents || totals.estimatedTotal * 100));
+        const schedPayload = buildBookingPayload();
+        schedPayload.action = 'create_scheduled_booking';
+        schedPayload.setup_intent_id = bookingState.payment.setupIntentId;
+        schedPayload.amount_cents = amountCents;
+        schedPayload.estimated_total = amountCents / 100;
+        response = await Promise.race([
+          fetch('/api/payments', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(schedPayload), signal: controller.signal }),
+          new Promise((_, reject) => setTimeout(() => reject(new Error('Booking is taking longer than expected.')), TIMEOUT_MS)),
+        ]).finally(() => clearTimeout(timer));
+      } else {
+        const payload = makePayload();
+        response = await Promise.race([
+          fetch('/api/create-authorized-booking', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload), signal: controller.signal }),
+          new Promise((_, reject) => setTimeout(() => reject(new Error('Booking is taking longer than expected.')), TIMEOUT_MS)),
+        ]).finally(() => clearTimeout(timer));
+      }
       const data = await response.json().catch(() => ({}));
       if (!response.ok || !data?.id) throw new Error(data.error || 'Could not submit booking.');
       log('Supabase insert succeeded', data);
-      sessionStorage.setItem(`shiftfuel_booking_request_${bookingState.payment.paymentIntentId}`, JSON.stringify(data));
+      sessionStorage.setItem(`shiftfuel_booking_request_${idemKey}`, JSON.stringify(data));
       log('Request number created', { requestNumber: publicNumber(data.id), requestId: data.id });
       showSuccess(panel, data);
       submitted = true;

@@ -250,6 +250,35 @@
   flex-shrink: 0;
 }
 
+/* Condensed search bar — after a successful lookup (toggled in track.js), the
+   form collapses to a slim, tappable "Search again" bar to free space for the
+   result cards. Tapping it re-expands the full form. */
+.track-page .track-search-card.is-condensed {
+  padding: 14px 18px;
+  cursor: pointer;
+}
+.track-page .track-search-card.is-condensed .track-field-grid,
+.track-page .track-search-card.is-condensed .track-search-note,
+.track-page .track-search-card.is-condensed .track-search-heading p,
+.track-page .track-search-card.is-condensed #track-message { display: none; }
+.track-page .track-search-card.is-condensed .track-search-form { gap: 0; }
+.track-page .track-search-card.is-condensed .track-search-heading {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.track-page .track-search-card.is-condensed .track-search-icon { width: 40px; height: 40px; }
+.track-page .track-search-card.is-condensed .track-search-icon svg { width: 20px; height: 20px; }
+.track-page .track-search-card.is-condensed .track-search-heading h2 { margin: 0; font-size: 1.1rem; }
+.track-page .track-search-card.is-condensed .track-search-heading::after {
+  content: "Search again";
+  margin-left: auto;
+  color: var(--sf-teal-dark);
+  font-size: 0.82rem;
+  font-weight: 850;
+  white-space: nowrap;
+}
+
 #tracking-result {
   /* Match the header/footer width (also enforced in layout-width-polish.css)
      so the request sections line up with the rest of the page edge-to-edge. */
@@ -595,6 +624,20 @@
   color: var(--sf-teal-dark);
   background: var(--sf-white);
   border-color: var(--sf-white);
+}
+
+/* Keep "Join the Team" filled green here too — the generic outlined override
+   above otherwise strips the primary green fill (equal specificity, later file). */
+.portal-closing-banner .portal-button-primary {
+  color: var(--sf-white);
+  background: linear-gradient(135deg, var(--sf-green), var(--sf-green-dark));
+  border-color: var(--sf-green-dark);
+}
+
+.portal-closing-banner .portal-button-primary:hover {
+  color: var(--sf-white);
+  background: linear-gradient(135deg, #239155, var(--sf-green-dark));
+  border-color: var(--sf-green-dark);
 }
 
 .track-page .site-footer {
@@ -1278,9 +1321,15 @@
 }
 .tk-sub-acc-body {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 12px;
   padding: 4px 12px 14px;
 }
+/* The .tk-card classes carry grid-area names for the desktop .track-detail-layout
+   grid. Inside a sub-accordion those areas are undefined, which both collapses
+   the cards onto one cell (overlap) and shrinks them to content width (huge empty
+   gutters on desktop). Reset them to stack full-width in the single column. */
+.track-page .tk-sub-acc-body .tk-card { grid-area: auto; width: 100%; }
 .tk-sub-acc-body .tk-card {
   border-radius: calc(var(--sf-radius-sm) - 2px);
 }
@@ -1329,3 +1378,402 @@
 }
 .track-page .tk-completed-meta { margin: 0; }
 .track-page .tk-completed-updates { margin-top: 14px; }
+
+/* ─────────────────────────────────────────────────────────────────────────
+   No bottom tab bar — the tracker matches the marketing landing page (a clean
+   vertical scroll, no bottom action bar). The .app-tabbar markup in track.html
+   stays inert; it's simply never shown.
+   ───────────────────────────────────────────────────────────────────────── */
+.track-page .app-tabbar { display: none !important; }
+
+@media (max-width: 767px) {
+  /* No fixed bar to clear — reset the reserved bottom padding. */
+  .track-page { padding-bottom: 24px; }
+}
+
+/* ─────────────────────────────────────────────────────────────────────────
+   App-like status hero (top of each in-progress request)
+   ───────────────────────────────────────────────────────────────────────── */
+.track-page .tk-hero {
+  background: var(--sf-sage-light, #e7f1ec);
+  border: 1px solid rgba(13, 59, 59, 0.10);
+  border-radius: var(--sf-radius-md, 16px);
+  padding: 18px;
+  margin-bottom: 16px;
+}
+
+.track-page .tk-hero-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.track-page .tk-hero-icon {
+  flex-shrink: 0;
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  border-radius: 13px;
+  background: var(--sf-teal-dark, #0d3b3b);
+  color: #fff;
+}
+.track-page .tk-hero-icon svg { width: 24px; height: 24px; }
+
+.track-page .tk-hero-headline { flex: 1; min-width: 0; }
+.track-page .tk-hero-stage {
+  margin: 0;
+  color: var(--sf-teal-dark, #0d3b3b);
+  font-size: 1.2rem;
+  font-weight: 950;
+  letter-spacing: -0.01em;
+}
+.track-page .tk-hero-desc {
+  margin: 2px 0 0;
+  color: var(--sf-muted, #5f6f6b);
+  font-size: 0.88rem;
+  line-height: 1.4;
+}
+
+.track-page .tk-hero-refresh {
+  flex-shrink: 0;
+  width: 38px;
+  height: 38px;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(13, 59, 59, 0.14);
+  border-radius: 11px;
+  background: rgba(255, 255, 255, 0.7);
+  color: var(--sf-teal-dark, #0d3b3b);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.track-page .tk-hero-refresh svg { width: 19px; height: 19px; }
+.track-page .tk-hero-refresh:active { transform: scale(0.94); }
+
+.track-page .tk-hero-progress {
+  display: flex;
+  gap: 5px;
+  margin-top: 16px;
+}
+.track-page .tk-hero-seg {
+  flex: 1;
+  height: 6px;
+  border-radius: 4px;
+  background: rgba(13, 59, 59, 0.12);
+}
+.track-page .tk-hero-seg.filled { background: var(--sf-teal-dark, #0d3b3b); }
+.track-page .tk-hero-seg.current {
+  background: var(--sf-green, #1f9d57);
+  animation: tk-hero-pulse 1.6s ease-in-out infinite;
+}
+@keyframes tk-hero-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.45; } }
+
+.track-page .tk-hero-progress-note {
+  margin: 8px 0 0;
+  color: var(--sf-teal-dark, #0d3b3b);
+  font-size: 0.76rem;
+  font-weight: 800;
+}
+
+.track-page .tk-hero-quickrow {
+  display: flex;
+  gap: 10px;
+  margin-top: 14px;
+}
+.track-page .tk-hero-quick {
+  flex: 1;
+  min-width: 0;
+  background: rgba(255, 255, 255, 0.82);
+  border-radius: var(--sf-radius-sm, 12px);
+  padding: 10px 12px;
+}
+.track-page .tk-hero-quick-label {
+  display: block;
+  color: var(--sf-muted, #5f6f6b);
+  font-size: 0.68rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 5px;
+}
+.track-page .tk-hero-quick-val {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--sf-teal-dark, #0d3b3b);
+  font-size: 0.95rem;
+  font-weight: 850;
+}
+.track-page .tk-hero-avatar {
+  flex-shrink: 0;
+  width: 26px;
+  height: 26px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--sf-teal-dark, #0d3b3b);
+  color: #fff;
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
+/* Concierge quick card: full partner info (photo, verified, Call) in the hero. */
+.track-page .tk-hero-concierge-row {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+.track-page .tk-hero-avatar-photo {
+  width: 34px;
+  height: 34px;
+  display: block;
+  object-fit: cover;
+}
+.track-page .tk-hero-concierge-info { min-width: 0; }
+.track-page .tk-hero-verified {
+  display: block;
+  margin-top: 2px;
+  color: var(--sf-green-dark, #15793f);
+  font-size: 0.66rem;
+  font-weight: 800;
+  line-height: 1.2;
+}
+.track-page .tk-hero-call {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  width: 100%;
+  min-height: 38px;
+  margin-top: 11px;
+  border: 1px solid rgba(13, 59, 59, 0.16);
+  border-radius: 11px;
+  background: #fff;
+  color: var(--sf-teal-dark, #0d3b3b);
+  font-size: 0.85rem;
+  font-weight: 850;
+  text-decoration: none;
+}
+.track-page .tk-hero-call svg { width: 16px; height: 16px; }
+.track-page .tk-hero-call:active { transform: scale(0.97); }
+
+/* Phones: stack the concierge + return cards full-width so names/badges don't
+   wrap awkwardly in a cramped half-width column. */
+@media (max-width: 600px) {
+  .track-page .tk-hero-quickrow { flex-direction: column; }
+}
+
+/* Promote the live map to a prominent, full-width card right under the hero. */
+.track-page .track-live-location-mount:empty { display: none; }
+.track-page .track-live-location-mount {
+  margin-bottom: 16px;
+}
+.track-page .track-live-location-panel {
+  border: 1px solid rgba(13, 59, 59, 0.12);
+  border-radius: var(--sf-radius-md, 16px);
+  overflow: hidden;
+  box-shadow: var(--sf-shadow-card, 0 14px 40px rgba(13,59,59,0.10));
+}
+
+/* GPS status notes shown in the Live Updates section when the live map isn't
+   relevant (before keys received / after the vehicle is returned). */
+.track-page .tk-gps-state {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 13px 15px;
+  border-radius: var(--sf-radius-sm, 12px);
+  font-size: 0.9rem;
+  font-weight: 800;
+  line-height: 1.35;
+}
+.track-page .tk-gps-off {
+  color: #8a5300;
+  background: rgba(240, 159, 39, 0.13);
+  border: 1px solid rgba(240, 159, 39, 0.30);
+}
+.track-page .tk-gps-dot {
+  flex-shrink: 0;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: #d68a1e;
+}
+.track-page .tk-gps-done {
+  color: var(--sf-teal-dark, #0d3b3b);
+  background: var(--sf-sage-light, #e7f1ec);
+  border: 1px solid rgba(13, 59, 59, 0.12);
+}
+.track-page .tk-gps-done svg {
+  flex-shrink: 0;
+  width: 18px;
+  height: 18px;
+  color: var(--sf-success, #1f9d57);
+}
+
+/* Desktop two-column detail dashboard — uses the width on wide screens while the
+   hero, live map, and estimated total stay full-width above. Mobile = one column. */
+.track-page .tk-detail-grid {
+  display: grid;
+  gap: 12px;
+}
+@media (min-width: 1000px) {
+  .track-page .tk-detail-grid {
+    grid-template-columns: 1fr 1fr;
+    align-items: start;
+  }
+  /* Full Timeline holds the wide 7-step horizontal stepper — give it both columns. */
+  .track-page .tk-detail-grid > .tk-sub-acc:first-child { grid-column: 1 / -1; }
+
+  /* Desktop: detail sections render open (see detailsOpen in track.js) and stay
+     open — disable the toggle and drop the chevron so they read as plain cards.
+     Mobile keeps the normal collapsible accordion behavior. */
+  .track-page .tk-detail-grid > .tk-sub-acc > .tk-sub-acc-head {
+    pointer-events: none;
+    cursor: default;
+  }
+  .track-page .tk-detail-grid > .tk-sub-acc > .tk-sub-acc-head .tk-sub-acc-chevron {
+    display: none;
+  }
+}
+
+/* Photo viewer: prev/next paging controls + counter (added in track.js). */
+.photo-lightbox-nav {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 44px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.16);
+  color: #fff;
+  font-size: 1.7rem;
+  line-height: 1;
+  cursor: pointer;
+  z-index: 2;
+}
+.photo-lightbox-nav:hover { background: rgba(255, 255, 255, 0.30); }
+.photo-lightbox-nav:active { transform: translateY(-50%) scale(0.94); }
+.photo-lightbox-prev { left: 6px; }
+.photo-lightbox-next { right: 6px; }
+.photo-lightbox-nav[hidden] { display: none; }
+.photo-lightbox-counter {
+  margin: 0;
+  color: #fff;
+  opacity: 0.7;
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────
+   Phone app-ification — make Track read like a native app screen, not a web
+   page: slim title (no marketing hero), flat cards (no boxes-in-boxes),
+   compact lookup, tighter density. Phones only; desktop is untouched.
+   ───────────────────────────────────────────────────────────────────────── */
+@media (max-width: 640px) {
+  /* 1 — Compact app-style hero banner: the car photo as a background with the
+     title overlaid, instead of a giant heading floating on empty space. */
+  .track-page .track-hero-redesign {
+    position: relative;
+    display: block;
+    min-height: 150px;
+    border: 0;
+    border-radius: 18px;
+    box-shadow: none;
+    overflow: hidden;
+  }
+  .track-page .track-hero-redesign .booking-flow-hero-image {
+    position: absolute;
+    inset: 0;
+    margin: 0;
+    width: 100%;
+    height: 100%;
+  }
+  .track-page .track-hero-redesign .booking-flow-hero-image::before { display: none; }
+  .track-page .track-hero-redesign .booking-flow-hero-image img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+  .track-page .track-hero-redesign::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    background: linear-gradient(160deg, rgba(13, 59, 59, 0.40) 0%, rgba(13, 59, 59, 0.84) 100%);
+  }
+  .track-page .track-hero-redesign .booking-flow-hero-copy {
+    position: relative;
+    z-index: 2;
+    width: 100%;
+    min-height: 150px;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+    padding: 18px;
+  }
+  .track-page .track-hero-redesign .eyebrow {
+    display: block;
+    margin: 0 0 4px;
+    color: rgba(255, 255, 255, 0.82);
+    font-size: 0.72rem;
+    font-weight: 800;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+  .track-page .track-hero-redesign p:not(.eyebrow) { display: none; }
+  .track-page .track-hero-redesign h1 {
+    margin: 0;
+    color: #fff;
+    font-size: 1.6rem;
+    line-height: 1.05;
+    letter-spacing: -0.02em;
+  }
+
+  .track-shell { margin: 12px auto 56px; }
+
+  /* 3 — Compact, app-style lookup card. */
+  .track-page .track-search-card {
+    margin-top: 12px;
+    padding: 16px;
+    border-radius: 16px;
+    box-shadow: none;
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+    background: #fff;
+  }
+  .track-page .track-search-heading { grid-template-columns: 1fr; gap: 2px; }
+  .track-page .track-search-icon { display: none; }
+  .track-page .track-search-heading h2 { font-size: 1.35rem; }
+  .track-page .track-search-form { gap: 14px; }
+
+  /* 2 + 4 — Flatten the nested cards and tighten density so a request reads as
+     one clean screen rather than boxes inside boxes. */
+  .track-page .track-section {
+    border: 0;
+    box-shadow: none;
+    background: transparent;
+  }
+  .track-page .track-request-card {
+    box-shadow: none;
+    border: 1px solid rgba(13, 59, 59, 0.10);
+    border-radius: 16px;
+  }
+  .track-page .track-request-body { padding: 12px; gap: 12px; }
+  .track-page .tk-hero { padding: 14px; margin-bottom: 12px; }
+  .track-page .estimated-total-card { padding: 12px 14px; }
+  .track-page .tk-detail-grid { gap: 10px; }
+  .track-page .tk-sub-acc { background: #fff; }
+  .track-page .tk-sub-acc-body { padding: 2px 12px 12px; }
+  .track-page .tk-card {
+    box-shadow: none;
+    border: 1px solid rgba(13, 59, 59, 0.08);
+    padding: 14px;
+  }
+}

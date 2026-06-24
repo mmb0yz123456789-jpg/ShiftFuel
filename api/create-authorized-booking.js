@@ -7,6 +7,7 @@
 
 const Stripe = require('stripe');
 const { setCorsHeaders, getSupabaseAdmin } = require('./_auth');
+const { notifyWorkersNewJob } = require('./_push');
 
 function getStripe() {
   if (!process.env.STRIPE_SECRET_KEY) throw new Error('STRIPE_SECRET_KEY not configured');
@@ -272,9 +273,23 @@ async function insertBookingRow(db, row) {
 
     const message = String(error.message || '');
     console.error('[create-authorized-booking] Supabase insert failed:', message);
-    if (/null value in column "(user_id|vehicle_id)"/i.test(message)) {
+    // Returning customers submit a vehicle_id (and customer_id) sourced from the
+    // saved_customer_vehicles snapshot, which is NOT a real vehicles row — so the
+    // FK check fails. Treat an FK violation on user_id/vehicle_id like a missing
+    // value: drop the bad ids and create fresh legacy user/vehicle rows, retry.
+    const fkViolation = error.code === '23503' || /foreign key constraint/i.test(message);
+    const fkOnUserOrVehicle = fkViolation && /(user_id|vehicle_id)/i.test(message);
+    if (/null value in column "(user_id|vehicle_id)"/i.test(message) || fkOnUserOrVehicle) {
+      if (fkOnUserOrVehicle) { delete row.user_id; delete row.vehicle_id; }
       const attached = await attachLegacyUserAndVehicle(db, row);
       if (attached) continue;
+    }
+    // A stale customer_id from the returning-customer snapshot can also fail its
+    // FK. It's optional metadata — drop it and retry.
+    if (fkViolation && /customer_id/i.test(message) && Object.prototype.hasOwnProperty.call(row, 'customer_id')) {
+      console.warn('[create-authorized-booking] Dropping invalid customer_id and retrying');
+      delete row.customer_id;
+      continue;
     }
 
     const column = message.match(/Could not find the '([^']+)' column/i)?.[1]
@@ -416,6 +431,9 @@ module.exports = async function handler(req, res) {
 
     await markAuthorizationBooked(db, intent.id);
     console.log('[create-authorized-booking] Created request', data?.id, 'for PI', intent.id, 'amount', intent.amount);
+    // Buzz every subscribed worker that a new claimable job just posted.
+    // Fire-and-forget — never block the customer's booking on the push round-trip.
+    notifyWorkersNewJob(data).catch((e) => console.warn('[create-authorized-booking] new-job push:', e.message));
     return res.status(200).json({ id: data?.id, status: 'request_received', payment_status: 'authorized' });
   } catch (error) {
     console.error('[create-authorized-booking] error:', error.message || error);

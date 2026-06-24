@@ -43,6 +43,33 @@
   const activeWatches = new Map();
   const blockedRequests = new Set();
 
+  // ── Screen wake lock ────────────────────────────────────────────────────────
+  // Keep the worker's screen on while any job is being tracked, so iOS Auto-Lock
+  // can't dim/lock the phone mid-drive — which would suspend the page and silently
+  // stop GPS. Supported on iOS 16.4+ as an installed PWA (same bar as push).
+  // Released the instant no job is being tracked, so the screen returns to normal.
+  let wakeLock = null;
+
+  async function acquireWakeLock() {
+    if (wakeLock || !('wakeLock' in navigator) || document.visibilityState !== 'visible') return;
+    try {
+      wakeLock = await navigator.wakeLock.request('screen');
+      // The OS can drop the lock on its own (e.g. tab hidden). Clear our handle so
+      // a later visibility change re-acquires it instead of assuming we still hold one.
+      wakeLock.addEventListener('release', () => { wakeLock = null; });
+    } catch (err) {
+      // Not fatal — tracking still works, the screen just isn't pinned on.
+      console.warn('Screen wake lock unavailable:', err && err.message ? err.message : err);
+      wakeLock = null;
+    }
+  }
+
+  async function releaseWakeLock() {
+    if (!wakeLock) return;
+    try { await wakeLock.release(); } catch (_) {}
+    wakeLock = null;
+  }
+
   function db() {
     return window.ShiftFuelSupabase;
   }
@@ -140,6 +167,7 @@
       navigator.geolocation.clearWatch(active.watchId);
     }
     activeWatches.delete(requestId);
+    if (activeWatches.size === 0) releaseWakeLock(); // no jobs left — let the screen sleep again
 
     const workerId = getWorkerId();
     if (workerId && db()) {
@@ -218,6 +246,7 @@
 
     active.watchId = watchId;
     activeWatches.set(requestId, active);
+    acquireWakeLock(); // keep the screen on for the duration of the drive
     refreshGpsPanels();
   }
 
@@ -283,6 +312,11 @@
   }
 
   document.addEventListener('click', (event) => {
+    // iOS only reliably grants a screen wake lock inside a user gesture, and drops
+    // it whenever the app backgrounds. So treat every tap as a chance to (re)arm it
+    // while a job is being tracked. acquireWakeLock() is a no-op if already held.
+    if (activeWatches.size > 0) acquireWakeLock();
+
     const start = event.target.closest('.start-gps-tracking');
     if (start) {
       event.preventDefault();
@@ -317,17 +351,39 @@
       keyBtn.textContent = 'Checking location...';
       setStatus(requestId, 'Requesting location permission to start tracking...');
 
+      // Grab the wake lock NOW, while we still have the tap's user activation — iOS
+      // rejects wakeLock.request() outside a gesture, so acquiring it later inside
+      // the async GPS callback silently failed and the screen kept dimming.
+      acquireWakeLock();
+
+      let settled = false;
+      let gpsFallback;
+      // Proceed with the key acceptance and start tracking. Shared by the success
+      // callback and the timeout fallback so the worker is never trapped.
+      const proceedWithKey = () => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(gpsFallback);
+        blockedRequests.delete(requestId);
+        startGps(requestId);
+        keyBtn.dataset.gpsCleared = '1';
+        keyBtn.disabled = false;
+        keyBtn.textContent = originalLabel;
+        keyBtn.click();
+      };
+
+      // iOS/Safari sometimes never fires EITHER callback (a pending fix that
+      // ignores the timeout), which traps the worker on "Checking location…".
+      // Fall back to proceeding so they can always advance; the GPS watch keeps
+      // trying for a fix in the background.
+      gpsFallback = setTimeout(proceedWithKey, 8000);
+
       navigator.geolocation.getCurrentPosition(
-        () => {
-          // Permission granted: start tracking, then re-dispatch so the status advances.
-          blockedRequests.delete(requestId);
-          startGps(requestId);
-          keyBtn.dataset.gpsCleared = '1';
-          keyBtn.disabled = false;
-          keyBtn.textContent = originalLabel;
-          keyBtn.click();
-        },
+        () => proceedWithKey(),
         (error) => {
+          if (settled) return;
+          settled = true;
+          clearTimeout(gpsFallback);
           keyBtn.disabled = false;
           keyBtn.textContent = originalLabel;
           const denied = error.code === 1;
@@ -338,7 +394,7 @@
             ? 'Location access was denied. You must allow location to mark Key received. Turn on location for this site in your browser settings, then try again.'
             : 'Could not get your location. Make sure location is enabled, then try again to mark Key received.');
         },
-        { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
+        { enableHighAccuracy: true, timeout: 10000, maximumAge: 30000 }
       );
       return;
     }
@@ -366,10 +422,17 @@
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start);
   else start();
 
+  // iOS releases the wake lock whenever the app is backgrounded, so re-acquire it
+  // when the worker comes back to a screen that still has an active job.
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible' && activeWatches.size > 0) acquireWakeLock();
+  });
+
   window.addEventListener('beforeunload', () => {
     for (const requestId of Array.from(activeWatches.keys())) {
       const active = activeWatches.get(requestId);
       if (active?.watchId != null && navigator.geolocation) navigator.geolocation.clearWatch(active.watchId);
     }
+    releaseWakeLock();
   });
 })();

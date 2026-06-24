@@ -22,6 +22,7 @@
 const Stripe = require('stripe');
 const { setCorsHeaders, getSupabaseAdmin, verifyAdminToken, verifyWorkerToken, verifyAnyStaffToken } = require('./_auth');
 const { notifyRequest } = require('./_push');
+const { placeScheduledHold } = require('./_scheduled-auth');
 
 // Actions that should fire a push once the handler has updated the DB. The event
 // is self-validating against the request's real status, so a failed action that
@@ -535,6 +536,97 @@ async function attachLegacyUserAndVehicle(db, row) {
   return true;
 }
 
+// Stamp the server-computed pricing onto a booking row. Shared by the
+// immediate-hold (create_authorized_booking) and save-card (create_scheduled_booking)
+// paths so the two can never drift apart.
+function assignServerPricingFields(row, serverPricing) {
+  row.estimated_total = serverPricing.estimatedTotal;
+  row.final_total = null;
+  // authorized_amount is audit-only — always the server-computed amount, never
+  // trusted from the client even though it's in ALLOWED_BOOKING_FIELDS.
+  row.authorized_amount = serverPricing.estimatedTotal;
+  row.estimated_gallons = serverPricing.fuelGallons;
+  row.authorization_fuel_gallons = serverPricing.fuelGallons;
+  row.selected_fuel_gallons = BOOKING_SELECTED_GALLONS?.[row.estimated_fuel_range] || row.selected_fuel_gallons || serverPricing.fuelGallons;
+  row.estimated_fuel_amount = serverPricing.fuelEstimate;
+  row.fuel_convenience_fee = serverPricing.fuelFee;
+  row.wash_fee = serverPricing.washAmount;
+  row.wash_package_label = serverPricing.washPackage?.label || row.wash_package_label || '';
+  row.wash_convenience_fee = serverPricing.washFee;
+  row.quick_inspection_fee = serverPricing.quickFee;
+  row.service_fee = roundMoney(serverPricing.fuelFee + serverPricing.washFee);
+  row.base_fuel_service_fee = serverPricing.fuelBaseFee;
+  row.base_car_wash_service_fee = serverPricing.washBaseFee;
+  row.base_inspection_fee = serverPricing.quickFee;
+  row.payment_operating_recovery_amount = serverPricing.recovery;
+  row.displayed_fuel_service_fee = serverPricing.fuelFee;
+  row.displayed_car_wash_service_fee = serverPricing.washFee;
+  row.displayed_inspection_fee = serverPricing.quickFee;
+  row.net_target_amount = serverPricing.netTarget;
+  row.gross_total_before_rounding = serverPricing.grossBeforeRounding;
+  row.rounded_customer_total = serverPricing.estimatedTotal;
+  row.parking_spot = row.parking_spot || row.parking_location || 'See parking location';
+  row.key_handoff_method = row.key_handoff_method || row.key_handoff_details || 'See key handoff details';
+}
+
+// Insert a service_requests row, retrying once per optional column that a given
+// deployment hasn't migrated yet. Returns the inserted row, or throws an Error
+// whose .userMessage is safe to surface to the client. Shared by both booking paths.
+async function insertBookingWithColumnRetry(db, row, logTag) {
+  const maxInsertAttempts = Object.keys(row).length + 5;
+  for (let attempt = 0; attempt < maxInsertAttempts; attempt += 1) {
+    const { data, error } = await db.from('service_requests').insert(row).select().maybeSingle();
+    if (!error) return data;
+
+    const message = String(error.message || '');
+    // Returning customers can submit a vehicle_id/customer_id from the saved
+    // snapshot tables that don't reference a real vehicles/users row → FK
+    // violation. Treat that like a missing value: drop the bad ids and create
+    // fresh legacy rows, then retry.
+    const fkViolation = error.code === '23503' || /foreign key constraint/i.test(message);
+    const fkOnUserOrVehicle = fkViolation && /(user_id|vehicle_id)/i.test(message);
+    if (/null value in column "(user_id|vehicle_id)"/i.test(message) || fkOnUserOrVehicle) {
+      if (fkOnUserOrVehicle) { delete row.user_id; delete row.vehicle_id; }
+      const attached = await attachLegacyUserAndVehicle(db, row);
+      if (attached) {
+        console.warn(`[payments/${logTag}] Attached legacy user/vehicle rows and retrying insert`);
+        continue;
+      }
+    }
+    // A stale customer_id from the returning-customer snapshot can also fail its
+    // FK. It's optional metadata — drop it and retry.
+    if (fkViolation && /customer_id/i.test(message) && Object.prototype.hasOwnProperty.call(row, 'customer_id')) {
+      console.warn(`[payments/${logTag}] Dropping invalid customer_id and retrying`);
+      delete row.customer_id;
+      continue;
+    }
+
+    const column = message.match(/Could not find the '([^']+)' column/i)?.[1]
+      || message.match(/'([^']+)' column/i)?.[1]
+      || message.match(/column "([^"]+)"/i)?.[1]
+      || '';
+    const missingOptionalColumn = (
+      error.code === 'PGRST204'
+      || error.code === '42703'
+      || /schema cache|column/i.test(message)
+    ) && column && Object.prototype.hasOwnProperty.call(row, column);
+
+    if (!missingOptionalColumn) {
+      console.error(`[payments/${logTag}] DB insert failed:`, {
+        code: error.code,
+        message: error.message,
+        details: error.details,
+        hint: error.hint,
+      });
+      throw Object.assign(new Error('DB_INSERT_FAILED'), { userMessage: 'We could not finish saving your booking. Please try again or contact ShiftFuel.' });
+    }
+
+    console.warn(`[payments/${logTag}] Dropping unsupported optional column and retrying:`, column);
+    delete row[column];
+  }
+  throw Object.assign(new Error('DB_INSERT_RETRIES_EXHAUSTED'), { userMessage: 'We could not finish saving your booking. Please try again or contact ShiftFuel.' });
+}
+
 async function handleCreateAuthorizedBooking(body, res) {
   const { payment_intent_id, amount_cents, ...rawFields } = body;
 
@@ -611,86 +703,245 @@ async function handleCreateAuthorizedBooking(body, res) {
   row.status = 'request_received';
   row.payment_status = 'authorized';
   row.payment_intent_id = intent.id;
-  row.estimated_total = serverPricing.estimatedTotal;
-  row.final_total = null;
-  // authorized_amount is audit-only — always the Stripe-verified amount,
-  // never trusted from the client even though it's in ALLOWED_BOOKING_FIELDS.
-  row.authorized_amount = serverPricing.estimatedTotal;
-  row.estimated_gallons = serverPricing.fuelGallons;
-  row.authorization_fuel_gallons = serverPricing.fuelGallons;
-  row.selected_fuel_gallons = BOOKING_SELECTED_GALLONS?.[row.estimated_fuel_range] || row.selected_fuel_gallons || serverPricing.fuelGallons;
-  row.estimated_fuel_amount = serverPricing.fuelEstimate;
-  row.fuel_convenience_fee = serverPricing.fuelFee;
-  row.wash_fee = serverPricing.washAmount;
-  row.wash_package_label = serverPricing.washPackage?.label || row.wash_package_label || '';
-  row.wash_convenience_fee = serverPricing.washFee;
-  row.quick_inspection_fee = serverPricing.quickFee;
-  row.service_fee = roundMoney(serverPricing.fuelFee + serverPricing.washFee);
-  row.base_fuel_service_fee = serverPricing.fuelBaseFee;
-  row.base_car_wash_service_fee = serverPricing.washBaseFee;
-  row.base_inspection_fee = serverPricing.quickFee;
-  row.payment_operating_recovery_amount = serverPricing.recovery;
-  row.displayed_fuel_service_fee = serverPricing.fuelFee;
-  row.displayed_car_wash_service_fee = serverPricing.washFee;
-  row.displayed_inspection_fee = serverPricing.quickFee;
-  row.net_target_amount = serverPricing.netTarget;
-  row.gross_total_before_rounding = serverPricing.grossBeforeRounding;
-  row.rounded_customer_total = serverPricing.estimatedTotal;
-  row.parking_spot = row.parking_spot || row.parking_location || 'See parking location';
-  row.key_handoff_method = row.key_handoff_method || row.key_handoff_details || 'See key handoff details';
+  assignServerPricingFields(row, serverPricing);
 
   const db = getSupabaseAdmin();
-
-  // Mirror the frontend's old missing-column resilience: some deployments
-  // lag behind on optional columns. Retry once per unsupported column.
-  const maxInsertAttempts = Object.keys(row).length + 5;
-  for (let attempt = 0; attempt < maxInsertAttempts; attempt += 1) {
-    const { data, error } = await db.from('service_requests').insert(row).select().maybeSingle();
-
-    if (!error) {
-      console.log('[payments/create_authorized_booking] Created request', data?.id, 'for PI', intent.id);
-      // Fire snapshot saves after responding — they're best-effort and must
-      // never delay the booking confirmation the customer is waiting on.
-      saveReusableBookingSnapshots(db, row).catch((snapshotErr) => {
-        console.warn('[payments/create_authorized_booking] Snapshot save failed:', snapshotErr.message);
-      });
-      return res.status(200).json({ id: data?.id, status: 'request_received', payment_status: 'authorized' });
-    }
-
-    const message = String(error.message || '');
-    if (/null value in column "(user_id|vehicle_id)"/i.test(message)) {
-      const attached = await attachLegacyUserAndVehicle(db, row);
-      if (attached) {
-        console.warn('[payments/create_authorized_booking] Attached legacy user/vehicle rows and retrying insert');
-        continue;
-      }
-    }
-
-    const column = message.match(/Could not find the '([^']+)' column/i)?.[1]
-      || message.match(/'([^']+)' column/i)?.[1]
-      || message.match(/column "([^"]+)"/i)?.[1]
-      || '';
-    const missingOptionalColumn = (
-      error.code === 'PGRST204'
-      || error.code === '42703'
-      || /schema cache|column/i.test(message)
-    ) && column && Object.prototype.hasOwnProperty.call(row, column);
-
-    if (!missingOptionalColumn) {
-      console.error('[payments/create_authorized_booking] DB insert failed:', {
-        code: error.code,
-        message: error.message,
-        details: error.details,
-        hint: error.hint,
-      });
-      return res.status(500).json({ error: 'We could not finish saving your booking after payment authorization. Please try again or contact ShiftFuel.' });
-    }
-
-    console.warn('[payments/create_authorized_booking] Dropping unsupported optional column and retrying:', column);
-    delete row[column];
+  let data;
+  try {
+    data = await insertBookingWithColumnRetry(db, row, 'create_authorized_booking');
+  } catch (err) {
+    return res.status(500).json({ error: err.userMessage || 'We could not finish saving your booking after payment authorization. Please try again or contact ShiftFuel.' });
   }
 
-  return res.status(500).json({ error: 'We could not finish saving your booking after payment authorization. Please try again or contact ShiftFuel.' });
+  console.log('[payments/create_authorized_booking] Created request', data?.id, 'for PI', intent.id);
+  // Resolve the tracked hold to 'booked' so it drops off the admin "Incomplete
+  // authorizations" card. Best-effort and self-swallowing.
+  resolvePendingAuthorization(intent.id, 'booked', null).catch(() => {});
+  // Best-effort snapshot save; never delay the confirmation the customer waits on.
+  saveReusableBookingSnapshots(db, row).catch((snapshotErr) => {
+    console.warn('[payments/create_authorized_booking] Snapshot save failed:', snapshotErr.message);
+  });
+  return res.status(200).json({ id: data?.id, status: 'request_received', payment_status: 'authorized' });
+}
+
+// ── Save-card flow for advance bookings ─────────────────────────────────────
+// A manual-capture hold expires in ~7 days, so for bookings more than a few days
+// out we save the card now (no money moved) and let the daily cron place the real
+// hold ~2 days before the service date. See 202606241500_scheduled_card_auth.sql.
+
+// Step 1: create (or reuse) a Stripe Customer keyed by email and a SetupIntent so
+// the browser can confirm + save the card off_session. No hold, no booking yet.
+async function handleCreateSetupIntent(body, res) {
+  const { customer_name, customer_email, customer_phone, service_label } = body;
+  const email = String(customer_email || '').trim();
+  if (!email) return res.status(400).json({ error: 'Email is required to save a card.' });
+
+  try {
+    const stripe = getStripe();
+
+    let customer = null;
+    try {
+      const existing = await stripe.customers.list({ email, limit: 1 });
+      customer = existing.data && existing.data[0];
+    } catch (lookupErr) {
+      console.warn('[payments/create_setup_intent] customer lookup failed:', lookupErr.message);
+    }
+    if (!customer) {
+      customer = await stripe.customers.create({
+        email,
+        name: customer_name || undefined,
+        phone: customer_phone || undefined,
+        metadata: { service_label: service_label || '' },
+      });
+    }
+
+    const setupIntent = await stripe.setupIntents.create({
+      customer: customer.id,
+      usage: 'off_session',
+      payment_method_types: ['card'],
+      metadata: { customer_name: customer_name || '', service_label: service_label || '' },
+    });
+
+    console.log('[payments/create_setup_intent] Created', setupIntent.id, 'for customer', customer.id);
+    return res.status(200).json({ client_secret: setupIntent.client_secret, customer_id: customer.id });
+  } catch (err) {
+    console.error('[payments/create_setup_intent] Stripe error:', err.message);
+    return res.status(500).json({ error: 'Could not initialize card setup. Please try again.' });
+  }
+}
+
+// Step 2: after the browser confirms the SetupIntent, verify it, attach the saved
+// payment method to the customer, and create the request in 'payment_scheduled'
+// state with NO hold. The Stripe IDs go in the service-role-only side table.
+async function handleCreateScheduledBooking(body, res) {
+  // Note: the app's customer_id (a UUID) stays in rawFields → the booking row.
+  // The Stripe customer comes from the SetupIntent below, never from the client.
+  const { setup_intent_id, amount_cents, ...rawFields } = body;
+
+  if (!setup_intent_id) return res.status(400).json({ error: 'setup_intent_id is required' });
+
+  const row = {};
+  for (const field of ALLOWED_BOOKING_FIELDS) {
+    if (rawFields[field] !== undefined) row[field] = rawFields[field];
+  }
+
+  if (!row.customer_name || !String(row.customer_name).trim()) return res.status(400).json({ error: 'Customer name is required' });
+  if (!row.customer_phone || !String(row.customer_phone).trim()) return res.status(400).json({ error: 'Customer phone is required' });
+  if (!row.customer_email || !String(row.customer_email).trim()) return res.status(400).json({ error: 'Customer email is required' });
+  if (!ALLOWED_SERVICE_TYPES.includes(row.service_type)) return res.status(400).json({ error: 'Invalid service type' });
+  if (!row.service_date || !String(row.service_date).trim()) return res.status(400).json({ error: 'Service date is required' });
+
+  const expectedCents = Math.round(Number(amount_cents));
+  if (!expectedCents || expectedCents < 50) return res.status(400).json({ error: 'Amount must be at least $0.50' });
+
+  const serverPricing = calculateBookingAuthorization(row);
+  if (!serverPricing.valid) return res.status(400).json({ error: serverPricing.error });
+  if (serverPricing.amount_cents !== expectedCents) {
+    console.error('[payments/create_scheduled_booking] Server total mismatch:', serverPricing.amount_cents, 'vs client', expectedCents);
+    return res.status(400).json({ error: 'Payment total changed. Please review the booking and try again.' });
+  }
+
+  // Verify the SetupIntent succeeded and pull the saved payment method.
+  let setupIntent;
+  try {
+    const stripe = getStripe();
+    setupIntent = await stripe.setupIntents.retrieve(setup_intent_id);
+  } catch (err) {
+    console.error('[payments/create_scheduled_booking] SetupIntent retrieve failed:', err.message);
+    return res.status(400).json({ error: 'Your card could not be saved. Please try again.' });
+  }
+  if (!setupIntent || setupIntent.status !== 'succeeded' || !setupIntent.payment_method) {
+    return res.status(400).json({ error: 'Your card could not be saved. Please try again.' });
+  }
+
+  const stripeCustomerId = (typeof setupIntent.customer === 'string' ? setupIntent.customer : setupIntent.customer?.id) || null;
+  const stripePaymentMethodId = typeof setupIntent.payment_method === 'string' ? setupIntent.payment_method : setupIntent.payment_method.id;
+  if (!stripeCustomerId || !stripePaymentMethodId) {
+    return res.status(400).json({ error: 'Your card could not be saved. Please try again.' });
+  }
+
+  // Attach the PM to the customer and make it the default so the cron can charge
+  // it off_session later. Best-effort: if it's already attached, ignore.
+  try {
+    const stripe = getStripe();
+    try {
+      await stripe.paymentMethods.attach(stripePaymentMethodId, { customer: stripeCustomerId });
+    } catch (attachErr) {
+      if (attachErr.code !== 'payment_method_already_attached' && !/already.*attached/i.test(String(attachErr.message || ''))) {
+        throw attachErr;
+      }
+    }
+    await stripe.customers.update(stripeCustomerId, {
+      invoice_settings: { default_payment_method: stripePaymentMethodId },
+    });
+  } catch (err) {
+    console.warn('[payments/create_scheduled_booking] PM attach/default skipped:', err.message);
+  }
+
+  row.status = 'request_received';
+  row.payment_status = 'payment_scheduled';
+  assignServerPricingFields(row, serverPricing);
+
+  const db = getSupabaseAdmin();
+  let data;
+  try {
+    data = await insertBookingWithColumnRetry(db, row, 'create_scheduled_booking');
+  } catch (err) {
+    return res.status(500).json({ error: err.userMessage || 'We could not finish saving your booking. Please try again or contact ShiftFuel.' });
+  }
+
+  // Persist the Stripe IDs in the service-role-only side table so the cron can
+  // place the hold later. If this fails the request is unusable (no card on
+  // file), so roll the request back and ask the customer to retry.
+  const { error: pmErr } = await db.from('request_payment_methods').insert({
+    request_id: data.id,
+    stripe_customer_id: stripeCustomerId,
+    stripe_payment_method_id: stripePaymentMethodId,
+  });
+  if (pmErr) {
+    console.error('[payments/create_scheduled_booking] Could not store payment method, rolling back request', data.id, '-', pmErr.message);
+    await db.from('service_requests').delete().eq('id', data.id);
+    return res.status(500).json({ error: 'We could not finish saving your booking. Please try again or contact ShiftFuel.' });
+  }
+
+  console.log('[payments/create_scheduled_booking] Created scheduled request', data?.id, 'service_date', row.service_date);
+  saveReusableBookingSnapshots(db, row).catch((snapshotErr) => {
+    console.warn('[payments/create_scheduled_booking] Snapshot save failed:', snapshotErr.message);
+  });
+  return res.status(200).json({ id: data?.id, status: 'request_received', payment_status: 'payment_scheduled' });
+}
+
+// Customer re-authorizes a saved-card booking whose off-session hold failed
+// (payment_status 'needs_reauth'). The browser places a fresh manual-capture hold
+// on-session and posts its PaymentIntent here. Ownership is verified by phone+email.
+async function handleCustomerReauthorizeScheduled(body, res) {
+  const { request_id, phone, email, new_payment_intent_id } = body;
+  if (!request_id || !phone || !email) return res.status(400).json({ error: 'request_id, phone, and email are required' });
+  if (!new_payment_intent_id) return res.status(400).json({ error: 'new_payment_intent_id is required' });
+
+  const db = getSupabaseAdmin();
+  const { data: request, error: reqErr } = await db
+    .from('service_requests')
+    .select('id, customer_phone, customer_email, payment_status, status, estimated_total, payment_intent_id')
+    .eq('id', request_id)
+    .maybeSingle();
+  if (reqErr || !request) return res.status(404).json({ error: 'Request not found' });
+
+  const phoneMatch = cleanPhone(request.customer_phone) === cleanPhone(phone);
+  const emailMatch = (request.customer_email || '').toLowerCase() === (email || '').toLowerCase();
+  if (!phoneMatch || !emailMatch) return res.status(403).json({ error: 'Your phone and email do not match this request' });
+
+  if (request.payment_status !== 'needs_reauth') {
+    if (request.payment_status === 'authorized') return res.status(200).json({ status: 'already_authorized' });
+    return res.status(400).json({ error: 'This request is not awaiting re-authorization.' });
+  }
+
+  const stripe = getStripe();
+  let intent;
+  try {
+    intent = await stripe.paymentIntents.retrieve(new_payment_intent_id);
+  } catch (err) {
+    console.error('[payments/customer_reauthorize_scheduled] retrieve failed:', err.message);
+    return res.status(400).json({ error: 'Payment authorization could not be verified. Please try again.' });
+  }
+  if (!intent || intent.status !== 'requires_capture' || intent.capture_method !== 'manual') {
+    return res.status(400).json({ error: 'Payment authorization could not be verified. Please try again.' });
+  }
+  if (intent.currency !== 'usd') {
+    return res.status(400).json({ error: 'Payment currency mismatch. Please contact ShiftFuel.' });
+  }
+  if (request.estimated_total == null) {
+    return res.status(400).json({ error: 'This request has no amount to authorize. Please contact ShiftFuel.' });
+  }
+  if (intent.amount !== Math.round(Number(request.estimated_total) * 100)) {
+    return res.status(400).json({ error: 'Authorization amount does not match. Please refresh and try again.' });
+  }
+
+  const { data: existingUse } = await db
+    .from('service_requests')
+    .select('id')
+    .eq('payment_intent_id', new_payment_intent_id)
+    .neq('id', request_id)
+    .maybeSingle();
+  if (existingUse) return res.status(400).json({ error: 'This payment is already applied to another request.' });
+
+  const { error: updErr } = await db
+    .from('service_requests')
+    .update({ payment_status: 'authorized', payment_intent_id: new_payment_intent_id })
+    .eq('id', request_id);
+  if (updErr) {
+    console.error('[payments/customer_reauthorize_scheduled] update failed:', updErr.message);
+    return res.status(500).json({ error: `Authorization succeeded but we could not update the request. Contact ShiftFuel and reference ${request_id}.` });
+  }
+
+  // Clear the failed-auth marker on the side table (best-effort).
+  db.from('request_payment_methods')
+    .update({ auth_error: null, updated_at: new Date().toISOString() })
+    .eq('request_id', request_id)
+    .then(() => {}, () => {});
+
+  console.log('[payments/customer_reauthorize_scheduled] Re-authorized request', request_id, 'PI', new_payment_intent_id);
+  return res.status(200).json({ status: 'authorized' });
 }
 
 async function handleCreateCustomerFinal(body, res) {
@@ -1973,7 +2224,7 @@ async function handleAdminListPendingAuthorizations(body, res) {
     }
   }
 
-  const authorizations = pending.filter((r) => !bookedIds.has(r.payment_intent_id));
+  const withoutBooking = pending.filter((r) => !bookedIds.has(r.payment_intent_id));
 
   if (bookedIds.size) {
     // Fire-and-forget self-heal; never block the response on it.
@@ -1983,7 +2234,163 @@ async function handleAdminListPendingAuthorizations(body, res) {
       .then(() => {}, (err) => console.warn('[pending_auth] self-heal failed:', err.message));
   }
 
+  // Second cross-check against Stripe: a row only belongs on this card if its
+  // intent is a REAL hold (requires_capture). create_intent records a pending
+  // row the moment a PaymentIntent is created — before the card is confirmed —
+  // so a customer who retried the "Authorize" step, changed the amount, or
+  // bailed mid-checkout leaves behind intents that never became holds
+  // (requires_payment_method / requires_confirmation / requires_action) and
+  // hold no money. Those must not show as "$75 hold — Void hold". Verify each
+  // surviving row (typically 0–2) and keep only genuine holds; self-heal the
+  // dead ones so they stop reappearing. Fail open on transient Stripe errors so
+  // a real hold is never hidden.
+  const authorizations = [];
+  const phantomIds = [];
+  let stripe;
+  try { stripe = getStripe(); } catch (_) { stripe = null; }
+
+  for (const row of withoutBooking) {
+    if (!stripe || !row.payment_intent_id) { authorizations.push(row); continue; }
+    try {
+      const intent = await stripe.paymentIntents.retrieve(row.payment_intent_id);
+      if (intent.status === 'requires_capture') {
+        authorizations.push(row);                         // real, uncaptured hold
+      } else if (
+        intent.status === 'requires_payment_method'
+        || intent.status === 'requires_confirmation'
+        || intent.status === 'canceled'
+      ) {
+        phantomIds.push(row.payment_intent_id);           // never a hold / dead — heal
+      }
+      // requires_action / processing / succeeded: don't show and don't heal —
+      // let the existing flows (booking, capture, 24h cron) resolve them.
+    } catch (err) {
+      if (err.code === 'resource_missing') {
+        phantomIds.push(row.payment_intent_id);           // intent gone — heal
+      } else {
+        console.warn('[payments/admin_list_pending_authorizations] Stripe verify failed; showing row:', row.payment_intent_id, err.message);
+        authorizations.push(row);                         // fail open
+      }
+    }
+  }
+
+  if (phantomIds.length) {
+    // Fire-and-forget; never block the response.
+    db.from('pending_authorizations')
+      .update({ status: 'voided', reason: 'abandoned', resolved_at: new Date().toISOString() })
+      .in('payment_intent_id', phantomIds)
+      .then(() => {}, (err) => console.warn('[pending_auth] phantom self-heal failed:', err.message));
+  }
+
   return res.status(200).json({ authorizations });
+}
+
+// Admin: advance bookings whose off-session authorization failed and now need
+// the customer to re-authorize. Reads from service_requests + the side table.
+async function handleAdminListReauthNeeded(body, res) {
+  const { caller_token } = body;
+  if (!caller_token) return res.status(401).json({ error: 'Authorization required' });
+  const isAdmin = await verifyAdminToken(caller_token);
+  if (!isAdmin) return res.status(403).json({ error: 'Admin access required' });
+
+  const db = getSupabaseAdmin();
+  const { data, error } = await db
+    .from('service_requests')
+    .select('id, customer_name, customer_email, service_label, service_date, estimated_total')
+    .eq('payment_status', 'needs_reauth')
+    .order('service_date', { ascending: true });
+
+  if (error) {
+    console.error('[payments/admin_list_reauth_needed] DB error:', error.message);
+    return res.status(500).json({ error: 'Could not load authorizations needing action.' });
+  }
+
+  const rows = data || [];
+  if (!rows.length) return res.status(200).json({ requests: [] });
+
+  // Attach the last off-session error from the service-role-only side table.
+  const errorsById = {};
+  const { data: pms } = await db
+    .from('request_payment_methods')
+    .select('request_id, auth_error, auth_attempts')
+    .in('request_id', rows.map((r) => r.id));
+  for (const pm of pms || []) errorsById[pm.request_id] = pm;
+
+  const requests = rows.map((r) => ({
+    id: r.id,
+    customer_name: r.customer_name,
+    customer_email: r.customer_email,
+    service_label: r.service_label,
+    service_date: r.service_date,
+    estimated_total: r.estimated_total,
+    auth_error: errorsById[r.id]?.auth_error || null,
+    auth_attempts: errorsById[r.id]?.auth_attempts || 0,
+  }));
+
+  return res.status(200).json({ requests });
+}
+
+// Admin: immediately re-attempt the off-session hold for a needs_reauth request
+// (e.g. after the customer says they fixed their funds). Mirrors the cron pass.
+async function handleAdminRetryScheduledAuth(body, res) {
+  const { caller_token, request_id } = body;
+  if (!caller_token) return res.status(401).json({ error: 'Authorization required' });
+  const isAdmin = await verifyAdminToken(caller_token);
+  if (!isAdmin) return res.status(403).json({ error: 'Admin access required' });
+  if (!request_id) return res.status(400).json({ error: 'request_id is required' });
+
+  const db = getSupabaseAdmin();
+  const { data: request, error } = await db
+    .from('service_requests')
+    .select('id, payment_status, estimated_total, service_date')
+    .eq('id', request_id)
+    .maybeSingle();
+  if (error || !request) return res.status(404).json({ error: 'Request not found' });
+  if (request.payment_status !== 'needs_reauth') {
+    return res.status(400).json({ error: 'This request is not awaiting re-authorization.' });
+  }
+
+  const { data: pm } = await db
+    .from('request_payment_methods')
+    .select('stripe_customer_id, stripe_payment_method_id, auth_attempts')
+    .eq('request_id', request_id)
+    .maybeSingle();
+  if (!pm || !pm.stripe_customer_id || !pm.stripe_payment_method_id) {
+    return res.status(400).json({ error: 'No saved card on file — the customer must re-authorize.' });
+  }
+
+  const amountCents = Math.round(Number(request.estimated_total) * 100);
+  if (!amountCents || amountCents < 50) return res.status(400).json({ error: 'Invalid amount on this request.' });
+
+  const result = await placeScheduledHold({
+    db,
+    stripe: getStripe(),
+    request,
+    pm,
+    idempotencyKey: `sched-auth-retry-${request_id}-${Date.now()}`,
+  });
+
+  if (result.status === 'authorized') {
+    // service_requests + request_payment_methods already updated by the helper.
+    return res.status(200).json({ status: 'authorized' });
+  }
+
+  if (result.piStatus) {
+    // PI came back in a non-capture state — record it but don't bump the attempt
+    // counter (matches the original behavior for this specific case).
+    await db.from('request_payment_methods')
+      .update({ auth_error: result.reason, updated_at: new Date().toISOString() })
+      .eq('request_id', request_id);
+    return res.status(409).json({ error: `Card still needs customer action (${result.piStatus}).` });
+  }
+
+  // Thrown card error or transient error — the original catch block handled both
+  // identically: record the error, bump the attempt counter, and 409.
+  await db.from('request_payment_methods')
+    .update({ auth_error: String(result.reason), auth_attempts: (pm.auth_attempts || 0) + 1, updated_at: new Date().toISOString() })
+    .eq('request_id', request_id);
+  console.warn('[payments/admin_retry_scheduled_auth] retry failed for', request_id, '-', result.reason);
+  return res.status(409).json({ error: `Could not authorize the saved card: ${result.reason}.` });
 }
 
 async function handleAdminVoidAuthorization(body, res) {
@@ -2018,9 +2425,14 @@ async function handleAdminVoidAuthorization(body, res) {
 
 const HANDLERS = {
   admin_list_pending_authorizations: handleAdminListPendingAuthorizations,
+  admin_list_reauth_needed:          handleAdminListReauthNeeded,
+  admin_retry_scheduled_auth:        handleAdminRetryScheduledAuth,
   admin_void_authorization:          handleAdminVoidAuthorization,
   create_intent:             handleCreateIntent,
   create_authorized_booking: handleCreateAuthorizedBooking,
+  create_setup_intent:       handleCreateSetupIntent,
+  create_scheduled_booking:  handleCreateScheduledBooking,
+  customer_reauthorize_scheduled: handleCustomerReauthorizeScheduled,
   create_customer_final: handleCreateCustomerFinal,
   customer_capture:      handleCustomerCapture,
   customer_cancel:       handleCustomerCancel,

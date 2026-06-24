@@ -2148,6 +2148,62 @@ font-size: 0.85rem;
   border-radius: 10px;
 }
 
+.address-autocomplete {
+  position: relative;
+  display: block;
+  width: 100%;
+}
+
+.address-suggest {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  z-index: 30;
+  margin: 0;
+  padding: 4px;
+  list-style: none;
+  background: #ffffff;
+  border: 1px solid #d8e1dc;
+  border-radius: 10px;
+  box-shadow: 0 14px 32px rgba(0, 40, 35, 0.16);
+  max-height: 280px;
+  overflow-y: auto;
+}
+
+.address-suggest[hidden] {
+  display: none;
+}
+
+.address-suggest-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 100%;
+  padding: 9px 11px;
+  text-align: left;
+  background: transparent;
+  border: 0;
+  border-radius: 7px;
+  cursor: pointer;
+  font: inherit;
+}
+
+.address-suggest-item:hover,
+.address-suggest-item:focus-visible {
+  background: var(--surface-soft, #eef6f2);
+}
+
+.address-suggest-name {
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.address-suggest-place {
+  font-size: 0.85em;
+  color: var(--muted);
+}
+
 .address-validation-panel {
   display: flex;
   flex-wrap: wrap;
