@@ -545,6 +545,16 @@
   gap: 16px;
 }
 
+/* The base rule above forces both portal variants to flex, which would show the
+   mobile "Staff Access" button on desktop. Re-assert the desktop/mobile toggle
+   here (after the base rule) so the correct variant wins by source order. */
+.final-cta-portals--mobile { display: none; }
+
+@media (max-width: 760px) {
+  .final-cta-portals--desktop { display: none; }
+  .final-cta-portals--mobile { display: flex; }
+}
+
 .final-cta-icon {
   display: grid;
   place-items: center;
