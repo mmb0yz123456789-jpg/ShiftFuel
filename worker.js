@@ -2,6 +2,7 @@
 
 const workerProfileForm = document.querySelector('#worker-profile-form');
 const workerProfileName = document.querySelector('#worker-profile-name');
+const workerProfileUsername = document.querySelector('#worker-profile-username');
 const workerProfilePhone = document.querySelector('#worker-profile-phone');
 const workerProfileLocation = document.querySelector('#worker-profile-location');
 const workerProfileStarted = document.querySelector('#worker-profile-started');
@@ -1141,6 +1142,7 @@ async function loadWorkerProfile() {
     const headerAvatar = document.querySelector('#worker-header-avatar');
     if (headerAvatar) headerAvatar.textContent = (workerName.trim().charAt(0) || 'W').toUpperCase();
     if (workerProfileName) workerProfileName.value = workerName;
+    if (workerProfileUsername) workerProfileUsername.value = currentEmployee.username || '';
     if (workerProfilePhone) workerProfilePhone.value = formatPhone(currentEmployee.phone || '');
     if (workerProfileLocation) workerProfileLocation.value = currentEmployee.home_location || DEFAULT_WORK_LOCATION;
     if (workerProfileStarted) workerProfileStarted.value = currentEmployee.started_at || '';
@@ -3462,6 +3464,7 @@ workerProfileForm?.addEventListener('submit', async (event) => {
     const photoPositionX = Number(workerProfilePhotoPosition.x || 0);
     const photoPositionY = Number(workerProfilePhotoPosition.y || 0);
     const fullName = workerProfileName?.value.trim() || currentEmployee.full_name;
+    const username = (workerProfileUsername?.value || '').trim();
     const phoneInputValue = workerProfilePhone?.value.trim() || null;
     const phone = phoneInputValue ? formatPhone(phoneInputValue) : null;
     const homeLocation = workerProfileLocation?.value || currentEmployee.home_location || DEFAULT_WORK_LOCATION;
@@ -3515,6 +3518,7 @@ workerProfileForm?.addEventListener('submit', async (event) => {
 
     const employeeUpdates = {
       full_name: fullName,
+      username: username || null,
       phone,
       home_location: homeLocation,
       photo_url: photoUrl,
@@ -3539,6 +3543,7 @@ workerProfileForm?.addEventListener('submit', async (event) => {
     if (workerPortalHeading) workerPortalHeading.textContent = currentEmployee.full_name;
     workerProfileForm.reset();
     if (workerProfileName) workerProfileName.value = currentEmployee.full_name;
+    if (workerProfileUsername) workerProfileUsername.value = currentEmployee.username || '';
     if (workerProfilePhone) workerProfilePhone.value = formatPhone(currentEmployee.phone || '');
     if (workerProfileLocation) workerProfileLocation.value = currentEmployee.home_location || DEFAULT_WORK_LOCATION;
     if (workerProfileStarted) workerProfileStarted.value = currentEmployee.started_at || '';
@@ -3555,7 +3560,13 @@ workerProfileForm?.addEventListener('submit', async (event) => {
     setWorkerStatus('Worker profile saved.');
   } catch (error) {
     console.error('Worker profile save failed:', error);
-    setWorkerStatus(`Could not save worker profile: ${error.message || 'Make sure employee profile columns and storage are set up.'}`);
+    const msg = String(error.message || '');
+    if (error.code === '23505' || /employees_username|duplicate key|already exists/i.test(msg)) {
+      setWorkerStatus('That username is already taken. Please choose a different one.');
+      workerProfileUsername?.focus();
+      return;
+    }
+    setWorkerStatus(`Could not save worker profile: ${msg || 'Make sure employee profile columns and storage are set up.'}`);
   }
 });
 

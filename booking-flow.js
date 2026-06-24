@@ -58,7 +58,7 @@ const bookingState = {
   address: {
     validated: false,
     status: "warning",
-    message: "Please validate your service address before continuing.",
+    message: "Start typing your street address and pick it from the list to verify your service area.",
   },
   returning: {
     verified: false,
@@ -115,15 +115,14 @@ const stepCopy = {
     intro: "Add the workplace or approved service location where the vehicle will be serviced.",
     fields: `
       <div class="booking-field-grid">
-        <label class="span-2"><span>Street address <span class="required-mark">Required</span></span><input data-required data-address-field name="street" type="text" autocomplete="address-line1" placeholder="123 Main Street"></label>
+        <label class="span-2"><span>Street address <span class="required-mark">Required</span></span><span class="address-autocomplete"><input data-required data-address-field data-address-autocomplete name="street" type="text" autocomplete="off" placeholder="Start typing your address…"><ul class="address-suggest" data-address-suggest hidden></ul></span></label>
         <label><span>Unit/suite/apartment</span><input data-address-field name="unit" type="text" autocomplete="address-line2" placeholder="Optional"></label>
         <label><span>City <span class="required-mark">Required</span></span><input data-required data-address-field name="city" type="text" autocomplete="address-level2" placeholder="Wilmington"></label>
         <label><span>State <span class="required-mark">Required</span></span><input data-required data-address-field name="state" type="text" autocomplete="address-level1" placeholder="DE" value="DE"></label>
         <label><span>ZIP code <span class="required-mark">Required</span></span><input data-required data-address-field name="zip" type="text" autocomplete="postal-code" inputmode="numeric" placeholder="19804"></label>
       </div>
       <div class="address-validation-panel">
-        <button class="button secondary" type="button" data-validate-address>Validate Address</button>
-        <p class="booking-validation-message" data-address-status data-status="warning">Please validate your service address before continuing.</p>
+        <p class="booking-validation-message" data-address-status data-status="warning">Start typing your street address and pick it from the list to verify your service area.</p>
       </div>
     `,
   },
@@ -980,6 +979,8 @@ async function callAddressValidator(address) {
       city: address.city || "",
       state: address.state || "",
       zip: address.zip || "",
+      lat: address.lat || "",
+      lon: address.lon || "",
     }),
   });
   const data = await res.json().catch(() => ({}));
@@ -1008,6 +1009,8 @@ async function validateAddress(panel) {
       city: bookingState.values.city,
       state: bookingState.values.state,
       zip: bookingState.values.zip,
+      lat: bookingState.values.address_lat,
+      lon: bookingState.values.address_lon,
     });
     if (!ok || !data.valid) {
       bookingState.address.validated = false;
@@ -1026,6 +1029,115 @@ async function validateAddress(panel) {
       button.textContent = "Validate Address";
     }
   }
+}
+
+// ---------------------------------------------------------------------------
+// Mapbox address autocomplete. We proxy through /api/address so the browser
+// never carries a token. A session_token groups suggest calls + one retrieve
+// into a single Mapbox billable session; we mint a fresh one after each pick.
+// ---------------------------------------------------------------------------
+
+let addressSessionToken = newAddressSession();
+let addressSuggestTimer = null;
+let addressSuggestSeq = 0;
+// Set on suggestion mousedown (fires before the input's blur) so the blur-driven
+// fallback validation doesn't race the Mapbox retrieve+validate of a pick.
+let addressPickInProgress = false;
+
+function newAddressSession() {
+  if (window.crypto?.randomUUID) return window.crypto.randomUUID();
+  return `sf-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+function closeAddressSuggest(listEl) {
+  if (!listEl) return;
+  listEl.hidden = true;
+  listEl.innerHTML = "";
+}
+
+async function fetchAddressSuggestions(query, listEl) {
+  const seq = ++addressSuggestSeq;
+  try {
+    const res = await fetch("/api/address", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "address_suggest", q: query, session_token: addressSessionToken }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (seq !== addressSuggestSeq) return; // a newer keystroke superseded this one
+    renderAddressSuggestions(listEl, data.suggestions || []);
+  } catch (error) {
+    closeAddressSuggest(listEl);
+  }
+}
+
+function renderAddressSuggestions(listEl, suggestions) {
+  if (!listEl) return;
+  if (!suggestions.length) {
+    closeAddressSuggest(listEl);
+    return;
+  }
+  listEl.innerHTML = suggestions
+    .map(
+      (s) => `
+      <li>
+        <button type="button" class="address-suggest-item" data-suggest-id="${escapeHtml(s.mapbox_id)}">
+          <span class="address-suggest-name">${escapeHtml(s.name)}</span>
+          <span class="address-suggest-place">${escapeHtml(s.place)}</span>
+        </button>
+      </li>`
+    )
+    .join("");
+  listEl.hidden = false;
+}
+
+async function selectAddressSuggestion(panel, mapboxId) {
+  const listEl = panel.querySelector("[data-address-suggest]");
+  closeAddressSuggest(listEl);
+  try {
+    const res = await fetch("/api/address", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "address_retrieve", mapbox_id: mapboxId, session_token: addressSessionToken }),
+    });
+    const data = await res.json().catch(() => ({}));
+    addressSessionToken = newAddressSession(); // session spent on this retrieve
+    if (!data.ok || !data.address) return;
+
+    const a = data.address;
+    const setField = (name, value) => {
+      const input = panel.querySelector(`[name="${name}"]`);
+      if (input && value) input.value = value;
+      bookingState.values[name] = value || bookingState.values[name] || "";
+    };
+    setField("street", a.street);
+    setField("city", a.city);
+    setField("state", a.state);
+    setField("zip", a.zip);
+    bookingState.values.address_lat = a.lat ?? "";
+    bookingState.values.address_lon = a.lon ?? "";
+
+    // We already have exact coordinates — validate instantly (radius check only).
+    savePanelValues(panel);
+    await validateAddress(panel);
+    panel.dispatchEvent(new Event("booking-address-picked", { bubbles: true }));
+  } catch (error) {
+    console.error("Address retrieve failed:", error);
+  } finally {
+    addressPickInProgress = false;
+  }
+}
+
+// Auto-validate a hand-typed address (no Mapbox pick) once all required fields
+// are filled, so the removed "Validate Address" button isn't needed. Skipped
+// while a suggestion pick is mid-flight (that path validates with exact coords).
+// Returns the validation promise (or null) so callers can refresh the UI after.
+function maybeAutoValidateAddress(panel) {
+  if (panel.dataset.currentStep !== "Address") return null;
+  if (addressPickInProgress) return null;
+  if (bookingState.address.validated) return null;
+  if (!requiredInputsComplete(panel)) return null;
+  return validateAddress(panel);
 }
 
 function requestAddressFromRecord(record) {
@@ -2140,6 +2252,12 @@ function renderFlow(root) {
     scrollToActive();
   };
 
+  // mousedown fires before the street input's blur, so we can flag a pick in
+  // progress and stop the blur fallback from running a redundant validation.
+  root.addEventListener("mousedown", (event) => {
+    if (event.target.closest("[data-suggest-id]")) addressPickInProgress = true;
+  });
+
   root.addEventListener("input", (event) => {
     const panel = event.target.closest(".booking-accordion-card");
     if (!panel) return;
@@ -2150,11 +2268,26 @@ function renderFlow(root) {
 
     if (event.target.matches("[data-address-field]")) {
       bookingState.address.validated = false;
-      setAddressStatus(panel, "warning", "Please validate your service address before continuing.");
+      setAddressStatus(panel, "warning", "Start typing your street address and pick it from the list to verify your service area.");
+      // Hand-editing any field drops the Mapbox coordinates so we don't reuse a
+      // stale pin for a typed address.
+      bookingState.values.address_lat = "";
+      bookingState.values.address_lon = "";
       // Editing the address after it was validated re-locks every later step
       // until it is validated again. Materializes on the next render.
       const addrIdx = steps.indexOf("Address");
       if (addrIdx >= 0 && unlockedIndex > addrIdx) unlockedIndex = addrIdx;
+    }
+
+    if (event.target.matches("[data-address-autocomplete]")) {
+      const listEl = panel.querySelector("[data-address-suggest]");
+      const query = event.target.value.trim();
+      window.clearTimeout(addressSuggestTimer);
+      if (query.length < 3) {
+        closeAddressSuggest(listEl);
+      } else {
+        addressSuggestTimer = window.setTimeout(() => fetchAddressSuggestions(query, listEl), 250);
+      }
     }
 
     // Live-clear an inline validation message once the field becomes valid.
@@ -2220,6 +2353,21 @@ function renderFlow(root) {
     if (input?.matches?.("input[data-required], input[data-phone], input[data-email]")) {
       showFieldMessage(input);
     }
+    if (input?.matches?.("[data-address-autocomplete]")) {
+      const listEl = input.closest(".booking-accordion-card")?.querySelector("[data-address-suggest]");
+      // Delay so a click on a suggestion lands before the list is removed.
+      window.setTimeout(() => closeAddressSuggest(listEl), 150);
+    }
+    // When a hand-typed address loses focus, auto-verify it (no button needed).
+    // Small delay lets a suggestion click set the in-progress guard first.
+    if (input?.matches?.("[data-address-field]")) {
+      const panel = input.closest(".booking-accordion-card");
+      if (panel) {
+        window.setTimeout(() => {
+          maybeAutoValidateAddress(panel)?.then(() => updateContinue());
+        }, 180);
+      }
+    }
   });
 
   root.addEventListener("booking-payment-authorized", () => {
@@ -2259,6 +2407,13 @@ function renderFlow(root) {
     const panel = event.target.closest(".booking-accordion-card");
     if (!panel) return;
 
+    const suggestItem = event.target.closest("[data-suggest-id]");
+    if (suggestItem) {
+      await selectAddressSuggestion(panel, suggestItem.dataset.suggestId);
+      updateContinue();
+      return;
+    }
+
     if (event.target.closest("[data-new-booking]")) {
       window.location.reload();
       return;
@@ -2266,13 +2421,6 @@ function renderFlow(root) {
 
     if (event.target.closest("[data-verify-returning]")) {
       await verifyReturningCustomer(panel);
-      savePanelValues(panel);
-      updateContinue();
-      return;
-    }
-
-    if (event.target.closest("[data-validate-address]")) {
-      await validateAddress(panel);
       savePanelValues(panel);
       updateContinue();
       return;

@@ -54,8 +54,8 @@
 
       <form id="worker-login-form" class="booking-form">
         <label>
-          Name, phone, or email
-          <input id="worker-login-name" type="text" placeholder="Name, phone, or email" autocomplete="username" required>
+          Username or phone
+          <input id="worker-login-name" type="text" placeholder="Username or phone" autocomplete="username" autocapitalize="none" spellcheck="false" required>
         </label>
 
         <label>
@@ -84,6 +84,25 @@
     const LOCK_KEY = "shiftfuel_worker_locked_until";
     const ATTEMPT_KEY = "shiftfuel_worker_failed_attempts";
 
+    // This field accepts a username OR a phone number. Auto-format to
+    // (XXX) XXX-XXXX only when the entry has no letters (i.e. looks like a
+    // phone); leave usernames untouched. The login RPC strips non-digits, so a
+    // formatted phone still matches.
+    function formatLoginPhone(value) {
+      const digits = String(value || "").replace(/\D/g, "").slice(0, 10);
+      if (!digits) return "";
+      if (digits.length <= 3) return digits;
+      if (digits.length <= 6) return `(${digits.slice(0, 3)}) ${digits.slice(3)}`;
+      return `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`;
+    }
+    function maybeFormatWorkerIdentifier() {
+      const raw = workerName.value;
+      if (/[a-z]/i.test(raw)) return; // username — leave as typed
+      workerName.value = formatLoginPhone(raw);
+    }
+    workerName.addEventListener("input", maybeFormatWorkerIdentifier);
+    workerName.addEventListener("blur", maybeFormatWorkerIdentifier);
+
     function lockedUntil() {
       return Number(localStorage.getItem(LOCK_KEY) || 0);
     }
@@ -98,7 +117,7 @@
         message.textContent = "Too many attempts. Worker login is locked for 15 minutes.";
         return;
       }
-      message.textContent = `Incorrect worker name or password. ${3 - attempts} attempt${3 - attempts === 1 ? "" : "s"} left before a temporary lock.`;
+      message.textContent = `Incorrect username or password. ${3 - attempts} attempt${3 - attempts === 1 ? "" : "s"} left before a temporary lock.`;
     }
 
     form.addEventListener("submit", async (event) => {

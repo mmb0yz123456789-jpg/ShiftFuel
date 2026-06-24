@@ -175,6 +175,20 @@
         </div>
       </section>
 
+      <section class="section admin-section admin-pending-auth-section" data-page-section="dashboard" id="reauth-needed-section" hidden>
+        <div class="admin-queue-card">
+          <div class="admin-toolbar">
+            <div>
+              <p class="eyebrow">Needs attention</p>
+              <h2>Authorizations needing customer action</h2>
+              <p class="field-help">Advance bookings where we couldn't authorize the saved card ~2 days before service. The customer was notified to re-authorize — follow up if it stays here.</p>
+            </div>
+            <button id="reauth-needed-refresh-btn" class="button secondary" type="button">Refresh</button>
+          </div>
+          <div id="reauth-needed-list" class="pending-auth-list"></div>
+        </div>
+      </section>
+
       <section class="section admin-section admin-queue-section" data-page-section="dashboard requests" data-tab-panel="requests">
         <section class="admin-queue-card">
           <div class="admin-toolbar">
@@ -345,6 +359,17 @@
             </label>
             <button class="button primary" type="submit">Update password</button>
             <p class="form-status" id="admin-password-status" role="status"></p>
+          </form>
+          <form class="settings-card" id="admin-username-form">
+            <h3>Change Admin Username</h3>
+            <label>Current password
+              <input type="password" id="admin-username-current-password" autocomplete="current-password" required>
+            </label>
+            <label>New username
+              <input type="text" id="admin-new-username" autocomplete="username" autocapitalize="none" spellcheck="false" required>
+            </label>
+            <button class="button primary" type="submit">Update username</button>
+            <p class="form-status" id="admin-username-status" role="status"></p>
           </form>
           <section class="settings-card">
             <h3>Account</h3>

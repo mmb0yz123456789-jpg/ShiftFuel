@@ -2306,14 +2306,14 @@ async function loadEmployees() {
 
     let { data, error } = await db
       .from('employees_public')
-      .select('id,employee_code,full_name,phone,email,photo_url,original_photo_url,cropped_photo_url,photo_zoom,photo_position_x,photo_position_y,home_location,started_at,active,last_seen_at,presence_status,background_verified')
+      .select('id,employee_code,username,full_name,phone,email,photo_url,original_photo_url,cropped_photo_url,photo_zoom,photo_position_x,photo_position_y,home_location,started_at,active,last_seen_at,presence_status,background_verified')
       .order('full_name', { ascending: true });
 
     if (error) {
       console.warn('Full employee profile load failed, trying basic employee fields:', error);
       const fallback = await db
         .from('employees_public')
-        .select('id,employee_code,full_name,phone,email,home_location,active')
+        .select('id,employee_code,username,full_name,phone,email,home_location,active')
         .order('full_name', { ascending: true });
 
       data = fallback.data;
@@ -2415,7 +2415,7 @@ function renderWorkerProfileRow(employee) {
   const rowStatusClass = employee.active ? 'status-pill-complete' : 'status-pill-denied';
   const rows = [`
     <tr class="queue-row${isExpanded ? ' is-expanded' : ''}" data-worker-id="${escapeHtml(employee.id)}">
-      <td data-label="Name"><strong>${escapeHtml(employee.full_name || '')}</strong></td>
+      <td data-label="Name"><strong>${escapeHtml(employee.full_name || '')}</strong>${employee.username ? `<div class="field-help">@${escapeHtml(employee.username)}</div>` : ''}</td>
       <td data-label="Employee ID">${escapeHtml(employee.employee_code || '')}</td>
       <td data-label="Phone">${employee.phone ? escapeHtml(formatPhone(employee.phone)) : '<span class="field-help">Not provided</span>'}</td>
       <td data-label="Status"><span class="status-pill ${rowStatusClass}">${escapeHtml(statusLabel)}</span></td>
@@ -2452,6 +2452,10 @@ function renderWorkerProfileCard(employee) {
           <p class="eyebrow">Worker profile</p>
           <h3>${escapeHtml(employee.full_name)}</h3>
           <span class="${statusClass}">${statusLabel}</span>
+          <p class="field-help" style="margin-top:6px">
+            Worker ID (constant): <code>${escapeHtml(employee.id)}</code><br>
+            Login username: ${employee.username ? `<strong>@${escapeHtml(employee.username)}</strong>` : '<em>not set — worker logs in by phone</em>'}
+          </p>
         </div>
       </div>
 
@@ -6914,6 +6918,53 @@ document.querySelector('#admin-password-form')?.addEventListener('submit', async
     } else {
       console.error('Admin password change failed:', err);
       if (statusEl) statusEl.textContent = `Could not update password: ${msg || err}`;
+    }
+  } finally {
+    if (submitBtn) submitBtn.disabled = false;
+  }
+});
+
+// ── Admin Change Username ────────────────────────────────────────────
+document.querySelector('#admin-username-form')?.addEventListener('submit', async (event) => {
+  event.preventDefault();
+  const statusEl = document.querySelector('#admin-username-status');
+  const submitBtn = event.target.querySelector('[type="submit"]');
+
+  const currentPassword = document.querySelector('#admin-username-current-password')?.value || '';
+  const newUsername = (document.querySelector('#admin-new-username')?.value || '').trim();
+
+  if (newUsername.length < 3) {
+    if (statusEl) statusEl.textContent = 'New username must be at least 3 characters.';
+    return;
+  }
+
+  if (statusEl) statusEl.textContent = 'Updating username...';
+  if (submitBtn) submitBtn.disabled = true;
+
+  try {
+    // Username is matched case-insensitively at login, so hash the lowercased value.
+    const [currentHash, newUsernameHash] = await Promise.all([
+      sha256Hex(currentPassword),
+      sha256Hex(newUsername.toLowerCase()),
+    ]);
+
+    const { error } = await db.rpc('admin_change_username', {
+      p_token: adminToken(),
+      p_current_password_hash: currentHash,
+      p_new_username_hash: newUsernameHash,
+    });
+
+    if (error) throw error;
+
+    event.target.reset();
+    if (statusEl) statusEl.textContent = 'Username updated. Use it next time you log in.';
+  } catch (err) {
+    const msg = err?.message || '';
+    if (msg.includes('INVALID_CURRENT_PASSWORD')) {
+      if (statusEl) statusEl.textContent = 'Current password is incorrect.';
+    } else {
+      console.error('Admin username change failed:', err);
+      if (statusEl) statusEl.textContent = `Could not update username: ${msg || err}`;
     }
   } finally {
     if (submitBtn) submitBtn.disabled = false;
