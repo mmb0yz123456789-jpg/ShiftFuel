@@ -3378,6 +3378,32 @@ applicantList?.addEventListener('change', async (event) => {
     return;
   }
 
+  // Declining removes the application entirely — confirm first since it's permanent.
+  if (select.value === 'declined') {
+    const applicant = allApplicantsList.find((item) => item.id === select.dataset.id);
+    const who = applicant?.name || 'this applicant';
+    if (!confirm(`Decline and permanently delete the application for ${who}? This cannot be undone.`)) {
+      loadApplicants(); // revert the dropdown back to its saved status
+      return;
+    }
+
+    const { error: deleteError } = await db.rpc('admin_delete_applicant', {
+      p_token: adminToken(),
+      p_applicant_id: select.dataset.id,
+    });
+
+    if (deleteError) {
+      console.error('Applicant delete failed:', deleteError);
+      alert('Could not delete the declined application. Check the console.');
+      loadApplicants();
+      return;
+    }
+
+    applicantList?.querySelector(`[data-applicant-id="${select.dataset.id}"]`)?.remove();
+    await loadApplicants();
+    return;
+  }
+
   const { error } = await db.rpc('admin_update_applicant', {
     p_token: adminToken(),
     p_applicant_id: select.dataset.id,
