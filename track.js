@@ -5,6 +5,7 @@ const trackingEmail = document.querySelector("#tracking-email");
 const trackMessage = document.querySelector("#track-message");
 const trackingResult = document.querySelector("#tracking-result");
 const refreshStatusBtn = document.querySelector("#refresh-status-btn");
+const trackEnableAlertsBtn = document.querySelector("#track-enable-alerts");
 
 const shiftFuelDb = window.ShiftFuelSupabase;
 const TRACK_LOCK_KEY = "shiftfuel_track_locked_until";
@@ -209,7 +210,10 @@ function attachPhoneInputFormatting(input) {
   input.dataset.phoneFormatBound = "1";
   input.addEventListener("input", () => {
     const digitsBeforeCursor = cleanPhone(input.value.slice(0, input.selectionStart || 0)).length;
-    const digits = cleanPhone(input.value).slice(0, 10);
+    const raw = cleanPhone(input.value);
+    // Drop a leading US country code so "1 (908) 500-0635" doesn't shift into
+    // a wrong "(190) 850-0635" by treating the 1 as the area code.
+    const digits = (raw.length === 11 && raw[0] === "1" ? raw.slice(1) : raw).slice(0, 10);
     let formatted = digits;
     if (digits.length > 6) formatted = `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`;
     else if (digits.length > 3) formatted = `(${digits.slice(0, 3)}) ${digits.slice(3)}`;
@@ -597,11 +601,19 @@ function serviceUnableReasonsFromNotes(request) {
   return reasons;
 }
 
+// Only format genuinely valid US numbers. Anything else returns '' so callers
+// can fall back to "Contact Support" instead of rendering a broken number
+// like "(55) 123-4567".
 function formatPhone(raw) {
   const d = String(raw || '').replace(/\D/g, '');
   if (d.length === 10) return `(${d.slice(0,3)}) ${d.slice(3,6)}-${d.slice(6)}`;
   if (d.length === 11 && d[0] === '1') return `(${d.slice(1,4)}) ${d.slice(4,7)}-${d.slice(7)}`;
-  return raw || '';
+  return '';
+}
+
+function isValidPhone(raw) {
+  const d = String(raw || '').replace(/\D/g, '');
+  return d.length === 10 || (d.length === 11 && d[0] === '1');
 }
 
 function formatTimeShort(isoOrTime) {
@@ -624,8 +636,33 @@ function formatReturnTime(t) {
   return `${h12}:${String(m).padStart(2,'0')} ${ampm}`;
 }
 
+// Set of assigned_employee_ids whose background check is verified — loaded by
+// loadVerifiedWorkers() before each render. The "Verified" badge only shows for
+// these workers, so it reflects real verification rather than being hardcoded.
+let verifiedWorkerIds = new Set();
+
+async function loadVerifiedWorkers(requests) {
+  const ids = [...new Set((requests || []).map((r) => r.assigned_employee_id).filter(Boolean))];
+  if (!ids.length) {
+    verifiedWorkerIds = new Set();
+    return;
+  }
+  try {
+    const { data, error } = await shiftFuelDb
+      .from('employees_public')
+      .select('id,background_verified')
+      .in('id', ids);
+    if (error || !Array.isArray(data)) return; // pre-migration: leave badge off
+    verifiedWorkerIds = new Set(data.filter((e) => e.background_verified).map((e) => e.id));
+  } catch (_) {
+    // Network hiccup — keep the previous set rather than flashing badges off.
+  }
+}
+
 function renderAssignedWorker(request) {
   if (!request.assigned_worker_name) return '';
+
+  const isVerified = Boolean(request.assigned_employee_id) && verifiedWorkerIds.has(request.assigned_employee_id);
 
   const photoFrame = window.ShiftFuelPhoto
     ? window.ShiftFuelPhoto.renderPhotoFrame(
@@ -643,7 +680,7 @@ function renderAssignedWorker(request) {
         <p class="eyebrow">Assigned ShiftFuel employee</p>
         <h3>${escapeHtml(request.assigned_worker_name)}</h3>
         ${request.assigned_worker_phone ? `<p class="worker-phone">${escapeHtml(formatPhone(request.assigned_worker_phone))}</p>` : ''}
-        <span class="worker-verified-badge">✓ Verified ShiftFuel Employee</span>
+        ${isVerified ? '<span class="worker-verified-badge">✓ Verified ShiftFuel Employee</span>' : ''}
       </div>
     </section>
   `;
@@ -2273,7 +2310,386 @@ function needsCustomerPaymentAction(request) {
     || request.payment_status === 'capture_failed';
 }
 
-function renderRequestCard(request, photos = [], review = null) {
+// ── Customer dashboard view (mockup layout) ─────────────────────────────────
+// These render the clean two-column desktop / stacked mobile layout. They reuse
+// the existing status logic (isStepDone, getStatusMessage, photo/worker data)
+// so no tracking, payment, or privacy behaviour changes — only presentation.
+
+const TRACK_SUPPORT_PHONE = '5551234567';
+const TRACK_SUPPORT_PHONE_DISPLAY = '(555) 123-4567';
+
+// The seven canonical, customer-facing steps from the spec. The granular
+// internal statuses all roll up into one of these via isStepDone().
+const SIMPLE_STATUS_STEPS = [
+  { key: 'request_received',    label: 'Request Received',   desc: 'Your request has been received.' },
+  { key: 'accepted',            label: 'Accepted',           desc: 'A ShiftFuel employee accepted your request.' },
+  { key: 'key_received',        label: 'Key Received',       desc: 'Your key has been received.' },
+  { key: 'vehicle_picked_up',   label: 'Vehicle Picked Up',  desc: 'Your vehicle has been picked up.' },
+  { key: 'service_in_progress', label: 'Service In Progress',desc: 'Your requested service is in progress.' },
+  { key: 'vehicle_returned',    label: 'Vehicle Returned',   desc: 'Your vehicle has been returned.' },
+  { key: 'complete',            label: 'Complete',           desc: 'Your service is complete.' },
+];
+
+const CAR_ICON_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M5 11l1.5-4.2A2 2 0 0 1 8.4 5.5h7.2a2 2 0 0 1 1.9 1.3L19 11"/><path d="M3 11h18v5a1 1 0 0 1-1 1h-1.5a1 1 0 0 1-1-1v-1H6.5v1a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1z"/><circle cx="7" cy="14" r="1"/><circle cx="17" cy="14" r="1"/></svg>';
+
+function stepTimeTagFromNotes(request, tag) {
+  const matches = Array.from(String(request.notes || '').matchAll(new RegExp(`\\[${tag} ([^\\]]+)\\]`, 'g')));
+  return matches.at(-1)?.[1] || '';
+}
+
+// "Today, 10:20 AM" when same calendar day, otherwise "Jun 23, 10:20 AM".
+function formatTrackTime(value) {
+  if (!value) return '';
+  const d = new Date(value);
+  if (isNaN(d)) return '';
+  const time = d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+  if (d.toDateString() === new Date().toDateString()) return `Today, ${time}`;
+  return `${d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}, ${time}`;
+}
+
+function simpleStepTime(request, key) {
+  if (key === 'request_received') return formatTrackTime(request.created_at);
+  if (key === 'vehicle_picked_up') return formatTrackTime(stepTimeTagFromNotes(request, 'pickup_time'));
+  if (key === 'vehicle_returned') return formatTrackTime(stepTimeTagFromNotes(request, 'dropoff_time'));
+  if (key === 'complete' && isFinalRequestComplete(request)) return formatTrackTime(request.updated_at);
+  return '';
+}
+
+function buildSimpleSteps(request) {
+  const finalComplete = isFinalRequestComplete(request);
+  const steps = SIMPLE_STATUS_STEPS.map((s) => ({
+    ...s,
+    done: finalComplete || isStepDone(s.key, request),
+    time: simpleStepTime(request, s.key),
+  }));
+  const firstIncomplete = finalComplete ? -1 : steps.findIndex((s) => !s.done);
+  steps.forEach((s, i) => { s.active = !finalComplete && i === firstIncomplete; });
+  return steps;
+}
+
+function renderStatusStepper(request) {
+  const steps = buildSimpleSteps(request);
+  return `<ol class="sf-stepper">${steps.map((s) => {
+    const cls = s.done ? 'done' : s.active ? 'active' : 'future';
+    const icon = s.done ? '✓' : '';
+    return `<li class="sf-step ${cls}">
+        <span class="sf-step-dot">${icon}</span>
+        <span class="sf-step-label">${escapeHtml(s.label)}</span>
+        ${s.time ? `<span class="sf-step-time">${escapeHtml(s.time)}</span>` : ''}
+      </li>`;
+  }).join('')}</ol>`;
+}
+
+function renderCurrentStatusCard(request) {
+  const label = friendlyStatusLabel(request.status);
+  const msg = getStatusMessage(request) || '';
+  const showCheck = !needsCustomerPaymentAction(request);
+  const updated = request.updated_at ? formatTrackTime(request.updated_at) : '';
+  return `
+    <div class="tk-status-head">
+      <div class="tk-status-headline">
+        <p class="tk-eyebrow">Current Status</p>
+        <h2 class="tk-status-title">${escapeHtml(label)}${showCheck ? '<span class="tk-status-check" aria-hidden="true">✓</span>' : ''}</h2>
+        ${msg ? `<p class="tk-status-desc">${escapeHtml(msg)}</p>` : ''}
+      </div>
+      <div class="tk-status-meta">
+        ${updated ? `<span class="tk-updated"><small>Last updated</small>${escapeHtml(updated)}</span>` : ''}
+        <button class="tk-refresh" type="button" data-track-refresh aria-label="Refresh status">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M20 11A8 8 0 1 0 18 16.5"/><path d="M20 5v6h-6"/></svg>
+          <span>Refresh</span>
+        </button>
+      </div>
+    </div>
+    ${renderStatusStepper(request)}
+  `;
+}
+
+function renderLiveUpdatesFeed(request) {
+  const steps = buildSimpleSteps(request).filter((s) => s.done || s.active);
+  if (!steps.length) return '<p class="tk-empty">Updates will appear here as your service progresses.</p>';
+  // Newest-first.
+  return `<ul class="tk-updates-list">${steps.slice().reverse().map((s) => `
+    <li class="tk-update ${s.done ? 'done' : 'active'}">
+      <span class="tk-update-dot" aria-hidden="true">${s.done ? '✓' : ''}</span>
+      <div class="tk-update-body">
+        <p class="tk-update-title">${escapeHtml(s.label)}</p>
+        <p class="tk-update-desc">${escapeHtml(s.desc)}</p>
+      </div>
+      ${s.time ? `<span class="tk-update-time">${escapeHtml(s.time)}</span>` : ''}
+    </li>`).join('')}</ul>`;
+}
+
+function renderPartnerCard(request) {
+  if (!request.assigned_worker_name) return '';
+  const name = request.assigned_worker_name;
+  const isVerified = Boolean(request.assigned_employee_id) && verifiedWorkerIds.has(request.assigned_employee_id);
+  const photo = request.assigned_worker_photo_url
+    ? `<img class="tk-partner-photo" src="${escapeHtml(request.assigned_worker_photo_url)}" alt="${escapeHtml(name)}">`
+    : `<span class="tk-partner-photo tk-partner-initial">${escapeHtml(name.charAt(0).toUpperCase())}</span>`;
+  const canCall = isValidPhone(request.assigned_worker_phone);
+  return `
+    <p class="tk-eyebrow">Your Service Partner</p>
+    <div class="tk-partner-row">
+      ${photo}
+      <div class="tk-partner-info">
+        <p class="tk-partner-name">${escapeHtml(name)}</p>
+        ${isVerified ? '<span class="tk-partner-badge">✓ Verified ShiftFuel Employee</span>' : ''}
+      </div>
+    </div>
+    ${canCall ? `<a class="button secondary tk-partner-action" href="tel:${escapeHtml(cleanPhone(request.assigned_worker_phone))}">Call</a>` : ''}
+  `;
+}
+
+function renderVehicleCard(request) {
+  const vehicle = [request.vehicle_year, request.vehicle_make, request.vehicle_model].filter(Boolean).join(' ') || 'Your vehicle';
+  const serviceDate = request.service_date
+    ? new Date(request.service_date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+    : '';
+  const returnTime = formatReturnTime(request.desired_return_time);
+  const serviceArea = [request.address_street || request.hospital, request.address_city, request.address_state].filter(Boolean).join(', ');
+  const parking = [request.parking_location, request.parking_spot ? 'spot ' + request.parking_spot : ''].filter(Boolean).join(', ');
+  const service = request.service_label || serviceLabelFromType(request.service_type) || request.service_type || '';
+  return `
+    <div class="tk-vehicle-top">
+      <span class="tk-vehicle-icon">${CAR_ICON_SVG}</span>
+      <div class="tk-vehicle-id-block">
+        <p class="tk-vehicle-name">${escapeHtml(vehicle)}</p>
+        ${request.vehicle_color ? `<p class="tk-vehicle-color">${escapeHtml(request.vehicle_color)}</p>` : ''}
+        <span class="tk-vehicle-id">${escapeHtml(trackRequestNumber(request.id))}</span>
+      </div>
+    </div>
+    <dl class="tk-vehicle-meta">
+      ${service ? `<div><dt>Service</dt><dd>${escapeHtml(service)}</dd></div>` : ''}
+      ${requestNeedsFuel(request) && request.fuel_type ? `<div><dt>Fuel type</dt><dd>${escapeHtml(request.fuel_type)}</dd></div>` : ''}
+      ${requestNeedsWash(request) && request.wash_package ? `<div><dt>Car wash package</dt><dd>${escapeHtml(washLabelFromValue(request.wash_package))}</dd></div>` : ''}
+      ${serviceArea ? `<div><dt>Location</dt><dd>${escapeHtml(serviceArea)}</dd></div>` : ''}
+      ${parking ? `<div><dt>Parking</dt><dd>${escapeHtml(parking)}</dd></div>` : ''}
+      ${returnTime ? `<div><dt>Return Window</dt><dd>${escapeHtml(serviceDate ? serviceDate + ', ' : '')}${escapeHtml(returnTime)}</dd></div>` : ''}
+      ${request.key_handoff_details ? `<div><dt>Key handoff</dt><dd>${escapeHtml(request.key_handoff_details)}</dd></div>` : ''}
+    </dl>
+  `;
+}
+
+const TRACK_PHOTO_LABELS = {
+  key_received: 'Key Received',
+  pickup_vehicle: 'Vehicle Picked Up',
+  pickup_driver_front: 'Exterior - Front', pickup_passenger_front: 'Exterior - Front', pickup_front: 'Exterior - Front',
+  pickup_driver_rear: 'Exterior - Rear', pickup_passenger_rear: 'Exterior - Rear', pickup_rear: 'Exterior - Rear',
+  pickup_driver_side: 'Exterior - Side', pickup_passenger_side: 'Exterior - Side',
+  pickup_odometer: 'Odometer', pickup_fuel_gauge: 'Fuel Level',
+  fuel_receipt: 'Fuel Receipt', wash_receipt: 'Wash Receipt',
+  dropoff_driver_front: 'Return Photo', dropoff_front: 'Return Photo', dropoff_passenger_front: 'Return Photo',
+  dropoff_driver_rear: 'Return Photo', dropoff_rear: 'Return Photo',
+  dropoff_odometer: 'Odometer', dropoff_fuel_gauge: 'Fuel Level',
+};
+
+function trackPhotoLabel(type) {
+  return TRACK_PHOTO_LABELS[type] || String(type || '').replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+function renderPhotoStrip(request, photos) {
+  if (!photos || !photos.length) return '';
+  const tiles = photos.map((p) => {
+    const thumb = p.thumbnail_url || p.image_url;
+    const full = p.original_url || p.image_url;
+    if (!thumb && !full) return '';
+    const label = trackPhotoLabel(p.photo_type);
+    const time = p.created_at ? formatTimeShort(p.created_at) : '';
+    return `
+      <button class="tk-photo-tile" type="button"
+              data-lightbox-src="${escapeHtml(full)}" data-lightbox-label="${escapeHtml(label)}">
+        <img src="${escapeHtml(thumb)}" alt="${escapeHtml(label)}" loading="lazy">
+        <span class="tk-photo-label">${escapeHtml(label)}</span>
+        ${time ? `<span class="tk-photo-time">${escapeHtml(time)}</span>` : ''}
+      </button>`;
+  }).join('');
+  return `
+    <div class="tk-photos-head">
+      <p class="tk-eyebrow">Photos</p>
+      <button class="tk-viewall" type="button" data-track-viewall>View all</button>
+    </div>
+    <div class="tk-photo-strip">${tiles}</div>
+    <div class="tk-photos-full" hidden>${renderPhotos(request, photos)}</div>
+  `;
+}
+
+function renderHelpCard() {
+  return `
+    <p class="tk-eyebrow">Questions?</p>
+    <p class="tk-help-text">We're here to help.</p>
+    <a class="button secondary tk-help-action" href="tel:${TRACK_SUPPORT_PHONE}">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M5 4h3l1.5 5-2 1a11 11 0 0 0 5 5l1-2 5 1.5v3a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2z"/></svg>
+      <span>Contact Support</span>
+    </a>
+    <p class="tk-help-num">${TRACK_SUPPORT_PHONE_DISPLAY}</p>
+  `;
+}
+
+// ── Canceled-request view ───────────────────────────────────────────────────
+// A canceled request gets a dedicated top-down layout: "Canceled" + the right
+// message first, then cancellation/return details, then request details. The
+// worker card only appears (lower, as "Return Partner") while a return is still
+// pending — never above the cancellation status.
+
+const CANCELED_STATUS_SET = new Set([
+  'canceled', 'cancelled', 'customer_canceled', 'closed_canceled',
+  'cancelled_pending_key_return', 'canceled_return_completed',
+]);
+
+function isCanceledStatus(status) {
+  return CANCELED_STATUS_SET.has(status);
+}
+
+function canceledReturnPending(request) {
+  return request.status === 'cancelled_pending_key_return';
+}
+
+const CANCELED_STAGE_MESSAGES = {
+  before_accept: 'Your request was canceled before service started.',
+  after_accept: 'Your request was canceled. No service is currently in progress.',
+  after_key: 'Your request was canceled. Your key return may still be in progress.',
+  after_pickup: 'Your request was canceled. Your vehicle return may still be in progress.',
+  closed: 'Your request was canceled and closed.',
+};
+
+function canceledStage(request) {
+  const s = request.status;
+  if (s === 'canceled_return_completed') return 'closed';
+  const pickedUp = Boolean(stepTimeTagFromNotes(request, 'pickup_time'));
+  if (s === 'cancelled_pending_key_return') return pickedUp ? 'after_pickup' : 'after_key';
+  // Terminal canceled statuses (no return pending).
+  if (pickedUp) return 'closed';
+  if (request.assigned_worker_name) return 'after_accept';
+  return 'before_accept';
+}
+
+function canceledPaymentNote(request) {
+  if (request.cancellation_fee_applied) {
+    return 'A $15 cancellation/service fee was charged. Any remaining authorization hold was released.';
+  }
+  if (PAYMENT_RELEASED_STATUSES.includes(request.payment_status)) {
+    return 'Your authorization hold was released and you were not charged.';
+  }
+  return '';
+}
+
+function renderReturnPartnerCard(request) {
+  if (!request.assigned_worker_name) return '';
+  const name = request.assigned_worker_name;
+  const isVerified = Boolean(request.assigned_employee_id) && verifiedWorkerIds.has(request.assigned_employee_id);
+  const photo = request.assigned_worker_photo_url
+    ? `<img class="tk-partner-photo" src="${escapeHtml(request.assigned_worker_photo_url)}" alt="${escapeHtml(name)}">`
+    : `<span class="tk-partner-photo tk-partner-initial">${escapeHtml(name.charAt(0).toUpperCase())}</span>`;
+  const canCall = isValidPhone(request.assigned_worker_phone);
+  return `
+    <p class="tk-eyebrow">Return Partner</p>
+    <div class="tk-partner-row">
+      ${photo}
+      <div class="tk-partner-info">
+        <p class="tk-partner-name">${escapeHtml(name)}</p>
+        ${isVerified ? '<span class="tk-partner-badge">✓ Verified ShiftFuel Employee</span>' : ''}
+      </div>
+    </div>
+    ${canCall ? `<a class="button secondary tk-partner-action" href="tel:${escapeHtml(cleanPhone(request.assigned_worker_phone))}">Call</a>` : ''}
+  `;
+}
+
+function renderCanceledCard(request, photos = [], { expanded = false } = {}) {
+  const stage = canceledStage(request);
+  const returnPending = canceledReturnPending(request);
+  const returnsVehicle = stage === 'after_pickup';
+  // While a return is pending, the headline and message name what's coming back.
+  const headline = returnPending
+    ? (returnsVehicle ? 'Canceled — Vehicle Return Pending' : 'Canceled — Key Return Pending')
+    : 'Canceled';
+  const message = returnPending
+    ? (returnsVehicle
+        ? 'Your request was canceled. Your vehicle return is still in progress.'
+        : 'Your request was canceled. A ShiftFuel team member will return your key as soon as safely possible.')
+    : (CANCELED_STAGE_MESSAGES[stage] || 'Your request was canceled.');
+  const paymentNote = canceledPaymentNote(request);
+  const reason = cancellationReasonForDisplay(request);
+  const canceledAt = request.updated_at
+    ? new Date(request.updated_at).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' })
+    : '';
+  const canceledBy = request.status === 'customer_canceled' ? 'You (customer)' : '';
+
+  // Request details.
+  const vehicle = [request.vehicle_year, request.vehicle_make, request.vehicle_model].filter(Boolean).join(' ') || 'Your vehicle';
+  const service = request.service_label || serviceLabelFromType(request.service_type) || request.service_type || '';
+  const serviceDate = request.service_date
+    ? new Date(request.service_date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+    : '';
+  const returnTime = formatReturnTime(request.desired_return_time);
+  const serviceArea = [request.address_street || request.hospital, request.address_city, request.address_state].filter(Boolean).join(', ');
+  const hasPhotos = Array.isArray(photos) && photos.length > 0;
+
+  const returnStatusCard = returnPending ? `
+    <section class="tk-card tk-return-status">
+      <p class="tk-eyebrow">Return Status</p>
+      <p class="tk-return-line"><span class="tk-return-dot" aria-hidden="true"></span>${stage === 'after_pickup' ? 'Vehicle return pending' : 'Key return pending'}</p>
+      <p class="tk-status-desc">A ShiftFuel team member will return your ${stage === 'after_pickup' ? 'vehicle' : 'key'} as soon as safely possible.</p>
+    </section>` : '';
+
+  return `
+    <article class="track-request-card track-canceled-card" data-request-id="${escapeHtml(request.id)}">
+      <details class="track-request-details"${expanded ? ' open' : ''}>
+        ${requestSummaryHtml(request, { statusLabel: headline, statusClass: 'status-pill-denied' })}
+        <div class="track-request-body track-canceled-body">
+
+          <section class="tk-card tk-canceled-status">
+            <p class="tk-eyebrow">Current Status</p>
+            <h2 class="tk-status-title tk-canceled-title">${escapeHtml(headline)}</h2>
+            <p class="tk-status-desc">${escapeHtml(message)}</p>
+            ${paymentNote ? `<p class="tk-canceled-note">${escapeHtml(paymentNote)}</p>` : ''}
+            <a class="button secondary tk-help-action" href="tel:${TRACK_SUPPORT_PHONE}">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M5 4h3l1.5 5-2 1a11 11 0 0 0 5 5l1-2 5 1.5v3a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2z"/></svg>
+              <span>Contact Support</span>
+            </a>
+          </section>
+
+          <section class="tk-card">
+            <p class="tk-eyebrow">Cancellation Details</p>
+            <dl class="tk-vehicle-meta">
+              ${canceledAt ? `<div><dt>Canceled</dt><dd>${escapeHtml(canceledAt)}</dd></div>` : ''}
+              ${canceledBy ? `<div><dt>Canceled by</dt><dd>${escapeHtml(canceledBy)}</dd></div>` : ''}
+              <div><dt>Cancellation fee</dt><dd>${request.cancellation_fee_applied ? '$15 charged' : 'None'}</dd></div>
+              ${reason ? `<div><dt>Reason</dt><dd>${escapeHtml(reason)}</dd></div>` : ''}
+            </dl>
+          </section>
+
+          ${returnStatusCard}
+
+          <!-- Live location mounts here (only while a key/vehicle return is active). -->
+          <div class="track-live-location-mount"></div>
+
+          <section class="tk-card">
+            <p class="tk-eyebrow">Request Details</p>
+            <dl class="tk-vehicle-meta">
+              ${service ? `<div><dt>Service</dt><dd>${escapeHtml(service)}</dd></div>` : ''}
+              ${requestNeedsFuel(request) && request.fuel_type ? `<div><dt>Fuel type</dt><dd>${escapeHtml(request.fuel_type)}</dd></div>` : ''}
+              ${requestNeedsWash(request) && request.wash_package ? `<div><dt>Car wash package</dt><dd>${escapeHtml(washLabelFromValue(request.wash_package))}</dd></div>` : ''}
+              <div><dt>Vehicle</dt><dd>${escapeHtml(vehicle)}${request.vehicle_color ? ', ' + escapeHtml(request.vehicle_color) : ''}</dd></div>
+              ${returnTime ? `<div><dt>Return window</dt><dd>${escapeHtml(serviceDate ? serviceDate + ', ' : '')}${escapeHtml(returnTime)}</dd></div>` : ''}
+              ${serviceArea ? `<div><dt>Service address</dt><dd>${escapeHtml(serviceArea)}</dd></div>` : ''}
+            </dl>
+          </section>
+
+          ${returnPending && request.assigned_worker_name ? `<section class="tk-card tk-partner">${renderReturnPartnerCard(request)}</section>` : ''}
+
+          <section class="tk-card tk-help">${renderHelpCard()}</section>
+
+          ${hasPhotos ? `<section class="tk-card tk-photos">${renderPhotoStrip(request, photos)}</section>` : ''}
+        </div>
+      </details>
+    </article>
+  `;
+}
+
+function renderRequestCard(request, photos = [], review = null, { expanded = false } = {}) {
+  if (isCanceledStatus(request.status)) {
+    return renderCanceledCard(request, photos, { expanded });
+  }
   if (request.status === 'pending_customer_info') {
     return renderPendingCompletionCard(request);
   }
@@ -2300,34 +2716,36 @@ function renderRequestCard(request, photos = [], review = null) {
     ? new Date(request.updated_at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
     : '';
 
+  const hasWorker = Boolean(request.assigned_worker_name);
+  const hasPhotos = Array.isArray(photos) && photos.length > 0;
+
   return `
-    <article class="track-request-card" data-request-id="${escapeHtml(request.id)}">
-      <details class="track-request-details">
+    <article class="track-request-card track-dashboard-card" data-request-id="${escapeHtml(request.id)}">
+      <details class="track-request-details"${expanded ? ' open' : ''}>
         ${requestSummaryHtml(request, { statusLabel, statusClass: request.status === 'complete' ? 'status-pill-complete' : '' })}
 
         <div class="track-request-body">
           ${renderEstimatedTotalCard(request)}
           ${renderServiceIssueBanner(request)}
           ${renderReturnCompletedNotice(request)}
-          <div class="request-details">
-            <p><strong>Date:</strong> ${escapeHtml(serviceDate)}</p>
-            ${returnTime ? `<p><strong>Return by:</strong> ${escapeHtml(returnTime)}</p>` : ''}
-            <p><strong>Vehicle:</strong> ${escapeHtml(vehicle)}${request.vehicle_color ? ', ' + escapeHtml(request.vehicle_color) : ''}</p>
-            <p><strong>Service:</strong> ${escapeHtml(request.service_label || request.service_type || '')}</p>
-            ${serviceArea ? `<p><strong>Service address:</strong> ${escapeHtml(serviceArea)}</p>` : ''}
-            <p><strong>Parking:</strong> ${[request.parking_location, request.parking_spot ? 'spot ' + request.parking_spot : ''].filter(Boolean).map(escapeHtml).join(', ')}</p>
-            ${lastUpdated ? `<p><strong>Last updated:</strong> ${escapeHtml(lastUpdated)}</p>` : ''}
-            ${cancellationReason ? `<p><strong>Reason:</strong> ${escapeHtml(cancellationReason)}</p>` : ''}
-            ${request.status === 'auto_reversed' ? `<p class="track-auto-reversed-note">Your service was not completed on the scheduled date, so your payment has been reversed.</p>` : ''}
+
+          <div class="track-detail-layout${hasWorker ? '' : ' no-partner'}">
+            <section class="tk-card tk-status">${renderCurrentStatusCard(request)}</section>
+            <section class="tk-card tk-vehicle">${renderVehicleCard(request)}</section>
+            <section class="tk-card tk-updates"><p class="tk-eyebrow">Live Updates</p>${renderLiveUpdatesFeed(request)}</section>
+            ${hasWorker ? `<section class="tk-card tk-partner">${renderPartnerCard(request)}</section>` : ''}
+            ${hasPhotos ? `<section class="tk-card tk-photos">${renderPhotoStrip(request, photos)}</section>` : ''}
+            <section class="tk-card tk-help">${renderHelpCard()}</section>
           </div>
-          ${renderServicePackageDetails(request)}
+
+          <!-- Live location mounts here while the worker holds the key/vehicle. -->
+          <div class="track-live-location-mount"></div>
+
+          ${request.status === 'auto_reversed' ? `<p class="track-auto-reversed-note">Your service was not completed on the scheduled date, so your payment has been reversed.</p>` : ''}
           ${isReturned ? renderReturnDetails(request) : ''}
-          ${renderAssignedWorker(request)}
-          ${renderTimeline(request)}
           ${serviceTimingFromNotes(request)}
           ${inspectionSummaryFromNotes(request)}
           ${request.status === 'complete' ? serviceSummaryFromRequest(request) : ''}
-          ${renderPhotos(request, photos)}
           ${renderReviewPrompt(request, review)}
           ${canCustomerCancel(request) ? `
             <div class="tracking-actions">
@@ -2357,19 +2775,28 @@ const cancelledStatuses = new Set(['customer_canceled', 'canceled', 'cancelled',
 const deniedOnlyStatuses = new Set(['denied', 'unable_to_complete', 'auto_reversed', 'closed_no_charge']);
 
 async function renderAllRequests(requests, phone, email) {
-  const inProgress = requests.filter(r => !terminalStatuses.includes(r.status));
+  await loadVerifiedWorkers(requests);
+  // Any cancellation status belongs in the Cancelled section — even
+  // cancelled_pending_key_return, which is technically still "active" for the
+  // worker but reads as canceled to the customer and must NOT show under
+  // "Requests in progress".
+  const cancelled = requests.filter((r) => isCanceledStatus(r.status));
+  const inProgress = requests.filter(r => !terminalStatuses.includes(r.status) && !isCanceledStatus(r.status));
   const completed  = requests.filter(r => r.status === 'complete');
-  // Cancelled (customer-initiated) is shown separately from Denied (admin-closed
-  // without completion) — different customer-facing outcomes, shouldn't be lumped
-  // together even though both are part of closedStatuses internally.
-  const cancelled = requests.filter((r) => cancelledStatuses.has(r.status));
+  // Denied (admin-closed without completion) is shown separately from Cancelled.
   const denied = requests.filter((r) => deniedOnlyStatuses.has(r.status));
+
+  // Auto-open / auto-expand ONLY when there is a genuine active request in
+  // progress. Canceled, completed, and denied sections always start collapsed —
+  // the customer taps to open them.
+  const activeInProgressRequest = inProgress[0] || null;
+  const expandedRequestId = activeInProgressRequest ? activeInProgressRequest.id : null;
 
   let html = `<div class="track-sections">`;
 
   // In Progress section
   html += `
-    <details class="track-section" open>
+    <details class="track-section"${activeInProgressRequest ? ' open' : ''}>
       <summary class="track-section-header">
         Requests in progress
         <span class="track-section-count">${inProgress.length}</span>
@@ -2382,7 +2809,7 @@ async function renderAllRequests(requests, phone, email) {
     for (const request of inProgress) {
       const photos = await loadRequestPhotos(request.id, phone, email);
       const review = await loadRequestReview(request.id, phone, email);
-      html += renderRequestCard(request, photos, review);
+      html += renderRequestCard(request, photos, review, { expanded: request.id === expandedRequestId });
     }
   }
   html += `</div></details>`;
@@ -2407,7 +2834,8 @@ async function renderAllRequests(requests, phone, email) {
   }
   html += `</div></details>`;
 
-  // Cancelled section
+  // Cancelled section — always collapsed by default. A canceled request never
+  // auto-opens or auto-expands, even when a key/vehicle return is still pending.
   html += `
     <details class="track-section">
       <summary class="track-section-header">
@@ -2420,7 +2848,8 @@ async function renderAllRequests(requests, phone, email) {
     html += `<p class="track-empty-msg">No cancelled requests found.</p>`;
   } else {
     for (const request of cancelled) {
-      html += renderDeniedCard(request);
+      const photos = await loadRequestPhotos(request.id, phone, email);
+      html += renderCanceledCard(request, photos, { expanded: false });
     }
   }
   html += `</div></details>`;
@@ -2587,6 +3016,7 @@ trackForm.addEventListener("submit", async (event) => {
     window._trackingContact = verifiedTrackingContact;
     trackMessage.textContent = "";
     if (refreshStatusBtn) refreshStatusBtn.hidden = false;
+    if (trackEnableAlertsBtn) trackEnableAlertsBtn.hidden = false;
     window._trackingRequests = matchedRequests;
     await renderAllRequests(matchedRequests, phone, email);
     startTrackingPoll();
@@ -2605,6 +3035,45 @@ refreshStatusBtn?.addEventListener("click", () => {
   trackMessage.textContent = "Refreshing status...";
   window._trackingRequests = [];
   trackForm.requestSubmit();
+});
+
+// In-card "Refresh" icon and photo "View all" toggle (dashboard layout).
+trackingResult.addEventListener("click", (event) => {
+  if (event.target.closest('[data-track-refresh]')) {
+    event.preventDefault();
+    refreshStatusBtn?.click();
+    return;
+  }
+  const viewAll = event.target.closest('[data-track-viewall]');
+  if (viewAll) {
+    event.preventDefault();
+    const full = viewAll.closest('.tk-photos')?.querySelector('.tk-photos-full');
+    if (full) {
+      const show = full.hidden;
+      full.hidden = !show;
+      viewAll.textContent = show ? 'Hide photos' : 'View all';
+    }
+  }
+});
+
+// Customer opt-in for push notifications (status updates, completion).
+trackEnableAlertsBtn?.addEventListener("click", async () => {
+  if (!window.ShiftFuelPush) return;
+  const original = trackEnableAlertsBtn.textContent;
+  trackEnableAlertsBtn.disabled = true;
+  trackEnableAlertsBtn.textContent = "Enabling…";
+  const result = await window.ShiftFuelPush.enablePush({
+    type: "customer",
+    phone: verifiedTrackingContact.phone,
+    email: verifiedTrackingContact.email,
+  });
+  if (result.ok) {
+    trackEnableAlertsBtn.textContent = "Alerts on ✓";
+  } else {
+    alert(window.ShiftFuelPush.friendlyReason(result.reason));
+    trackEnableAlertsBtn.disabled = false;
+    trackEnableAlertsBtn.textContent = original;
+  }
 });
 
 // ── Auto-refresh tracked request status ──────────────────────────────────────

@@ -189,6 +189,39 @@
     border-radius: 16px !important;
   }
 
+  /* Readable body text on phones — keep descriptions at 15–16px minimum so the
+     landing page stays legible (How it works, Services & Pricing, Trust, footer). */
+  .how-it-works-grid p,
+  .pricing-card p,
+  .pricing-from,
+  .pricing-from span,
+  .pricing-includes li,
+  .pricing-package-list span,
+  .pricing-package-list strong,
+  .wash-summary-item p,
+  .wash-summary-header strong,
+  .wash-summary-header span,
+  .safety-row p,
+  .safety-row strong {
+    font-size: 0.95rem !important;
+    line-height: 1.55;
+  }
+
+  .pricing-warning,
+  .pricing-disclaimer {
+    font-size: 0.9rem !important;
+  }
+
+  .footer-links a {
+    font-size: 0.95rem;
+  }
+
+  /* The How it works paragraphs are width-capped at 230px on desktop; let them
+     use the full card width on a phone so the larger text doesn't wrap awkwardly. */
+  .how-it-works-grid p {
+    max-width: none;
+  }
+
   .booking-flow {
     gap: 12px;
   }
@@ -1008,4 +1041,249 @@
   .worker-jobs-cancelled tr.queue-row {
     border-color: #e7b8b3 !important;
   }
+}
+
+/* ─────────────────────────────────────────────────────────────────────────
+   #10 Worker portal tweaks (from on-device review)
+   ───────────────────────────────────────────────────────────────────────── */
+@media (max-width: 760px) {
+  /* A) Schedule / availability buttons (e.g. "Work Days and Shift Times",
+     "Days Off", "Save …") were ballooning tall: they live in CSS grids, and a
+     grid item defaults to align-self:stretch on the block axis, so each button
+     stretched to fill its grid track. Pin them to natural height. */
+  .worker-portal-page .worker-schedule-actions .button,
+  .worker-portal-page .worker-availability-window .button,
+  .worker-portal-page .worker-schedule-form-inline .button {
+    align-self: start;
+    height: auto;
+    min-height: 46px;
+  }
+
+  /* B) The view-switcher hides sections by [data-app-view], but the structural
+     wrappers (.worker-dashboard-layout / -side / -main) carry no data-app-view,
+     so they stay in flow as EMPTY boxes and reserve big vertical gaps when their
+     inner sections are hidden. Hide whichever wrapper has no active child for the
+     current tab. (The Schedule tab's huge blank band was the empty layout box.) */
+  body.worker-portal-page[data-app-view="schedule"] .worker-dashboard-layout { display: none !important; }
+  body.worker-portal-page[data-app-view="jobs"] .worker-dashboard-side { display: none !important; }
+  body.worker-portal-page[data-app-view="progress"] .worker-dashboard-main,
+  body.worker-portal-page[data-app-view="profile"] .worker-dashboard-main { display: none !important; }
+
+  /* C) Tighter worker header: keep the "Worker Portal" tag on its own slim line
+     under the logo, then let presence + Take a break + Sign out share ONE compact
+     row instead of stacking into a tall block. */
+  .unified-portal-header.worker-top-nav .portal-header-label {
+    flex: 0 0 100%;
+    margin: 0;
+    font-size: 0.8rem;
+  }
+  .unified-portal-header.worker-top-nav .worker-presence-indicator {
+    flex: 0 0 auto;
+  }
+  .worker-top-nav .portal-signout-btn,
+  .worker-top-nav #worker-break-toggle {
+    flex: 1 1 auto;
+    min-height: 38px;
+    padding: 8px 10px;
+    font-size: 0.85rem;
+  }
+}
+
+/* ─────────────────────────────────────────────────────────────────────────
+   #11 Slim the idle worker hero (Jobs tab)
+
+   The hero forces min-height:280px on both the section and its content and an
+   h1 up to clamp(2.8rem,7vw,4.8rem), so on a phone the "Welcome back / name /
+   0 jobs" banner towers over the screen. When there's no active job to lead
+   with, this is the first thing the worker sees — so make it a light, compact
+   card: shrink the heading, drop the forced height, and tighten the Current
+   Status card.
+   ───────────────────────────────────────────────────────────────────────── */
+@media (max-width: 760px) {
+  .worker-portal-hero {
+    min-height: 0;
+  }
+  .worker-hero-content {
+    min-height: 0;
+    padding: 18px 16px;
+    gap: 14px;
+  }
+  .worker-portal-hero h1 {
+    font-size: 1.85rem;
+    line-height: 1.05;
+    margin: 4px 0 6px;
+  }
+  .worker-portal-hero p {
+    font-size: 0.95rem;
+  }
+  .worker-portal-hero .actions {
+    margin-top: 14px;
+    gap: 8px;
+  }
+  .worker-portal-hero .actions .button {
+    min-width: 0;
+  }
+  .worker-current-status-card {
+    max-width: none;
+    padding: 14px 16px;
+  }
+  .worker-current-status-card .worker-card-heading {
+    margin-bottom: 8px;
+  }
+  .worker-current-status-card dl div,
+  .worker-current-status-card .worker-profile-facts div {
+    padding: 8px 0;
+  }
+}
+
+/* ─────────────────────────────────────────────────────────────────────────
+   #12 Worker page — stop horizontal bleed + long-status clipping
+
+   The worker page never got the viewport-containment the admin page did (#3),
+   so the hero, dashboard layout and job cards could push past the right edge.
+   Pin them to the content width, clip any residual overflow on the body, and
+   let long statuses (e.g. "Cancellation received - awaiting key/vehicle return")
+   wrap instead of running off the card.
+   ───────────────────────────────────────────────────────────────────────── */
+@media (max-width: 760px) {
+  body.worker-portal-page {
+    overflow-x: hidden;
+  }
+  .worker-portal-page .worker-portal-hero,
+  .worker-portal-page .worker-dashboard-layout,
+  .worker-portal-page .worker-schedule-view {
+    width: 100% !important;
+    max-width: 100% !important;
+    margin-left: 0 !important;
+    margin-right: 0 !important;
+  }
+  .worker-portal-page .worker-hero-content {
+    overflow-wrap: anywhere;
+  }
+
+  /* Long worker statuses were nowrap and clipped — let the pill wrap. */
+  .worker-portal-page .admin-requests-table tr.queue-row td[data-label="Status"] .status-pill {
+    white-space: normal;
+    text-align: right;
+    overflow-wrap: anywhere;
+  }
+}
+
+/* ─────────────────────────────────────────────────────────────────────────
+   #13 Action Needed cards — stack on mobile (info over a full-width button).
+   ───────────────────────────────────────────────────────────────────────── */
+@media (max-width: 760px) {
+  .action-needed-card {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .action-needed-card .action-needed-btn {
+    width: 100%;
+    min-height: 44px;
+  }
+}
+
+/* ─────────────────────────────────────────────────────────────────────────
+   #14 Admin dashboard — command-center cleanup (mobile)
+   - compact top header (logo + avatar on one row, no tall green block)
+   - tighter metric spacing
+   - drop the random Avg-Rating block from the first screen
+   - drop the duplicate Workers/Create/Settings shortcut grid (it repeats the
+     bottom nav + Quick Actions)
+   - drop the public marketing footer (legal links live under Settings)
+   ───────────────────────────────────────────────────────────────────────── */
+@media (max-width: 760px) {
+  /* 1 — compact app header: logo + avatar on a single low row, no extra height. */
+  .admin-portal-page .unified-portal-header.admin-top-nav {
+    min-height: 0 !important;
+    padding: 8px 12px !important;
+    margin-top: 8px;
+    flex-wrap: nowrap !important;
+    align-items: center !important;
+    gap: 10px;
+  }
+  .admin-portal-page .unified-portal-header.admin-top-nav .logo {
+    flex: 1 1 auto;
+    min-width: 0;
+    font-size: 0.95rem;
+    line-height: 1.1;
+  }
+  /* Keep the name on one line so the bar stays a single compact row. */
+  .admin-portal-page .unified-portal-header.admin-top-nav .logo span:last-child {
+    white-space: nowrap;
+    max-width: none;
+  }
+  .admin-portal-page .unified-portal-header.admin-top-nav .logo-mark {
+    width: 30px;
+    height: 30px;
+    flex: 0 0 30px;
+    font-size: 1.3rem;
+  }
+  .admin-portal-page .unified-portal-header.admin-top-nav .portal-header-actions {
+    width: auto !important;
+    flex: 0 0 auto;
+    margin-left: auto;
+    justify-content: flex-end !important;
+  }
+  .admin-top-nav .admin-avatar {
+    width: 34px;
+    height: 34px;
+  }
+
+  /* 3 — tighten the metric cards under the title. */
+  .admin-portal-page .admin-stat-grid {
+    gap: 8px;
+    margin-top: 10px;
+  }
+
+  /* 9 — duplicate shortcut cards (Workers / Create Request / Settings) repeat
+     the bottom nav and Quick Actions — drop them on the app dashboard. */
+  .admin-portal-page .admin-shortcut-grid {
+    display: none !important;
+  }
+
+  /* 10 — no public marketing footer inside the signed-in admin app. */
+  body.admin-portal-page .site-footer {
+    display: none !important;
+  }
+
+  /* 12 — admin sections inherit the landing page's tall 44px section padding,
+     which is the source of the big vertical gaps. Tighten them so the dashboard
+     reads like an app, not a marketing page. */
+  .admin-portal-page .section,
+  .admin-portal-page .admin-section,
+  .admin-portal-page .admin-hero {
+    padding-top: 12px !important;
+    padding-bottom: 12px !important;
+  }
+  .admin-portal-page .admin-main {
+    padding-top: 6px;
+  }
+}
+
+/* ─────────────────────────────────────────────────────────────────────────
+   Worker Dashboard cards on phones: full-width facts + sticky next-action.
+   When a worker is inside the active job, the main action button sticks to the
+   bottom of the screen (just above the tab bar) so it's always reachable.
+   ───────────────────────────────────────────────────────────────────────── */
+@media (max-width: 760px) {
+  body.worker-portal-page .worker-card { padding: 14px; }
+  body.worker-portal-page .worker-current-job-facts { grid-template-columns: 1fr; }
+
+  body.worker-portal-page .worker-current-job-card .guided-step .admin-button-row {
+    position: sticky;
+    bottom: calc(64px + env(safe-area-inset-bottom, 0px));
+    z-index: 6;
+    margin: 12px -14px -4px;
+    padding: 10px 14px;
+    background: #fff;
+    border-top: 1px solid var(--worker-line, rgba(6, 47, 45, 0.12));
+    box-shadow: 0 -8px 18px rgba(255, 255, 255, 0.96);
+  }
+
+  body.worker-portal-page .worker-current-job-card .guided-step .admin-button-row .button.primary {
+    width: 100%;
+  }
+
+  body.worker-portal-page .worker-secondary-btn { min-height: 44px; }
 }

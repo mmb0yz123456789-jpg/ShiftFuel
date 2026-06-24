@@ -63,13 +63,15 @@ applicantForm?.addEventListener('submit', async (event) => {
   event.preventDefault();
 
   const data = new FormData(applicantForm);
-  const applicantName = String(data.get('applicantName') || '').trim();
+  const firstName = String(data.get('applicantFirstName') || '').trim();
+  const lastName = String(data.get('applicantLastName') || '').trim();
+  const applicantName = `${firstName} ${lastName}`.trim();
   const applicantEmail = String(data.get('applicantEmail') || '').trim();
   const applicantPhone = formatPhone(String(data.get('applicantPhone') || '').trim());
   const applicantResume = data.get('applicantResume');
 
-  if (!applicantName || !applicantEmail || !applicantPhone) {
-    if (applicantStatus) applicantStatus.textContent = 'Name, email, and phone number are all required.';
+  if (!firstName || !lastName || !applicantEmail || !applicantPhone) {
+    if (applicantStatus) applicantStatus.textContent = 'First name, last name, email, and phone number are all required.';
     return;
   }
 
@@ -82,6 +84,8 @@ applicantForm?.addEventListener('submit', async (event) => {
 
     const applicantRow = {
       name: applicantName,
+      first_name: firstName,
+      last_name: lastName,
       email: applicantEmail || null,
       phone: applicantPhone || null,
       availability: String(data.get('applicantAvailability') || '').trim() || null,
@@ -92,9 +96,13 @@ applicantForm?.addEventListener('submit', async (event) => {
 
     let { error } = await window.ShiftFuelSupabase.from('applicants').insert(applicantRow);
 
+    // Older schema (before the background-check migration) lacks the new
+    // columns — retry with only the core fields. `name` always exists.
     if (error?.code === 'PGRST204') {
       delete applicantRow.resume_url;
       delete applicantRow.resume_storage_path;
+      delete applicantRow.first_name;
+      delete applicantRow.last_name;
       ({ error } = await window.ShiftFuelSupabase.from('applicants').insert(applicantRow));
     }
 

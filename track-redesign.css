@@ -694,3 +694,505 @@
     width: 100%;
   }
 }
+
+/* ─────────────────────────────────────────────────────────────────────────
+   Customer dashboard layout (Track My Vehicle redesign)
+   Two-column desktop dashboard; stacked cards + vertical stepper on mobile.
+   ───────────────────────────────────────────────────────────────────────── */
+.track-page .track-detail-layout {
+  display: grid;
+  grid-template-columns: minmax(280px, 340px) minmax(0, 1.5fr) minmax(0, 1fr);
+  grid-template-areas:
+    "vehicle status  status"
+    "vehicle updates partner"
+    "help    photos  photos";
+  gap: 16px;
+  align-items: start;
+  margin-top: 14px;
+}
+
+.track-page .track-detail-layout.no-partner {
+  grid-template-areas:
+    "vehicle status  status"
+    "vehicle updates updates"
+    "help    photos  photos";
+}
+
+.track-page .tk-status { grid-area: status; }
+.track-page .tk-vehicle { grid-area: vehicle; }
+.track-page .tk-updates { grid-area: updates; }
+.track-page .tk-partner { grid-area: partner; }
+.track-page .tk-photos { grid-area: photos; }
+.track-page .tk-help { grid-area: help; }
+
+.track-page .tk-card {
+  background: #fff;
+  border: 1px solid rgba(13, 59, 59, 0.10);
+  border-radius: var(--sf-radius-md);
+  box-shadow: 0 10px 28px rgba(13, 59, 59, 0.06);
+  padding: 20px;
+}
+
+.track-page .tk-eyebrow {
+  margin: 0 0 10px;
+  color: var(--sf-muted);
+  font-size: 0.72rem;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+/* Current status hero */
+.track-page .tk-status-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+}
+
+.track-page .tk-status-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 2px 0 8px;
+  color: var(--sf-teal-dark);
+  font-size: clamp(1.5rem, 2.6vw, 2rem);
+  letter-spacing: -0.02em;
+}
+
+.track-page .tk-status-check {
+  display: inline-grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: var(--sf-success);
+  color: #fff;
+  font-size: 0.85rem;
+}
+
+.track-page .tk-status-desc {
+  max-width: 60ch;
+  margin: 0;
+  color: #40524f;
+  font-size: 1rem;
+  line-height: 1.6;
+}
+
+.track-page .tk-status-meta {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 10px;
+  flex-shrink: 0;
+  text-align: right;
+}
+
+.track-page .tk-updated {
+  color: var(--sf-muted);
+  font-size: 0.82rem;
+  font-weight: 800;
+  line-height: 1.3;
+}
+
+.track-page .tk-updated small {
+  display: block;
+  font-weight: 700;
+  opacity: 0.8;
+}
+
+.track-page .tk-refresh {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 36px;
+  padding: 6px 12px;
+  color: var(--sf-teal-dark);
+  background: #fff;
+  border: 1px solid rgba(13, 59, 59, 0.16);
+  border-radius: var(--sf-radius-pill);
+  font-size: 0.82rem;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.track-page .tk-refresh svg { width: 15px; height: 15px; }
+.track-page .tk-refresh:hover { background: var(--sf-sage-light); }
+
+/* Horizontal stepper (desktop) */
+.track-page .sf-stepper {
+  --sf-line: #dce5e1;
+  display: flex;
+  margin: 22px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.track-page .sf-stepper .sf-step {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 0 4px;
+  text-align: center;
+}
+
+.track-page .sf-stepper .sf-step::before {
+  content: "";
+  position: absolute;
+  top: 17px;
+  right: 50%;
+  width: 100%;
+  height: 2px;
+  background: var(--sf-line);
+  z-index: 0;
+}
+
+.track-page .sf-stepper .sf-step:first-child::before { display: none; }
+.track-page .sf-stepper .sf-step.done::before,
+.track-page .sf-stepper .sf-step.active::before { background: var(--sf-success); }
+
+.track-page .sf-step-dot {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  color: var(--sf-muted);
+  background: #e7ecea;
+  border: 2px solid #e7ecea;
+  border-radius: 50%;
+  font-size: 0.9rem;
+  font-weight: 900;
+}
+
+.track-page .sf-step.done .sf-step-dot {
+  color: #fff;
+  background: var(--sf-success);
+  border-color: var(--sf-success);
+}
+
+.track-page .sf-step.active .sf-step-dot {
+  color: var(--sf-coral);
+  background: #fff;
+  border-color: var(--sf-coral);
+  box-shadow: 0 0 0 5px rgba(255, 107, 90, 0.16);
+}
+
+.track-page .sf-step-label {
+  color: var(--sf-muted);
+  font-size: 0.78rem;
+  font-weight: 850;
+  line-height: 1.25;
+}
+
+.track-page .sf-step.done .sf-step-label,
+.track-page .sf-step.active .sf-step-label { color: var(--sf-teal-dark); }
+
+.track-page .sf-step-time { color: var(--sf-muted); font-size: 0.7rem; }
+.track-page .sf-step.future { opacity: 0.7; }
+
+/* Vehicle card */
+.track-page .tk-vehicle-top {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid rgba(13, 59, 59, 0.08);
+}
+
+.track-page .tk-vehicle-icon {
+  display: grid;
+  place-items: center;
+  width: 54px;
+  height: 54px;
+  flex-shrink: 0;
+  color: var(--sf-teal-dark);
+  background: var(--sf-sage-light);
+  border-radius: 14px;
+}
+
+.track-page .tk-vehicle-icon svg { width: 30px; height: 30px; }
+
+.track-page .tk-vehicle-name {
+  margin: 0;
+  color: var(--sf-teal-dark);
+  font-size: 1.05rem;
+  font-weight: 900;
+}
+
+.track-page .tk-vehicle-color { margin: 2px 0; color: var(--sf-muted); font-size: 0.9rem; }
+
+.track-page .tk-vehicle-id {
+  display: inline-block;
+  margin-top: 4px;
+  padding: 3px 10px;
+  color: var(--sf-teal-dark);
+  background: var(--sf-sage-light);
+  border-radius: var(--sf-radius-pill);
+  font-size: 0.74rem;
+  font-weight: 900;
+}
+
+.track-page .tk-vehicle-meta { display: grid; gap: 14px; margin: 16px 0 0; }
+.track-page .tk-vehicle-meta div { display: grid; gap: 2px; }
+.track-page .tk-vehicle-meta dt {
+  color: var(--sf-muted);
+  font-size: 0.72rem;
+  font-weight: 900;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.track-page .tk-vehicle-meta dd { margin: 0; color: var(--sf-charcoal); font-size: 0.95rem; font-weight: 600; }
+
+/* Live updates feed */
+.track-page .tk-updates-list { display: grid; margin: 0; padding: 0; list-style: none; }
+
+.track-page .tk-update {
+  position: relative;
+  display: grid;
+  grid-template-columns: 26px 1fr auto;
+  align-items: start;
+  gap: 12px;
+  padding: 0 0 18px;
+}
+
+.track-page .tk-update:last-child { padding-bottom: 0; }
+
+.track-page .tk-update::before {
+  content: "";
+  position: absolute;
+  top: 24px;
+  bottom: 0;
+  left: 12px;
+  width: 2px;
+  background: #e7ecea;
+}
+
+.track-page .tk-update:last-child::before { display: none; }
+
+.track-page .tk-update-dot {
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  color: #fff;
+  background: var(--sf-success);
+  border-radius: 50%;
+  font-size: 0.72rem;
+  font-weight: 900;
+}
+
+.track-page .tk-update.active .tk-update-dot {
+  background: #fff;
+  border: 2px solid var(--sf-coral);
+}
+
+.track-page .tk-update-title { margin: 0; color: var(--sf-teal-dark); font-size: 0.95rem; font-weight: 850; }
+.track-page .tk-update-desc { margin: 2px 0 0; color: var(--sf-muted); font-size: 0.86rem; line-height: 1.4; }
+.track-page .tk-update-time { color: var(--sf-muted); font-size: 0.8rem; font-weight: 700; white-space: nowrap; }
+.track-page .tk-empty { margin: 0; color: var(--sf-muted); }
+
+/* Partner card */
+.track-page .tk-partner-row { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; }
+
+.track-page .tk-partner-photo {
+  width: 48px;
+  height: 48px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+.track-page .tk-partner-initial {
+  display: grid;
+  place-items: center;
+  color: var(--sf-teal-dark);
+  background: var(--sf-sage-light);
+  font-weight: 900;
+}
+
+.track-page .tk-partner-name { margin: 0; color: var(--sf-teal-dark); font-weight: 900; }
+.track-page .tk-partner-badge { display: inline-block; margin-top: 3px; color: var(--sf-success); font-size: 0.74rem; font-weight: 800; }
+.track-page .tk-partner-action { width: 100%; min-height: 44px; }
+
+/* Photos strip */
+.track-page .tk-photos-head { display: flex; align-items: center; justify-content: space-between; }
+
+.track-page .tk-viewall {
+  padding: 4px;
+  color: var(--sf-teal-dark);
+  background: none;
+  border: 0;
+  font-size: 0.85rem;
+  font-weight: 850;
+  cursor: pointer;
+}
+
+.track-page .tk-photo-strip {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(120px, 1fr);
+  gap: 12px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+}
+
+.track-page .tk-photo-tile {
+  display: grid;
+  gap: 6px;
+  padding: 0;
+  background: none;
+  border: 0;
+  text-align: left;
+  cursor: pointer;
+}
+
+.track-page .tk-photo-tile img {
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  object-fit: cover;
+  border: 1px solid rgba(13, 59, 59, 0.08);
+  border-radius: var(--sf-radius-sm);
+}
+
+.track-page .tk-photo-label { color: var(--sf-teal-dark); font-size: 0.8rem; font-weight: 800; }
+.track-page .tk-photo-time { color: var(--sf-muted); font-size: 0.72rem; }
+.track-page .tk-photos-full { margin-top: 16px; }
+
+/* Help card */
+.track-page .tk-help-text { margin: 0 0 14px; color: var(--sf-muted); }
+.track-page .tk-help-action { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; }
+.track-page .tk-help-action svg { width: 16px; height: 16px; }
+.track-page .tk-help-num { margin: 10px 0 0; color: var(--sf-teal-dark); font-weight: 900; }
+
+/* ── Mobile: stacked cards + vertical stepper ── */
+@media (max-width: 900px) {
+  .track-page .track-detail-layout,
+  .track-page .track-detail-layout.no-partner {
+    grid-template-columns: 1fr;
+    grid-template-areas:
+      "status"
+      "vehicle"
+      "updates"
+      "photos"
+      "partner"
+      "help";
+  }
+
+  .track-page .tk-status-head { flex-direction: column; }
+  .track-page .tk-status-meta {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+    text-align: left;
+  }
+
+  .track-page .sf-stepper { flex-direction: column; align-items: stretch; }
+  .track-page .sf-stepper .sf-step {
+    flex-direction: row;
+    align-items: center;
+    gap: 12px;
+    min-height: 44px;
+    padding: 0 0 16px;
+    text-align: left;
+  }
+  .track-page .sf-stepper .sf-step::before {
+    top: 0;
+    left: 17px;
+    right: auto;
+    width: 2px;
+    height: 100%;
+  }
+  .track-page .sf-stepper .sf-step:last-child::before { height: 18px; }
+  .track-page .sf-step-label { flex: 1; font-size: 0.95rem; }
+
+  .track-page .tk-status-desc,
+  .track-page .tk-update-desc,
+  .track-page .tk-vehicle-meta dd { font-size: 0.95rem; }
+
+  .track-page .tk-photo-strip { grid-auto-columns: minmax(46%, 1fr); }
+}
+
+/* ─────────────────────────────────────────────────────────────────────────
+   Text-wrapping safety + canceled layout + bottom-nav clearance
+   ───────────────────────────────────────────────────────────────────────── */
+
+/* Stop status/update text collapsing to one-word-per-line: give every card and
+   text column room and a real minimum width. */
+.track-page .tk-card { width: 100%; }
+.track-page .tk-status-headline,
+.track-page .tk-update-body { min-width: 0; }
+.track-page .tk-status-title,
+.track-page .tk-status-desc,
+.track-page .tk-update-title,
+.track-page .tk-update-desc { overflow-wrap: anywhere; white-space: normal; }
+
+/* Canceled request: stacked cards, status-first. */
+.track-page .track-canceled-body {
+  display: grid;
+  gap: 16px;
+  margin-top: 6px;
+}
+
+@media (min-width: 901px) {
+  .track-page .track-canceled-body { width: min(720px, 100%); }
+}
+
+.track-page .tk-canceled-status { border-color: rgba(220, 38, 38, 0.25); }
+.track-page .tk-canceled-title { color: #b91c1c; }
+.track-page .tk-canceled-note { margin: 10px 0 0; color: var(--sf-charcoal); font-size: 0.9rem; line-height: 1.5; }
+.track-page .tk-canceled-status .tk-help-action { margin-top: 14px; }
+
+.track-page .tk-return-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 6px;
+  color: var(--sf-teal-dark);
+  font-weight: 850;
+}
+
+.track-page .tk-return-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: #f5a623;
+  box-shadow: 0 0 0 4px rgba(245, 166, 35, 0.18);
+}
+
+@media (max-width: 900px) {
+  /* Time drops below the update text so the description keeps full width. */
+  .track-page .tk-update { grid-template-columns: 26px minmax(0, 1fr); }
+  .track-page .tk-update-time { grid-column: 2; margin-top: 2px; }
+}
+
+/* Hard guarantee on phones: detail cards always stack full width, never
+   side-by-side, so text can't be squeezed into narrow columns and cut off. */
+@media (max-width: 767px) {
+  .track-page .track-detail-layout,
+  .track-page .track-detail-layout.no-partner,
+  .track-page .track-canceled-body {
+    display: flex !important;
+    flex-direction: column;
+    gap: 16px;
+    width: 100%;
+  }
+
+  .track-page .track-detail-layout > .tk-card,
+  .track-page .track-canceled-body > .tk-card,
+  .track-page .track-detail-layout > .track-live-location-panel,
+  .track-page .track-canceled-body > .track-live-location-panel {
+    width: 100%;
+    min-width: 0;
+  }
+
+  /* Keep the footer and last card clear of the fixed bottom tab bar. */
+  .track-page { padding-bottom: 90px; }
+}

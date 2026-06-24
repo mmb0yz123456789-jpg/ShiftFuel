@@ -738,6 +738,58 @@ function stepIsComplete(panel) {
   return true;
 }
 
+// Friendly, customer-facing validation copy for a single field. Returns "" when
+// the field is acceptable. Used for inline messages shown on blur.
+function friendlyFieldMessage(input) {
+  const name = input.name || "";
+  const value = (input.value || "").trim();
+  const isRequired = input.dataset.required !== undefined;
+
+  if (input.dataset.phone !== undefined) {
+    const digits = normalizePhone(value);
+    if ((isRequired && digits.length !== 10) || (digits.length > 0 && digits.length !== 10)) {
+      return "Please enter a valid phone number.";
+    }
+  }
+  if (input.dataset.email !== undefined && value && !isValidEmail(value)) {
+    return "Please enter a valid email address.";
+  }
+  if (isRequired && !value && input.type !== "radio" && input.type !== "checkbox") {
+    const copy = {
+      firstName: "Please enter your first name.",
+      lastName: "Please enter your last name.",
+      customerPhone: "Please enter a valid phone number.",
+      customerEmail: "Please enter a valid email address.",
+      street: "Please enter your street address.",
+      city: "Please enter your city.",
+      state: "Please enter your state.",
+      zip: "Please enter your ZIP code.",
+    };
+    return copy[name] || "";
+  }
+  return "";
+}
+
+// Shows/clears the inline error message beneath a field's label.
+function showFieldMessage(input) {
+  const label = input.closest("label");
+  if (!label) return;
+  const message = friendlyFieldMessage(input);
+  let msgEl = label.querySelector(".booking-field-error");
+  if (message) {
+    if (!msgEl) {
+      msgEl = document.createElement("span");
+      msgEl.className = "booking-field-error";
+      label.appendChild(msgEl);
+    }
+    msgEl.textContent = message;
+    input.classList.add("has-error");
+  } else {
+    if (msgEl) msgEl.remove();
+    input.classList.remove("has-error");
+  }
+}
+
 const STEP_ICONS = {
   Customer: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="8" r="3.4"/><path d="M5 20c0-3.3 3.1-6 7-6s7 2.7 7 6"/></svg>`,
   Address: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 21s7-5.5 7-11.5A7 7 0 0 0 5 9.5C5 15.5 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.3"/></svg>`,
@@ -753,8 +805,13 @@ const STEP_ICONS = {
 };
 const CHECK_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M5 12.5l4.5 4.5L19 7"/></svg>`;
 
-function renderProgressRail(steps, unlockedIndex, openIndex) {
+function renderProgressRail(steps, unlockedIndex, openIndex, flowName) {
+  const currentLabel = getStepContent(steps[openIndex], flowName)?.title || steps[openIndex];
   return `
+    <p class="booking-progress-compact">
+      <span class="booking-progress-compact-step">Step ${openIndex + 1} of ${steps.length}</span>
+      <span class="booking-progress-compact-label">${escapeHtml(currentLabel)}</span>
+    </p>
     <ol class="booking-progress-rail" aria-label="Booking progress">
       ${steps.map((step, index) => {
         const state = index === openIndex ? "is-active" : index < unlockedIndex ? "is-complete" : "is-locked";
@@ -1946,7 +2003,7 @@ function renderFlow(root) {
 
   const render = () => {
     root.innerHTML = `
-      ${renderProgressRail(steps, unlockedIndex, openIndex)}
+      ${renderProgressRail(steps, unlockedIndex, openIndex, flowName)}
       <div class="booking-layout">
         <div class="booking-cards">
           ${steps.map((step, index) => renderStepCard(step, index, flowName, unlockedIndex, openIndex)).join("")}
@@ -1996,7 +2053,14 @@ function renderFlow(root) {
     if (event.target.matches("[data-address-field]")) {
       bookingState.address.validated = false;
       setAddressStatus(panel, "warning", "Please validate your service address before continuing.");
+      // Editing the address after it was validated re-locks every later step
+      // until it is validated again. Materializes on the next render.
+      const addrIdx = steps.indexOf("Address");
+      if (addrIdx >= 0 && unlockedIndex > addrIdx) unlockedIndex = addrIdx;
     }
+
+    // Live-clear an inline validation message once the field becomes valid.
+    if (event.target.classList?.contains("has-error")) showFieldMessage(event.target);
 
     if (event.target.matches("[data-returning-address-field]")) {
       bookingState.returning.stagedAddress = null;
@@ -2053,6 +2117,13 @@ function renderFlow(root) {
     updateContinue();
   });
 
+  root.addEventListener("focusout", (event) => {
+    const input = event.target;
+    if (input?.matches?.("input[data-required], input[data-phone], input[data-email]")) {
+      showFieldMessage(input);
+    }
+  });
+
   root.addEventListener("booking-payment-authorized", () => {
     const activePanel = root.querySelector(".booking-accordion-card.is-active");
     if (activePanel) {
@@ -2063,7 +2134,7 @@ function renderFlow(root) {
 
   root.addEventListener("click", async (event) => {
     const railStep = event.target.closest("[data-rail-step]");
-    if (railStep && !railStep.disabled) {
+    if (railStep && !railStep.disabled && Number(railStep.dataset.railStep) <= unlockedIndex) {
       goToStep(Number(railStep.dataset.railStep));
       return;
     }
@@ -2081,7 +2152,7 @@ function renderFlow(root) {
     }
 
     const stepHeader = event.target.closest("[data-step-header]");
-    if (stepHeader && !stepHeader.disabled) {
+    if (stepHeader && !stepHeader.disabled && Number(stepHeader.dataset.stepHeader) <= unlockedIndex) {
       const index = Number(stepHeader.dataset.stepHeader);
       if (index !== openIndex) goToStep(index);
       return;
@@ -2217,9 +2288,33 @@ function renderFlow(root) {
   render();
 }
 
+// Preselect a service when the customer arrives from a "Book This Service" card
+// on the landing page (e.g. book.html?service=fuel). Quick Vehicle Care is an
+// add-on, so it pre-checks the add-on and explains it must attach to a service.
+function applyPreselectedService() {
+  let requested = "";
+  try {
+    requested = new URLSearchParams(window.location.search).get("service") || "";
+  } catch (_) {
+    requested = "";
+  }
+  if (!requested) return;
+
+  if (["fuel", "wash", "fuel_wash"].includes(requested)) {
+    bookingState.values.serviceType = requested;
+  } else if (requested === "quick-care") {
+    bookingState.values.quickCare = true;
+    if (stepCopy.Service) {
+      stepCopy.Service.intro =
+        "Quick Vehicle Care is an optional add-on. Choose a fuel or car wash service below to attach it to.";
+    }
+  }
+}
+
 async function initBookingFlow() {
   if (!flowRoot) return;
   await livePricingReady;
+  applyPreselectedService();
   renderFlow(flowRoot);
 }
 
