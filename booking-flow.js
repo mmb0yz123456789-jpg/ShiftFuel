@@ -920,7 +920,6 @@ function renderSummarySidebar(steps, flowName, unlockedIndex) {
         </span>
         <span class="summary-total-amount">${formatMoney(totals.estimatedTotal)}</span>
       </div>
-      <button type="button" class="button primary summary-jump-review" data-jump-review ${reachedReview ? "" : "disabled"}>Continue to Review &rarr;</button>
       <p class="summary-secure-note">Secure, encrypted, and trusted.</p>
     </aside>
   `;
