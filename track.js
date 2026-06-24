@@ -3249,7 +3249,10 @@ trackEnableAlertsBtn?.addEventListener("click", async () => {
   if (result.ok) {
     trackEnableAlertsBtn.textContent = "Alerts on ✓ (tap to test)";
     trackEnableAlertsBtn.disabled = false;
-    window.ShiftFuelPush.sendTest(result.endpoint);
+    const test = await window.ShiftFuelPush.sendTest(result.endpoint);
+    if (test && test.ok === false) {
+      alert("Notifications are on, but the test push could not be delivered:\n\n" + (test.error || "unknown"));
+    }
   } else {
     alert(window.ShiftFuelPush.friendlyReason(result.reason));
     trackEnableAlertsBtn.disabled = false;

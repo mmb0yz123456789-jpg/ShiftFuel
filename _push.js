@@ -16,20 +16,28 @@ function ensureVapid() {
   const pub = process.env.VAPID_PUBLIC_KEY;
   const priv = process.env.VAPID_PRIVATE_KEY;
   if (!pub || !priv) return false;
-  webpush.setVapidDetails(process.env.VAPID_SUBJECT || 'mailto:support@shiftfuel.app', pub, priv);
-  vapidReady = true;
-  return true;
+  try {
+    // Throws if the keys are the wrong length/format (e.g. swapped or truncated).
+    webpush.setVapidDetails(process.env.VAPID_SUBJECT || 'mailto:support@shiftfuel.app', pub, priv);
+    vapidReady = true;
+    return true;
+  } catch (e) {
+    console.error('[push] invalid VAPID keys:', e.message);
+    return false;
+  }
 }
 
 function cleanPhone(v) { return String(v || '').replace(/\D/g, ''); }
 
 async function sendToSubs(subs, payload) {
-  if (!ensureVapid() || !subs || !subs.length) return;
+  if (!ensureVapid()) return [{ ok: false, status: 0, error: 'VAPID keys not configured on the server' }];
+  if (!subs || !subs.length) return [];
   const db = getSupabaseAdmin();
   const body = JSON.stringify(payload);
-  await Promise.all(subs.map(async (s) => {
+  return Promise.all(subs.map(async (s) => {
     try {
       await webpush.sendNotification({ endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } }, body);
+      return { ok: true };
     } catch (err) {
       // 404/410 = the subscription is gone (uninstalled / expired) — drop it.
       if (err.statusCode === 404 || err.statusCode === 410) {
@@ -37,6 +45,7 @@ async function sendToSubs(subs, payload) {
       } else {
         console.warn('[push] send failed:', err.statusCode, err.body || err.message);
       }
+      return { ok: false, status: err.statusCode || 0, error: String(err.body || err.message || 'send failed').slice(0, 200) };
     }
   }));
 }
