@@ -6,10 +6,11 @@
  *   subscribe    – stores a push subscription (worker via token, or customer via phone/email)
  *   unsubscribe  – removes a subscription by endpoint
  *   notify       – staff-triggered notification for a request (e.g. admin assigns a job)
+ *   test         – send a test notification to the caller's own subscription (by endpoint)
  */
 
 const { setCorsHeaders, getSupabaseAdmin, verifyAdminToken, verifyWorkerToken } = require('./_auth');
-const { notifyRequest, cleanPhone } = require('./_push');
+const { notifyRequest, sendToSubs, cleanPhone } = require('./_push');
 
 module.exports = async (req, res) => {
   setCorsHeaders(req, res);
@@ -54,6 +55,34 @@ module.exports = async (req, res) => {
       return res.status(500).json({ error: 'Could not save subscription' });
     }
     return res.status(200).json({ ok: true });
+  }
+
+  if (action === 'test') {
+    // Send a test notification to the caller's own subscription(s). Prefer the
+    // exact endpoint; fall back to the worker's token so it works even if the
+    // endpoint wasn't passed through.
+    const db = getSupabaseAdmin();
+    let data = null;
+    if (body.endpoint) {
+      ({ data } = await db.from('push_subscriptions').select('endpoint,p256dh,auth').eq('endpoint', body.endpoint));
+    } else if (body.worker_token) {
+      const employeeId = await verifyWorkerToken(body.worker_token);
+      if (!employeeId) return res.status(401).json({ error: 'Unauthorized' });
+      ({ data } = await db.from('push_subscriptions').select('endpoint,p256dh,auth').eq('employee_id', employeeId));
+    } else {
+      return res.status(400).json({ error: 'Missing endpoint or worker_token' });
+    }
+    if (!data || !data.length) return res.status(404).json({ error: 'No subscription found — tap Enable alerts first.' });
+    const results = await sendToSubs(data, {
+      title: 'ShiftFuel alerts are on ✓',
+      body: 'This is a test notification — you’re all set for job alerts.',
+      url: '/worker.html',
+    });
+    const failed = (results || []).find((r) => r && !r.ok);
+    if (failed) {
+      return res.status(200).json({ ok: false, error: failed.error || `push service status ${failed.status}` });
+    }
+    return res.status(200).json({ ok: true, sent: (results || []).length });
   }
 
   if (action === 'unsubscribe') {
