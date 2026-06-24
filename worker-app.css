@@ -311,6 +311,27 @@
   font-weight: 800 !important;
 }
 
+/* ---- Upcoming list on the dashboard (jobs you can't start until the current one is done) ---- */
+.worker-portal-page .worker-upcoming-block { margin-top: 16px; }
+.worker-portal-page .worker-upcoming-heading {
+  font-size: 0.78rem !important; text-transform: uppercase; letter-spacing: 0.05em;
+  color: #8a9893; margin: 0 0 8px !important;
+}
+.worker-portal-page .worker-upcoming-row {
+  display: grid !important;
+  grid-template-columns: 36px 1fr auto !important;
+  align-items: center !important;
+  gap: 12px !important;
+  background: #fff !important;
+  border: 1px solid rgba(13, 59, 59, 0.08) !important;
+  border-radius: 14px !important;
+  padding: 12px 14px !important;
+  margin-bottom: 10px !important;
+}
+.worker-portal-page .worker-upcoming-main { display: grid; gap: 2px; min-width: 0; }
+.worker-portal-page .worker-upcoming-main .worker-card-sub { color: #60716d; font-size: 0.85rem; }
+.worker-portal-page .worker-upcoming-when { color: #60716d; font-size: 0.82rem; white-space: nowrap; }
+
 /* ---- Today's Schedule count strip (Accepted / Upcoming / Completed / Cancelled) ---- */
 .worker-portal-page .worker-today-counts {
   display: grid;
@@ -334,13 +355,18 @@
 .worker-portal-page .worker-count-cell.is-completed .worker-count-value { color: var(--sf-teal, #0d3b3b); }
 .worker-portal-page .worker-count-cell.is-cancelled .worker-count-value { color: #b42318; }
 
-/* ---- Schedule: clean single-row days (handle · day · times · copy) ---- */
+/* ---- Schedule: one readable row per day — checkbox + day, full-width times,
+   small Copy/Paste. Times get the space so they're actually legible. ---- */
 .worker-portal-page .worker-day-row {
   display: grid !important;
-  grid-template-columns: 14px auto 1fr auto !important;
+  grid-template-columns: auto 1fr auto !important;
+  grid-template-areas:
+    "day day copy"
+    "times times times" !important;
   align-items: center !important;
-  gap: 10px !important;
-  padding: 12px 2px !important;
+  column-gap: 10px !important;
+  row-gap: 10px !important;
+  padding: 14px 2px !important;
   background: transparent !important;
   border: 0 !important;
   border-bottom: 1px solid rgba(13, 59, 59, 0.08) !important;
@@ -349,25 +375,26 @@
   margin: 0 !important;
 }
 .worker-portal-page .worker-day-row:last-child { border-bottom: 0 !important; }
-.worker-portal-page .worker-day-handle { color: #c2ccc8; display: inline-flex; align-items: center; }
-.worker-portal-page .worker-day-handle svg { width: 14px; height: 14px; }
+.worker-portal-page .worker-day-handle { display: none !important; } /* decorative only — hidden to free space */
 .worker-portal-page .worker-day-toggle {
-  display: inline-flex !important; align-items: center !important; gap: 8px !important;
+  grid-area: day;
+  display: inline-flex !important; align-items: center !important; gap: 10px !important;
   margin: 0 !important; padding: 0 !important; background: transparent !important; border: 0 !important;
 }
 .worker-portal-page .worker-day-name { font-weight: 700; color: var(--sf-teal, #0d3b3b); }
-.worker-portal-page .worker-day-times {
-  display: flex !important; align-items: center !important; gap: 6px !important; min-width: 0 !important;
-}
-.worker-portal-page .worker-day-times input[type="time"] {
-  min-height: 36px !important; padding: 4px 6px !important; min-width: 0 !important; width: 100% !important;
-}
-.worker-portal-page .worker-day-dash { color: #8a9893; }
-.worker-portal-page .worker-day-copy-actions { display: flex !important; gap: 6px !important; }
+.worker-portal-page .worker-day-copy-actions { grid-area: copy; display: flex !important; gap: 8px !important; }
 .worker-portal-page .worker-day-copy-actions .button {
-  min-height: 30px !important; padding: 3px 8px !important; font-size: 0.72rem !important;
+  min-height: 30px !important; padding: 3px 12px !important; font-size: 0.76rem !important;
   background: transparent !important; border: 1px solid rgba(13, 59, 59, 0.18) !important;
 }
+.worker-portal-page .worker-day-times {
+  grid-area: times;
+  display: flex !important; align-items: center !important; gap: 10px !important;
+}
+.worker-portal-page .worker-day-times input[type="time"] {
+  flex: 1 1 0 !important; min-width: 0 !important; min-height: 44px !important; padding: 6px 10px !important;
+}
+.worker-portal-page .worker-day-dash { color: #8a9893; flex: 0 0 auto; }
 
 /* ---- Earnings tab ---- */
 .worker-portal-page .worker-earnings { display: grid; gap: 14px; }
@@ -478,12 +505,33 @@
   gap: 6px 16px;
   margin: 18px 0 6px;
 }
-.worker-app-legal a {
+.worker-app-legal a,
+.worker-app-legal .worker-legal-link {
   color: #60716d;
   font-size: 0.82rem;
   text-decoration: none;
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+  font-family: inherit;
 }
-.worker-app-legal a:hover { text-decoration: underline; }
+.worker-app-legal a:hover,
+.worker-app-legal .worker-legal-link:hover { text-decoration: underline; }
+
+/* Legal document content rendered inside the worker-styled modal. */
+.worker-legal-content { color: #1c2b28; }
+.worker-legal-content h1 {
+  font-size: 1.4rem !important; line-height: 1.2;
+  color: var(--sf-teal, #0d3b3b); margin: 0 0 6px;
+}
+.worker-legal-content h2,
+.worker-legal-content h3 {
+  font-size: 1.05rem !important; color: var(--sf-teal, #0d3b3b); margin: 18px 0 6px;
+}
+.worker-legal-content p,
+.worker-legal-content li { line-height: 1.55; color: #1c2b28; }
+.worker-legal-content .legal-updated { color: #8a9893; font-size: 0.82rem; }
 .worker-app-copy {
   text-align: center;
   color: #9aa8a3;

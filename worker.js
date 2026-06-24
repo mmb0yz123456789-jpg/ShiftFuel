@@ -1615,14 +1615,39 @@ function renderWorkerCurrentJobCard(request) {
 // with its full guided baby-step card, so the worker lands straight on
 // "what to do next" without digging into the Jobs tab. Reuses the same card +
 // document-delegated handlers, so no job/GPS/push logic is duplicated.
-function renderWorkerDashboardToday(jobs) {
+function renderWorkerDashboardToday(focusJobs, upcomingJobs) {
   const container = document.querySelector('#worker-dashboard-today');
   if (!container) return;
-  if (!jobs.length) {
+  focusJobs = focusJobs || [];
+  upcomingJobs = upcomingJobs || [];
+  if (!focusJobs.length && !upcomingJobs.length) {
     container.innerHTML = '<div class="worker-state-card worker-state-empty"><p>No jobs scheduled today. You’re all caught up.</p></div>';
     return;
   }
-  container.innerHTML = jobs.map(renderWorkerCurrentJobCard).join('');
+  const focusHtml = focusJobs.map(renderWorkerCurrentJobCard).join('');
+  const upcomingHtml = upcomingJobs.length ? `
+    <div class="worker-upcoming-block">
+      <h3 class="worker-upcoming-heading">Upcoming &middot; ${upcomingJobs.length}</h3>
+      ${upcomingJobs.map(renderWorkerUpcomingRow).join('')}
+    </div>` : '';
+  container.innerHTML = focusHtml + upcomingHtml;
+}
+
+// Quiet, action-free row for a claimed job you can't start yet (one job at a time).
+function renderWorkerUpcomingRow(request) {
+  const initial = escapeHtml(((request.customer_name || 'C').trim().charAt(0) || 'C').toUpperCase());
+  const when = workerReturnByLabel(request);
+  const sub = [workerVehicleSummary(request), request.service_label || request.service_type]
+    .filter(Boolean).map(escapeHtml).join(' &middot; ');
+  return `
+    <article class="worker-card worker-upcoming-row">
+      <span class="worker-avatar worker-avatar-sm" aria-hidden="true">${initial}</span>
+      <div class="worker-upcoming-main">
+        <strong>${escapeHtml(request.customer_name || 'Customer')}</strong>
+        <span class="worker-card-sub">${sub}</span>
+      </div>
+      ${when ? `<span class="worker-upcoming-when">${escapeHtml(when)}</span>` : ''}
+    </article>`;
 }
 
 // Today's Schedule strip on the Today's Job tab — a quick count of the day's
@@ -2523,8 +2548,18 @@ async function loadWorkerJobs(silent = false) {
   // "Current Job" = the claimed job actually underway (key received or beyond).
   // Everything else claimed is the day's schedule. Lead with the one job the
   // worker is acting on, then upcoming, then new work, then completed.
-  const currentJob = claimedJobs.find((job) => workerProgressStepForStatus(job.status) >= 2) || null;
-  const scheduleJobs = currentJob ? claimedJobs.filter((job) => job.id !== currentJob.id) : claimedJobs;
+  // One-job-at-a-time model:
+  //  • activeJobs       = jobs in progress (key received+) — you're holding the car/keys.
+  //  • cancelledReturn  = cancelled jobs still awaiting the car/key handback.
+  //  • pendingAccepted  = jobs you've accepted but NOT started yet (status 'accepted').
+  // While you have a job needing action you can't start or claim another, so the
+  // dashboard shows ONE focus card with actions and the rest as a quiet Upcoming list.
+  const activeJobs = claimedJobs.filter((job) => workerProgressStepForStatus(job.status) >= 2);
+  const pendingAccepted = claimedJobs.filter((job) => workerProgressStepForStatus(job.status) < 2);
+  const needsAction = [...cancelledReturnJobs, ...activeJobs];
+  const hasActiveJob = needsAction.length > 0;
+  const focusJobs = hasActiveJob ? needsAction : pendingAccepted.slice(0, 1);
+  const upcomingJobs = hasActiveJob ? pendingAccepted : pendingAccepted.slice(1);
 
   workerJobList.innerHTML = `
     ${profileIncomplete ? `
@@ -2535,21 +2570,23 @@ async function loadWorkerJobs(silent = false) {
       </div>
     ` : ''}
     <section class="worker-jobs-section">
-      <h3>Available to Claim${availableJobs.length ? ` (${availableJobs.length})` : ''}</h3>
-      ${availableJobs.length
-        ? renderWorkerJobTable(availableJobs, 'available')
-        : `<div class="worker-state-card worker-state-empty">
-            <p>No available requests right now.</p>
-            <button class="button secondary worker-refresh-inline" type="button" aria-label="Refresh worker dashboard">Refresh</button>
-          </div>`}
+      <h3>Available to Claim${(!hasActiveJob && availableJobs.length) ? ` (${availableJobs.length})` : ''}</h3>
+      ${hasActiveJob
+        ? `<div class="worker-state-card worker-state-empty"><p>Finish your current job before claiming another.</p></div>`
+        : (availableJobs.length
+          ? renderWorkerJobTable(availableJobs, 'available')
+          : `<div class="worker-state-card worker-state-empty">
+              <p>No available requests right now.</p>
+              <button class="button secondary worker-refresh-inline" type="button" aria-label="Refresh worker dashboard">Refresh</button>
+            </div>`)}
     </section>
   `;
 
-  renderWorkerDashboardToday([...cancelledReturnJobs, ...claimedJobs]);
+  renderWorkerDashboardToday(focusJobs, upcomingJobs);
   renderWorkerEarnings(completedToday);
   renderWorkerTodayCounts({
-    accepted: claimedJobs.length,
-    upcoming: availableJobs.length,
+    accepted: activeJobs.length,
+    upcoming: pendingAccepted.length,
     completed: completedToday.length,
     cancelled: cancelledReturnJobs.length,
   });
@@ -3681,12 +3718,40 @@ document.querySelector('#close-worker-account')?.addEventListener('click', () =>
 document.querySelector('#worker-reviews-trigger')?.addEventListener('click', () => toggleWorkerPanel('worker-reviews-section', true));
 document.querySelector('#close-worker-reviews')?.addEventListener('click', () => toggleWorkerPanel('worker-reviews-section', false));
 
-['worker-reviews-section', 'worker-account'].forEach((id) => {
+['worker-reviews-section', 'worker-account', 'worker-legal-modal'].forEach((id) => {
   const overlay = document.getElementById(id);
   overlay?.addEventListener('click', (event) => {
     if (event.target === overlay) toggleWorkerPanel(id, false);
   });
 });
+
+// Legal documents open in a worker-styled modal instead of navigating to the
+// public marketing site. Content is fetched from the existing legal pages
+// (their .legal-card block) so there's a single source of truth.
+const WORKER_LEGAL_TITLES = {
+  'privacy.html': 'Privacy Policy',
+  'terms.html': 'Terms of Service',
+  'liability-waiver.html': 'Liability Waiver',
+};
+async function openWorkerLegal(page) {
+  const content = document.querySelector('#worker-legal-content');
+  if (!content) return;
+  const title = document.querySelector('#worker-legal-title');
+  if (title) title.textContent = WORKER_LEGAL_TITLES[page] || 'Legal';
+  content.innerHTML = '<p class="field-help">Loading…</p>';
+  toggleWorkerPanel('worker-legal-modal', true);
+  try {
+    const html = await (await fetch(page)).text();
+    const card = new DOMParser().parseFromString(html, 'text/html').querySelector('.legal-card');
+    content.innerHTML = card ? card.innerHTML : '<p class="field-help">Could not load this document.</p>';
+  } catch (_) {
+    content.innerHTML = '<p class="field-help">Could not load this document. Check your connection and try again.</p>';
+  }
+}
+document.querySelectorAll('.worker-legal-link').forEach((btn) => {
+  btn.addEventListener('click', () => openWorkerLegal(btn.dataset.legal));
+});
+document.querySelector('#close-worker-legal')?.addEventListener('click', () => toggleWorkerPanel('worker-legal-modal', false));
 
 workerPasswordChangeForm?.addEventListener('submit', async (event) => {
   event.preventDefault();
