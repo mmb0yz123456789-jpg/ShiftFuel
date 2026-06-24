@@ -13,39 +13,49 @@
   <link rel="stylesheet" href="styles.css">
 </head>
 <body class="landing-page portal-login-page worker-login-page">
+
+  <!-- Auto-redirect if already logged in -->
   <script>
-    // Already signed in? Skip the login screen and go straight to the portal.
     (function () {
       var token = sessionStorage.getItem("shiftfuel_worker_token");
       var expires = Number(sessionStorage.getItem("shiftfuel_worker_expires") || 0);
       if (token && expires > Date.now()) window.location.replace("/worker/dashboard");
     })();
   </script>
-  <header class="portal-header unified-portal-header portal-login-header portal-staff-header">
+
+  <!-- Updated Header -->
+  <header class="portal-header unified-portal-header portal-login-header">
     <a class="logo" href="index.html" aria-label="ShiftFuel Concierge home">
       <span class="logo-mark">S</span>
       <span>ShiftFuel Concierge</span>
     </a>
     <div class="portal-header-actions">
-      <span class="portal-header-label">Staff Access</span>
-      <a class="portal-back-link" href="index.html">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg>
-        <span>Back to home</span>
+      <span class="portal-header-label">Worker Portal</span>
+      <a class="portal-back-link" href="staff-access.html">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true">
+          <path d="M15 18l-6-6 6-6"/>
+        </svg>
+        <span>Back to Staff Access</span>
       </a>
     </div>
   </header>
 
   <main class="portal-login-shell">
     <section class="portal-login-card">
-      <span class="portal-login-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="8" r="3.4"/><path d="M5 20c0-3.3 3.1-6 7-6s7 2.7 7 6"/></svg></span>
+      <span class="portal-login-icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6">
+          <circle cx="12" cy="8" r="3.4"/>
+          <path d="M5 20c0-3.3 3.1-6 7-6s7 2.7 7 6"/>
+        </svg>
+      </span>
       <p class="eyebrow">Worker Access</p>
       <h1>ShiftFuel Worker Portal</h1>
       <p class="portal-login-intro">Sign in to view jobs, update requests, and complete services.</p>
 
       <form id="worker-login-form" class="booking-form">
         <label>
-          Worker name, phone, or email
-          <input id="worker-login-name" type="text" placeholder="Enter worker name, phone, or email" autocomplete="username" required>
+          Name, phone, or email
+          <input id="worker-login-name" type="text" placeholder="Name, phone, or email" autocomplete="username" required>
         </label>
 
         <label>
@@ -61,6 +71,11 @@
     </section>
   </main>
 
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="supabase-client.js"></script>
+  <script src="password-toggle.js"></script>
+
+  <!-- Your original login logic (unchanged) -->
   <script>
     const form = document.getElementById("worker-login-form");
     const workerName = document.getElementById("worker-login-name");
@@ -83,7 +98,6 @@
         message.textContent = "Too many attempts. Worker login is locked for 15 minutes.";
         return;
       }
-
       message.textContent = `Incorrect worker name or password. ${3 - attempts} attempt${3 - attempts === 1 ? "" : "s"} left before a temporary lock.`;
     }
 
@@ -102,8 +116,6 @@
       message.textContent = "Signing in...";
 
       try {
-        // Password verification happens server-side via the worker_login RPC.
-        // The browser never receives password hashes or salts.
         const { data, error } = await window.ShiftFuelSupabase
           .rpc("worker_login", {
             p_identifier: loginValue,
@@ -129,16 +141,13 @@
           message.textContent = "This account is temporarily locked. Try again in 15 minutes.";
           return;
         }
-        // Do not log the message to avoid leaking which field was wrong.
         console.warn("Worker login failed");
       }
 
       recordFailedAttempt();
     });
   </script>
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="supabase-client.js"></script>
-  <script src="password-toggle.js"></script>
+
   <script defer src="/_vercel/insights/script.js"></script>
   <script defer src="/_vercel/speed-insights/script.js"></script>
 </body>
