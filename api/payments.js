@@ -1132,14 +1132,16 @@ async function handleCustomerCancel(body, res) {
 }
 
 async function handleWorkerConfirmCancellationReturn(body, res) {
-  const { worker_token, request_id } = body;
+  // Either the assigned worker OR an admin may confirm the key/vehicle is back.
+  const { worker_token, caller_token, request_id } = body;
+  const token = worker_token || caller_token;
 
-  if (!worker_token || !request_id) {
-    return res.status(400).json({ error: 'worker_token and request_id are required' });
+  if (!token || !request_id) {
+    return res.status(400).json({ error: 'A staff token and request_id are required' });
   }
 
-  const employeeId = await verifyWorkerToken(worker_token);
-  if (!employeeId) return res.status(401).json({ error: 'Invalid or expired worker session' });
+  const staff = await verifyAnyStaffToken(token);
+  if (!staff) return res.status(401).json({ error: 'Invalid or expired staff session' });
 
   const db = getSupabaseAdmin();
   // Select '*' so the new key/vehicle-return flags are read when present without
@@ -2051,11 +2053,14 @@ module.exports = async (req, res) => {
 
   try {
     const result = await handler(body, res);
-    // Fire-and-forget push after the handler has updated the DB (status-guarded
-    // inside notifyRequest, so a no-op action won't send a false alert).
+    // Push after the handler has updated the DB (status-guarded inside
+    // notifyRequest). AWAITED, not fire-and-forget: Vercel freezes the function
+    // the instant it returns, so an un-awaited push usually never sends. The
+    // handler already called res.json(), so the client isn't kept waiting.
     const pushEvent = PUSH_AFTER_ACTION[action];
     if (pushEvent && body.request_id) {
-      notifyRequest(body.request_id, pushEvent).catch((e) => console.warn('[payments/push]', e.message));
+      try { await notifyRequest(body.request_id, pushEvent); }
+      catch (e) { console.warn('[payments/push]', e.message); }
     }
     return result;
   } catch (err) {
