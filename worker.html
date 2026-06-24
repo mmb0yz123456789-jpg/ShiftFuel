@@ -52,6 +52,11 @@
           </div>
         </section>
 
+        <section class="section">
+          <div class="worker-card-heading"><h2>Today's Schedule</h2></div>
+          <div id="worker-today-counts" class="worker-today-counts"></div>
+        </section>
+
         <!-- Today's jobs with step-by-step guidance — the home work surface. -->
         <section class="section worker-today-section">
           <div class="worker-card-heading worker-today-heading">
@@ -61,11 +66,6 @@
           <div id="worker-dashboard-today" class="worker-today-list">
             <div class="worker-state-card worker-state-empty"><p>Loading today’s jobs…</p></div>
           </div>
-        </section>
-
-        <section class="section">
-          <div class="worker-card-heading"><h2>Today's Schedule</h2></div>
-          <div id="worker-today-counts" class="worker-today-counts"></div>
         </section>
 
         <!-- Keeps the reviews-modal trigger alive for the Profile "View all" link. -->
@@ -78,10 +78,7 @@
         <div class="section">
           <section id="worker-jobs" class="worker-dashboard-card worker-jobs-panel">
             <div class="worker-card-heading">
-              <div>
-                <h2>Available Jobs</h2>
-                <span class="worker-soft-pill"><span id="worker-stat-jobs-today">0</span> Today</span>
-              </div>
+              <h2>Available Jobs</h2>
             </div>
             <div id="worker-job-list" class="request-list worker-job-list"></div>
           </section>
@@ -152,6 +149,9 @@
               <div class="worker-profile-photo-frame worker-profile-photo-frame--mini">
                 <img id="worker-dashboard-photo" class="worker-profile-photo" alt="Worker profile photo" hidden>
                 <div id="worker-dashboard-photo-placeholder" class="worker-profile-photo-placeholder">No photo</div>
+                <span class="worker-verified-badge" id="worker-verified-badge" hidden aria-label="Verified worker" title="Verified worker">
+                  <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 1.8l2.3 1.7 2.85.2.9 2.7 2.3 1.7-.9 2.7.9 2.7-2.3 1.7-.9 2.7-2.85.2L12 22.2l-2.3-1.7-2.85-.2-.9-2.7-2.3-1.7.9-2.7-.9-2.7 2.3-1.7.9-2.7 2.85-.2z"/><path d="M8.6 12.2l2.2 2.2 4.6-4.6" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                </span>
               </div>
               <div class="worker-profile-id">
                 <h2 id="worker-dashboard-name">Worker</h2>

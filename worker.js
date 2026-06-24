@@ -845,7 +845,7 @@ async function ensureWorkerProfile() {
   if (storedEmployeeId) {
     let { data: stored, error: storedError } = await workerDb
       .from('employees_public')
-      .select('id,employee_code,full_name,phone,photo_url,original_photo_url,cropped_photo_url,photo_zoom,photo_position_x,photo_position_y,home_location,started_at,active')
+      .select('id,employee_code,full_name,phone,photo_url,original_photo_url,cropped_photo_url,photo_zoom,photo_position_x,photo_position_y,home_location,started_at,active,background_verified')
       .eq('id', storedEmployeeId)
       .limit(1);
 
@@ -938,7 +938,7 @@ function renderWorkerDaysGrid(workdays = []) {
         </span>
         <label class="worker-day-toggle">
           <input class="worker-day-enabled" type="checkbox" data-day-of-week="${dayOfWeek}" ${enabled}>
-          <span class="worker-day-name">${label}</span>
+          <span class="worker-day-name">${label.slice(0, 3)}</span>
         </label>
         <div class="worker-day-copy-actions">
           <button class="button worker-copy-day" type="button">Copy</button>
@@ -1086,6 +1086,8 @@ async function loadWorkerProfile() {
     if (workerDashboardName) workerDashboardName.textContent = workerName;
     const profileStatusBadge = document.querySelector('#worker-profile-status-badge');
     if (profileStatusBadge) profileStatusBadge.hidden = currentEmployee.active === false;
+    const verifiedBadge = document.querySelector('#worker-verified-badge');
+    if (verifiedBadge) verifiedBadge.hidden = !currentEmployee.background_verified;
     if (workerProfileName) workerProfileName.value = workerName;
     if (workerProfilePhone) workerProfilePhone.value = formatPhone(currentEmployee.phone || '');
     if (workerProfileLocation) workerProfileLocation.value = currentEmployee.home_location || DEFAULT_WORK_LOCATION;
