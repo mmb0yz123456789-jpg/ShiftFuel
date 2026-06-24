@@ -6735,10 +6735,12 @@ document.querySelector('#admin-password-form')?.addEventListener('submit', async
   }
 });
 
+// ── Services Pricing Form Submit ─────────────────────────────────────
 document.querySelector('#services-settings-form')?.addEventListener('submit', async (event) => {
   event.preventDefault();
   const statusEl = document.getElementById('services-settings-status');
   const submitBtn = event.target.querySelector('[type="submit"]');
+
   if (statusEl) statusEl.textContent = 'Saving...';
   if (submitBtn) submitBtn.disabled = true;
 
@@ -6799,6 +6801,58 @@ document.querySelector('#services-settings-form')?.addEventListener('submit', as
   }
 });
 
-// Called here, after SERVICE_PRICING_FIELDS and its render/load functions are
-// declared above, to avoid a temporal-dead-zone error on the const.
+// ====================== ADMIN MOBILE MENU ======================
+const mobileMenuBtn = document.getElementById('admin-mobile-menu-btn');
+const avatarBtn = document.getElementById('admin-avatar-btn');
+const mobileMenu = document.getElementById('admin-mobile-menu');
+const menuClose = document.getElementById('admin-menu-close');
+const menuOverlay = document.querySelector('.admin-menu-overlay');
+const menuLogout = document.getElementById('admin-menu-logout');
+
+function openAdminMenu() {
+  if (mobileMenu) {
+    mobileMenu.removeAttribute('hidden');
+    document.body.style.overflow = 'hidden';
+  }
+}
+
+function closeAdminMenu() {
+  if (mobileMenu) {
+    mobileMenu.setAttribute('hidden', '');
+    document.body.style.overflow = '';
+  }
+}
+
+if (mobileMenuBtn) mobileMenuBtn.addEventListener('click', openAdminMenu);
+if (avatarBtn) avatarBtn.addEventListener('click', openAdminMenu);
+if (menuClose) menuClose.addEventListener('click', closeAdminMenu);
+if (menuOverlay) menuOverlay.addEventListener('click', closeAdminMenu);
+
+if (menuLogout) {
+  menuLogout.addEventListener('click', () => {
+    if (confirm('Sign out of Admin Portal?')) {
+      adminSignOut();
+    }
+  });
+}
+
+// Menu navigation
+document.querySelectorAll('.admin-menu-item').forEach(item => {
+  item.addEventListener('click', () => {
+    const page = item.dataset.page;
+    if (page) {
+      switchPageTab(page);
+      closeAdminMenu();
+    }
+  });
+});
+
+// Close menu on Escape key
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && mobileMenu && !mobileMenu.hasAttribute('hidden')) {
+    closeAdminMenu();
+  }
+});
+
+// Called here to avoid temporal dead zone
 loadServicePricing();

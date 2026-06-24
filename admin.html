@@ -24,24 +24,51 @@
       }
     </script>
 
-    <header class="portal-header unified-portal-header admin-top-nav">
-      <a class="logo" href="index.html">
-        <span class="logo-mark">S</span>
-        <span>ShiftFuel Concierge</span>
-      </a>
-      <nav class="admin-page-tabs" aria-label="Admin pages">
-        <button class="admin-page-tab active" data-page="dashboard">Dashboard</button>
-        <button class="admin-page-tab" data-page="requests">Requests</button>
-        <button class="admin-page-tab" data-page="workers">Workers <span id="worker-count-badge" class="page-tab-badge">0</span></button>
-        <button class="admin-page-tab" data-page="services">Services</button>
-        <button class="admin-page-tab" data-page="settings">Settings</button>
-      </nav>
-      <div class="portal-header-actions">
-        <span class="admin-avatar" id="admin-avatar-initials">A</span>
-        <span class="portal-header-label" id="admin-header-name">Admin</span>
-        <button class="portal-signout-btn" id="admin-signout-btn" type="button">Sign out</button>
-      </div>
-    </header>
+	<header class="portal-header unified-portal-header admin-top-nav">
+	  <a class="logo" href="index.html">
+		<span class="logo-mark">S</span>
+		<span>ShiftFuel Concierge</span>
+	  </a>
+	  
+	  <nav class="admin-page-tabs" aria-label="Admin pages">
+		<button class="admin-page-tab active" data-page="dashboard">Dashboard</button>
+		<button class="admin-page-tab" data-page="requests">Requests</button>
+		<button class="admin-page-tab" data-page="workers">Workers <span id="worker-count-badge" class="page-tab-badge">0</span></button>
+		<button class="admin-page-tab" data-page="services">Services</button>
+		<button class="admin-page-tab" data-page="settings">Settings</button>
+	  </nav>
+
+	  <div class="portal-header-actions">
+		<button id="admin-mobile-menu-btn" class="admin-menu-btn" aria-label="Open menu">☰</button>
+		<button id="admin-avatar-btn" class="admin-avatar-btn" aria-label="Admin menu">
+		  <span id="admin-avatar-initials">A</span>
+		</button>
+	  </div>
+	</header>
+
+	<!-- Admin Mobile Menu -->
+	<div id="admin-mobile-menu" class="admin-mobile-menu" hidden>
+	  <div class="admin-menu-overlay"></div>
+	  <div class="admin-menu-panel">
+		<div class="admin-menu-header">
+		  <h3>Menu</h3>
+		  <button id="admin-menu-close" class="modal-close">✕</button>
+		</div>
+		
+		<nav class="admin-menu-links">
+		  <a href="#" data-page="dashboard" class="admin-menu-item">Dashboard</a>
+		  <a href="#" data-page="requests" class="admin-menu-item">Requests</a>
+		  <a href="#" data-page="workers" class="admin-menu-item">Workers</a>
+		  <a href="#" data-page="services" class="admin-menu-item">Services</a>
+		  <a href="#" data-page="settings" class="admin-menu-item">Settings</a>
+		  
+		  <div class="menu-divider"></div>
+		  
+		  <a href="index.html" class="admin-menu-item">← Back to Customer Site</a>
+		  <button id="admin-menu-logout" class="admin-menu-item logout-item">Sign Out</button>
+		</nav>
+	  </div>
+	</div>
 
     <main class="admin-main">
       <div class="admin-page-row">
