@@ -545,20 +545,25 @@
   margin: 0 0 8px;
 }
 
+/* Detail cards that only belong on the desktop dashboard (hidden on the lean
+   mobile app). Shown again inside the desktop media query below. */
+.worker-portal-page .worker-desktop-only { display: none; }
+
 /* ============================================================
-   Desktop / website layout (>= 761px): the mobile bottom tab
-   bar becomes a left sidebar, the header spans the top, and the
-   content sits in a comfortable centered column. The tab JS
-   already shows one section at a time on every screen size.
+   Desktop / website layout (>= 761px): horizontal top nav under
+   the header, then a 2-column dashboard (work surface + info
+   aside). Other tabs use a comfortable centered column. The nav
+   sits AFTER <main> in the DOM but grid places it under the header.
    ============================================================ */
 @media (min-width: 761px) {
   .worker-portal-page {
     display: grid !important;
-    grid-template-columns: 240px minmax(0, 1fr) !important;
-    grid-template-rows: auto 1fr !important;
+    grid-template-columns: 1fr !important;
+    grid-template-rows: auto auto 1fr !important;
     grid-template-areas:
-      "header header"
-      "nav    main" !important;
+      "header"
+      "nav"
+      "main" !important;
     min-height: 100vh;
   }
   .worker-portal-page .portal-header {
@@ -566,46 +571,67 @@
     position: static !important;
     padding: 12px 28px !important;
   }
-  /* Bottom tab bar → fixed-feeling left sidebar */
+  /* Bottom tab bar → horizontal top nav */
   .worker-portal-page .app-tabbar {
     grid-area: nav;
-    position: sticky !important;
-    top: 0;
-    align-self: start !important;
-    height: 100vh;
-    overflow-y: auto;
-    flex-direction: column !important;
-    justify-content: flex-start !important;
-    align-items: stretch !important;
-    gap: 4px !important;
+    position: static !important;
+    flex-direction: row !important;
+    justify-content: center !important;
+    align-items: center !important;
+    gap: 6px !important;
     width: auto !important;
     border-top: 0 !important;
-    border-right: 1px solid rgba(13, 59, 59, 0.1) !important;
+    border-bottom: 1px solid rgba(13, 59, 59, 0.1) !important;
     box-shadow: none !important;
-    padding: 18px 14px !important;
+    background: #fff !important;
+    padding: 8px 24px !important;
   }
   .worker-portal-page .app-tab {
     flex: 0 0 auto !important;
     flex-direction: row !important;
-    justify-content: flex-start !important;
-    gap: 12px !important;
-    padding: 11px 14px !important;
-    border-radius: 12px !important;
-    font-size: 0.95rem !important;
+    justify-content: center !important;
+    gap: 8px !important;
+    padding: 9px 16px !important;
+    border-radius: 999px !important;
+    font-size: 0.92rem !important;
     font-weight: 600 !important;
   }
-  .worker-portal-page .app-tab svg { width: 20px !important; height: 20px !important; }
-  .worker-portal-page .app-tab.active { background: var(--sf-sage-light, #eaf2ea) !important; }
-  /* Content: comfortable centered column */
+  .worker-portal-page .app-tab svg { width: 18px !important; height: 18px !important; }
+  .worker-portal-page .app-tab.active {
+    background: var(--sf-sage-light, #eaf2ea) !important;
+    color: var(--sf-teal, #0d3b3b) !important;
+  }
+  /* Content area */
   .worker-portal-page main {
     grid-area: main;
     width: auto !important;
     margin: 0 !important;
-    padding: 0 0 48px !important;
+    padding: 24px 28px 48px !important;
   }
-  .worker-portal-page .section {
+  .worker-portal-page .worker-desktop-only { display: block; }
+  /* 2-column dashboard */
+  .worker-portal-page .worker-dash-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 360px;
+    gap: 20px;
+    max-width: 1200px;
+    margin: 0 auto;
+    align-items: start;
+  }
+  .worker-portal-page .worker-dash-main { min-width: 0; display: grid; gap: 16px; }
+  .worker-portal-page .worker-dash-aside { display: grid; gap: 16px; }
+  /* Sections inside the dashboard grid drop the page-section spacing. */
+  .worker-portal-page .worker-dash-grid .section {
+    max-width: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+  /* Other tabs: comfortable centered column. */
+  .worker-portal-page #wtab-jobs .section,
+  .worker-portal-page #wtab-schedule .section,
+  .worker-portal-page #wtab-earnings .section,
+  .worker-portal-page #wtab-profile .section {
     max-width: 820px !important;
     margin: 0 auto !important;
-    padding: 24px 28px !important;
   }
 }

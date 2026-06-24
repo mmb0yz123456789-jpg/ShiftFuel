@@ -44,32 +44,93 @@
       <!-- ── Tab: Dashboard ────────────────────────────────── -->
       <div id="wtab-dashboard" class="worker-tab">
 
-        <section class="section worker-portal-hero">
-          <div class="worker-greeting">
-            <p class="eyebrow">Welcome back,</p>
-            <h1 id="worker-portal-heading">Worker profile</h1>
-            <p id="worker-hero-subtitle" hidden>You have 0 jobs scheduled today.</p>
-          </div>
-        </section>
+        <!-- 2-column on desktop (main work surface + info aside); single clean
+             column on mobile (the aside + desktop-only cards collapse away). -->
+        <div class="worker-dash-grid">
+          <div class="worker-dash-main">
 
-        <section class="section">
-          <div class="worker-card-heading"><h2>Today's Schedule</h2></div>
-          <div id="worker-today-counts" class="worker-today-counts"></div>
-        </section>
+            <section class="section worker-portal-hero">
+              <div class="worker-greeting">
+                <p class="eyebrow">Welcome back,</p>
+                <h1 id="worker-portal-heading">Worker profile</h1>
+                <p id="worker-hero-subtitle" hidden>You have 0 jobs scheduled today.</p>
+              </div>
+            </section>
 
-        <!-- Today's jobs with step-by-step guidance — the home work surface. -->
-        <section class="section worker-today-section">
-          <div class="worker-card-heading worker-today-heading">
-            <h2>Today's Jobs</h2>
-            <button class="button secondary worker-refresh-chip" id="worker-refresh-jobs-btn" type="button" aria-label="Refresh worker dashboard">Refresh</button>
-          </div>
-          <div id="worker-dashboard-today" class="worker-today-list">
-            <div class="worker-state-card worker-state-empty"><p>Loading today’s jobs…</p></div>
-          </div>
-        </section>
+            <section class="section">
+              <div class="worker-card-heading"><h2>Today's Schedule</h2></div>
+              <div id="worker-today-counts" class="worker-today-counts"></div>
+            </section>
 
-        <!-- Keeps the reviews-modal trigger alive for the Profile "View all" link. -->
-        <button id="worker-reviews-trigger" type="button" hidden aria-hidden="true"></button>
+            <!-- Today's jobs with step-by-step guidance — the home work surface. -->
+            <section class="section worker-today-section">
+              <div class="worker-card-heading worker-today-heading">
+                <h2>Today's Jobs</h2>
+                <button class="button secondary worker-refresh-chip" id="worker-refresh-jobs-btn" type="button" aria-label="Refresh worker dashboard">Refresh</button>
+              </div>
+              <div id="worker-dashboard-today" class="worker-today-list">
+                <div class="worker-state-card worker-state-empty"><p>Loading today’s jobs…</p></div>
+              </div>
+            </section>
+
+            <!-- Today's Progress (desktop dashboard only) -->
+            <section class="section worker-desktop-only">
+              <div class="worker-dashboard-card worker-progress-card">
+                <div class="worker-card-heading">
+                  <h2>Today's Progress</h2>
+                  <button class="worker-progress-job-label" id="worker-progress-job-label" type="button" hidden>Continue</button>
+                </div>
+                <div class="worker-progress-line" aria-label="Worker progress">
+                  <div class="worker-progress-step"><span class="worker-progress-dot">1</span><span class="worker-progress-caption">Accepted</span></div>
+                  <div class="worker-progress-step"><span class="worker-progress-dot">2</span><span class="worker-progress-caption">Key Received</span></div>
+                  <div class="worker-progress-step"><span class="worker-progress-dot">3</span><span class="worker-progress-caption">Vehicle Picked Up</span></div>
+                  <div class="worker-progress-step"><span class="worker-progress-dot">4</span><span class="worker-progress-caption">Service</span></div>
+                  <div class="worker-progress-step"><span class="worker-progress-dot">5</span><span class="worker-progress-caption">Returned</span></div>
+                  <div class="worker-progress-step"><span class="worker-progress-dot">6</span><span class="worker-progress-caption">Complete</span></div>
+                </div>
+                <div class="worker-stat-grid">
+                  <div class="worker-stat-card">
+                    <span class="worker-stat-value" id="worker-stat-jobs-completed">0</span>
+                    <span class="worker-stat-label">Jobs Completed</span>
+                  </div>
+                  <div class="worker-stat-card">
+                    <span class="worker-stat-value" id="worker-stat-ontime">&mdash;</span>
+                    <span class="worker-stat-label">On-time Rate</span>
+                  </div>
+                  <button class="worker-stat-card worker-stat-clickable" id="worker-reviews-trigger" type="button">
+                    <span class="worker-stat-value" id="worker-stat-rating">&mdash;</span>
+                    <span class="worker-stat-label">Customer Rating</span>
+                  </button>
+                </div>
+              </div>
+            </section>
+
+            <!-- Recent Updates (desktop dashboard only) -->
+            <section class="section worker-desktop-only">
+              <div class="worker-dashboard-card worker-updates-card">
+                <div class="worker-card-heading"><h2>Recent Updates</h2></div>
+                <ul class="worker-update-list"><li class="field-help">No recent activity yet.</li></ul>
+              </div>
+            </section>
+
+          </div>
+
+          <!-- Info aside (desktop dashboard only) -->
+          <aside class="worker-dash-aside worker-desktop-only">
+            <section class="section">
+              <div class="worker-dashboard-card worker-current-status-card">
+                <div class="worker-card-heading"><h2>Current Status</h2></div>
+                <dl>
+                  <div><dt>Working since</dt><dd id="worker-working-since">Today</dd></div>
+                  <div><dt>Location</dt><dd id="worker-current-location">ShiftFuel</dd></div>
+                  <div><dt>Jobs today</dt><dd id="worker-current-jobs-today">0</dd></div>
+                  <div><dt>Rating</dt><dd id="worker-current-rating">&mdash;</dd></div>
+                  <div><dt>On-time rate</dt><dd id="worker-current-ontime">&mdash;</dd></div>
+                </dl>
+              </div>
+            </section>
+          </aside>
+        </div>
 
       </div><!-- /wtab-dashboard -->
 
