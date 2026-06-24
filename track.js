@@ -71,6 +71,9 @@ function authorizationAmountForEstimate({ needsFuel, fuelRange, pricePerGallon, 
   }).total;
 }
 
+let _lightboxItems = [];
+let _lightboxIndex = 0;
+
 function initPhotoLightbox() {
   if (document.getElementById('photo-lightbox')) return;
   const el = document.createElement('div');
@@ -80,24 +83,53 @@ function initPhotoLightbox() {
     <div class="photo-lightbox-backdrop"></div>
     <div class="photo-lightbox-dialog" role="dialog" aria-modal="true" aria-label="Photo">
       <button class="photo-lightbox-close" type="button" aria-label="Close">&times;</button>
+      <button class="photo-lightbox-nav photo-lightbox-prev" type="button" aria-label="Previous photo">&#8249;</button>
       <img class="photo-lightbox-img" src="" alt="">
+      <button class="photo-lightbox-nav photo-lightbox-next" type="button" aria-label="Next photo">&#8250;</button>
       <p class="photo-lightbox-caption"></p>
+      <p class="photo-lightbox-counter"></p>
     </div>
   `;
   document.body.appendChild(el);
   el.querySelector('.photo-lightbox-backdrop').addEventListener('click', closePhotoLightbox);
   el.querySelector('.photo-lightbox-close').addEventListener('click', closePhotoLightbox);
+  el.querySelector('.photo-lightbox-prev').addEventListener('click', () => stepLightbox(-1));
+  el.querySelector('.photo-lightbox-next').addEventListener('click', () => stepLightbox(1));
 }
 
-function openPhotoLightbox(src, label) {
+function showLightboxAt(index) {
   const el = document.getElementById('photo-lightbox');
-  if (!el) return;
+  if (!el || !_lightboxItems.length) return;
+  _lightboxIndex = (index + _lightboxItems.length) % _lightboxItems.length;
+  const item = _lightboxItems[_lightboxIndex];
   const img = el.querySelector('.photo-lightbox-img');
-  img.src = src;
-  img.alt = label;
-  el.querySelector('.photo-lightbox-caption').textContent = label;
+  img.src = item.src;
+  img.alt = item.label;
+  el.querySelector('.photo-lightbox-caption').textContent = item.label;
+  const multi = _lightboxItems.length > 1;
+  el.querySelector('.photo-lightbox-counter').textContent = multi ? `${_lightboxIndex + 1} of ${_lightboxItems.length}` : '';
+  el.querySelectorAll('.photo-lightbox-nav').forEach((b) => { b.hidden = !multi; });
   el.hidden = false;
   document.body.style.overflow = 'hidden';
+}
+
+function stepLightbox(delta) {
+  if (_lightboxItems.length) showLightboxAt(_lightboxIndex + delta);
+}
+
+// Back-compat: open a single photo with no paging.
+function openPhotoLightbox(src, label) {
+  _lightboxItems = [{ src, label: label || '' }];
+  showLightboxAt(0);
+}
+
+// Open from a tapped thumbnail, building the gallery from every thumbnail in the
+// same request card so the customer can page through all of them.
+function openLightboxFromCard(card) {
+  const scope = card.closest('.track-request-card') || document;
+  const thumbs = Array.from(scope.querySelectorAll('[data-lightbox-src]'));
+  _lightboxItems = thumbs.map((t) => ({ src: t.dataset.lightboxSrc, label: t.dataset.lightboxLabel || '' }));
+  showLightboxAt(Math.max(0, thumbs.indexOf(card)));
 }
 
 function closePhotoLightbox() {
@@ -109,13 +141,17 @@ function closePhotoLightbox() {
 }
 
 document.addEventListener('keydown', (e) => {
+  const el = document.getElementById('photo-lightbox');
+  if (!el || el.hidden) return;
   if (e.key === 'Escape') closePhotoLightbox();
+  else if (e.key === 'ArrowLeft') stepLightbox(-1);
+  else if (e.key === 'ArrowRight') stepLightbox(1);
 });
 
 document.addEventListener('click', (e) => {
   const card = e.target.closest('[data-lightbox-src]');
   if (!card) return;
-  openPhotoLightbox(card.dataset.lightboxSrc, card.dataset.lightboxLabel || '');
+  openLightboxFromCard(card);
 });
 
 document.addEventListener('keydown', (e) => {
@@ -123,7 +159,7 @@ document.addEventListener('keydown', (e) => {
   const card = e.target.closest('[data-lightbox-src]');
   if (!card) return;
   e.preventDefault();
-  openPhotoLightbox(card.dataset.lightboxSrc, card.dataset.lightboxLabel || '');
+  openLightboxFromCard(card);
 });
 
 initPhotoLightbox();
@@ -2429,6 +2465,64 @@ function renderCurrentStatusCard(request) {
   `;
 }
 
+// App-like hero: names the current stage, shows a segmented progress bar, and the
+// key at-a-glance info (concierge + return time). Reuses buildSimpleSteps so it
+// stays in lockstep with the detailed timeline.
+function renderTrackHero(request) {
+  const steps = buildSimpleSteps(request);
+  const total = steps.length;
+  const doneCount = steps.filter((s) => s.done).length;
+  const activeIdx = steps.findIndex((s) => s.active);
+  const finalComplete = isFinalRequestComplete(request);
+  const stepNum = finalComplete ? total : (activeIdx >= 0 ? activeIdx + 1 : Math.min(doneCount + 1, total));
+  const nextStep = activeIdx >= 0 ? steps[activeIdx + 1] : null;
+
+  const label = friendlyStatusLabel(request.status);
+  const msg = getStatusMessage(request) || '';
+
+  const segs = steps.map((s) => {
+    const cls = s.done ? 'filled' : (s.active ? 'current' : '');
+    return `<span class="tk-hero-seg ${cls}"></span>`;
+  }).join('');
+
+  const progressNote = finalComplete
+    ? 'All steps complete'
+    : `Step ${stepNum} of ${total}${nextStep ? ` &middot; next: ${escapeHtml(String(nextStep.label).toLowerCase())}` : ''}`;
+
+  const returnTime = formatReturnTime(request.desired_return_time);
+  const worker = request.assigned_worker_name;
+  const quick = [];
+  if (worker) {
+    const initial = escapeHtml(worker.charAt(0).toUpperCase());
+    quick.push(`<div class="tk-hero-quick"><span class="tk-hero-quick-label">Your concierge</span><span class="tk-hero-quick-val"><span class="tk-hero-avatar" aria-hidden="true">${initial}</span>${escapeHtml(worker)}</span></div>`);
+  }
+  if (returnTime) {
+    quick.push(`<div class="tk-hero-quick"><span class="tk-hero-quick-label">Back by</span><span class="tk-hero-quick-val">${escapeHtml(returnTime)}</span></div>`);
+  }
+
+  const icon = finalComplete
+    ? '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true"><path d="M5 12.5l4 4 10-10"/></svg>'
+    : '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M5 11l1.5-4.2A2 2 0 0 1 8.4 5.5h7.2a2 2 0 0 1 1.9 1.3L19 11"/><path d="M3 11h18v5a1 1 0 0 1-1 1h-1.5a1 1 0 0 1-1-1v-1H6.5v1a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1z"/><circle cx="7" cy="14" r="1"/><circle cx="17" cy="14" r="1"/></svg>';
+
+  return `
+    <section class="tk-hero">
+      <div class="tk-hero-head">
+        <span class="tk-hero-icon" aria-hidden="true">${icon}</span>
+        <div class="tk-hero-headline">
+          <p class="tk-hero-stage">${escapeHtml(label)}</p>
+          ${msg ? `<p class="tk-hero-desc">${escapeHtml(msg)}</p>` : ''}
+        </div>
+        <button class="tk-hero-refresh" type="button" data-track-refresh aria-label="Refresh status">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true"><path d="M20 11A8 8 0 1 0 18 16.5"/><path d="M20 5v6h-6"/></svg>
+        </button>
+      </div>
+      <div class="tk-hero-progress" role="img" aria-label="${progressNote.replace(/&middot;/g, ',').replace(/<[^>]+>/g, '')}">${segs}</div>
+      <p class="tk-hero-progress-note">${progressNote}</p>
+      ${quick.length ? `<div class="tk-hero-quickrow">${quick.join('')}</div>` : ''}
+    </section>
+  `;
+}
+
 function renderLiveUpdatesFeed(request) {
   const steps = buildSimpleSteps(request).filter((s) => s.done || s.active);
   if (!steps.length) return '<p class="tk-empty">Updates will appear here as your service progresses.</p>';
@@ -2877,11 +2971,16 @@ function renderRequestCard(request, photos = [], review = null, { expanded = fal
           ${renderReturnCompletedNotice(request)}
           ${request.status === 'auto_reversed' ? `<p class="track-auto-reversed-note">Your service was not completed on the scheduled date, so your payment has been reversed.</p>` : ''}
 
-          ${tkSubAcc('Current Status', `
-            <section class="tk-card tk-status">${renderCurrentStatusCard(request)}</section>
+          ${renderTrackHero(request)}
+
+          <!-- Live location mounts here (promoted up top) while the worker holds
+               the key/vehicle; the script only injects when tracking is active. -->
+          <div class="track-live-location-mount"></div>
+
+          ${tkSubAcc('Full Timeline', `
+            <section class="tk-card tk-status">${renderStatusStepper(request)}</section>
             ${hasWorker ? `<section class="tk-card tk-partner">${renderPartnerCard(request)}</section>` : ''}
-            <section class="tk-card tk-help">${renderHelpCard()}</section>
-          `, { open: true })}
+          `, { open: false })}
 
           ${tkSubAcc('Vehicle & Service Details', `
             <section class="tk-card tk-vehicle">${renderVehicleCard(request)}</section>
@@ -2902,8 +3001,7 @@ function renderRequestCard(request, photos = [], review = null, { expanded = fal
             request.status === 'complete' ? serviceSummaryFromRequest(request) : '',
           ].filter(Boolean).join(''))}
 
-          <!-- Live location mounts here while the worker holds the key/vehicle. -->
-          <div class="track-live-location-mount"></div>
+          ${tkSubAcc('Help', `<section class="tk-card tk-help">${renderHelpCard()}</section>`, { open: false })}
 
           ${renderReviewPrompt(request, review)}
           ${canCustomerCancel(request) ? `
