@@ -2906,27 +2906,29 @@ const deniedOnlyStatuses = new Set(['denied', 'unable_to_complete', 'auto_revers
 
 async function renderAllRequests(requests, phone, email) {
   await loadVerifiedWorkers(requests);
-  // Any cancellation status belongs in the Cancelled section — even
-  // cancelled_pending_key_return, which is technically still "active" for the
-  // worker but reads as canceled to the customer and must NOT show under
-  // "Requests in progress".
-  const cancelled = requests.filter((r) => isCanceledStatus(r.status));
-  const inProgress = requests.filter(r => !terminalStatuses.includes(r.status) && !isCanceledStatus(r.status));
+  // A request that was canceled but still has the key/vehicle out
+  // (cancelled_pending_key_return) is NOT closed — the ticket stays open until
+  // the worker returns it. So it lists under "Requests in progress" (shown with
+  // its "Canceled — Key/Vehicle Return Pending" card). Only fully-canceled
+  // tickets go to the Cancelled section.
+  const isReturnPending = (status) => status === 'cancelled_pending_key_return';
+  const cancelled = requests.filter((r) => isCanceledStatus(r.status) && !isReturnPending(r.status));
+  const inProgress = requests.filter(r => !terminalStatuses.includes(r.status) && (isReturnPending(r.status) || !isCanceledStatus(r.status)));
   const completed  = requests.filter(r => r.status === 'complete');
   // Denied (admin-closed without completion) is shown separately from Cancelled.
   const denied = requests.filter((r) => deniedOnlyStatuses.has(r.status));
 
-  // Auto-open / auto-expand ONLY when there is a genuine active request in
-  // progress. Canceled, completed, and denied sections always start collapsed —
-  // the customer taps to open them.
-  const activeInProgressRequest = inProgress[0] || null;
+  // Auto-expand only a genuinely active (non-canceled) request. A return-pending
+  // cancellation lists in this section but never auto-expands. The section opens
+  // whenever it has anything in it so the customer can see it.
+  const activeInProgressRequest = inProgress.find((r) => !isCanceledStatus(r.status)) || null;
   const expandedRequestId = activeInProgressRequest ? activeInProgressRequest.id : null;
 
   let html = `<div class="track-sections">`;
 
   // In Progress section
   html += `
-    <details class="track-section"${activeInProgressRequest ? ' open' : ''}>
+    <details class="track-section"${inProgress.length ? ' open' : ''}>
       <summary class="track-section-header">
         Requests in progress
         <span class="track-section-count">${inProgress.length}</span>
