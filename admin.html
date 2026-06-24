@@ -390,7 +390,7 @@
           <section class="settings-card">
             <h3>Service Area</h3>
             <p class="field-help">Draw or adjust the polygon that defines your delivery coverage. Changes go live within ~1 minute.</p>
-            <p class="sa-summary" id="sa-summary">Loading…</p>
+            <p class="sa-summary" id="service-area-summary">Loading…</p>
             <button class="button secondary" type="button" id="open-service-area-editor">Open map editor</button>
           </section>
           <section class="settings-card">
@@ -687,9 +687,12 @@
       <div class="modal-dialog">
         <div class="modal-header">
           <h2 id="sa-modal-title">Edit Service Area</h2>
-          <button id="close-service-area-modal" class="modal-close" aria-label="Close">&times;</button>
+          <button id="close-service-area" class="modal-close" aria-label="Close">&times;</button>
         </div>
         <div class="modal-body">
+          <div id="sa-token-banner" style="display:none;background:#7c2d12;color:#fef2f2;padding:.5rem .75rem;border-radius:6px;font-size:.85rem;margin-bottom:.5rem;">
+            Mapbox token not authorized for this domain — map tiles blocked. The editor still works; you can generate and save the polygon.
+          </div>
           <div id="sa-map-placeholder">Loading map…</div>
           <div id="sa-map" style="display:none"></div>
           <div class="sa-controls">
@@ -700,21 +703,28 @@
                 <option value="walking">Walking</option>
               </select>
             </label>
-            <label>Type
-              <select id="sa-contour-type">
-                <option value="distance">Distance (mi)</option>
-                <option value="time">Time (min)</option>
+            <label>Mode
+              <select id="sa-mode">
+                <option value="meters">Distance (mi)</option>
+                <option value="minutes">Time (min)</option>
               </select>
             </label>
-            <label id="sa-value-label">Value
-              <input id="sa-contour-value" type="number" min="1" max="60" value="20">
+            <label id="sa-value-label">Miles
+              <input id="sa-value" type="number" min="1" max="120" value="20">
             </label>
-            <button class="button secondary" type="button" id="sa-generate-btn">Generate isochrone</button>
+            <label style="display:none">Generalize
+              <input id="sa-generalize" type="number" value="500">
+            </label>
+            <button class="button secondary" type="button" id="sa-generate">Generate isochrone</button>
           </div>
+          <p class="sa-summary" style="font-size:.8rem;color:var(--text-2,#888);margin-top:.4rem">
+            Anchor: <span id="sa-anchor">—</span>
+            <br><small>Drag the green marker to change the center point.</small>
+          </p>
           <p id="sa-status"></p>
           <div style="display:flex;gap:.5rem;margin-top:.75rem;justify-content:flex-end">
-            <button class="button secondary" type="button" id="close-service-area-modal-2">Cancel</button>
-            <button class="button primary" type="button" id="sa-save-btn">Save service area</button>
+            <button class="button secondary" type="button" onclick="document.getElementById('service-area-modal').hidden=true">Cancel</button>
+            <button class="button primary" type="button" id="sa-save">Save service area</button>
           </div>
         </div>
       </div>
