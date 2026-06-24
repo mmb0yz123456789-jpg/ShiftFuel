@@ -87,13 +87,12 @@
 
   // Fire a test notification to the caller's own subscription so they can confirm
   // delivery end-to-end without orchestrating a real job event.
-  async function sendTest(endpoint) {
-    if (!endpoint) return { ok: false, error: 'no endpoint' };
+  async function sendTest(endpoint, workerToken) {
     try {
       const r = await fetch('/api/push', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'test', endpoint }),
+        body: JSON.stringify({ action: 'test', endpoint, worker_token: workerToken }),
       });
       return await r.json().catch(() => ({ ok: r.ok }));
     } catch (_) {

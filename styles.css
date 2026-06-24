@@ -923,6 +923,14 @@ font-size: 0.85rem;
   gap: 12px;
 }
 
+/* Desktop shows the three-box layout; mobile button is hidden */
+.final-cta-portals--mobile { display: none; }
+
+@media (max-width: 760px) {
+  .final-cta-portals--desktop { display: none; }
+  .final-cta-portals--mobile { display: flex; }
+}
+
 .portal-button {
   display: inline-flex;
   align-items: center;
