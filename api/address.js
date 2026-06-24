@@ -16,6 +16,8 @@
  *                            chosen suggestion into structured fields + coords.
  */
 
+const fs = require('fs');
+const path = require('path');
 const { setCorsHeaders } = require('./_auth');
 
 const SERVICE_ANCHOR_LAT = 39.6789; // 132 Christiana Mall, Newark DE 19702
@@ -292,10 +294,103 @@ async function handleAddressRetrieve(body, res) {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Service-area editor support (service-area-editor.html). These power the local
+// admin tool for visually building/saving the drive-time service polygon.
+// ---------------------------------------------------------------------------
+
+function isMilesMode(mode) {
+  return mode !== 'minutes';
+}
+
+// Build the service-area.json shape from editor inputs (shared by save).
+function buildServiceAreaDoc(body) {
+  const miles = isMilesMode(body.mode);
+  const value = Number(body.value);
+  return {
+    generated: new Date().toISOString().slice(0, 10),
+    description: body.description ||
+      (miles
+        ? `${value || 20}-mile driving-distance service area (edited in service-area-editor.html).`
+        : `${value || 30}-minute driving-time service area (edited in service-area-editor.html).`),
+    profile: body.profile || 'driving',
+    mode: miles ? 'meters' : 'minutes',
+    contour_meters: miles ? Math.round((value || 20) * 1609.34) : null,
+    contour_miles: miles ? (value || 20) : null,
+    contour_minutes: miles ? null : (value || 30),
+    anchor: { lat: Number(body.anchor?.lat), lon: Number(body.anchor?.lon) },
+    geometry: body.geometry,
+  };
+}
+
+// Proxy the Mapbox Isochrone API for the editor's "Generate" button.
+async function handleIsochrone(body, res) {
+  const lat = Number(body.lat);
+  const lon = Number(body.lon);
+  if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
+    return res.status(400).json({ ok: false, message: 'Missing lat/lon.' });
+  }
+  const profile = ['driving', 'walking', 'cycling', 'driving-traffic'].includes(body.profile) ? body.profile : 'driving';
+  const generalize = Math.max(0, Number(body.generalize) || 500);
+  let contourParam;
+  if (isMilesMode(body.mode)) {
+    const miles = Math.max(1, Math.min(60, Number(body.value) || 20));
+    contourParam = `contours_meters=${Math.round(miles * 1609.34)}`;
+  } else {
+    const minutes = Math.max(1, Math.min(60, Number(body.value) || 30));
+    contourParam = `contours_minutes=${minutes}`;
+  }
+  const url =
+    `https://api.mapbox.com/isochrone/v1/mapbox/${profile}/${lon},${lat}` +
+    `?${contourParam}&polygons=true&denoise=1&generalize=${generalize}&access_token=${MAPBOX_TOKEN}`;
+  try {
+    const r = await fetch(url, { headers: MAPBOX_FETCH_HEADERS });
+    if (!r.ok) return res.status(200).json({ ok: false, message: `Mapbox Isochrone ${r.status}` });
+    const data = await r.json();
+    const geometry = data.features?.[0]?.geometry;
+    if (!geometry) return res.status(200).json({ ok: false, message: 'No polygon returned.' });
+    return res.status(200).json({ ok: true, geometry });
+  } catch (err) {
+    console.error('[address/isochrone] Error:', err.message);
+    return res.status(200).json({ ok: false, message: err.message });
+  }
+}
+
+// Return the currently-enforced service area so the editor can load it.
+async function handleGetServiceArea(body, res) {
+  return res.status(200).json({ ok: true, serviceArea: SERVICE_AREA || null });
+}
+
+// Write the edited polygon back to api/service-area.json. Local/dev only —
+// production filesystems are read-only/ephemeral, so the editor falls back to a
+// JSON download there.
+async function handleSaveServiceArea(body, res) {
+  if (process.env.VERCEL_ENV === 'production') {
+    return res.status(403).json({ ok: false, message: 'Saving is disabled in production. Use Download and commit the file.' });
+  }
+  const geometry = body.geometry;
+  if (!geometry || !geometry.type || !Array.isArray(geometry.coordinates)) {
+    return res.status(400).json({ ok: false, message: 'Missing or invalid geometry.' });
+  }
+  const doc = buildServiceAreaDoc(body);
+  try {
+    const target = path.join(process.cwd(), 'api', 'service-area.json');
+    fs.writeFileSync(target, JSON.stringify(doc));
+    SERVICE_AREA = doc; // refresh the in-memory copy so checks use it immediately
+    return res.status(200).json({ ok: true, path: target });
+  } catch (err) {
+    console.error('[address/save_service_area] Error:', err.message);
+    return res.status(200).json({ ok: false, message: err.message });
+  }
+}
+
 const HANDLERS = {
   validate_service_area: handleValidateServiceArea,
   address_suggest: handleAddressSuggest,
   address_retrieve: handleAddressRetrieve,
+  isochrone: handleIsochrone,
+  get_service_area: handleGetServiceArea,
+  save_service_area: handleSaveServiceArea,
 };
 
 module.exports = async (req, res) => {
