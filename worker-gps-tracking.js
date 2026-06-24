@@ -356,17 +356,34 @@
       // the async GPS callback silently failed and the screen kept dimming.
       acquireWakeLock();
 
+      let settled = false;
+      let gpsFallback;
+      // Proceed with the key acceptance and start tracking. Shared by the success
+      // callback and the timeout fallback so the worker is never trapped.
+      const proceedWithKey = () => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(gpsFallback);
+        blockedRequests.delete(requestId);
+        startGps(requestId);
+        keyBtn.dataset.gpsCleared = '1';
+        keyBtn.disabled = false;
+        keyBtn.textContent = originalLabel;
+        keyBtn.click();
+      };
+
+      // iOS/Safari sometimes never fires EITHER callback (a pending fix that
+      // ignores the timeout), which traps the worker on "Checking location…".
+      // Fall back to proceeding so they can always advance; the GPS watch keeps
+      // trying for a fix in the background.
+      gpsFallback = setTimeout(proceedWithKey, 8000);
+
       navigator.geolocation.getCurrentPosition(
-        () => {
-          // Permission granted: start tracking, then re-dispatch so the status advances.
-          blockedRequests.delete(requestId);
-          startGps(requestId);
-          keyBtn.dataset.gpsCleared = '1';
-          keyBtn.disabled = false;
-          keyBtn.textContent = originalLabel;
-          keyBtn.click();
-        },
+        () => proceedWithKey(),
         (error) => {
+          if (settled) return;
+          settled = true;
+          clearTimeout(gpsFallback);
           keyBtn.disabled = false;
           keyBtn.textContent = originalLabel;
           const denied = error.code === 1;
@@ -377,7 +394,7 @@
             ? 'Location access was denied. You must allow location to mark Key received. Turn on location for this site in your browser settings, then try again.'
             : 'Could not get your location. Make sure location is enabled, then try again to mark Key received.');
         },
-        { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
+        { enableHighAccuracy: true, timeout: 10000, maximumAge: 30000 }
       );
       return;
     }
