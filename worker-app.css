@@ -239,6 +239,123 @@
   font-weight: 700 !important;
 }
 
+/* ---- Job card: avatar header + iconographic detail rows (mockup style) ---- */
+.worker-portal-page .worker-job-head {
+  display: grid !important;
+  grid-template-columns: auto 1fr auto !important;
+  align-items: start !important;
+  gap: 12px !important;
+  padding-bottom: 14px !important;
+  border-bottom: 1px solid rgba(13, 59, 59, 0.08) !important;
+}
+.worker-portal-page .worker-avatar {
+  width: 44px; height: 44px;
+  display: inline-flex; align-items: center; justify-content: center;
+  border-radius: 50%;
+  background: var(--sf-sage-light, #eaf2ea);
+  color: var(--sf-teal, #0d3b3b);
+  font-weight: 800; font-size: 1.05rem;
+}
+.worker-portal-page .worker-job-head-main { min-width: 0; }
+.worker-portal-page .worker-job-head-main .worker-current-job-name {
+  margin: 2px 0 2px !important;
+  font-size: 1.2rem !important;
+}
+.worker-portal-page .worker-job-head-main .worker-card-vehicle {
+  margin: 0 !important;
+  color: #60716d !important;
+  font-size: 0.9rem !important;
+}
+.worker-portal-page .worker-job-head-meta {
+  display: grid; justify-items: end; gap: 6px; text-align: right;
+}
+.worker-portal-page .worker-return-by { font-size: 0.82rem; color: #60716d; white-space: nowrap; }
+.worker-portal-page .worker-job-facts { display: grid; gap: 0; padding: 6px 0 2px; }
+.worker-portal-page .worker-fact-row {
+  display: grid;
+  grid-template-columns: 28px 1fr;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 0;
+}
+.worker-portal-page .worker-fact-icon {
+  width: 28px; height: 28px;
+  display: inline-flex; align-items: center; justify-content: center;
+  color: var(--sf-teal, #0d3b3b);
+}
+.worker-portal-page .worker-fact-icon svg { width: 20px; height: 20px; }
+.worker-portal-page .worker-fact-text { display: grid; gap: 1px; min-width: 0; }
+.worker-portal-page .worker-fact-label {
+  font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.04em; color: #8a9893;
+}
+.worker-portal-page .worker-fact-value { color: #1c2b28; font-weight: 600; }
+
+/* ---- Schedule: compact day rows (was a very long stacked list) ---- */
+.worker-portal-page .worker-day-row {
+  display: grid !important;
+  grid-template-columns: 1fr 1fr !important;
+  align-items: end !important;
+  gap: 8px 10px !important;
+  padding: 12px 2px !important;
+  border-bottom: 1px solid rgba(13, 59, 59, 0.08) !important;
+}
+.worker-portal-page .worker-day-row:last-child { border-bottom: 0 !important; }
+.worker-portal-page .worker-day-toggle { grid-column: 1 / -1 !important; margin: 0 !important; }
+.worker-portal-page .worker-day-row > label {
+  display: grid !important;
+  gap: 3px !important;
+  margin: 0 !important;
+  font-size: 0.72rem !important;
+  color: #60716d !important;
+}
+.worker-portal-page .worker-day-row > label:has(.worker-day-start) { grid-column: 1 !important; }
+.worker-portal-page .worker-day-row > label:has(.worker-day-end) { grid-column: 2 !important; }
+.worker-portal-page .worker-day-row input[type="time"] { min-height: 40px !important; }
+.worker-portal-page .worker-day-copy-actions {
+  grid-column: 1 / -1 !important;
+  display: flex !important;
+  gap: 8px !important;
+}
+.worker-portal-page .worker-day-copy-actions .button {
+  flex: 1 !important;
+  min-height: 32px !important;
+  padding: 4px 12px !important;
+  font-size: 0.78rem !important;
+  background: transparent !important;
+  border: 1px solid rgba(13, 59, 59, 0.18) !important;
+}
+
+/* ---- Earnings tab ---- */
+.worker-portal-page .worker-earnings { display: grid; gap: 14px; }
+.worker-portal-page .worker-earnings-summary {
+  display: grid;
+  gap: 2px;
+  background: var(--sf-teal, #0d3b3b) !important;
+  color: #fff !important;
+  border-radius: 18px !important;
+  padding: 20px !important;
+  box-shadow: 0 8px 24px rgba(13, 59, 59, 0.16) !important;
+}
+.worker-portal-page .worker-earnings-total-label {
+  font-size: 0.8rem; letter-spacing: 0.04em; text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.72);
+}
+.worker-portal-page .worker-earnings-total { font-size: 2.2rem; font-weight: 800; line-height: 1.1; }
+.worker-portal-page .worker-earnings-sub { font-size: 0.82rem; color: rgba(255, 255, 255, 0.72); }
+.worker-portal-page .worker-earnings-row {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  gap: 12px !important;
+  background: #fff !important;
+  border: 1px solid rgba(13, 59, 59, 0.08) !important;
+  border-radius: 14px !important;
+  padding: 14px 16px !important;
+}
+.worker-portal-page .worker-earnings-row .worker-card-summary-main { display: grid; gap: 2px; }
+.worker-portal-page .worker-earnings-row .worker-card-sub { color: #60716d; font-size: 0.85rem; }
+.worker-portal-page .worker-earnings-amount { font-weight: 800; color: var(--sf-green, #1f7a45); font-size: 1.1rem; }
+
 /* ---- Legal links tucked into the Profile tab (app shell footer) ---- */
 .worker-app-legal {
   display: flex;

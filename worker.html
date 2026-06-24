@@ -49,7 +49,6 @@
             <p class="eyebrow">Welcome back,</p>
             <h1 id="worker-portal-heading">Worker profile</h1>
             <p id="worker-hero-subtitle" hidden>You have 0 jobs scheduled today.</p>
-            <button class="button primary" id="worker-view-jobs-btn" type="button" hidden>View jobs</button>
           </div>
         </section>
 
@@ -129,7 +128,7 @@
           <section id="worker-jobs" class="worker-dashboard-card worker-jobs-panel">
             <div class="worker-card-heading">
               <div>
-                <h2>My Jobs</h2>
+                <h2>Available Jobs</h2>
                 <span class="worker-soft-pill"><span id="worker-stat-jobs-today">0</span> Today</span>
               </div>
             </div>
@@ -185,8 +184,8 @@
           <div class="section-heading">
             <h2>My Earnings</h2>
           </div>
-          <div class="worker-state-card worker-state-empty">
-            <p>No earnings available yet.</p>
+          <div id="worker-earnings-list" class="worker-earnings">
+            <div class="worker-state-card worker-state-empty"><p>No completed jobs yet today.</p></div>
           </div>
         </section>
       </div><!-- /wtab-earnings -->
@@ -211,7 +210,6 @@
               <button class="button secondary" id="worker-enable-alerts" type="button">Enable alerts</button>
               <button class="button secondary" id="worker-break-toggle" type="button" hidden>Take a break</button>
               <button class="button secondary" id="open-change-password-btn" type="button">Change password</button>
-              <button class="button secondary" id="open-schedule-btn" type="button">Schedule</button>
               <button class="button secondary" id="open-edit-profile-btn" type="button">Edit profile</button>
               <button class="button danger" id="worker-signout-btn" type="button">Sign out</button>
             </div>
@@ -235,12 +233,10 @@
 	<nav class="app-tabbar" id="worker-tabbar" aria-label="Worker portal navigation">
 	  <button class="app-tab active" data-tab="dashboard" data-tab-view="dashboard" type="button">
 		<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
-		  <rect x="4" y="4" width="7" height="7" rx="1.4"/>
-		  <rect x="13" y="4" width="7" height="7" rx="1.4"/>
-		  <rect x="4" y="13" width="7" height="7" rx="1.4"/>
-		  <rect x="13" y="13" width="7" height="7" rx="1.4"/>
+		  <rect x="4" y="5" width="16" height="14" rx="2"/>
+		  <path d="M4 9h16M8 3v4M16 3v4M9 13l2 2 4-4"/>
 		</svg>
-		<span>Dashboard</span>
+		<span>Today's Job</span>
 	  </button>
 	  <button class="app-tab" data-tab="jobs" data-tab-view="jobs" type="button">
 		<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">

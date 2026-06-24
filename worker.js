@@ -543,6 +543,17 @@ function roundMoneyValue(value) {
   return Math.round((Number(value) || 0) * 100) / 100;
 }
 
+// Worker's estimated take-home for a job: the service fees (fuel + wash +
+// inspection) minus the Stripe processing fee (2.9% + $0.30 per transaction).
+// Never negative.
+function workerNetPayout(request) {
+  const fees = feeSummary(request);
+  const gross = fees.fuel + fees.wash + fees.inspection;
+  if (gross <= 0) return 0;
+  const stripe = roundMoneyValue(gross * PAYMENT_RECOVERY_RATE + PAYMENT_RECOVERY_FIXED);
+  return roundMoneyValue(Math.max(0, gross - stripe));
+}
+
 function transactionPricingSummary(request, receiptTotals = { fuel: 0, wash: 0 }) {
   // A service is chargeable if it was actually performed (has a receipt) or
   // admin/worker explicitly chose to charge the fee anyway for an
@@ -1423,8 +1434,7 @@ function workerReturnByLabel(request) {
 // Available request card (spec: cards, not a table). Shows service, vehicle,
 // location, return time, estimated fee, status badge, and a single Accept button.
 function renderWorkerAvailableCard(request) {
-  const fees = feeSummary(request);
-  const estPayout = fees.fuel + fees.wash + fees.inspection;
+  const estPayout = workerNetPayout(request);
   const returnBy = workerReturnByLabel(request);
   return `
     <article class="worker-card worker-available-card">
@@ -1479,25 +1489,52 @@ function renderWorkerJobTable(requests, mode) {
 // Large "Current Job" card — always expanded, leads the dashboard. Surfaces the
 // key facts up top, then the workflow's single next-action button, then a small
 // secondary row (call customer / view full details).
+// Inline icons for the iconographic job-card detail rows (mockup style).
+const WK_ICONS = {
+  pin: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s7-5.6 7-11a7 7 0 1 0-14 0c0 5.4 7 11 7 11z"/><circle cx="12" cy="10" r="2.5"/></svg>',
+  car: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 13l1.8-4.6A2 2 0 0 1 6.7 7h10.6a2 2 0 0 1 1.9 1.4L21 13v5a1 1 0 0 1-1 1h-1.2a1 1 0 0 1-1-1v-1H6.2v1a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1z"/><circle cx="7.5" cy="16" r="1"/><circle cx="16.5" cy="16" r="1"/></svg>',
+  key: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="3.4"/><path d="M10.4 10.4 19 19m-3-3 2 2m-4-4 2 2"/></svg>',
+};
+
+// One iconographic detail row. `value` is expected pre-escaped by the caller.
+function workerFactRow(icon, label, value) {
+  return `
+    <div class="worker-fact-row">
+      <span class="worker-fact-icon">${icon}</span>
+      <div class="worker-fact-text">
+        <span class="worker-fact-label">${escapeHtml(label)}</span>
+        <span class="worker-fact-value">${value}</span>
+      </div>
+    </div>`;
+}
+
 function renderWorkerCurrentJobCard(request) {
   const keyHandoff = request.key_handoff_details ? escapeHtml(request.key_handoff_details) : 'Not provided';
   const parking = [request.parking_location, request.parking_spot ? `spot ${request.parking_spot}` : ''].filter(Boolean).map(escapeHtml).join(', ') || 'Not provided';
   const returnBy = workerReturnByLabel(request);
   const phone = request.customer_phone ? normalizePhone(request.customer_phone) : '';
+  const name = request.customer_name || 'Customer';
+  const initial = escapeHtml((name.trim().charAt(0) || 'C').toUpperCase());
+  const vehicleLine = [workerVehicleSummary(request) || 'Vehicle on file', request.service_label || request.service_type]
+    .filter(Boolean).map(escapeHtml).join(' &middot; ');
   return `
     <article class="worker-card worker-current-job-card" data-current-job-id="${escapeHtml(request.id)}">
-      <div class="worker-card-top">
-        <h3 class="worker-current-job-name">${escapeHtml(request.customer_name || 'Customer')}</h3>
-        ${workerStatusBadge(request)}
+      <div class="worker-job-head">
+        <span class="worker-avatar" aria-hidden="true">${initial}</span>
+        <div class="worker-job-head-main">
+          <h3 class="worker-current-job-name">${escapeHtml(name)}</h3>
+          <p class="worker-card-vehicle">${vehicleLine}</p>
+        </div>
+        <div class="worker-job-head-meta">
+          ${workerStatusBadge(request)}
+          ${returnBy ? `<span class="worker-return-by">${escapeHtml(returnBy)}</span>` : ''}
+        </div>
       </div>
-      <p class="worker-card-vehicle">${escapeHtml(workerVehicleSummary(request) || 'Vehicle on file')}</p>
-      <p class="worker-card-service">${escapeHtml(request.service_label || request.service_type || '')}</p>
-      <dl class="worker-card-facts worker-current-job-facts">
-        <div><dt>Service address</dt><dd class="worker-job-address-value">${escapeHtml(workerFormatAddress(request))}</dd></div>
-        <div><dt>Parking</dt><dd>${parking}</dd></div>
-        <div><dt>Key handoff</dt><dd>${keyHandoff}</dd></div>
-        ${returnBy ? `<div><dt>Desired return</dt><dd>${escapeHtml(returnBy)}</dd></div>` : ''}
-      </dl>
+      <div class="worker-job-facts">
+        ${workerFactRow(WK_ICONS.pin, 'Service address', `<span class="worker-job-address-value">${escapeHtml(workerFormatAddress(request))}</span>`)}
+        ${workerFactRow(WK_ICONS.car, 'Parking', parking)}
+        ${workerFactRow(WK_ICONS.key, 'Key handoff', keyHandoff)}
+      </div>
       ${renderWorkerJobActions(request)}
       <div class="worker-secondary-actions">
         ${phone ? `<a class="button secondary worker-secondary-btn" href="tel:${escapeHtml(phone)}">Call customer</a>` : ''}
@@ -1525,6 +1562,36 @@ function renderWorkerDashboardToday(jobs) {
     return;
   }
   container.innerHTML = jobs.map(renderWorkerCurrentJobCard).join('');
+}
+
+// Earnings tab: completed jobs with their net take-home (service fees minus
+// Stripe processing), plus a running total for the day.
+function renderWorkerEarnings(completed) {
+  const container = document.querySelector('#worker-earnings-list');
+  if (!container) return;
+  if (!completed.length) {
+    container.innerHTML = '<div class="worker-state-card worker-state-empty"><p>No completed jobs yet today.</p></div>';
+    return;
+  }
+  const total = completed.reduce((sum, job) => sum + workerNetPayout(job), 0);
+  container.innerHTML = `
+    <div class="worker-earnings-summary">
+      <span class="worker-earnings-total-label">Today's earnings</span>
+      <span class="worker-earnings-total">${money(total)}</span>
+      <span class="worker-earnings-sub">${completed.length} job${completed.length === 1 ? '' : 's'} completed &middot; net of card processing</span>
+    </div>
+    <div class="worker-card-list">
+      ${completed.map((job) => `
+        <article class="worker-card worker-earnings-row">
+          <div class="worker-card-summary-main">
+            <strong>${escapeHtml(job.customer_name || 'Customer')}</strong>
+            <span class="worker-card-sub">${escapeHtml(job.service_label || job.service_type || '')}${job.updated_at ? ` &middot; ${escapeHtml(workerFormatClockTime(job.updated_at))}` : ''}</span>
+          </div>
+          <span class="worker-earnings-amount">${money(workerNetPayout(job))}</span>
+        </article>
+      `).join('')}
+    </div>
+  `;
 }
 
 // Completed-today summary card: customer, service, completed time, amount charged.
@@ -2387,18 +2454,8 @@ async function loadWorkerJobs(silent = false) {
         <button class="button primary worker-complete-profile-btn" type="button">Complete Profile</button>
       </div>
     ` : ''}
-    <section class="worker-jobs-section worker-jobs-current">
-      <h3>Current Job</h3>
-      ${currentJob
-        ? renderWorkerCurrentJobCard(currentJob)
-        : '<div class="worker-state-card worker-state-empty"><p>You do not have an active job right now.</p></div>'}
-    </section>
     <section class="worker-jobs-section">
-      <h3>Today's Schedule${scheduleJobs.length ? ` (${scheduleJobs.length})` : ''}</h3>
-      ${scheduleJobs.length ? renderWorkerJobTable(scheduleJobs, 'mine') : '<p class="field-help">No more jobs scheduled today.</p>'}
-    </section>
-    <section class="worker-jobs-section">
-      <h3>Available Requests${availableJobs.length ? ` (${availableJobs.length})` : ''}</h3>
+      <h3>Available to Claim${availableJobs.length ? ` (${availableJobs.length})` : ''}</h3>
       ${availableJobs.length
         ? renderWorkerJobTable(availableJobs, 'available')
         : `<div class="worker-state-card worker-state-empty">
@@ -2406,21 +2463,10 @@ async function loadWorkerJobs(silent = false) {
             <button class="button secondary worker-refresh-inline" type="button" aria-label="Refresh worker dashboard">Refresh</button>
           </div>`}
     </section>
-    <section class="worker-jobs-section worker-jobs-completed">
-      <h3>Completed Today${completedToday.length ? ` (${completedToday.length})` : ''}</h3>
-      ${completedToday.length
-        ? `<div class="worker-card-list">${completedToday.map(renderWorkerCompletedCard).join('')}</div>`
-        : '<p class="field-help">No jobs completed yet today.</p>'}
-    </section>
-    ${cancelledReturnJobs.length ? `
-      <section class="worker-jobs-section worker-jobs-cancelled">
-        <h3>Cancelled / Return Required (${cancelledReturnJobs.length})</h3>
-        ${renderWorkerJobTable(cancelledReturnJobs, 'mine')}
-      </section>
-    ` : ''}
   `;
 
   renderWorkerDashboardToday([...cancelledReturnJobs, ...claimedJobs]);
+  renderWorkerEarnings(completedToday);
   updateWorkerProgressTimeline(myJobs);
 }
 
@@ -2431,7 +2477,7 @@ async function loadWorkerCompletedToday() {
   const today = new Date().toISOString().slice(0, 10);
   const { data, error } = await workerDb
     .rpc('worker_list_my_requests', { p_token: SESSION_WORKER_TOKEN })
-    .select('id,customer_name,service_type,status,final_total,updated_at,service_date');
+    .select('id,customer_name,service_type,service_label,status,final_total,updated_at,service_date,fuel_convenience_fee,wash_convenience_fee,quick_inspection,quick_inspection_fee');
   if (error) {
     console.warn('Could not load completed-today jobs:', error);
     return [];
