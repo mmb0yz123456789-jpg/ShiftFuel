@@ -146,6 +146,22 @@ workerEnableAlertsBtn?.addEventListener('click', async () => {
   }
 });
 
+// Reflect an existing push subscription on load so the button doesn't imply you
+// must re-enable alerts every sign-in — the subscription persists in the browser.
+(async function reflectExistingPushSubscription() {
+  try {
+    if (!('serviceWorker' in navigator) || !('PushManager' in window) || !workerEnableAlertsBtn) return;
+    const reg = await navigator.serviceWorker.getRegistration();
+    const sub = reg && (await reg.pushManager.getSubscription());
+    if (sub) workerEnableAlertsBtn.textContent = 'Alerts on ✓ (tap to test)';
+  } catch (_) {}
+})();
+
+// Profile "View all reviews" reuses the existing reviews modal trigger.
+document.querySelector('#worker-reviews-viewall')?.addEventListener('click', () => {
+  document.querySelector('#worker-reviews-trigger')?.click();
+});
+
 document.querySelector('#worker-progress-job-label')?.addEventListener('click', async () => {
   const jobLabel = document.querySelector('#worker-progress-job-label');
   const jobId = jobLabel?.dataset.jobId;
@@ -1066,6 +1082,8 @@ async function loadWorkerProfile() {
 
     if (workerPortalHeading) workerPortalHeading.textContent = workerName;
     if (workerDashboardName) workerDashboardName.textContent = workerName;
+    const profileStatusBadge = document.querySelector('#worker-profile-status-badge');
+    if (profileStatusBadge) profileStatusBadge.hidden = currentEmployee.active === false;
     if (workerProfileName) workerProfileName.value = workerName;
     if (workerProfilePhone) workerProfilePhone.value = formatPhone(currentEmployee.phone || '');
     if (workerProfileLocation) workerProfileLocation.value = currentEmployee.home_location || DEFAULT_WORK_LOCATION;
@@ -1294,6 +1312,26 @@ function updateWorkerStatCards(requests) {
   }
 }
 
+// Compact review item for the Profile "Recent Reviews" card.
+function renderProfileReview(review) {
+  const name = review.customer_name || 'Customer';
+  const initial = escapeHtml((name.trim().charAt(0) || 'C').toUpperCase());
+  const rounded = Math.max(0, Math.min(5, Math.round(Number(review.rating) || 0)));
+  const stars = '★'.repeat(rounded) + '☆'.repeat(5 - rounded);
+  return `
+    <div class="worker-review-item">
+      <span class="worker-avatar worker-avatar-sm" aria-hidden="true">${initial}</span>
+      <div class="worker-review-body">
+        <div class="worker-review-top">
+          <strong>${escapeHtml(name)}</strong>
+          <span class="worker-review-stars" aria-label="${rounded} out of 5 stars">${stars}</span>
+        </div>
+        <span class="worker-review-time">${escapeHtml(formatDateTime(review.submitted_at))}</span>
+        <p class="worker-review-comment">${escapeHtml(review.comments || 'No comments provided.')}</p>
+      </div>
+    </div>`;
+}
+
 async function loadWorkerReviews() {
   if (!workerReviewList || !currentEmployee) return;
 
@@ -1364,6 +1402,18 @@ async function loadWorkerReviews() {
       </article>
     `;
   }).join('');
+
+  // Surface rating + the latest few reviews on the Profile tab.
+  const profileRatingRow = document.querySelector('#worker-profile-rating-row');
+  const profileRating = document.querySelector('#worker-profile-rating');
+  const profileReviewCount = document.querySelector('#worker-profile-review-count');
+  const profileReviewsCard = document.querySelector('#worker-profile-reviews-card');
+  const profileReviews = document.querySelector('#worker-profile-reviews');
+  if (profileRating) profileRating.textContent = averageRating;
+  if (profileReviewCount) profileReviewCount.textContent = `${reviews.length} review${reviews.length === 1 ? '' : 's'}`;
+  if (profileRatingRow) profileRatingRow.hidden = false;
+  if (profileReviews) profileReviews.innerHTML = reviews.slice(0, 3).map(renderProfileReview).join('');
+  if (profileReviewsCard) profileReviewsCard.hidden = false;
 }
 
 function workerFormatAddress(request) {
@@ -1436,19 +1486,25 @@ function workerReturnByLabel(request) {
 function renderWorkerAvailableCard(request) {
   const estPayout = workerNetPayout(request);
   const returnBy = workerReturnByLabel(request);
+  const service = request.service_label || request.service_type || 'Service';
+  const initial = escapeHtml((service.trim().charAt(0) || 'S').toUpperCase());
   return `
     <article class="worker-card worker-available-card">
-      <div class="worker-card-top">
-        <span class="worker-open-flag"><span class="worker-open-badge-dot"></span>Open</span>
-        ${workerStatusBadge(request)}
+      <div class="worker-job-head">
+        <span class="worker-avatar" aria-hidden="true">${initial}</span>
+        <div class="worker-job-head-main">
+          <h4 class="worker-current-job-name">${escapeHtml(service)}</h4>
+          <p class="worker-card-vehicle">${escapeHtml(workerVehicleSummary(request) || 'Vehicle on file')}</p>
+        </div>
+        <div class="worker-job-head-meta">
+          <span class="worker-open-flag"><span class="worker-open-badge-dot"></span>Open</span>
+          ${estPayout > 0 ? `<span class="worker-est-fee">${money(estPayout)}</span>` : ''}
+        </div>
       </div>
-      <h4 class="worker-card-service">${escapeHtml(request.service_label || request.service_type || 'Service')}</h4>
-      <p class="worker-card-vehicle">${escapeHtml(workerVehicleSummary(request) || 'Vehicle on file')}</p>
-      <dl class="worker-card-facts">
-        ${returnBy ? `<div><dt>When</dt><dd>${escapeHtml(returnBy)}</dd></div>` : ''}
-        <div><dt>Service address</dt><dd>${escapeHtml(workerFormatAddress(request))}</dd></div>
-        ${estPayout > 0 ? `<div><dt>Est. fee</dt><dd>${money(estPayout)}</dd></div>` : ''}
-      </dl>
+      <div class="worker-job-facts">
+        ${workerFactRow(WK_ICONS.pin, 'Service address', escapeHtml(workerFormatAddress(request)))}
+        ${returnBy ? workerFactRow(WK_ICONS.clock, 'When', escapeHtml(returnBy)) : ''}
+      </div>
       <button class="button primary worker-card-action claim-worker-job" data-id="${escapeHtml(request.id)}" type="button">Accept Request</button>
     </article>
   `;
@@ -1494,6 +1550,7 @@ const WK_ICONS = {
   pin: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s7-5.6 7-11a7 7 0 1 0-14 0c0 5.4 7 11 7 11z"/><circle cx="12" cy="10" r="2.5"/></svg>',
   car: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 13l1.8-4.6A2 2 0 0 1 6.7 7h10.6a2 2 0 0 1 1.9 1.4L21 13v5a1 1 0 0 1-1 1h-1.2a1 1 0 0 1-1-1v-1H6.2v1a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1z"/><circle cx="7.5" cy="16" r="1"/><circle cx="16.5" cy="16" r="1"/></svg>',
   key: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="3.4"/><path d="M10.4 10.4 19 19m-3-3 2 2m-4-4 2 2"/></svg>',
+  clock: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 1.8"/></svg>',
 };
 
 // One iconographic detail row. `value` is expected pre-escaped by the caller.

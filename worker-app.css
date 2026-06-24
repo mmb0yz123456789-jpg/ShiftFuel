@@ -290,6 +290,24 @@
 }
 .worker-portal-page .worker-fact-value { color: #1c2b28; font-weight: 600; }
 
+/* Available-job card: tighter head, prominent est fee, full-width Accept. */
+.worker-portal-page .worker-available-card .worker-job-head {
+  border-bottom: 0 !important;
+  padding-bottom: 6px !important;
+}
+.worker-portal-page .worker-est-fee {
+  font-weight: 800;
+  color: var(--sf-green, #1f7a45);
+  font-size: 1.05rem;
+}
+.worker-portal-page .worker-available-card .worker-card-action {
+  width: 100% !important;
+  min-height: 50px !important;
+  margin-top: 8px !important;
+  border-radius: 14px !important;
+  font-weight: 800 !important;
+}
+
 /* ---- Schedule: compact day rows (was a very long stacked list) ---- */
 .worker-portal-page .worker-day-row {
   display: grid !important;
@@ -297,7 +315,13 @@
   align-items: end !important;
   gap: 8px 10px !important;
   padding: 12px 2px !important;
+  /* Flatten the per-day card chrome into a clean divided row. */
+  background: transparent !important;
+  border: 0 !important;
   border-bottom: 1px solid rgba(13, 59, 59, 0.08) !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  margin: 0 !important;
 }
 .worker-portal-page .worker-day-row:last-child { border-bottom: 0 !important; }
 .worker-portal-page .worker-day-toggle { grid-column: 1 / -1 !important; margin: 0 !important; }
@@ -355,6 +379,66 @@
 .worker-portal-page .worker-earnings-row .worker-card-summary-main { display: grid; gap: 2px; }
 .worker-portal-page .worker-earnings-row .worker-card-sub { color: #60716d; font-size: 0.85rem; }
 .worker-portal-page .worker-earnings-amount { font-weight: 800; color: var(--sf-green, #1f7a45); font-size: 1.1rem; }
+
+/* ---- Profile ---- */
+.worker-portal-page .worker-profile-snapshot .worker-profile-mini {
+  display: flex !important;
+  align-items: center !important;
+  gap: 16px !important;
+}
+.worker-portal-page .worker-profile-id { display: grid; gap: 6px; }
+.worker-portal-page .worker-profile-id h2 { margin: 0 !important; font-size: 1.4rem !important; }
+.worker-portal-page .worker-profile-rating {
+  display: inline-flex; align-items: center; gap: 6px; font-size: 0.95rem;
+}
+.worker-portal-page .worker-rating-star { color: #f5a623; }
+.worker-portal-page .worker-rating-count { color: #60716d; font-size: 0.85rem; }
+.worker-portal-page .worker-active-badge {
+  display: inline-flex; align-items: center; gap: 6px; align-self: start;
+  padding: 4px 10px; border-radius: 999px;
+  background: rgba(31, 122, 69, 0.1); color: var(--sf-green, #1f7a45);
+  font-size: 0.78rem; font-weight: 700;
+}
+.worker-portal-page .worker-active-dot {
+  width: 7px; height: 7px; border-radius: 50%; background: var(--sf-green, #1f7a45);
+}
+.worker-portal-page .worker-profile-actions {
+  display: grid !important; gap: 10px !important; margin-top: 16px !important;
+}
+.worker-portal-page .worker-profile-actions .button {
+  width: 100% !important; min-height: 48px !important;
+  border-radius: 12px !important; font-weight: 700 !important;
+}
+.worker-portal-page .worker-contact-row {
+  display: grid !important; grid-template-columns: 40px 1fr !important;
+  align-items: center !important; gap: 12px !important;
+  padding: 12px 0 !important;
+  border-bottom: 1px solid rgba(13, 59, 59, 0.07) !important;
+}
+.worker-portal-page .worker-contact-row:last-child { border-bottom: 0 !important; }
+.worker-portal-page .worker-contact-row .worker-fact-icon {
+  width: 40px; height: 40px; border-radius: 12px;
+  background: var(--sf-sage-light, #eaf2ea);
+}
+.worker-portal-page .worker-contact-row .worker-fact-icon svg { width: 20px; height: 20px; }
+.worker-portal-page .worker-reviews-heading {
+  display: flex !important; align-items: center !important; justify-content: space-between !important;
+}
+.worker-portal-page .worker-reviews-viewall {
+  background: none; border: 0; cursor: pointer;
+  color: var(--sf-green, #1f7a45); font-weight: 700; font-size: 0.88rem;
+}
+.worker-portal-page .worker-review-item {
+  display: grid; grid-template-columns: 36px 1fr; gap: 12px;
+  padding: 14px 0; border-bottom: 1px solid rgba(13, 59, 59, 0.07);
+}
+.worker-portal-page .worker-review-item:last-child { border-bottom: 0; }
+.worker-portal-page .worker-avatar-sm { width: 36px !important; height: 36px !important; font-size: 0.9rem !important; }
+.worker-portal-page .worker-review-body { display: grid; gap: 3px; min-width: 0; }
+.worker-portal-page .worker-review-top { display: flex; align-items: center; gap: 10px; }
+.worker-portal-page .worker-review-stars { color: var(--sf-green, #1f7a45); letter-spacing: 1px; font-size: 0.85rem; }
+.worker-portal-page .worker-review-time { color: #8a9893; font-size: 0.78rem; }
+.worker-portal-page .worker-review-comment { margin: 2px 0 0 !important; color: #1c2b28; font-size: 0.9rem; line-height: 1.45; }
 
 /* ---- Legal links tucked into the Profile tab (app shell footer) ---- */
 .worker-app-legal {
