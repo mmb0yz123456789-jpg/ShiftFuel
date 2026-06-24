@@ -312,6 +312,11 @@
   }
 
   document.addEventListener('click', (event) => {
+    // iOS only reliably grants a screen wake lock inside a user gesture, and drops
+    // it whenever the app backgrounds. So treat every tap as a chance to (re)arm it
+    // while a job is being tracked. acquireWakeLock() is a no-op if already held.
+    if (activeWatches.size > 0) acquireWakeLock();
+
     const start = event.target.closest('.start-gps-tracking');
     if (start) {
       event.preventDefault();
@@ -345,6 +350,11 @@
       keyBtn.disabled = true;
       keyBtn.textContent = 'Checking location...';
       setStatus(requestId, 'Requesting location permission to start tracking...');
+
+      // Grab the wake lock NOW, while we still have the tap's user activation — iOS
+      // rejects wakeLock.request() outside a gesture, so acquiring it later inside
+      // the async GPS callback silently failed and the screen kept dimming.
+      acquireWakeLock();
 
       navigator.geolocation.getCurrentPosition(
         () => {
