@@ -7062,7 +7062,85 @@ function closeAdminMenu() {
   }
 }
 
-if (avatarBtn) avatarBtn.addEventListener('click', openAdminMenu);
+// Open account modal from avatar button (desktop); fall back to mobile menu on small screens
+if (avatarBtn) avatarBtn.addEventListener('click', () => {
+  const modal = document.getElementById('admin-account-modal');
+  if (modal) {
+    modal.removeAttribute('hidden');
+    document.body.style.overflow = 'hidden';
+  } else {
+    openAdminMenu();
+  }
+});
+
+const accountModal = document.getElementById('admin-account-modal');
+const closeAccountModal = document.getElementById('close-account-modal');
+
+function _closeAccountModal() {
+  if (accountModal) {
+    accountModal.setAttribute('hidden', '');
+    document.body.style.overflow = '';
+  }
+}
+
+if (closeAccountModal) closeAccountModal.addEventListener('click', _closeAccountModal);
+if (accountModal) accountModal.addEventListener('click', (e) => {
+  if (e.target === accountModal) _closeAccountModal();
+});
+
+document.querySelector('#account-username-form')?.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const statusEl = document.getElementById('account-username-status');
+  const submitBtn = e.target.querySelector('[type="submit"]');
+  const currentPassword = document.getElementById('account-current-pw-name')?.value || '';
+  const newUsername = (document.getElementById('account-new-name')?.value || '').trim();
+
+  if (newUsername.length < 3) {
+    if (statusEl) statusEl.textContent = 'New name must be at least 3 characters.';
+    return;
+  }
+  if (statusEl) statusEl.textContent = 'Updating name...';
+  if (submitBtn) submitBtn.disabled = true;
+  try {
+    const [currentHash, newHash] = await Promise.all([sha256Hex(currentPassword), sha256Hex(newUsername.toLowerCase())]);
+    const { error } = await db.rpc('admin_change_username', { p_token: adminToken(), p_current_password_hash: currentHash, p_new_username_hash: newHash });
+    if (error) throw error;
+    e.target.reset();
+    if (statusEl) statusEl.textContent = 'Name updated.';
+  } catch (err) {
+    const msg = err?.message || '';
+    if (statusEl) statusEl.textContent = msg.includes('INVALID_CURRENT_PASSWORD') ? 'Current password is incorrect.' : `Could not update name: ${msg || err}`;
+  } finally {
+    if (submitBtn) submitBtn.disabled = false;
+  }
+});
+
+document.querySelector('#account-password-form')?.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const statusEl = document.getElementById('account-password-status');
+  const submitBtn = e.target.querySelector('[type="submit"]');
+  const currentPassword = document.getElementById('account-current-pw')?.value || '';
+  const newPassword = document.getElementById('account-new-pw')?.value || '';
+
+  if (newPassword.length < 8) {
+    if (statusEl) statusEl.textContent = 'New password must be at least 8 characters.';
+    return;
+  }
+  if (statusEl) statusEl.textContent = 'Updating password...';
+  if (submitBtn) submitBtn.disabled = true;
+  try {
+    const [currentHash, newHash] = await Promise.all([sha256Hex(currentPassword), sha256Hex(newPassword)]);
+    const { error } = await db.rpc('admin_change_password', { p_token: adminToken(), p_current_password_hash: currentHash, p_new_password_hash: newHash });
+    if (error) throw error;
+    e.target.reset();
+    if (statusEl) statusEl.textContent = 'Password updated.';
+  } catch (err) {
+    const msg = err?.message || '';
+    if (statusEl) statusEl.textContent = msg.includes('INVALID_CURRENT_PASSWORD') ? 'Current password is incorrect.' : `Could not update password: ${msg || err}`;
+  } finally {
+    if (submitBtn) submitBtn.disabled = false;
+  }
+});
 if (menuClose) menuClose.addEventListener('click', closeAdminMenu);
 if (menuOverlay) menuOverlay.addEventListener('click', closeAdminMenu);
 
@@ -7089,6 +7167,9 @@ document.querySelectorAll('.admin-menu-item').forEach(item => {
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape' && mobileMenu && !mobileMenu.hasAttribute('hidden')) {
     closeAdminMenu();
+  }
+  if (e.key === 'Escape' && accountModal && !accountModal.hasAttribute('hidden')) {
+    _closeAccountModal();
   }
 });
 

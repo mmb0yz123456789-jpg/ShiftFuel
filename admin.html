@@ -730,6 +730,64 @@
       </div>
     </div>
 
+    <!-- Account popup (opened from avatar button) -->
+    <div id="admin-account-modal" class="modal-overlay" hidden aria-modal="true" role="dialog" aria-labelledby="account-modal-title">
+      <div class="modal-dialog" style="max-width:440px">
+        <div class="modal-header">
+          <h2 id="account-modal-title">Account</h2>
+          <button id="close-account-modal" class="modal-close" aria-label="Close">&times;</button>
+        </div>
+        <div class="modal-body">
+
+          <h3 style="margin:0 0 .75rem;font-size:1rem">Change Admin Name</h3>
+          <form id="account-username-form" autocomplete="off">
+            <div class="form-group">
+              <label for="account-current-pw-name">Current password</label>
+              <div class="password-field">
+                <input id="account-current-pw-name" type="password" class="form-input" autocomplete="current-password" required>
+                <button type="button" class="password-toggle" aria-label="Show/hide password">
+                  <svg class="eye-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                </button>
+              </div>
+            </div>
+            <div class="form-group">
+              <label for="account-new-name">New name</label>
+              <input id="account-new-name" type="text" class="form-input" autocomplete="off" required>
+            </div>
+            <p id="account-username-status" class="form-status" style="min-height:1.2em"></p>
+            <button type="submit" class="button primary" style="width:100%">Update name</button>
+          </form>
+
+          <hr style="margin:1.5rem 0;border:none;border-top:1px solid var(--border,#e5e7eb)">
+
+          <h3 style="margin:0 0 .75rem;font-size:1rem">Change Admin Password</h3>
+          <form id="account-password-form" autocomplete="off">
+            <div class="form-group">
+              <label for="account-current-pw">Current password</label>
+              <div class="password-field">
+                <input id="account-current-pw" type="password" class="form-input" autocomplete="current-password" required>
+                <button type="button" class="password-toggle" aria-label="Show/hide password">
+                  <svg class="eye-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                </button>
+              </div>
+            </div>
+            <div class="form-group">
+              <label for="account-new-pw">New password</label>
+              <div class="password-field">
+                <input id="account-new-pw" type="password" class="form-input" autocomplete="new-password" required>
+                <button type="button" class="password-toggle" aria-label="Show/hide password">
+                  <svg class="eye-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                </button>
+              </div>
+            </div>
+            <p id="account-password-status" class="form-status" style="min-height:1.2em"></p>
+            <button type="submit" class="button primary" style="width:100%">Update password</button>
+          </form>
+
+        </div>
+      </div>
+    </div>
+
     <!-- Ticket detail modal (opened from Find Tickets results) -->
     <div id="ticket-detail-modal" class="modal-overlay" hidden aria-modal="true" role="dialog" aria-labelledby="ticket-detail-title">
       <div class="modal-dialog ticket-detail-dialog">
