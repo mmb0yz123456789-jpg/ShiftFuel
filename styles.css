@@ -17,6 +17,8 @@ color-scheme: light;
 --sf-sage-light: #EAF2EA;
 --sf-coral: #FF6B5A;
 --sf-coral-dark: #E85445;
+--sf-green: #1F7A45;
+--sf-green-dark: #155F34;
 --sf-charcoal: #1F1F1F;
 --sf-muted: #5F6F6D;
 --sf-border: #D9E3DF;
@@ -226,13 +228,13 @@ box-shadow: var(--sf-shadow-soft);
 .button.primary,
 .nav-cta {
 color: var(--sf-white);
-background: linear-gradient(135deg, var(--sf-coral), var(--sf-coral-dark));
-border-color: var(--sf-coral);
+background: linear-gradient(135deg, var(--sf-green), var(--sf-green-dark));
+border-color: var(--sf-green-dark);
 }
 
 .button.primary:hover,
 .nav-cta:hover {
-background: linear-gradient(135deg, #ff7467, var(--sf-coral-dark));
+background: linear-gradient(135deg, #239155, var(--sf-green-dark));
 }
 
 .button.returning,
@@ -941,6 +943,20 @@ font-size: 0.85rem;
   border-color: var(--sf-white);
 }
 
+/* "Join the Team" gets a filled dark-green treatment so the recruiting CTA leads
+   the trio; Worker/Admin stay outlined. */
+.portal-button.portal-button-primary {
+  color: var(--sf-white);
+  background: linear-gradient(135deg, var(--sf-green), var(--sf-green-dark));
+  border-color: var(--sf-green-dark);
+}
+
+.portal-button.portal-button-primary:hover {
+  color: var(--sf-white);
+  background: linear-gradient(135deg, #239155, var(--sf-green-dark));
+  border-color: var(--sf-green-dark);
+}
+
 .portal-button svg {
   width: 18px;
   height: 18px;
@@ -1006,20 +1022,12 @@ font-size: 0.85rem;
   border-radius: var(--sf-radius-sm);
 }
 
-.pricing-button-fuel {
-  background: var(--sf-teal-dark);
-  border-color: var(--sf-teal-dark);
-}
-
-.pricing-button-wash {
-  color: var(--sf-teal-dark);
-  background: var(--sf-sage);
-  border-color: var(--sf-sage);
-}
-
+.pricing-button-fuel,
+.pricing-button-wash,
 .pricing-button-inspect {
-  background: var(--sf-coral);
-  border-color: var(--sf-coral);
+  color: var(--sf-white);
+  background: linear-gradient(135deg, var(--sf-green), var(--sf-green-dark));
+  border-color: var(--sf-green-dark);
 }
 
 .safety-row {
@@ -1077,6 +1085,38 @@ font-size: 0.85rem;
   color: var(--sf-muted);
   font-size: 0.86rem;
   line-height: 1.5;
+}
+
+/* Applicant background-check (Checkr) badges */
+.checkr-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-left: 8px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 800;
+  vertical-align: middle;
+  white-space: nowrap;
+}
+.checkr-clear {
+  color: #0f7a3d;
+  background: #e6f6ec;
+  border: 1px solid #bfe6cd;
+}
+.checkr-consider {
+  color: #b42318;
+  background: #fdecea;
+  border: 1px solid #f4c7c0;
+}
+.checkr-pending {
+  color: #9a6700;
+  background: #fff6e5;
+  border: 1px solid #f3dca0;
+}
+.checkr-start-btn {
+  margin-top: 4px;
 }
 
 /* Join the Team page: evenly space hero / perks / form, and drop the perks
@@ -2342,10 +2382,17 @@ font-size: 0.85rem;
   min-width: 132px;
 }
 
-.booking-step-actions .button:disabled,
-.booking-step-actions .button[disabled] {
+/* Disabled Continue reads as clearly inert grey, so a complete/active step's
+   Continue is unmistakably the solid dark-green primary button. */
+.booking-step-actions .button.primary:disabled,
+.booking-step-actions .button.primary[disabled] {
   cursor: not-allowed;
-  opacity: 0.45;
+  opacity: 1;
+  color: #8c9a96;
+  background: #e7ece9;
+  border-color: #d6ded9;
+  box-shadow: none;
+  transform: none;
 }
 
 @media (max-width: 980px) {
@@ -7797,6 +7844,124 @@ justify-self: start;
   background: #fffaf0;
 }
 
+/* Action Needed — "what needs attention now" cards */
+.action-needed-list {
+  display: grid;
+  gap: 10px;
+}
+
+.action-needed-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 14px 16px;
+  border: 1px solid #f0c36d;
+  border-left: 4px solid #e0982f;
+  border-radius: 12px;
+  background: #fffaf0;
+}
+
+.action-needed-info {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.action-needed-title {
+  color: #8a4b00;
+  font-size: 0.98rem;
+}
+
+.action-needed-who {
+  color: var(--admin-ink, #102a26);
+  font-weight: 800;
+  font-size: 0.9rem;
+}
+
+.action-needed-detail {
+  color: #5e6d69;
+  font-size: 0.85rem;
+}
+
+.action-needed-btn {
+  flex: 0 0 auto;
+}
+
+/* Higher-severity issues read red instead of amber. */
+.action-needed-payment,
+.action-needed-stuck {
+  border-color: #e9b3b0;
+  border-left-color: #d9534f;
+  background: #fdf4f3;
+}
+
+.admin-business-snapshot h2 {
+  margin: 0 0 4px;
+}
+
+.settings-legal {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  margin-top: 14px;
+  font-size: 0.86rem;
+}
+.settings-legal-label {
+  font-weight: 800;
+  color: #5e6d69;
+}
+.settings-legal a {
+  color: var(--admin-green, #1f7a4d);
+  text-decoration: none;
+}
+.settings-legal a:hover {
+  text-decoration: underline;
+}
+
+/* Workers / Revenue stat drilldown: hide the request-only toolbar controls
+   (Search Requests / date / filters / refresh) — they don't apply to workers. */
+.admin-queue-section.stat-drilldown .admin-toolbar .admin-button-row {
+  display: none;
+}
+
+/* Worker Snapshot rows are tappable (filter the Workers list by presence). */
+.worker-snapshot-list li {
+  cursor: pointer;
+  border-radius: 8px;
+  padding: 4px 6px;
+  margin: 0 -6px;
+}
+.worker-snapshot-list li:hover,
+.worker-snapshot-list li:focus-visible {
+  background: rgba(31, 122, 77, 0.08);
+  outline: none;
+}
+
+/* Presence-filter banner above the Workers list. */
+.worker-filter-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 10px 14px;
+  margin-bottom: 12px;
+  border: 1px solid var(--admin-line, #e2e8e5);
+  border-radius: 12px;
+  background: #f4f8f6;
+  font-size: 0.9rem;
+}
+.worker-filter-banner .button {
+  flex: 0 0 auto;
+}
+
+.action-needed-payment .action-needed-title,
+.action-needed-stuck .action-needed-title {
+  color: #b02a26;
+}
+
 .pending-auth-list {
   display: grid;
   gap: 10px;
@@ -8214,7 +8379,7 @@ justify-self: start;
   border-radius: 16px;
   background:
     linear-gradient(90deg, rgba(255, 255, 255, 0.97) 0%, rgba(255, 255, 255, 0.86) 42%, rgba(255, 255, 255, 0.12) 72%),
-    url("https://images.unsplash.com/photo-1560179707-f14e90ef3623?auto=format&fit=crop&w=1800&q=80") center / cover;
+    url("https://images.unsplash.com/photo-1503376780353-7e6692767b70?auto=format&fit=crop&w=1800&q=80") center / cover;
   box-shadow: var(--worker-shadow);
 }
 
@@ -8652,6 +8817,57 @@ justify-self: start;
   margin: 18px auto 0;
   padding: 18px 22px;
   border-radius: var(--sf-radius-sm);
+}
+
+/* Compact staff (worker/admin) login header — logo + "Staff Access" + a small
+   back link only. No customer marketing nav or CTA buttons. */
+.portal-staff-header .portal-header-actions {
+  margin-left: auto;
+  align-items: center;
+  gap: 16px;
+}
+
+.portal-back-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 0.9rem;
+  font-weight: 800;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.portal-back-link svg { width: 16px; height: 16px; }
+.portal-back-link:hover { color: #fff; text-decoration: underline; }
+
+/* "Back to customer site" link under the login card. */
+.portal-login-back {
+  display: inline-block;
+  margin-top: 14px;
+  color: var(--sf-teal-dark);
+  font-size: 0.92rem;
+  font-weight: 800;
+  text-decoration: none;
+}
+
+.portal-login-back:hover { text-decoration: underline; }
+
+@media (max-width: 760px) {
+  /* Keep the card near the top instead of vertically centered, so there's no
+     large empty gap above the form on phones. */
+  .portal-login-page .portal-login-shell {
+    align-content: start;
+    min-height: auto;
+    padding: 24px 18px 40px;
+  }
+
+  .portal-staff-header .portal-header-actions {
+    margin-left: 0;
+    margin-top: 8px;
+    width: 100%;
+    justify-content: space-between;
+  }
 }
 
 /* 3-column grid: equal-width side columns (1fr) keep the middle nav column at
@@ -9184,4 +9400,388 @@ justify-self: start;
 
 .pricing-pending-cancel:hover {
   background: #fef3c7;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────
+   Worker Dashboard — app-style cards (replaces the old job tables).
+   "Here is your job. Here is what to do next."
+   ───────────────────────────────────────────────────────────────────────── */
+.worker-card-list {
+  display: grid;
+  gap: 12px;
+}
+
+.worker-card {
+  border: 1px solid var(--worker-line);
+  border-radius: 14px;
+  background: #fff;
+  padding: 16px;
+  box-shadow: var(--worker-shadow);
+}
+
+.worker-card-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.worker-card-service {
+  margin: 2px 0;
+  color: var(--worker-ink);
+  font-size: 1.02rem;
+  font-weight: 800;
+}
+
+.worker-card-vehicle {
+  margin: 2px 0;
+  color: #4e5f5b;
+  font-weight: 600;
+}
+
+.worker-card-facts {
+  display: grid;
+  gap: 10px;
+  margin: 12px 0 0;
+}
+
+.worker-card-facts > div {
+  display: grid;
+  gap: 2px;
+}
+
+.worker-card-facts dt {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #7c8b87;
+  font-weight: 800;
+}
+
+.worker-card-facts dd {
+  margin: 0;
+  color: #28403b;
+  font-weight: 600;
+}
+
+.worker-card-action {
+  width: 100%;
+  min-height: 46px;
+  margin-top: 14px;
+}
+
+.worker-open-flag {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.78rem;
+  font-weight: 800;
+  color: var(--worker-green);
+}
+
+/* Current Job — the lead card; never let anything else outshine it. */
+.worker-current-job-card {
+  border: 2px solid var(--worker-green);
+  box-shadow: 0 14px 34px rgba(6, 47, 45, 0.12);
+  padding: 20px;
+}
+
+.worker-current-job-name {
+  margin: 0;
+  color: var(--worker-ink);
+  font-size: 1.4rem;
+}
+
+.worker-current-job-facts {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px 18px;
+}
+
+.worker-secondary-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.worker-secondary-btn {
+  flex: 1 1 auto;
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Compact Today's Schedule card (tap to expand the full workflow card). */
+.worker-card-summary {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 0;
+  background: none;
+  border: none;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  color: inherit;
+}
+
+.worker-card-summary-main {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.worker-card-summary-main strong {
+  color: var(--worker-ink);
+}
+
+.worker-card-time {
+  font-size: 0.74rem;
+  font-weight: 800;
+  color: #7c8b87;
+}
+
+.worker-card-sub {
+  color: #4e5f5b;
+  font-size: 0.9rem;
+}
+
+.worker-card-summary-side {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.worker-card-chevron {
+  color: #9bb0aa;
+  font-size: 0.7rem;
+}
+
+.worker-card-expanded {
+  margin-top: 14px;
+  border-top: 1px solid var(--worker-line);
+  padding-top: 12px;
+}
+
+/* Completed Today */
+.worker-completed-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.worker-completed-meta {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-shrink: 0;
+}
+
+.worker-completed-amount {
+  font-weight: 800;
+  color: var(--worker-green);
+}
+
+/* Special states (empty / inactive / incomplete-profile) */
+.worker-state-card {
+  border: 1px dashed var(--worker-line);
+  border-radius: 14px;
+  background: #f6faf8;
+  padding: 22px;
+  text-align: center;
+  color: #42554f;
+}
+
+.worker-state-card h3 {
+  margin: 0 0 6px;
+  color: var(--worker-ink);
+}
+
+.worker-state-card p {
+  margin: 0;
+}
+
+.worker-state-card .button {
+  margin-top: 14px;
+}
+
+.worker-state-warning {
+  border: 1px solid #e7c46a;
+  background: #fff8e8;
+}
+
+.worker-state-inactive {
+  border: 1px solid #e0a3a3;
+  background: #fdf1f1;
+}
+
+.worker-jobs-section h3 {
+  margin: 18px 0 10px;
+  color: var(--worker-ink);
+  font-size: 1.05rem;
+}
+
+.worker-jobs-section:first-child h3 {
+  margin-top: 0;
+}
+
+.status-pill-cancelled {
+  background: #fde2e1;
+  color: #a23b34;
+}
+
+/* Worker job-details vertical status tracker */
+.worker-vstepper {
+  list-style: none;
+  margin: 4px 0 16px;
+  padding: 0;
+  display: grid;
+  gap: 0;
+}
+
+.worker-vstep {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 6px 0;
+}
+
+.worker-vstep::before {
+  content: "";
+  position: absolute;
+  left: 13px;
+  top: 28px;
+  bottom: -6px;
+  width: 2px;
+  background: var(--worker-line);
+}
+
+.worker-vstep:last-child::before {
+  display: none;
+}
+
+.worker-vstep-dot {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  flex-shrink: 0;
+  border: 2px solid var(--worker-line);
+  border-radius: 50%;
+  background: #fff;
+  color: #607069;
+  font-size: 0.78rem;
+  font-weight: 800;
+  z-index: 1;
+}
+
+.worker-vstep-label {
+  color: #607069;
+  font-weight: 700;
+}
+
+.worker-vstep.is-done .worker-vstep-dot {
+  background: var(--worker-green);
+  border-color: var(--worker-green);
+  color: #fff;
+}
+
+.worker-vstep.is-active .worker-vstep-dot {
+  border-color: var(--worker-green);
+  color: var(--worker-green);
+  box-shadow: 0 0 0 4px rgba(6, 47, 45, 0.1);
+}
+
+.worker-vstep.is-active .worker-vstep-label {
+  color: var(--worker-ink);
+  font-weight: 800;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────
+   Booking flow polish — mobile-friendly progress, inline validation, and a
+   shorter hero on the Book Now / Returning pages so the form is reachable fast.
+   ───────────────────────────────────────────────────────────────────────── */
+
+/* Compact step indicator (phones): "Step 1 of 9 · Customer Info". */
+.booking-progress-compact {
+  display: none;
+  align-items: baseline;
+  gap: 10px;
+  margin: 0;
+  padding: 16px 18px;
+  background: var(--sf-white);
+  border: 1px solid rgba(13, 59, 59, 0.12);
+  border-radius: var(--sf-radius-md);
+  box-shadow: var(--sf-shadow-card);
+}
+
+.booking-progress-compact-step {
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--sf-teal);
+}
+
+.booking-progress-compact-label {
+  font-size: 1.05rem;
+  font-weight: 800;
+  color: var(--sf-teal-dark);
+}
+
+/* Inline field validation messages. */
+.booking-field-error {
+  display: block;
+  margin-top: 6px;
+  color: var(--sf-danger, #c0392b);
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
+.booking-step-fields input.has-error,
+.booking-step-fields select.has-error,
+.booking-step-fields textarea.has-error {
+  border-color: var(--sf-danger, #c0392b);
+  box-shadow: 0 0 0 2px rgba(192, 57, 43, 0.12);
+}
+
+/* Shorter hero on the booking pages (vs. the public landing hero). */
+.booking-page .booking-flow-hero-image img {
+  min-height: 360px;
+}
+
+.booking-page .booking-flow-hero-copy {
+  padding: clamp(28px, 4vw, 52px);
+}
+
+@media (max-width: 640px) {
+  /* Swap the cramped icon rail for the compact one-line indicator. */
+  .booking-progress-rail {
+    display: none;
+  }
+
+  .booking-progress-compact {
+    display: flex;
+    flex-wrap: wrap;
+  }
+
+  /* Keep the hero short so the first step is visible with minimal scrolling. */
+  .booking-page .booking-flow-hero-image {
+    min-height: 150px;
+  }
+
+  .booking-page .booking-flow-hero-image img {
+    min-height: 150px;
+  }
+
+  .booking-page .booking-flow-hero-copy {
+    padding: 22px 20px;
+  }
 }

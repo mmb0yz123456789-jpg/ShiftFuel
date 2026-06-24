@@ -3,6 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <base href="/">
   <title>Admin Login | ShiftFuel Concierge</title>
   <link rel="manifest" href="manifest-admin.webmanifest">
   <meta name="apple-mobile-web-app-capable" content="yes">
@@ -12,24 +13,26 @@
   <link rel="stylesheet" href="styles.css">
 </head>
 <body class="landing-page portal-login-page admin-login-page">
+  <script>
+    // Already signed in? Skip the login screen and go straight to the portal.
+    (function () {
+      var token = sessionStorage.getItem("shiftfuel_admin_token");
+      var expires = Number(sessionStorage.getItem("shiftfuel_admin_expires") || 0);
+      if (token && expires > Date.now()) window.location.replace("/admin/dashboard");
+    })();
+  </script>
 
-  <header class="portal-header unified-portal-header portal-login-header">
+  <header class="portal-header unified-portal-header portal-login-header portal-staff-header">
     <a class="logo" href="index.html" aria-label="ShiftFuel Concierge home">
       <span class="logo-mark">S</span>
       <span>ShiftFuel Concierge</span>
     </a>
-    <nav class="portal-public-nav" aria-label="Main navigation">
-      <a href="index.html#how">How It Works</a>
-      <a href="index.html#services">Services &amp; Pricing</a>
-      <a href="index.html#trust">Safety &amp; Trust</a>
-    </nav>
-    <div class="portal-cta-links">
-      <a class="button primary" href="book.html#booking-flow">Book Now</a>
-      <a class="button returning" href="returning.html">Returning Customer</a>
-      <a class="button secondary" href="track.html">Track My Vehicle</a>
-    </div>
     <div class="portal-header-actions">
-      <span class="portal-header-label">Admin Portal</span>
+      <span class="portal-header-label">Staff Access</span>
+      <a class="portal-back-link" href="index.html">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg>
+        <span>Back to home</span>
+      </a>
     </div>
   </header>
 
@@ -38,7 +41,7 @@
       <span class="portal-login-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="12" r="3"/><path d="M19.4 13.5a7.6 7.6 0 0 0 0-3l1.9-1.3-2-3.4-2.2.7a7.6 7.6 0 0 0-2.6-1.5L14 2.5h-4l-.5 2.5a7.6 7.6 0 0 0-2.6 1.5l-2.2-.7-2 3.4 1.9 1.3a7.6 7.6 0 0 0 0 3l-1.9 1.3 2 3.4 2.2-.7a7.6 7.6 0 0 0 2.6 1.5l.5 2.5h4l.5-2.5a7.6 7.6 0 0 0 2.6-1.5l2.2.7 2-3.4z"/></svg></span>
       <p class="eyebrow">Admin Access</p>
       <h1>ShiftFuel Admin Portal</h1>
-      <p class="portal-login-intro">Enter the administrator username and password to continue.</p>
+      <p class="portal-login-intro">Sign in to manage requests, workers, services, and payments.</p>
 
       <form id="admin-login-form" class="booking-form">
         <label>
@@ -68,6 +71,7 @@
       </form>
 
       <p id="login-message" class="form-status"></p>
+      <a class="portal-login-back" href="index.html">Back to customer site</a>
     </section>
   </main>
 
@@ -131,7 +135,7 @@
         sessionStorage.setItem("shiftfuel_admin_token", token);
         sessionStorage.setItem("shiftfuel_admin_expires", String(Date.now() + 8 * 60 * 60 * 1000));
         sessionStorage.setItem("shiftfuel_admin_name", usernameInput.value.trim());
-        window.location.href = "admin.html";
+        window.location.href = "/admin/dashboard";
       } catch (err) {
         const msg = err?.message || "";
         if (msg.includes("ACCOUNT_LOCKED")) {

@@ -24,6 +24,40 @@ self.addEventListener('activate', (event) => {
   })());
 });
 
+// ── Web Push ──────────────────────────────────────────────────────────────────
+self.addEventListener('push', (event) => {
+  let payload = {};
+  try { payload = event.data ? event.data.json() : {}; } catch (_) { payload = { body: event.data && event.data.text() }; }
+  const title = payload.title || 'ShiftFuel Concierge';
+  const options = {
+    body: payload.body || '',
+    icon: payload.icon || '/icon-main.svg',
+    badge: '/icon-main.svg',
+    tag: payload.tag || undefined,        // collapses duplicate alerts for the same job
+    renotify: Boolean(payload.tag),
+    data: { url: payload.url || '/' },
+  };
+  event.waitUntil(self.registration.showNotification(title, options));
+});
+
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  const target = (event.notification.data && event.notification.data.url) || '/';
+  event.waitUntil((async () => {
+    const all = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+    // Focus an existing tab on the same origin if one is open; else open a new one.
+    for (const client of all) {
+      try {
+        if (new URL(client.url).origin === self.location.origin && 'focus' in client) {
+          client.navigate(target).catch(() => {});
+          return client.focus();
+        }
+      } catch (_) {}
+    }
+    if (self.clients.openWindow) return self.clients.openWindow(target);
+  })());
+});
+
 self.addEventListener('fetch', (event) => {
   const { request } = event;
   let url;

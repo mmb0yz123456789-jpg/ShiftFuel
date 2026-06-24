@@ -3,6 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <base href="/">
   <title>Worker Login | ShiftFuel Concierge</title>
   <link rel="manifest" href="manifest-worker.webmanifest">
   <meta name="apple-mobile-web-app-capable" content="yes">
@@ -12,23 +13,25 @@
   <link rel="stylesheet" href="styles.css">
 </head>
 <body class="landing-page portal-login-page worker-login-page">
-  <header class="portal-header unified-portal-header portal-login-header">
+  <script>
+    // Already signed in? Skip the login screen and go straight to the portal.
+    (function () {
+      var token = sessionStorage.getItem("shiftfuel_worker_token");
+      var expires = Number(sessionStorage.getItem("shiftfuel_worker_expires") || 0);
+      if (token && expires > Date.now()) window.location.replace("/worker/dashboard");
+    })();
+  </script>
+  <header class="portal-header unified-portal-header portal-login-header portal-staff-header">
     <a class="logo" href="index.html" aria-label="ShiftFuel Concierge home">
       <span class="logo-mark">S</span>
       <span>ShiftFuel Concierge</span>
     </a>
-    <nav class="portal-public-nav" aria-label="Main navigation">
-      <a href="index.html#how">How It Works</a>
-      <a href="index.html#services">Services &amp; Pricing</a>
-      <a href="index.html#trust">Safety &amp; Trust</a>
-    </nav>
-    <div class="portal-cta-links">
-      <a class="button primary" href="book.html#booking-flow">Book Now</a>
-      <a class="button returning" href="returning.html">Returning Customer</a>
-      <a class="button secondary" href="track.html">Track My Vehicle</a>
-    </div>
     <div class="portal-header-actions">
-      <span class="portal-header-label">Worker Portal</span>
+      <span class="portal-header-label">Staff Access</span>
+      <a class="portal-back-link" href="index.html">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg>
+        <span>Back to home</span>
+      </a>
     </div>
   </header>
 
@@ -37,12 +40,12 @@
       <span class="portal-login-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="8" r="3.4"/><path d="M5 20c0-3.3 3.1-6 7-6s7 2.7 7 6"/></svg></span>
       <p class="eyebrow">Worker Access</p>
       <h1>ShiftFuel Worker Portal</h1>
-      <p class="portal-login-intro">Sign in to access your worker portal.</p>
+      <p class="portal-login-intro">Sign in to view jobs, update requests, and complete services.</p>
 
       <form id="worker-login-form" class="booking-form">
         <label>
-          Worker name or phone
-          <input id="worker-login-name" type="text" placeholder="Enter worker name or phone" autocomplete="username" required>
+          Worker name, phone, or email
+          <input id="worker-login-name" type="text" placeholder="Enter worker name, phone, or email" autocomplete="username" required>
         </label>
 
         <label>
@@ -54,6 +57,7 @@
       </form>
 
       <p id="worker-login-message" class="form-status"></p>
+      <a class="portal-login-back" href="index.html">Back to customer site</a>
     </section>
   </main>
 
@@ -116,7 +120,7 @@
           sessionStorage.setItem("shiftfuel_worker_token", data.token);
           sessionStorage.setItem("shiftfuel_worker_expires", String(Date.now() + 8 * 60 * 60 * 1000));
           sessionStorage.setItem("shiftfuel_worker_must_change_pw", String(data.must_change_password === true));
-          window.location.href = "worker.html";
+          window.location.href = "/worker/dashboard";
           return;
         }
       } catch (error) {
@@ -135,15 +139,6 @@
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="supabase-client.js"></script>
   <script src="password-toggle.js"></script>
-  <script>
-    const workerLoginNavToggle = document.querySelector("[data-nav-toggle]");
-    const workerLoginNav = document.querySelector("[data-nav]");
-    workerLoginNavToggle?.addEventListener("click", () => {
-      const isOpen = workerLoginNavToggle.getAttribute("aria-expanded") === "true";
-      workerLoginNavToggle.setAttribute("aria-expanded", String(!isOpen));
-      workerLoginNav?.classList.toggle("is-open", !isOpen);
-    });
-  </script>
   <script defer src="/_vercel/insights/script.js"></script>
   <script defer src="/_vercel/speed-insights/script.js"></script>
 </body>

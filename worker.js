@@ -72,7 +72,7 @@ workerSignoutBtn?.addEventListener('click', () => {
   sessionStorage.removeItem('shiftfuel_worker_token');
   sessionStorage.removeItem('shiftfuel_worker_expires');
   sessionStorage.removeItem('shiftfuel_worker_must_change_pw');
-  window.location.href = 'worker-login.html';
+  window.location.href = '/worker/login';
 });
 
 // ── Live presence heartbeat ──────────────────────────────────────────────────
@@ -121,6 +121,23 @@ workerBreakToggle?.addEventListener('click', () => {
   workerPresenceStatus = workerPresenceStatus === 'on_break' ? 'online' : 'on_break';
   renderPresenceControls();
   sendWorkerHeartbeat();
+});
+
+// Enable push notifications for this worker (new jobs, customer cancellations).
+const workerEnableAlertsBtn = document.querySelector('#worker-enable-alerts');
+workerEnableAlertsBtn?.addEventListener('click', async () => {
+  if (!window.ShiftFuelPush) return;
+  const original = workerEnableAlertsBtn.textContent;
+  workerEnableAlertsBtn.disabled = true;
+  workerEnableAlertsBtn.textContent = 'Enabling…';
+  const result = await window.ShiftFuelPush.enablePush({ type: 'worker', workerToken: SESSION_WORKER_TOKEN });
+  if (result.ok) {
+    workerEnableAlertsBtn.textContent = 'Alerts on ✓';
+  } else {
+    alert(window.ShiftFuelPush.friendlyReason(result.reason));
+    workerEnableAlertsBtn.disabled = false;
+    workerEnableAlertsBtn.textContent = original;
+  }
 });
 
 document.querySelector('#worker-progress-job-label')?.addEventListener('click', async () => {
@@ -795,14 +812,14 @@ async function ensureWorkerProfile() {
   if (storedEmployeeId) {
     let { data: stored, error: storedError } = await workerDb
       .from('employees_public')
-      .select('id,employee_code,full_name,phone,photo_url,original_photo_url,cropped_photo_url,photo_zoom,photo_position_x,photo_position_y,home_location,started_at')
+      .select('id,employee_code,full_name,phone,photo_url,original_photo_url,cropped_photo_url,photo_zoom,photo_position_x,photo_position_y,home_location,started_at,active')
       .eq('id', storedEmployeeId)
       .limit(1);
 
     if (storedError) {
       const fallback = await workerDb
         .from('employees_public')
-        .select('id,employee_code,full_name,phone,photo_url,original_photo_url,cropped_photo_url,home_location,started_at')
+        .select('id,employee_code,full_name,phone,photo_url,original_photo_url,cropped_photo_url,home_location,started_at,active')
         .eq('id', storedEmployeeId)
         .limit(1);
 
@@ -824,14 +841,14 @@ async function ensureWorkerProfile() {
 
   let { data, error } = await workerDb
     .from('employees_public')
-    .select('id,employee_code,full_name,phone,photo_url,original_photo_url,cropped_photo_url,photo_zoom,photo_position_x,photo_position_y,home_location,started_at')
+    .select('id,employee_code,full_name,phone,photo_url,original_photo_url,cropped_photo_url,photo_zoom,photo_position_x,photo_position_y,home_location,started_at,active')
     .eq('full_name', SESSION_WORKER_NAME)
     .limit(1);
 
   if (error) {
     const fallback = await workerDb
       .from('employees_public')
-      .select('id,employee_code,full_name,phone,photo_url,original_photo_url,cropped_photo_url,home_location,started_at')
+      .select('id,employee_code,full_name,phone,photo_url,original_photo_url,cropped_photo_url,home_location,started_at,active')
       .eq('full_name', SESSION_WORKER_NAME)
       .limit(1);
 
@@ -1368,57 +1385,143 @@ function workerJobNextActionLabel(request, mode) {
   return 'Continue';
 }
 
-function renderWorkerJobRow(request, mode) {
-  const isExpanded = expandedWorkerJobId === request.id;
-  const vehicle = [request.vehicle_year, request.vehicle_make, request.vehicle_model].filter(Boolean).join(' ');
-  const rows = [`
-    <tr class="queue-row${isExpanded ? ' is-expanded' : ''}" data-request-id="${escapeHtml(request.id)}">
-      <td data-label="Time">${escapeHtml(formatWorkerJobTime(request))}</td>
-      <td data-label="Customer">
-        <div class="queue-customer-cell">
-          <span class="queue-avatar">${escapeHtml(workerQueueInitials(request.customer_name))}</span>
-          <div>
-            <strong>${escapeHtml(request.customer_name || 'Customer')}</strong>
-            <span class="field-help">${escapeHtml(vehicle)}</span>
-          </div>
-        </div>
-      </td>
-      <td data-label="Service">${escapeHtml(request.service_label || request.service_type || '')}</td>
-      <td data-label="Status"><span class="status-pill">${escapeHtml(workerStatusLabels[request.status] || request.status || '')}</span></td>
-      <td data-label="Action">
-        <div class="queue-next-action-cell">
-          <button class="button secondary worker-row-toggle" data-id="${escapeHtml(request.id)}" type="button">${workerJobNextActionLabel(request, mode)}</button>
-          <button class="queue-row-kebab worker-row-toggle" data-id="${escapeHtml(request.id)}" type="button" aria-label="More">&#8942;</button>
-        </div>
-      </td>
-    </tr>
-  `];
-  if (isExpanded) {
-    rows.push(`
-      <tr class="queue-row-detail">
-        <td colspan="5">${renderWorkerJobCard(request, mode)}</td>
-      </tr>
-    `);
-  }
-  return rows.join('');
+// Maps an internal status to a coloured status-badge modifier class so the
+// pill colour matches the workflow phase (open / in progress / complete / etc).
+function workerStatusBadgeClass(status) {
+  if (status === 'complete' || status === 'keys_returned' || status === 'canceled_return_completed') return 'status-pill-complete';
+  if (['cancelled_pending_key_return', 'customer_canceled', 'canceled', 'cancelled', 'denied', 'unable_to_complete', 'auto_reversed', 'closed_no_charge'].includes(status)) return 'status-pill-cancelled';
+  if (['payment_issue', 'authorization_too_low', 'pending_customer_payment'].includes(status)) return 'status-pill-payment';
+  if (['pending', 'request_received'].includes(status)) return 'status-pill-open';
+  return 'status-pill-progress';
 }
 
-function renderWorkerJobTable(requests, mode) {
+function workerStatusBadge(request) {
+  return `<span class="status-pill ${workerStatusBadgeClass(request.status)}">${escapeHtml(workerStatusLabels[request.status] || request.status || '')}</span>`;
+}
+
+function workerVehicleSummary(request) {
+  const base = [request.vehicle_year, request.vehicle_make, request.vehicle_model].filter(Boolean).join(' ');
+  return request.vehicle_color ? `${base} · ${request.vehicle_color}` : base;
+}
+
+function workerReturnByLabel(request) {
+  const time = String(request.desired_return_time || '').slice(0, 5);
+  if (!time) return '';
+  const [h, m] = time.split(':').map(Number);
+  if (Number.isNaN(h)) return '';
+  const period = h >= 12 ? 'PM' : 'AM';
+  const hour12 = ((h + 11) % 12) + 1;
+  return `Return by ${hour12}:${String(m || 0).padStart(2, '0')} ${period}`;
+}
+
+// Available request card (spec: cards, not a table). Shows service, vehicle,
+// location, return time, estimated fee, status badge, and a single Accept button.
+function renderWorkerAvailableCard(request) {
+  const fees = feeSummary(request);
+  const estPayout = fees.fuel + fees.wash + fees.inspection;
+  const returnBy = workerReturnByLabel(request);
   return `
-    <table class="admin-requests-table">
-      <thead>
-        <tr>
-          <th>Time</th>
-          <th>Customer</th>
-          <th>Service Type</th>
-          <th>Current Status</th>
-          <th>Next Action</th>
-        </tr>
-      </thead>
-      <tbody>
-        ${requests.map((request) => renderWorkerJobRow(request, mode)).join('')}
-      </tbody>
-    </table>
+    <article class="worker-card worker-available-card">
+      <div class="worker-card-top">
+        <span class="worker-open-flag"><span class="worker-open-badge-dot"></span>Open</span>
+        ${workerStatusBadge(request)}
+      </div>
+      <h4 class="worker-card-service">${escapeHtml(request.service_label || request.service_type || 'Service')}</h4>
+      <p class="worker-card-vehicle">${escapeHtml(workerVehicleSummary(request) || 'Vehicle on file')}</p>
+      <dl class="worker-card-facts">
+        ${returnBy ? `<div><dt>When</dt><dd>${escapeHtml(returnBy)}</dd></div>` : ''}
+        <div><dt>Service address</dt><dd>${escapeHtml(workerFormatAddress(request))}</dd></div>
+        ${estPayout > 0 ? `<div><dt>Est. fee</dt><dd>${money(estPayout)}</dd></div>` : ''}
+      </dl>
+      <button class="button primary worker-card-action claim-worker-job" data-id="${escapeHtml(request.id)}" type="button">Accept Request</button>
+    </article>
+  `;
+}
+
+// Compact card for an assigned (non-current) job in Today's Schedule. Tapping
+// the card expands the full job card with its workflow actions.
+function renderWorkerCompactJobCard(request, mode) {
+  const isExpanded = expandedWorkerJobId === request.id;
+  return `
+    <article class="worker-card worker-schedule-card${isExpanded ? ' is-expanded' : ''}">
+      <button class="worker-card-summary worker-row-toggle" data-id="${escapeHtml(request.id)}" type="button" aria-expanded="${isExpanded}">
+        <span class="worker-card-summary-main">
+          <span class="worker-card-time">${escapeHtml(formatWorkerJobTime(request) || 'Today')}</span>
+          <strong>${escapeHtml(request.customer_name || 'Customer')}</strong>
+          <span class="worker-card-sub">${escapeHtml(workerVehicleSummary(request))}</span>
+          <span class="worker-card-sub">${escapeHtml(request.service_label || request.service_type || '')}</span>
+        </span>
+        <span class="worker-card-summary-side">
+          ${workerStatusBadge(request)}
+          <span class="worker-card-chevron" aria-hidden="true">${isExpanded ? '&#9650;' : '&#9660;'}</span>
+        </span>
+      </button>
+      ${isExpanded ? `<div class="worker-card-expanded">${renderWorkerJobCard(request, mode)}</div>` : ''}
+    </article>
+  `;
+}
+
+// Card-list dispatcher. Keeps the original name so every caller keeps working,
+// but renders stacked cards instead of a table (spec: no tables anywhere).
+function renderWorkerJobTable(requests, mode) {
+  if (mode === 'available') {
+    return `<div class="worker-card-list">${requests.map((request) => renderWorkerAvailableCard(request)).join('')}</div>`;
+  }
+  return `<div class="worker-card-list">${requests.map((request) => renderWorkerCompactJobCard(request, mode)).join('')}</div>`;
+}
+
+// Large "Current Job" card — always expanded, leads the dashboard. Surfaces the
+// key facts up top, then the workflow's single next-action button, then a small
+// secondary row (call customer / view full details).
+function renderWorkerCurrentJobCard(request) {
+  const keyHandoff = request.key_handoff_details ? escapeHtml(request.key_handoff_details) : 'Not provided';
+  const parking = [request.parking_location, request.parking_spot ? `spot ${request.parking_spot}` : ''].filter(Boolean).map(escapeHtml).join(', ') || 'Not provided';
+  const returnBy = workerReturnByLabel(request);
+  const phone = request.customer_phone ? normalizePhone(request.customer_phone) : '';
+  return `
+    <article class="worker-card worker-current-job-card" data-current-job-id="${escapeHtml(request.id)}">
+      <div class="worker-card-top">
+        <h3 class="worker-current-job-name">${escapeHtml(request.customer_name || 'Customer')}</h3>
+        ${workerStatusBadge(request)}
+      </div>
+      <p class="worker-card-vehicle">${escapeHtml(workerVehicleSummary(request) || 'Vehicle on file')}</p>
+      <p class="worker-card-service">${escapeHtml(request.service_label || request.service_type || '')}</p>
+      <dl class="worker-card-facts worker-current-job-facts">
+        <div><dt>Service address</dt><dd class="worker-job-address-value">${escapeHtml(workerFormatAddress(request))}</dd></div>
+        <div><dt>Parking</dt><dd>${parking}</dd></div>
+        <div><dt>Key handoff</dt><dd>${keyHandoff}</dd></div>
+        ${returnBy ? `<div><dt>Desired return</dt><dd>${escapeHtml(returnBy)}</dd></div>` : ''}
+      </dl>
+      ${renderWorkerJobActions(request)}
+      <div class="worker-secondary-actions">
+        ${phone ? `<a class="button secondary worker-secondary-btn" href="tel:${escapeHtml(phone)}">Call customer</a>` : ''}
+        <button class="button secondary worker-secondary-btn worker-row-toggle" data-id="${escapeHtml(request.id)}" type="button">${expandedWorkerJobId === request.id ? 'Hide full details' : 'View full details'}</button>
+      </div>
+      ${expandedWorkerJobId === request.id ? `
+        <div class="worker-card-expanded">
+          ${renderWorkerVerticalStepper(request)}
+          ${renderWorkerJobInfoBlock(request, 'mine')}
+        </div>
+      ` : ''}
+    </article>
+  `;
+}
+
+// Completed-today summary card: customer, service, completed time, amount charged.
+function renderWorkerCompletedCard(request) {
+  const when = workerFormatClockTime(request.completed_at || request.updated_at);
+  const amount = Number(request.final_total || 0);
+  return `
+    <article class="worker-card worker-completed-card">
+      <div class="worker-card-summary-main">
+        <strong>${escapeHtml(request.customer_name || 'Customer')}</strong>
+        <span class="worker-card-sub">${escapeHtml(request.service_label || request.service_type || '')}</span>
+      </div>
+      <div class="worker-completed-meta">
+        ${when ? `<span class="worker-card-time">${escapeHtml(when)}</span>` : ''}
+        ${amount > 0 ? `<span class="worker-completed-amount">${money(amount)}</span>` : ''}
+      </div>
+    </article>
   `;
 }
 
@@ -1527,9 +1630,47 @@ function updateWorkerOnTimeRate(myJobs) {
   targets.forEach((el) => { el.textContent = `${rate}%`; });
 }
 
-function renderWorkerJobCard(request, mode) {
+// Vertical status tracker for the job-details card. The active step is the phase
+// the worker is in right now; earlier steps are marked done.
+function renderWorkerVerticalStepper(request) {
+  const steps = ['Request accepted', 'Key received', 'Vehicle picked up', 'Service in progress', 'Vehicle returned', 'Complete'];
+  const current = workerProgressStepForStatus(request.status);
+  return `
+    <ol class="worker-vstepper">
+      ${steps.map((label, index) => {
+        const stepNumber = index + 1;
+        const state = stepNumber < current ? 'done' : stepNumber === current ? 'active' : 'upcoming';
+        return `
+          <li class="worker-vstep is-${state}">
+            <span class="worker-vstep-dot">${state === 'done' ? '&#10003;' : stepNumber}</span>
+            <span class="worker-vstep-label">${label}</span>
+          </li>`;
+      }).join('')}
+    </ol>
+  `;
+}
+
+// The read-only reference block (customer / address / service / vehicle / etc.)
+// shared by the full job card and the current-job "View full details" panel.
+function renderWorkerJobInfoBlock(request, mode) {
   const receiptTotals = receiptTotalsFromNotes(request);
   const workerReceiptTotal = receiptTotals.fuel + receiptTotals.wash;
+  return `
+    <div class="request-details">
+      <p><strong>Customer:</strong> ${escapeHtml(request.customer_name || 'Customer')}</p>
+      <p><strong>Phone:</strong> ${request.customer_phone ? escapeHtml(formatPhone(request.customer_phone)) : 'Not provided'}</p>
+      <p class="worker-job-address-line"><strong>Service address:</strong> <span class="worker-job-address-value">${escapeHtml(workerFormatAddress(request))}</span></p>
+      <p><strong>Parking:</strong> ${[request.parking_location, request.parking_spot ? `spot ${request.parking_spot}` : ''].filter(Boolean).map(escapeHtml).join(', ') || 'Not provided'}</p>
+      ${(mode === 'mine' && request.key_handoff_details) ? `<p><strong>Key handoff:</strong> ${escapeHtml(request.key_handoff_details)}</p>` : ''}
+      <p><strong>Service:</strong> ${escapeHtml(workerFormatService(request))}</p>
+      <p><strong>Vehicle:</strong> ${escapeHtml([request.vehicle_year, request.vehicle_make, request.vehicle_model, request.vehicle_color].filter(Boolean).join(' '))}${request.license_plate ? ` | Plate: ${escapeHtml(request.license_plate)}` : ''}</p>
+      ${request.return_parking_location ? `<p><strong>Car location:</strong> ${escapeHtml(request.return_parking_location)}</p>` : ''}
+      ${(receiptTotals.fuel || receiptTotals.wash) ? `<p><strong>Receipts entered:</strong> Fuel ${money(receiptTotals.fuel)} | Car wash ${money(receiptTotals.wash)} | Total ${money(workerReceiptTotal)}</p>` : ''}
+    </div>
+  `;
+}
+
+function renderWorkerJobCard(request, mode) {
   const hasReturnRequest = hasCustomerReturnRequestAlert(request);
 
   return `
@@ -1556,19 +1697,10 @@ function renderWorkerJobCard(request, mode) {
           <p class="field-help">Return vehicle as soon as safely possible.</p>
         </div>
       ` : ''}
+      ${mode === 'mine' ? renderWorkerVerticalStepper(request) : ''}
       <details class="worker-job-details"${mode === 'available' ? ' open' : ''}>
         <summary>Job details</summary>
-        <div class="request-details">
-          <p><strong>Customer:</strong> ${escapeHtml(request.customer_name || 'Customer')}</p>
-          <p><strong>Phone:</strong> ${request.customer_phone ? escapeHtml(formatPhone(request.customer_phone)) : 'Not provided'}</p>
-          <p class="worker-job-address-line"><strong>Service address:</strong> <span class="worker-job-address-value">${escapeHtml(workerFormatAddress(request))}</span></p>
-          <p><strong>Parking:</strong> ${[request.parking_location, request.parking_spot ? `spot ${request.parking_spot}` : ''].filter(Boolean).map(escapeHtml).join(', ') || 'Not provided'}</p>
-          ${(mode === 'mine' && request.key_handoff_details) ? `<p><strong>Key handoff:</strong> ${escapeHtml(request.key_handoff_details)}</p>` : ''}
-          <p><strong>Service:</strong> ${escapeHtml(workerFormatService(request))}</p>
-          <p><strong>Vehicle:</strong> ${escapeHtml([request.vehicle_year, request.vehicle_make, request.vehicle_model, request.vehicle_color].filter(Boolean).join(' '))}${request.license_plate ? ` | Plate: ${escapeHtml(request.license_plate)}` : ''}</p>
-          ${request.return_parking_location ? `<p><strong>Car location:</strong> ${escapeHtml(request.return_parking_location)}</p>` : ''}
-          ${(receiptTotals.fuel || receiptTotals.wash) ? `<p><strong>Receipts entered:</strong> Fuel ${money(receiptTotals.fuel)} | Car wash ${money(receiptTotals.wash)} | Total ${money(workerReceiptTotal)}</p>` : ''}
-        </div>
+        ${renderWorkerJobInfoBlock(request, mode)}
       </details>
       ${mode === 'available' ? `
         <button class="button primary claim-worker-job" data-id="${escapeHtml(request.id)}" type="button">Claim job</button>
@@ -2099,16 +2231,36 @@ function hasUnsavedWorkerInput() {
   return false;
 }
 
+let lastWorkerCancelAlertIds = new Set();
+
 async function pollWorkerJobs() {
   if (!workerJobList || !currentEmployee) return;
-  if (isWorkerInteracting() || hasUnsavedWorkerInput()) return;
   try {
     const { data, error } = await workerDb
       .rpc('worker_list_open_requests', { p_token: SESSION_WORKER_TOKEN });
     if (error) return;
     const jobs = (data || []).filter((job) => isWorkerOpenStatus(job.status));
+
+    // A customer cancellation / return request on one of THIS worker's jobs must
+    // reach them right away — even mid-entry, since the job is being aborted so a
+    // half-filled field no longer matters. Track which of my jobs are in that
+    // state; a newly-cancelled one forces a refresh past the unsaved-input guard.
+    const myCancelAlertIds = new Set(
+      jobs
+        .filter((j) => normalizeId(j.assigned_employee_id) === normalizeId(currentEmployee.id))
+        .filter((j) => hasCustomerReturnRequestAlert(j) || j.status === 'cancelled_pending_key_return')
+        .map((j) => j.id)
+    );
+    const newlyCancelled = [...myCancelAlertIds].some((id) => !lastWorkerCancelAlertIds.has(id));
+    lastWorkerCancelAlertIds = myCancelAlertIds;
+
     if (workerJobsSignature(jobs) === lastWorkerJobsSignature) return; // nothing changed
-    await loadWorkerJobs(true); // silent re-render only when something actually changed
+
+    // Benign changes still defer while the worker is actively editing, so a silent
+    // re-render never wipes an in-progress entry. A cancellation overrides that.
+    if (!newlyCancelled && (isWorkerInteracting() || hasUnsavedWorkerInput())) return;
+
+    await loadWorkerJobs(true);
   } catch (_) {
     // Transient network error — try again on the next tick.
   }
@@ -2184,40 +2336,61 @@ async function loadWorkerJobs(silent = false) {
       return aKey.localeCompare(bKey);
     });
 
-  if (!myJobs.length && !availableJobs.length) {
-    workerJobList.innerHTML = '<div class="empty-state"><p>No jobs available right now.</p></div>';
+  // Account inactive — admin must reactivate. Hide all available work (spec).
+  if (currentEmployee.active === false) {
+    workerJobList.innerHTML = `
+      <div class="worker-state-card worker-state-inactive">
+        <h3>Account inactive</h3>
+        <p>Your worker account is inactive. Please contact admin to be reactivated.</p>
+      </div>`;
     updateWorkerProgressTimeline([]);
     return;
   }
 
+  // Completed today comes from a separate source — the open-requests RPC excludes
+  // completed jobs, so this card would otherwise always be empty.
+  const completedToday = await loadWorkerCompletedToday();
+
+  const profileIncomplete = !currentEmployee.phone || !currentEmployee.home_location;
+
   // "Current Job" = the claimed job actually underway (key received or beyond).
-  // Everything else claimed is the day's schedule. This mirrors the app design:
-  // lead with the one job the worker is acting on, then upcoming, then new work.
+  // Everything else claimed is the day's schedule. Lead with the one job the
+  // worker is acting on, then upcoming, then new work, then completed.
   const currentJob = claimedJobs.find((job) => workerProgressStepForStatus(job.status) >= 2) || null;
   const scheduleJobs = currentJob ? claimedJobs.filter((job) => job.id !== currentJob.id) : claimedJobs;
 
-  // Open the current job's full card by default — once — so its details and next
-  // action are visible without a tap. Never during a silent poll, and never again
-  // after the first time, so it can't reopen on a worker who has collapsed it.
-  if (!silent && currentJob && !hasAutoExpandedCurrentJob && expandedWorkerJobId === null) {
-    expandedWorkerJobId = currentJob.id;
-    hasAutoExpandedCurrentJob = true;
-  }
-
   workerJobList.innerHTML = `
-    ${currentJob ? `
-      <section class="worker-jobs-section worker-jobs-current">
-        <h3>Current Job</h3>
-        ${renderWorkerJobTable([currentJob], 'mine')}
-      </section>
+    ${profileIncomplete ? `
+      <div class="worker-state-card worker-state-warning">
+        <h3>Complete your worker profile</h3>
+        <p>Complete your worker profile before accepting jobs.</p>
+        <button class="button primary worker-complete-profile-btn" type="button">Complete Profile</button>
+      </div>
     ` : ''}
+    <section class="worker-jobs-section worker-jobs-current">
+      <h3>Current Job</h3>
+      ${currentJob
+        ? renderWorkerCurrentJobCard(currentJob)
+        : '<div class="worker-state-card worker-state-empty"><p>You do not have an active job right now.</p></div>'}
+    </section>
     <section class="worker-jobs-section">
       <h3>Today's Schedule${scheduleJobs.length ? ` (${scheduleJobs.length})` : ''}</h3>
       ${scheduleJobs.length ? renderWorkerJobTable(scheduleJobs, 'mine') : '<p class="field-help">No more jobs scheduled today.</p>'}
     </section>
     <section class="worker-jobs-section">
       <h3>Available Requests${availableJobs.length ? ` (${availableJobs.length})` : ''}</h3>
-      ${availableJobs.length ? renderWorkerJobTable(availableJobs, 'available') : '<p class="field-help">No new available requests right now.</p>'}
+      ${availableJobs.length
+        ? renderWorkerJobTable(availableJobs, 'available')
+        : `<div class="worker-state-card worker-state-empty">
+            <p>No available requests right now.</p>
+            <button class="button secondary worker-refresh-inline" type="button" aria-label="Refresh worker dashboard">Refresh</button>
+          </div>`}
+    </section>
+    <section class="worker-jobs-section worker-jobs-completed">
+      <h3>Completed Today${completedToday.length ? ` (${completedToday.length})` : ''}</h3>
+      ${completedToday.length
+        ? `<div class="worker-card-list">${completedToday.map(renderWorkerCompletedCard).join('')}</div>`
+        : '<p class="field-help">No jobs completed yet today.</p>'}
     </section>
     ${cancelledReturnJobs.length ? `
       <section class="worker-jobs-section worker-jobs-cancelled">
@@ -2228,6 +2401,23 @@ async function loadWorkerJobs(silent = false) {
   `;
 
   updateWorkerProgressTimeline(myJobs);
+}
+
+// Completed-today jobs for this worker. Uses worker_list_my_requests (which
+// includes completed jobs) and keeps only those completed today.
+async function loadWorkerCompletedToday() {
+  if (!currentEmployee) return [];
+  const today = new Date().toISOString().slice(0, 10);
+  const { data, error } = await workerDb
+    .rpc('worker_list_my_requests', { p_token: SESSION_WORKER_TOKEN })
+    .select('id,customer_name,service_type,status,final_total,updated_at,service_date');
+  if (error) {
+    console.warn('Could not load completed-today jobs:', error);
+    return [];
+  }
+  return (data || [])
+    .filter((r) => r.status === 'complete' && (String(r.updated_at || '').slice(0, 10) === today || r.service_date === today))
+    .sort((a, b) => new Date(b.updated_at || 0) - new Date(a.updated_at || 0));
 }
 
 async function claimWorkerJob(requestId) {
@@ -2800,6 +2990,18 @@ workerJobList?.addEventListener('click', async (event) => {
   if (!button) return;
 
   try {
+    if (button.classList.contains('worker-refresh-inline')) {
+      button.disabled = true;
+      button.textContent = 'Refreshing...';
+      await loadWorkerProfile();
+      return;
+    }
+
+    if (button.classList.contains('worker-complete-profile-btn')) {
+      document.querySelector('#open-edit-profile-btn')?.click();
+      return;
+    }
+
     if (button.classList.contains('worker-row-toggle')) {
       const id = button.dataset.id;
       expandedWorkerJobId = expandedWorkerJobId === id ? null : id;

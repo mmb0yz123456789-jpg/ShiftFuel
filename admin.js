@@ -121,11 +121,13 @@ function adminToken() {
   return sessionStorage.getItem('shiftfuel_admin_token');
 }
 
-document.querySelector('#admin-signout-btn')?.addEventListener('click', () => {
+function adminSignOut() {
   sessionStorage.removeItem('shiftfuel_admin_token');
   sessionStorage.removeItem('shiftfuel_admin_name');
-  window.location.href = 'admin-login.html';
-});
+  window.location.href = '/admin/login';
+}
+document.querySelector('#admin-signout-btn')?.addEventListener('click', adminSignOut);
+document.querySelector('#admin-settings-logout-btn')?.addEventListener('click', adminSignOut);
 
 (function initAdminIdentity() {
   const raw = sessionStorage.getItem('shiftfuel_admin_name') || '';
@@ -148,7 +150,9 @@ document.querySelector('#admin-signout-btn')?.addEventListener('click', () => {
   const headerNameEl = document.querySelector('#admin-header-name');
 
   if (greetingEl) greetingEl.textContent = greeting;
-  if (nameEl) nameEl.textContent = displayName;
+  // The hero title stays "Admin Dashboard" (set in HTML); the admin's own name
+  // lives in the top-bar (#admin-header-name) + avatar, not the page title.
+  if (nameEl && !nameEl.dataset.staticTitle) { /* intentionally left as the static title */ }
   if (avatarEl) avatarEl.textContent = initials;
   if (headerNameEl) headerNameEl.textContent = displayName;
 })();
@@ -2208,6 +2212,7 @@ function normalizeEmployee(employee) {
     active: employee.active !== false,
     last_seen_at: employee.last_seen_at || null,
     presence_status: employee.presence_status || 'offline',
+    background_verified: employee.background_verified === true,
   };
 }
 
@@ -2217,7 +2222,7 @@ async function loadEmployees() {
 
     let { data, error } = await db
       .from('employees_public')
-      .select('id,employee_code,full_name,phone,email,photo_url,original_photo_url,cropped_photo_url,photo_zoom,photo_position_x,photo_position_y,home_location,started_at,active,last_seen_at,presence_status')
+      .select('id,employee_code,full_name,phone,email,photo_url,original_photo_url,cropped_photo_url,photo_zoom,photo_position_x,photo_position_y,home_location,started_at,active,last_seen_at,presence_status,background_verified')
       .order('full_name', { ascending: true });
 
     if (error) {
@@ -2256,6 +2261,31 @@ async function loadEmployees() {
   }
 }
 
+// Live presence for a worker, using the SAME rules as the Worker Snapshot
+// counts: fresh heartbeat → on_break / busy (has an open assigned job) / online;
+// stale or no heartbeat → offline. Only meaningful for active workers.
+const WORKER_PRESENCE_FRESH_MS = 2 * 60 * 1000;
+const WORKER_PRESENCE_LABELS = { online: 'Online', on_break: 'On Break', busy: 'Busy', offline: 'Offline' };
+let workerPresenceFilter = null; // null = show all
+
+function workerBusyKeys() {
+  return new Set(
+    allRequests
+      .filter((r) => isOpen(r) && (r.assigned_employee_id || r.assigned_worker_name))
+      .flatMap((r) => [r.assigned_employee_id, r.assigned_worker_name].filter(Boolean))
+  );
+}
+
+function workerPresenceCategory(employee, busyKeys) {
+  const keys = busyKeys || workerBusyKeys();
+  const live = employee.last_seen_at
+    && (Date.now() - new Date(employee.last_seen_at).getTime()) < WORKER_PRESENCE_FRESH_MS;
+  if (!live) return 'offline';
+  if (employee.presence_status === 'on_break') return 'on_break';
+  if (keys.has(employee.id) || keys.has(employee.full_name)) return 'busy';
+  return 'online';
+}
+
 function renderWorkerProfiles() {
   if (!workerProfileList) return;
 
@@ -2264,13 +2294,31 @@ function renderWorkerProfiles() {
     return;
   }
 
+  let employees = allEmployees;
+  let banner = '';
+  if (workerPresenceFilter) {
+    const busyKeys = workerBusyKeys();
+    employees = allEmployees.filter((e) => e.active && workerPresenceCategory(e, busyKeys) === workerPresenceFilter);
+    banner = `
+      <div class="worker-filter-banner">
+        <span>Showing <strong>${WORKER_PRESENCE_LABELS[workerPresenceFilter]}</strong> workers (${employees.length})</span>
+        <button class="button secondary worker-filter-clear" type="button">Show all</button>
+      </div>`;
+  }
+
+  if (!employees.length) {
+    workerProfileList.innerHTML = `${banner}<div class="empty-state"><p>No ${WORKER_PRESENCE_LABELS[workerPresenceFilter] || ''} workers right now.</p></div>`;
+    return;
+  }
+
   workerProfileList.innerHTML = `
+    ${banner}
     <table class="admin-requests-table">
       <thead>
         <tr><th>Name</th><th>Employee ID</th><th>Phone</th><th>Status</th><th></th></tr>
       </thead>
       <tbody>
-        ${allEmployees.map((employee) => renderWorkerProfileRow(employee)).join('')}
+        ${employees.map((employee) => renderWorkerProfileRow(employee)).join('')}
       </tbody>
     </table>
   `;
@@ -2388,6 +2436,7 @@ function renderWorkerProfileCard(employee) {
       <div class="admin-button-row">
         <button class="button primary save-worker-profile" data-id="${escapeHtml(employee.id)}" type="button" ${isLocal ? 'disabled' : ''}>Save worker profile</button>
         <button class="button secondary reset-worker-password" data-id="${escapeHtml(employee.id)}" type="button" ${isLocal ? 'disabled' : ''}>Create new portal password</button>
+        <button class="button secondary toggle-worker-verified" data-id="${escapeHtml(employee.id)}" data-verified="${employee.background_verified ? '1' : '0'}" type="button" ${isLocal ? 'disabled' : ''}>${employee.background_verified ? 'Remove verification' : 'Mark background-verified (override)'}</button>
         ${employee.active
           ? `<button class="button danger deactivate-worker-profile" data-id="${escapeHtml(employee.id)}" type="button" ${isLocal ? 'disabled' : ''}>Deactivate worker</button>`
           : `<button class="button primary reactivate-worker-profile" data-id="${escapeHtml(employee.id)}" type="button" ${isLocal ? 'disabled' : ''}>Reactivate worker</button>
@@ -2922,6 +2971,7 @@ async function loadRequests() {
   if (activeStatCard === 'workers') openWorkersPanel();
   else if (activeStatCard === 'revenue') openRevenueBreakdown();
   else renderRequests();
+  renderActionNeeded();
 }
 
 // ── Customer-cancellation alert: badge + 20s polling ───────────────────────
@@ -3157,12 +3207,12 @@ function renderApplicants(applicants) {
       <div class="request-card-header">
         <div>
           <p class="eyebrow">${escapeHtml(formatDateTime(applicant.created_at))}</p>
-          <h3>${escapeHtml(applicant.name || 'Applicant')}</h3>
+          <h3>${escapeHtml(applicant.name || 'Applicant')} ${checkrBadge(applicant)}</h3>
         </div>
         <label class="applicant-status-control">
           Status
           <select class="applicant-status-select" data-id="${escapeHtml(applicant.id)}">
-            ${['new', 'contacted', 'interviewing', 'hired', 'declined'].map((status) => `
+            ${['new', 'interviewing', 'hired', 'declined'].map((status) => `
               <option value="${status}" ${applicant.status === status ? 'selected' : ''}>${applicantStatusLabels[status] || status}</option>
             `).join('')}
           </select>
@@ -3174,9 +3224,34 @@ function renderApplicants(applicants) {
         <p><strong>Availability:</strong> ${escapeHtml(applicant.availability || 'Not provided')}</p>
         <p><strong>Notes:</strong> ${escapeHtml(applicant.notes || 'No notes provided.')}</p>
         <p><strong>Resume:</strong> ${applicant.resume_url ? `<a href="${escapeHtml(applicant.resume_url)}" target="_blank" rel="noopener">Open resume</a>` : 'Not uploaded'}</p>
+        ${checkrAction(applicant)}
       </div>
     </article>
   `).join('');
+}
+
+// Background-check status badge shown next to the applicant name.
+function checkrBadge(applicant) {
+  switch (applicant.checkr_status) {
+    case 'clear':    return '<span class="checkr-badge checkr-clear">&#10003; Background clear</span>';
+    case 'consider': return '<span class="checkr-badge checkr-consider">&#10007; Needs review</span>';
+    case 'pending':  return '<span class="checkr-badge checkr-pending">&#9203; Check in progress</span>';
+    case 'suspended':
+    case 'dispute':
+    case 'canceled': return `<span class="checkr-badge checkr-consider">Check ${escapeHtml(applicant.checkr_status)}</span>`;
+    default:         return '';
+  }
+}
+
+// "Send background check" appears once the applicant reaches Interviewing and no
+// check has been started yet. It's an explicit click (not auto-fired on the
+// status change) so a Checkr report — which costs money — is never sent by accident.
+function checkrAction(applicant) {
+  const started = applicant.checkr_status && applicant.checkr_status !== 'none';
+  if (applicant.status === 'interviewing' && !started) {
+    return `<p><button class="button secondary checkr-start-btn" type="button" data-id="${escapeHtml(applicant.id)}">Send background check</button></p>`;
+  }
+  return '';
 }
 
 async function loadApplicants() {
@@ -3188,7 +3263,7 @@ async function loadApplicants() {
 
   let { data, error } = await db
     .rpc('admin_list_applicants', { p_token: adminToken() })
-    .select('id,name,email,phone,availability,notes,resume_url,resume_storage_path,status,created_at')
+    .select('id,name,email,phone,availability,notes,resume_url,resume_storage_path,status,created_at,checkr_status,checkr_completed_at')
     .neq('status', 'hired');
 
   if (error?.code === 'PGRST204') {
@@ -3207,6 +3282,7 @@ async function loadApplicants() {
   allApplicantsList = data || [];
   if (totalApplicantsEl) totalApplicantsEl.textContent = allApplicantsList.length;
   renderApplicants(allApplicantsList);
+  renderActionNeeded();
 }
 
 async function hireApplicant(applicantId) {
@@ -3311,6 +3387,37 @@ applicantList?.addEventListener('change', async (event) => {
   if (error) {
     console.error('Applicant status update failed:', error);
     alert('Could not update applicant status. Check the console.');
+    return;
+  }
+
+  // Re-render so the "Send background check" button appears/disappears with the
+  // new stage (e.g. it shows once the applicant reaches Interviewing).
+  loadApplicants();
+});
+
+// Send a Checkr background-check invitation for an applicant at the Interviewing
+// stage. Checkr emails the candidate; the result returns via /api/checkr-webhook.
+applicantList?.addEventListener('click', async (event) => {
+  const btn = event.target.closest('.checkr-start-btn');
+  if (!btn) return;
+
+  btn.disabled = true;
+  const originalText = btn.textContent;
+  btn.textContent = 'Sending…';
+
+  try {
+    const response = await fetch('/api/checkr', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'invite', admin_token: adminToken(), applicant_id: btn.dataset.id }),
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.error || 'Request failed');
+    await loadApplicants();
+  } catch (err) {
+    alert(`Could not start the background check: ${err.message}`);
+    btn.disabled = false;
+    btn.textContent = originalText;
   }
 });
 
@@ -3319,6 +3426,26 @@ workerProfileList?.addEventListener('click', async (event) => {
   if (toggleButton) {
     const id = toggleButton.dataset.id;
     selectedScheduleEmployeeId = selectedScheduleEmployeeId === id ? '' : id;
+    renderWorkerProfiles();
+    return;
+  }
+
+  const verifyButton = event.target.closest('.toggle-worker-verified');
+  if (verifyButton) {
+    const next = verifyButton.dataset.verified !== '1';
+    verifyButton.disabled = true;
+    const { error } = await db.rpc('admin_set_worker_verified', {
+      p_token: adminToken(),
+      p_employee_id: verifyButton.dataset.id,
+      p_verified: next,
+    });
+    if (error) {
+      console.error('Worker verification update failed:', error);
+      alert('Could not update verification. Make sure the worker-verification migration has run in Supabase.');
+      verifyButton.disabled = false;
+      return;
+    }
+    allEmployees = allEmployees.map((e) => e.id === verifyButton.dataset.id ? { ...e, background_verified: next } : e);
     renderWorkerProfiles();
     return;
   }
@@ -3472,6 +3599,15 @@ async function updateWorkerAssignment(requestId, employeeId) {
   });
 
   if (error) throw error;
+
+  // Push the newly-assigned worker (fire-and-forget; server verifies + guards).
+  if (employee) {
+    fetch('/api/push', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'notify', event: 'assigned', request_id: requestId, admin_token: adminToken() }),
+    }).catch(() => {});
+  }
 
   await loadRequests();
 }
@@ -3679,7 +3815,7 @@ async function retryReleaseHold(button) {
       await loadRequests();
     } else if (res.status === 401 || res.status === 403) {
       showInlineError('Session expired. Redirecting to login…');
-      setTimeout(() => { window.location.href = 'admin-login.html'; }, 1500);
+      setTimeout(() => { window.location.href = '/admin/login'; }, 1500);
     } else {
       showInlineError(`Could not release hold: ${data.error || 'Unknown error. Check Stripe dashboard directly.'}`);
     }
@@ -3687,6 +3823,156 @@ async function retryReleaseHold(button) {
     showInlineError('Network error. Please try again or release the hold manually in Stripe.');
   }
 }
+
+// ── Action Needed (dashboard "what needs attention now") ──────────────────────
+// Scans the loaded requests + applicants for workflow/payment issues and renders
+// a card per issue. The whole section hides when nothing needs attention.
+const ACTION_PAYMENT_ISSUE_STATUSES = ['payment_issue', 'authorization_too_low', 'pending_customer_payment'];
+const ACTION_PAYMENT_ISSUE_PAYMENT_STATUSES = ['payment_release_failed', 'payment_issue', 'authorization_too_low', 'declined', 'failed'];
+const ACTION_RESOLVED_APPLICANT = new Set(['approved', 'hired', 'rejected', 'denied', 'declined', 'archived', 'closed']);
+
+function actionTodayStr() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function buildActionNeededItems() {
+  const items = [];
+  const today = actionTodayStr();
+
+  for (const r of allRequests || []) {
+    const who = `${r.customer_name || 'Customer'} · ${queueServiceLabel(r)}`;
+
+    if (ACTION_PAYMENT_ISSUE_STATUSES.includes(r.status)
+        || ACTION_PAYMENT_ISSUE_PAYMENT_STATUSES.includes(r.payment_status)) {
+      items.push({ kind: 'payment', title: 'Payment issue', who, requestId: r.id,
+        detail: 'A payment or authorization on this request needs attention.' });
+      continue;
+    }
+    if (r.status === 'cancelled_pending_key_return') {
+      items.push({ kind: 'cancel', title: 'Cancellation — Keys Not Returned', who, requestId: r.id,
+        detail: 'Customer canceled. Confirm the key or vehicle was returned before closing.' });
+      continue;
+    }
+    if (r.status === 'vehicle_picked_up' && r.service_date && r.service_date < today) {
+      items.push({ kind: 'stuck', title: 'Vehicle picked up, not returned', who, requestId: r.id,
+        detail: `Marked picked up on ${r.service_date} but never returned.` });
+      continue;
+    }
+    if (r.assigned_employee_id && UNASSIGNED_STATUSES.includes(r.status)) {
+      items.push({ kind: 'unaccepted', title: 'Worker has not accepted', who, requestId: r.id,
+        detail: 'A worker is assigned but has not accepted this request yet.' });
+      continue;
+    }
+    if (!r.assigned_employee_id && UNASSIGNED_STATUSES.includes(r.status) && r.service_date && r.service_date <= today) {
+      items.push({ kind: 'needs-worker', title: 'Request needs a worker', who, requestId: r.id,
+        detail: r.service_date < today ? `Unassigned since ${r.service_date}.` : 'Scheduled for today and still unassigned.' });
+      continue;
+    }
+  }
+
+  const pendingApplicants = (allApplicantsList || []).filter((a) => !ACTION_RESOLVED_APPLICANT.has(String(a.status || '').toLowerCase()));
+  if (pendingApplicants.length) {
+    items.push({ kind: 'applicant', action: 'applicants',
+      title: 'Applicant waiting for review',
+      who: pendingApplicants.length === 1 ? (pendingApplicants[0].full_name || 'New applicant') : `${pendingApplicants.length} applicants`,
+      detail: 'A worker application is waiting for your review.' });
+  }
+
+  return items;
+}
+
+function renderActionNeeded() {
+  const section = document.querySelector('#action-needed-section');
+  const list = document.querySelector('#action-needed-list');
+  const count = document.querySelector('#action-needed-count');
+  if (!section || !list) return;
+
+  const items = buildActionNeededItems();
+  if (!items.length) {
+    section.hidden = true;
+    list.innerHTML = '';
+    if (count) count.textContent = '';
+    return;
+  }
+
+  section.hidden = false;
+  if (count) count.textContent = String(items.length);
+  list.innerHTML = items.map((it) => {
+    const btn = it.action === 'applicants'
+      ? '<button class="button secondary action-needed-btn" data-action-applicants="1" type="button">Review applicants</button>'
+      : `<button class="button secondary action-needed-btn" data-action-request="${escapeHtml(it.requestId)}" type="button">View request</button>`;
+    return `
+      <div class="action-needed-card action-needed-${it.kind}">
+        <div class="action-needed-info">
+          <strong class="action-needed-title">${escapeHtml(it.title)}</strong>
+          <span class="action-needed-who">${escapeHtml(it.who)}</span>
+          <span class="action-needed-detail">${escapeHtml(it.detail)}</span>
+        </div>
+        ${btn}
+      </div>`;
+  }).join('');
+}
+
+function openRequestFromAction(id) {
+  if (!id) return;
+  currentView = 'all';
+  expandedRequestId = id;
+  expandedSummaryId = null;
+  switchPageTab('dashboard');
+  renderRequests();
+  setTimeout(() => {
+    document.querySelector(`[data-request-id="${id}"]`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }, 60);
+}
+
+document.querySelector('#action-needed-list')?.addEventListener('click', (event) => {
+  const reqBtn = event.target.closest('[data-action-request]');
+  if (reqBtn) { openRequestFromAction(reqBtn.dataset.actionRequest); return; }
+  const appBtn = event.target.closest('[data-action-applicants]');
+  if (appBtn) {
+    switchPageTab('dashboard');
+    document.querySelector('[data-tab-panel="applicants"]')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+});
+
+// "View Worker" in the Active Workers drilldown → open that worker on the Workers tab.
+requestList?.addEventListener('click', (event) => {
+  const btn = event.target.closest('.workers-view-worker');
+  if (!btn) return;
+  switchPageTab('workers');
+  setTimeout(() => {
+    document.querySelector(`#admin-worker-profile-list [data-worker-id="${btn.dataset.id}"]`)
+      ?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }, 80);
+});
+
+// Worker Snapshot rows (Online / On Break / Busy / Offline) → open the Workers
+// tab filtered to that presence. switchPageTab clears the filter first, so we set
+// it afterwards and re-render.
+document.querySelector('.worker-snapshot-list')?.addEventListener('click', (event) => {
+  const row = event.target.closest('li[data-presence]');
+  if (!row) return;
+  switchPageTab('workers');
+  workerPresenceFilter = row.dataset.presence;
+  renderWorkerProfiles();
+  document.querySelector('#admin-worker-profile-list')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+});
+
+document.querySelector('.worker-snapshot-list')?.addEventListener('keydown', (event) => {
+  if (event.key !== 'Enter' && event.key !== ' ') return;
+  const row = event.target.closest('li[data-presence]');
+  if (!row) return;
+  event.preventDefault();
+  row.click();
+});
+
+// "Show all" in the Workers presence-filter banner clears the filter.
+workerProfileList?.addEventListener('click', (event) => {
+  if (event.target.closest('.worker-filter-clear')) {
+    workerPresenceFilter = null;
+    renderWorkerProfiles();
+  }
+});
 
 // ── Incomplete authorizations (dashboard card) ────────────────────────────────
 function formatHoldAge(iso) {
@@ -3769,7 +4055,7 @@ async function voidPendingAuthorization(button) {
     if (res.ok) {
       await loadPendingAuthorizations();
     } else if (res.status === 401 || res.status === 403) {
-      window.location.href = 'admin-login.html';
+      window.location.href = '/admin/login';
     } else {
       button.disabled = false;
       button.textContent = originalText;
@@ -3817,7 +4103,7 @@ async function saveDenyReason(button) {
 
   if (!adminToken()) {
     showInlineError('Your admin session expired. Please log in again.');
-    setTimeout(() => { window.location.href = 'admin-login.html'; }, 1500);
+    setTimeout(() => { window.location.href = '/admin/login'; }, 1500);
     return;
   }
 
@@ -3892,7 +4178,7 @@ async function saveDenyReason(button) {
 
   if (sessionExpired) {
     showInlineError('Your admin session expired. Please log in again.');
-    setTimeout(() => { window.location.href = 'admin-login.html'; }, 1500);
+    setTimeout(() => { window.location.href = '/admin/login'; }, 1500);
     return;
   }
 
@@ -5161,6 +5447,12 @@ function switchPageTab(page) {
       showPricingPendingBanner(fuelData, pricingData);
     });
   }
+  if (page === 'workers') {
+    // Normal navigation to Workers shows everyone; the snapshot rows set a filter
+    // AFTER calling switchPageTab, so their filter still wins.
+    workerPresenceFilter = null;
+    renderWorkerProfiles();
+  }
   renderRequests();
 }
 
@@ -5209,6 +5501,10 @@ function setActiveStatCard(cardId) {
   // All/Open/In Progress/Completed/Closed sub-tabs so only that subset shows.
   const queueTabs = document.querySelector('.admin-request-tabs');
   if (queueTabs) queueTabs.classList.toggle('cr-hidden', !!cardId);
+  // The Workers / Revenue drilldowns aren't requests, so the request toolbar
+  // (Search Requests / date / filters / refresh) doesn't belong over them.
+  const queueSection = document.querySelector('.admin-queue-section');
+  if (queueSection) queueSection.classList.toggle('stat-drilldown', cardId === 'workers' || cardId === 'revenue');
 }
 
 function statCardNav(view, cardId) {
@@ -5238,16 +5534,28 @@ function openWorkersPanel() {
       const isBusy = busy.has(e.id) || busy.has(e.full_name);
       const statusLabel = isBusy ? 'Busy' : 'Available';
       const statusClass = isBusy ? 'status-pill-progress' : 'status-pill-complete';
-      return `<tr>
-        <td><strong>${escapeHtml(e.full_name)}</strong></td>
-        <td>${escapeHtml(e.employee_code)}</td>
-        <td>${escapeHtml(e.phone || '—')}</td>
-        <td><span class="status-pill ${statusClass}">${statusLabel}</span></td>
+      return `<tr class="queue-row" data-worker-id="${escapeHtml(e.id)}">
+        <td data-label="Name">
+          <div class="queue-customer-cell">
+            <span class="queue-avatar">${escapeHtml(queueInitials(e.full_name))}</span>
+            <div>
+              <strong>${escapeHtml(e.full_name)}</strong>
+              <span class="field-help">${escapeHtml(e.employee_code || '')}</span>
+            </div>
+          </div>
+        </td>
+        <td data-label="Phone">${e.phone ? escapeHtml(formatPhone(e.phone)) : '<span class="field-help">Not provided</span>'}</td>
+        <td data-label="Status"><span class="status-pill ${statusClass}">${statusLabel}</span></td>
+        <td data-label="Action">
+          <div class="queue-next-action-cell">
+            <button class="button secondary workers-view-worker" data-id="${escapeHtml(e.id)}" type="button">View Worker</button>
+          </div>
+        </td>
       </tr>`;
     }).join('');
     requestList.innerHTML = `
-      <table class="revenue-breakdown-table">
-        <thead><tr><th>Name</th><th>Code</th><th>Phone</th><th>Status</th></tr></thead>
+      <table class="admin-requests-table">
+        <thead><tr><th>Name</th><th>Phone</th><th>Status</th><th>Action</th></tr></thead>
         <tbody>${rows}</tbody>
       </table>`;
   }
@@ -6453,7 +6761,7 @@ document.querySelector('#services-settings-form')?.addEventListener('submit', as
       if (statusEl) statusEl.textContent = `Price update scheduled for ${when}.`;
       showPricingPendingBanner(fuelResult.data, pricingResult.data);
     } else {
-      if (statusEl) statusEl.textContent = 'Service pricing saved.';
+      if (statusEl) statusEl.textContent = 'Prices updated successfully.';
       const banner = document.getElementById('pricing-pending-banner');
       if (banner) banner.hidden = true;
     }

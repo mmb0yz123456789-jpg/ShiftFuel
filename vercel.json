@@ -5,6 +5,14 @@
       "schedule": "0 2 * * *"
     }
   ],
+  "rewrites": [
+    { "source": "/join-the-team", "destination": "/hiring.html" },
+    { "source": "/apply", "destination": "/hiring.html" },
+    { "source": "/worker/login", "destination": "/worker-login.html" },
+    { "source": "/worker/dashboard", "destination": "/worker.html" },
+    { "source": "/admin/login", "destination": "/admin-login.html" },
+    { "source": "/admin/dashboard", "destination": "/admin.html" }
+  ],
   "headers": [
     {
       "source": "/(.*).js",

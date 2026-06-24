@@ -48,6 +48,13 @@
           closeOpenModals();      // never leave a modal stranded over another screen
           showView(view);
           setActive(tab);
+          // A view tab may also point at a section within that view — switch the
+          // screen first, then scroll the requested section into view.
+          if (targetSel) {
+            requestAnimationFrame(() => {
+              document.querySelector(targetSel)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            });
+          }
           return;
         }
         if (actionSel) {

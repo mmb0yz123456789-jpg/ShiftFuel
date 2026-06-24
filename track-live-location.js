@@ -102,10 +102,14 @@
     if (!card || !request) return null;
     let panel = card.querySelector('.track-live-location-panel');
     if (!panel) {
+      // Preferred: a dedicated mount point placed by track.js at the correct
+      // spot in the (canceled or active) card layout.
+      const mount = card.querySelector('.track-live-location-mount');
       const workerCard = card.querySelector('.assigned-worker-card');
       const timeline = card.querySelector('.customer-timeline')?.closest('.timeline-status-message, .customer-timeline') || card.querySelector('.customer-timeline');
       const body = card.querySelector('.track-request-body') || card;
-      if (workerCard) workerCard.insertAdjacentHTML('afterend', panelHtml(request));
+      if (mount) mount.insertAdjacentHTML('afterbegin', panelHtml(request));
+      else if (workerCard) workerCard.insertAdjacentHTML('afterend', panelHtml(request));
       else if (timeline) timeline.insertAdjacentHTML('beforebegin', panelHtml(request));
       else body.insertAdjacentHTML('afterbegin', panelHtml(request));
       panel = card.querySelector('.track-live-location-panel');
@@ -390,11 +394,15 @@
       const requestId = card.dataset.requestId;
       const request = requestById(requestId);
       if (!request) return;
-      const panel = ensurePanel(card, request);
+      // Only mount the panel for active requests. For closed/canceled-and-done
+      // requests, never show a "not available" live-location card cluttering
+      // the page — hide any panel that may already exist.
       if (!canShowLiveLocation(request)) {
-        setUnavailable(panel);
+        const existing = card.querySelector('.track-live-location-panel');
+        if (existing) existing.hidden = true;
         return;
       }
+      ensurePanel(card, request);
       activeIds.add(requestId);
       subscribeLocation(requestId);
       loadLocation(requestId);

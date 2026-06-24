@@ -156,7 +156,11 @@
 
   .booking-page .booking-summary-sidebar {
     position: static;
-    order: -1;
+    /* Keep the summary AFTER the form on mobile. It used to be order:-1, which
+       hoisted an empty "Not entered yet" summary above the fields the customer
+       still has to fill in. Source order (form first, summary last) reads far
+       better on a phone. */
+    order: 1;
   }
 
   .track-page .track-hero-redesign {
