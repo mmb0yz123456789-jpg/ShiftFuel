@@ -109,4 +109,23 @@ async function notifyRequest(requestId, eventType) {
   await sendToSubs(subs, { title: msg.title, body: msg.body, tag: `${eventType}-${request.id}`, url: msg.url });
 }
 
-module.exports = { ensureVapid, notifyRequest, sendToSubs, cleanPhone };
+// Broadcast a "new job available to claim" push to every subscribed worker the
+// moment a new (unassigned) booking is created. Fire-and-forget from the caller.
+async function notifyWorkersNewJob(request) {
+  if (!request || !ensureVapid()) return;
+  const db = getSupabaseAdmin();
+  const { data: subs } = await db
+    .from('push_subscriptions')
+    .select('endpoint,p256dh,auth')
+    .eq('subscriber_type', 'worker');
+  if (!subs || !subs.length) return;
+  const shortId = `SF-${String(request.id).slice(0, 8).toUpperCase()}`;
+  await sendToSubs(subs, {
+    title: 'New job available',
+    body: `A ${request.service_label || request.service_type || 'service'} job is up for grabs (${shortId}). Open ShiftFuel to claim it.`,
+    tag: `new-job-${request.id}`,
+    url: '/worker/dashboard',
+  });
+}
+
+module.exports = { ensureVapid, notifyRequest, notifyWorkersNewJob, sendToSubs, cleanPhone };

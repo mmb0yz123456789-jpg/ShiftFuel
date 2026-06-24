@@ -7,6 +7,7 @@
 
 const Stripe = require('stripe');
 const { setCorsHeaders, getSupabaseAdmin } = require('./_auth');
+const { notifyWorkersNewJob } = require('./_push');
 
 function getStripe() {
   if (!process.env.STRIPE_SECRET_KEY) throw new Error('STRIPE_SECRET_KEY not configured');
@@ -430,6 +431,9 @@ module.exports = async function handler(req, res) {
 
     await markAuthorizationBooked(db, intent.id);
     console.log('[create-authorized-booking] Created request', data?.id, 'for PI', intent.id, 'amount', intent.amount);
+    // Buzz every subscribed worker that a new claimable job just posted.
+    // Fire-and-forget — never block the customer's booking on the push round-trip.
+    notifyWorkersNewJob(data).catch((e) => console.warn('[create-authorized-booking] new-job push:', e.message));
     return res.status(200).json({ id: data?.id, status: 'request_received', payment_status: 'authorized' });
   } catch (error) {
     console.error('[create-authorized-booking] error:', error.message || error);
@@ -447,9 +451,6 @@ module.exports = async function handler(req, res) {
         console.warn('[create-authorized-booking] pending_auth fail-tag skipped:', tagErr.message);
       }
     }
-    // TEMPORARY DIAGNOSTIC: surface the underlying DB/Stripe error to the client
-    // so we can see the real failure reason on the page. Revert to the generic
-    // message once the returning-customer booking issue is resolved.
-    return res.status(500).json({ error: `Could not submit booking. [debug: ${String(error.message || error).slice(0, 300)}]` });
+    return res.status(500).json({ error: 'Could not submit booking. Please try again.' });
   }
 };
