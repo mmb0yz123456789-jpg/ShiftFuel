@@ -33,6 +33,14 @@
 
   const liveState = new Map();
   let lastCardSignature = '';
+
+  // Freshness thresholds for the live dot. Workers ping ~every 15s while moving
+  // and ~45s while stopped, so anything quiet beyond FRESH_MS means the app was
+  // backgrounded or closed — show an honest "last seen X ago" rather than a green
+  // "live" dot. The server stops returning points after ~3 min, so past that we
+  // re-show the last known point (aged) until STALE_MAX_MS, then hide it.
+  const FRESH_MS = 120000;      // <= 2 min quiet = still treated as live
+  const STALE_MAX_MS = 1200000; // > 20 min quiet = give up and show "not available"
   function db() {
     return window.ShiftFuelSupabase;
   }
@@ -73,6 +81,15 @@
   function formatTime(value) {
     if (!value) return '';
     return new Date(value).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+  }
+
+  function relativeAge(value) {
+    const ms = value ? Date.now() - new Date(value).getTime() : 0;
+    if (ms < 60000) return 'less than a minute ago';
+    const minutes = Math.round(ms / 60000);
+    if (minutes < 60) return `${minutes} minute${minutes === 1 ? '' : 's'} ago`;
+    const hours = Math.round(minutes / 60);
+    return `${hours} hour${hours === 1 ? '' : 's'} ago`;
   }
 
   function panelHtml(request) {
@@ -120,7 +137,7 @@
 
   function setUnavailable(panel, message = 'Live location is not currently available. Status updates will still appear here.') {
     if (!panel) return;
-    panel.classList.remove('is-live');
+    panel.classList.remove('is-live', 'is-stale');
     panel.querySelector('.track-live-location-status').textContent = message;
     const map = panel.querySelector('.track-live-location-map');
     const links = panel.querySelector('.track-live-location-links');
@@ -260,16 +277,32 @@
       return;
     }
 
-    const accuracy = location.accuracy ? ` Accuracy: about ${Math.round(location.accuracy)} meters.` : '';
-    const updated = location.created_at ? ` Last updated ${formatTime(location.created_at)}.` : '';
-    panel.classList.add('is-live');
-    panel.querySelector('.track-live-location-status').textContent = `Worker GPS is active.${updated}${accuracy}`;
+    // Remember the last known point so we can keep showing it (honestly aged)
+    // even after the server stops returning it past its ~3-minute cutoff.
+    const requestId = panel.dataset.requestId;
+    const remembered = liveState.get(requestId) || {};
+    remembered.lastLocation = location;
+    liveState.set(requestId, remembered);
+
+    // Fresh = a recent ping (worker actively tracking). Stale = gone quiet, so
+    // the dot is the worker's LAST known spot, not where they are right now.
+    const ageMs = location.created_at ? Date.now() - new Date(location.created_at).getTime() : 0;
+    const isFresh = ageMs <= FRESH_MS;
+    panel.classList.toggle('is-live', isFresh);
+    panel.classList.toggle('is-stale', !isFresh);
+    const statusText = panel.querySelector('.track-live-location-status');
+    if (isFresh) {
+      const accuracy = location.accuracy ? ` Accuracy: about ${Math.round(location.accuracy)} meters.` : '';
+      const updated = location.created_at ? ` Last updated ${formatTime(location.created_at)}.` : '';
+      statusText.textContent = `Worker GPS is active.${updated}${accuracy}`;
+    } else {
+      statusText.textContent = `Worker's location is paused — last seen ${relativeAge(location.created_at)}. The map shows their last known spot.`;
+    }
 
     const mapWrap = panel.querySelector('.track-live-location-map');
     const canvas = panel.querySelector('.track-live-map-canvas');
     if (mapWrap && canvas) {
       mapWrap.hidden = false;
-      const requestId = panel.dataset.requestId;
       const state = liveState.get(requestId) || {};
       if (state.map) {
         updateLiveMap(state, lat, lng);
@@ -315,8 +348,19 @@
       if (error) throw error;
       const row = Array.isArray(data) ? data[0] : data;
       if (!row) {
-        // Allow 2 consecutive empty responses before hiding the map,
-        // so a single slow poll doesn't flash the panel unavailable.
+        // The server stops returning points after ~3 min. If we still have a
+        // last known point that isn't ancient, keep showing it — aged honestly
+        // as "last seen X ago" — rather than blanking the live panel.
+        const lastLoc = state.lastLocation;
+        const lastAgeMs = lastLoc && lastLoc.created_at
+          ? Date.now() - new Date(lastLoc.created_at).getTime()
+          : Infinity;
+        if (lastLoc && lastAgeMs <= STALE_MAX_MS) {
+          setLocation(panel, lastLoc);
+          return;
+        }
+        // Never had a point, or stale beyond the cap. Allow 2 consecutive empty
+        // responses before hiding, so a single slow poll doesn't flash unavailable.
         state.missCount = (state.missCount || 0) + 1;
         liveState.set(requestId, state);
         if (!isCurrentlyLive || state.missCount >= 2) {
@@ -443,6 +487,14 @@
         background: #16a34a;
         box-shadow: 0 0 0 5px rgba(22,163,74,.14);
       }
+      /* Worker has gone quiet: amber dot, and stop the pulsing so the last-known
+         marker doesn't masquerade as a live position. */
+      .track-live-location-panel.is-stale .track-live-dot {
+        background: #d97706;
+        box-shadow: 0 0 0 5px rgba(217,119,6,.14);
+      }
+      .track-live-location-panel.is-stale .track-live-marker-dot { background: #d97706; }
+      .track-live-location-panel.is-stale .track-live-marker-pulse { animation: none; opacity: 0; }
       .track-live-location-body { display: grid; gap: 12px; margin-top: 12px; }
       .track-live-location-map { position: relative; }
       .track-live-map-canvas {
