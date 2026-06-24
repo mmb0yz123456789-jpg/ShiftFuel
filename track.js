@@ -698,10 +698,21 @@ async function loadVerifiedWorkers(requests) {
   try {
     const { data, error } = await shiftFuelDb
       .from('employees_public')
-      .select('id,background_verified')
+      .select('id,background_verified,photo_url,cropped_photo_url,original_photo_url')
       .in('id', ids);
     if (error || !Array.isArray(data)) return; // pre-migration: leave badge off
     verifiedWorkerIds = new Set(data.filter((e) => e.background_verified).map((e) => e.id));
+    // Attach the worker's CURRENT photo to each request so the customer view shows
+    // it even if it was uploaded/changed after the job was accepted (the value
+    // denormalized onto the request at accept time can be stale or empty).
+    const byId = new Map(data.map((e) => [e.id, e]));
+    (requests || []).forEach((r) => {
+      const emp = r.assigned_employee_id ? byId.get(r.assigned_employee_id) : null;
+      if (!emp) return;
+      const photo = emp.cropped_photo_url || emp.photo_url || '';
+      if (photo) r.assigned_worker_photo_url = photo;
+      if (emp.original_photo_url) r.assigned_worker_original_photo_url = emp.original_photo_url;
+    });
   } catch (_) {
     // Network hiccup — keep the previous set rather than flashing badges off.
   }

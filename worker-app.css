@@ -328,9 +328,15 @@
   padding: 12px 14px !important;
   margin-bottom: 10px !important;
 }
-.worker-portal-page .worker-upcoming-main { display: grid; gap: 2px; min-width: 0; }
+.worker-portal-page .worker-upcoming-row { align-items: start !important; }
+.worker-portal-page .worker-upcoming-main { display: grid; gap: 3px; min-width: 0; }
 .worker-portal-page .worker-upcoming-main .worker-card-sub { color: #60716d; font-size: 0.85rem; }
-.worker-portal-page .worker-upcoming-when { color: #60716d; font-size: 0.82rem; white-space: nowrap; }
+.worker-portal-page .worker-upcoming-addr {
+  display: inline-flex; align-items: flex-start; gap: 5px;
+  color: #60716d; font-size: 0.8rem; line-height: 1.35; margin-top: 1px;
+}
+.worker-portal-page .worker-upcoming-addr svg { width: 14px; height: 14px; flex: 0 0 auto; margin-top: 1px; color: var(--sf-teal, #0d3b3b); }
+.worker-portal-page .worker-upcoming-when { color: #60716d; font-size: 0.82rem; white-space: nowrap; margin-top: 2px; }
 
 /* ---- Today's Schedule count strip (Accepted / Upcoming / Completed / Cancelled) ---- */
 .worker-portal-page .worker-today-counts {
@@ -537,4 +543,69 @@
   color: #9aa8a3;
   font-size: 0.76rem;
   margin: 0 0 8px;
+}
+
+/* ============================================================
+   Desktop / website layout (>= 761px): the mobile bottom tab
+   bar becomes a left sidebar, the header spans the top, and the
+   content sits in a comfortable centered column. The tab JS
+   already shows one section at a time on every screen size.
+   ============================================================ */
+@media (min-width: 761px) {
+  .worker-portal-page {
+    display: grid !important;
+    grid-template-columns: 240px minmax(0, 1fr) !important;
+    grid-template-rows: auto 1fr !important;
+    grid-template-areas:
+      "header header"
+      "nav    main" !important;
+    min-height: 100vh;
+  }
+  .worker-portal-page .portal-header {
+    grid-area: header;
+    position: static !important;
+    padding: 12px 28px !important;
+  }
+  /* Bottom tab bar → fixed-feeling left sidebar */
+  .worker-portal-page .app-tabbar {
+    grid-area: nav;
+    position: sticky !important;
+    top: 0;
+    align-self: start !important;
+    height: 100vh;
+    overflow-y: auto;
+    flex-direction: column !important;
+    justify-content: flex-start !important;
+    align-items: stretch !important;
+    gap: 4px !important;
+    width: auto !important;
+    border-top: 0 !important;
+    border-right: 1px solid rgba(13, 59, 59, 0.1) !important;
+    box-shadow: none !important;
+    padding: 18px 14px !important;
+  }
+  .worker-portal-page .app-tab {
+    flex: 0 0 auto !important;
+    flex-direction: row !important;
+    justify-content: flex-start !important;
+    gap: 12px !important;
+    padding: 11px 14px !important;
+    border-radius: 12px !important;
+    font-size: 0.95rem !important;
+    font-weight: 600 !important;
+  }
+  .worker-portal-page .app-tab svg { width: 20px !important; height: 20px !important; }
+  .worker-portal-page .app-tab.active { background: var(--sf-sage-light, #eaf2ea) !important; }
+  /* Content: comfortable centered column */
+  .worker-portal-page main {
+    grid-area: main;
+    width: auto !important;
+    margin: 0 !important;
+    padding: 0 0 48px !important;
+  }
+  .worker-portal-page .section {
+    max-width: 820px !important;
+    margin: 0 auto !important;
+    padding: 24px 28px !important;
+  }
 }

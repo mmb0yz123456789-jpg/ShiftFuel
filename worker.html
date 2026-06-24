@@ -198,9 +198,9 @@
             <div id="worker-profile-reviews"></div>
           </div>
           <nav class="worker-app-legal" aria-label="Legal links">
-            <a href="privacy.html">Privacy</a>
-            <a href="terms.html">Terms</a>
-            <a href="liability-waiver.html">Liability Waiver</a>
+            <button type="button" class="worker-legal-link" data-legal="privacy.html">Privacy</button>
+            <button type="button" class="worker-legal-link" data-legal="terms.html">Terms</button>
+            <button type="button" class="worker-legal-link" data-legal="liability-waiver.html">Liability Waiver</button>
           </nav>
           <p class="worker-app-copy">&copy; <span id="year"></span> ShiftFuel Concierge</p>
         </section>
@@ -257,6 +257,19 @@
         </div>
         <div class="modal-body">
           <div id="worker-review-list" class="request-list"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Legal document modal — keeps the worker in-app instead of the public site -->
+    <div id="worker-legal-modal" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="worker-legal-title" hidden>
+      <div class="modal-dialog worker-modal-wide">
+        <div class="modal-header">
+          <h2 id="worker-legal-title">Legal</h2>
+          <button class="modal-close" id="close-worker-legal" type="button" aria-label="Close">&times;</button>
+        </div>
+        <div class="modal-body">
+          <div id="worker-legal-content" class="worker-legal-content"><p class="field-help">Loading…</p></div>
         </div>
       </div>
     </div>
@@ -370,15 +383,15 @@
 
       function switchWorkerTab(tab) {
         currentWorkerTab = tab;
-        // On mobile: show only the active panel. On desktop: show all panels.
-        const isMobile = window.matchMedia('(max-width: 760px)').matches;
+        // Show ONE section at a time on every screen size — the bottom tab bar
+        // (mobile) or the left sidebar (desktop) switches between them.
         document.querySelectorAll('.worker-tab').forEach(function(el) {
-          el.hidden = isMobile ? (el.id !== 'wtab-' + tab) : false;
+          el.hidden = (el.id !== 'wtab-' + tab);
         });
         document.querySelectorAll('#worker-tabbar .app-tab').forEach(function(btn) {
           btn.classList.toggle('active', btn.dataset.tab === tab);
         });
-        if (isMobile) window.scrollTo(0, 0);
+        window.scrollTo(0, 0);
       }
 
       function initWorkerTabs() {
