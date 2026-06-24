@@ -65,13 +65,17 @@ module.exports = async (req, res) => {
     const { data } = await db.from('push_subscriptions')
       .select('endpoint,p256dh,auth')
       .eq('endpoint', body.endpoint);
-    if (!data || !data.length) return res.status(404).json({ error: 'Subscription not found' });
-    await sendToSubs(data, {
+    if (!data || !data.length) return res.status(404).json({ error: 'Subscription not found — try Enable alerts again.' });
+    const results = await sendToSubs(data, {
       title: 'ShiftFuel alerts are on ✓',
       body: 'This is a test notification — you’re all set for job alerts.',
       url: '/worker.html',
     });
-    return res.status(200).json({ ok: true, sent: data.length });
+    const failed = (results || []).find((r) => r && !r.ok);
+    if (failed) {
+      return res.status(200).json({ ok: false, error: failed.error || `push service status ${failed.status}` });
+    }
+    return res.status(200).json({ ok: true, sent: (results || []).length });
   }
 
   if (action === 'unsubscribe') {

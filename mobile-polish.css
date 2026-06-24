@@ -347,8 +347,25 @@
     width: 100%;
   }
 
-  .payment-card-box {
-    display: none !important;
+  /* The payment card box now lives ONLY inside the authorization modal, so it
+     must stay visible — Stripe's card field renders inside it. (This was
+     display:none from an older inline-card layout, which hid the field on
+     phones while iPad/desktop, above this breakpoint, still showed it.) */
+  .booking-payment-dialog .payment-card-box {
+    display: grid !important;
+  }
+
+  /* Keep the modal's Cancel / Authorize buttons a normal height — the global
+     `.admin-button-row .button { flex: 1 1 180px }` otherwise balloons them
+     into ~180px-tall boxes once the row stacks at narrow widths. */
+  .booking-payment-dialog .admin-button-row {
+    flex-direction: column;
+    width: 100%;
+  }
+  .booking-payment-dialog .admin-button-row > .button {
+    flex: 0 0 auto;
+    width: 100%;
+    min-height: 50px;
   }
 
   [data-authorize-payment] {

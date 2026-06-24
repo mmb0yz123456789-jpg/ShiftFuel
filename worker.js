@@ -135,7 +135,10 @@ workerEnableAlertsBtn?.addEventListener('click', async () => {
     workerEnableAlertsBtn.textContent = 'Alerts on ✓ (tap to test)';
     workerEnableAlertsBtn.disabled = false;
     // Immediate confirmation — fire a test push so you see a real notification land.
-    window.ShiftFuelPush.sendTest(result.endpoint);
+    const test = await window.ShiftFuelPush.sendTest(result.endpoint);
+    if (test && test.ok === false) {
+      alert('Notifications are on, but the test push could not be delivered:\n\n' + (test.error || 'unknown') + '\n\nOn iPhone this usually means the app isn’t running as an installed Home Screen app.');
+    }
   } else {
     alert(window.ShiftFuelPush.friendlyReason(result.reason));
     workerEnableAlertsBtn.disabled = false;
