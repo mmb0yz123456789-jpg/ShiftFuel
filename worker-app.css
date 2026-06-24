@@ -1,0 +1,192 @@
+/* ============================================================
+   ShiftFuel Worker — clean light app shell.
+   Turns the worker portal from a marketing webpage into a tidy
+   installed-app feel: flat light canvas, compact sticky header,
+   consistent white cards, big tap targets, and a real fixed
+   bottom tab bar. Loaded AFTER styles.css so it overrides it.
+   Presentation only — no markup logic depends on these rules.
+   ============================================================ */
+
+/* ---- App canvas ---- */
+.worker-portal-page {
+  background: #eef2f0 !important;
+}
+.worker-portal-page main {
+  width: min(560px, 100%);
+  margin: 0 auto;
+  padding: 0 0 92px; /* clear the fixed tab bar */
+}
+
+/* Tame the marketing-scale section padding across every tab. */
+.worker-portal-page .section {
+  width: 100% !important;
+  max-width: none !important;
+  margin: 0 !important;
+  padding: 12px 16px !important;
+}
+
+/* ---- Sticky app header ---- */
+.worker-portal-page .portal-header {
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  width: 100% !important;
+  max-width: none !important;
+  margin: 0 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  padding: 12px 16px !important;
+  box-shadow: 0 2px 12px rgba(6, 39, 39, 0.18) !important;
+}
+.worker-portal-page .portal-header .logo span:last-child { font-size: 1rem; }
+/* "Worker Dashboard" label is redundant with the tab bar below. */
+.worker-portal-page .portal-header-label { display: none !important; }
+.worker-portal-page .portal-header-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  justify-content: flex-end;
+}
+.worker-portal-page .portal-signout-btn {
+  padding: 7px 13px !important;
+  font-size: 0.82rem !important;
+  border-radius: 999px !important;
+}
+.worker-portal-page .worker-presence-indicator {
+  background: rgba(255, 255, 255, 0.14);
+  border-radius: 999px;
+  padding: 5px 11px;
+}
+
+/* ---- Kill the marketing hero image + huge min-height ---- */
+.worker-portal-page .worker-portal-hero {
+  min-height: 0 !important;
+  padding: 14px 16px !important;
+  background: transparent !important;
+  border-bottom: 0 !important;
+}
+.worker-portal-page .worker-hero-content { display: block !important; }
+.worker-portal-page .worker-portal-hero .eyebrow { margin-bottom: 2px !important; }
+.worker-portal-page .worker-portal-hero h1 {
+  font-size: 1.6rem !important;
+  line-height: 1.1 !important;
+  margin: 0 0 4px !important;
+}
+.worker-portal-page #worker-hero-subtitle { margin: 0 0 14px !important; }
+
+/* Dashboard primary actions: full-width, app-sized taps. */
+.worker-portal-page .worker-portal-hero .actions {
+  display: grid !important;
+  gap: 10px !important;
+  margin-top: 0 !important;
+}
+.worker-portal-page .worker-portal-hero .actions .button {
+  width: 100% !important;
+  min-height: 50px !important;
+  font-size: 1rem !important;
+  border-radius: 14px !important;
+}
+
+/* ---- Unified white cards across all tabs ---- */
+.worker-portal-page .worker-dashboard-card,
+.worker-portal-page .worker-current-status-card,
+.worker-portal-page .worker-jobs-panel,
+.worker-portal-page .worker-schedule-form-inline,
+.worker-portal-page .worker-state-card,
+.worker-portal-page .worker-profile-snapshot {
+  background: #ffffff !important;
+  border: 1px solid rgba(13, 59, 59, 0.08) !important;
+  border-radius: 18px !important;
+  box-shadow: 0 8px 24px rgba(13, 59, 59, 0.06) !important;
+  padding: 18px !important;
+  margin: 0 0 14px !important;
+}
+.worker-portal-page .worker-card-heading h2,
+.worker-portal-page .section-heading h2 {
+  font-size: 1.15rem !important;
+  margin: 0 0 12px !important;
+  letter-spacing: -0.01em !important;
+}
+
+/* Status card: clean key/value rows. */
+.worker-portal-page .worker-current-status-card dl { margin: 0 !important; }
+.worker-portal-page .worker-current-status-card dl > div {
+  display: flex !important;
+  justify-content: space-between !important;
+  gap: 12px !important;
+  padding: 11px 0 !important;
+  border-bottom: 1px solid rgba(13, 59, 59, 0.07) !important;
+}
+.worker-portal-page .worker-current-status-card dl > div:last-child { border-bottom: 0 !important; }
+.worker-portal-page .worker-current-status-card dt { color: #60716d !important; }
+.worker-portal-page .worker-current-status-card dd { font-weight: 700 !important; text-align: right !important; margin: 0 !important; }
+
+/* Progress stepper row: compact + tidy. */
+.worker-portal-page .worker-progress-line {
+  display: grid !important;
+  grid-template-columns: repeat(3, 1fr) !important;
+  gap: 14px 8px !important;
+}
+
+/* Stat grid: even, app-like tiles. */
+.worker-portal-page .worker-stat-grid {
+  display: grid !important;
+  grid-template-columns: repeat(3, 1fr) !important;
+  gap: 10px !important;
+}
+.worker-portal-page .worker-stat-card {
+  background: var(--sf-sage-light, #eaf2ea) !important;
+  border-radius: 14px !important;
+  padding: 14px 8px !important;
+  text-align: center !important;
+}
+
+/* ---- Fixed bottom tab bar ---- */
+.worker-portal-page .app-tabbar {
+  position: fixed !important;
+  left: 0; right: 0; bottom: 0;
+  z-index: 50;
+  display: flex !important;
+  gap: 0 !important;
+  background: #ffffff !important;
+  border-top: 1px solid rgba(13, 59, 59, 0.1) !important;
+  box-shadow: 0 -4px 18px rgba(6, 39, 39, 0.07) !important;
+  padding: 6px 4px calc(6px + env(safe-area-inset-bottom)) !important;
+}
+.worker-portal-page .app-tab {
+  flex: 1 !important;
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
+  gap: 3px !important;
+  padding: 6px 2px !important;
+  background: transparent !important;
+  border: 0 !important;
+  color: #6b7d78 !important;
+  font-size: 0.68rem !important;
+  font-weight: 700 !important;
+}
+.worker-portal-page .app-tab svg { width: 22px !important; height: 22px !important; }
+.worker-portal-page .app-tab.active { color: var(--sf-teal, #0d3b3b) !important; }
+
+/* ---- Legal links tucked into the Profile tab (app shell footer) ---- */
+.worker-app-legal {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px 16px;
+  margin: 18px 0 6px;
+}
+.worker-app-legal a {
+  color: #60716d;
+  font-size: 0.82rem;
+  text-decoration: none;
+}
+.worker-app-legal a:hover { text-decoration: underline; }
+.worker-app-copy {
+  text-align: center;
+  color: #9aa8a3;
+  font-size: 0.76rem;
+  margin: 0 0 8px;
+}
