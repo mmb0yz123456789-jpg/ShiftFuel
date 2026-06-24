@@ -63,62 +63,13 @@
           </div>
         </section>
 
-        <div class="section worker-dashboard-side">
-          <section class="worker-dashboard-card worker-progress-card">
-            <div class="worker-card-heading">
-              <h2>Today's Progress</h2>
-              <button class="worker-progress-job-label" id="worker-progress-job-label" type="button" hidden>Continue</button>
-            </div>
-            <div class="worker-progress-line" aria-label="Worker progress">
-              <div class="worker-progress-step"><span class="worker-progress-dot">1</span><span class="worker-progress-caption">Accepted</span></div>
-              <div class="worker-progress-step"><span class="worker-progress-dot">2</span><span class="worker-progress-caption">Key Received</span></div>
-              <div class="worker-progress-step"><span class="worker-progress-dot">3</span><span class="worker-progress-caption">Vehicle Picked Up</span></div>
-              <div class="worker-progress-step"><span class="worker-progress-dot">4</span><span class="worker-progress-caption">Service</span></div>
-              <div class="worker-progress-step"><span class="worker-progress-dot">5</span><span class="worker-progress-caption">Returned</span></div>
-              <div class="worker-progress-step"><span class="worker-progress-dot">6</span><span class="worker-progress-caption">Complete</span></div>
-            </div>
-            <div class="worker-stat-grid">
-              <div class="worker-stat-card">
-                <span class="worker-stat-value" id="worker-stat-jobs-completed">0</span>
-                <span class="worker-stat-label">Jobs Completed</span>
-              </div>
-              <div class="worker-stat-card">
-                <span class="worker-stat-value" id="worker-stat-ontime">&mdash;</span>
-                <span class="worker-stat-label">On-time Rate</span>
-              </div>
-              <button class="worker-stat-card worker-stat-clickable" id="worker-reviews-trigger" type="button">
-                <span class="worker-stat-value" id="worker-stat-rating">&mdash;</span>
-                <span class="worker-stat-label">Customer Rating</span>
-              </button>
-            </div>
-          </section>
-
-          <section class="worker-dashboard-card worker-updates-card">
-            <div class="worker-card-heading">
-              <h2>Recent Updates</h2>
-            </div>
-            <ul class="worker-update-list">
-              <li><span>$</span><strong>Payment received</strong><small>Latest completed job</small></li>
-              <li><span>V</span><strong>Vehicle picked up</strong><small>Active route updates</small></li>
-              <li><span>M</span><strong>New message from customer</strong><small>Check job notes</small></li>
-            </ul>
-          </section>
-        </div>
-
         <section class="section">
-          <aside class="worker-current-status-card">
-            <div class="worker-card-heading">
-              <h2>Current Status</h2>
-            </div>
-            <dl>
-              <div><dt>Working since</dt><dd id="worker-working-since">Today</dd></div>
-              <div><dt>Location</dt><dd id="worker-current-location">ShiftFuel</dd></div>
-              <div><dt>Jobs today</dt><dd id="worker-current-jobs-today">0</dd></div>
-              <div><dt>Rating</dt><dd id="worker-current-rating">&mdash;</dd></div>
-              <div><dt>On-time rate</dt><dd id="worker-current-ontime">&mdash;</dd></div>
-            </dl>
-          </aside>
+          <div class="worker-card-heading"><h2>Today's Schedule</h2></div>
+          <div id="worker-today-counts" class="worker-today-counts"></div>
         </section>
+
+        <!-- Keeps the reviews-modal trigger alive for the Profile "View all" link. -->
+        <button id="worker-reviews-trigger" type="button" hidden aria-hidden="true"></button>
 
       </div><!-- /wtab-dashboard -->
 

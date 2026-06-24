@@ -11,6 +11,9 @@
 .worker-portal-page {
   background: #eef2f0 !important;
 }
+/* The [hidden] attribute must always win over any display rule below
+   (e.g. the rating row / Active badge stay hidden until they have data). */
+.worker-portal-page [hidden] { display: none !important; }
 .worker-portal-page main {
   width: min(560px, 100%);
   margin: 0 auto;
@@ -308,14 +311,39 @@
   font-weight: 800 !important;
 }
 
-/* ---- Schedule: compact day rows (was a very long stacked list) ---- */
+/* ---- Today's Schedule count strip (Accepted / Upcoming / Completed / Cancelled) ---- */
+.worker-portal-page .worker-today-counts {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  background: #fff;
+  border: 1px solid rgba(13, 59, 59, 0.08);
+  border-radius: 16px;
+  box-shadow: 0 8px 24px rgba(13, 59, 59, 0.06);
+  overflow: hidden;
+}
+.worker-portal-page .worker-count-cell {
+  display: grid; gap: 2px; justify-items: center; text-align: center;
+  padding: 16px 4px;
+  border-left: 1px solid rgba(13, 59, 59, 0.07);
+}
+.worker-portal-page .worker-count-cell:first-child { border-left: 0; }
+.worker-portal-page .worker-count-value { font-size: 1.5rem; font-weight: 800; line-height: 1; }
+.worker-portal-page .worker-count-label { font-size: 0.72rem; color: #60716d; }
+.worker-portal-page .worker-count-cell.is-accepted .worker-count-value { color: var(--sf-green, #1f7a45); }
+.worker-portal-page .worker-count-cell.is-upcoming .worker-count-value { color: #d97706; }
+.worker-portal-page .worker-count-cell.is-completed .worker-count-value { color: var(--sf-teal, #0d3b3b); }
+.worker-portal-page .worker-count-cell.is-cancelled .worker-count-value { color: #b42318; }
+
+/* ---- Schedule: clean day rows with a drag handle ---- */
 .worker-portal-page .worker-day-row {
   display: grid !important;
-  grid-template-columns: 1fr 1fr !important;
-  align-items: end !important;
+  grid-template-columns: 18px 1fr auto !important;
+  grid-template-areas:
+    "handle day copy"
+    "times times times" !important;
+  align-items: center !important;
   gap: 8px 10px !important;
-  padding: 12px 2px !important;
-  /* Flatten the per-day card chrome into a clean divided row. */
+  padding: 14px 2px !important;
   background: transparent !important;
   border: 0 !important;
   border-bottom: 1px solid rgba(13, 59, 59, 0.08) !important;
@@ -324,30 +352,28 @@
   margin: 0 !important;
 }
 .worker-portal-page .worker-day-row:last-child { border-bottom: 0 !important; }
-.worker-portal-page .worker-day-toggle { grid-column: 1 / -1 !important; margin: 0 !important; }
-.worker-portal-page .worker-day-row > label {
-  display: grid !important;
-  gap: 3px !important;
-  margin: 0 !important;
-  font-size: 0.72rem !important;
-  color: #60716d !important;
+.worker-portal-page .worker-day-handle {
+  grid-area: handle; color: #c2ccc8; display: inline-flex; align-items: center;
 }
-.worker-portal-page .worker-day-row > label:has(.worker-day-start) { grid-column: 1 !important; }
-.worker-portal-page .worker-day-row > label:has(.worker-day-end) { grid-column: 2 !important; }
-.worker-portal-page .worker-day-row input[type="time"] { min-height: 40px !important; }
+.worker-portal-page .worker-day-handle svg { width: 16px; height: 16px; }
+.worker-portal-page .worker-day-toggle {
+  grid-area: day; display: inline-flex !important; align-items: center !important;
+  gap: 10px !important; margin: 0 !important;
+}
+.worker-portal-page .worker-day-name { font-weight: 700; color: var(--sf-teal, #0d3b3b); }
 .worker-portal-page .worker-day-copy-actions {
-  grid-column: 1 / -1 !important;
-  display: flex !important;
-  gap: 8px !important;
+  grid-area: copy; display: flex !important; gap: 8px !important;
 }
 .worker-portal-page .worker-day-copy-actions .button {
-  flex: 1 !important;
-  min-height: 32px !important;
-  padding: 4px 12px !important;
-  font-size: 0.78rem !important;
-  background: transparent !important;
-  border: 1px solid rgba(13, 59, 59, 0.18) !important;
+  min-height: 30px !important; padding: 3px 12px !important; font-size: 0.76rem !important;
+  background: transparent !important; border: 1px solid rgba(13, 59, 59, 0.18) !important;
 }
+.worker-portal-page .worker-day-times {
+  grid-area: times; display: flex !important; align-items: center !important;
+  gap: 10px !important; padding-left: 28px !important;
+}
+.worker-portal-page .worker-day-times input[type="time"] { flex: 1 !important; min-height: 40px !important; }
+.worker-portal-page .worker-day-dash { color: #8a9893; }
 
 /* ---- Earnings tab ---- */
 .worker-portal-page .worker-earnings { display: grid; gap: 14px; }

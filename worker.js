@@ -933,19 +933,21 @@ function renderWorkerDaysGrid(workdays = []) {
 
     return `
       <div class="worker-day-row" data-day-of-week="${dayOfWeek}">
-        <label class="checkbox-label worker-day-toggle">
+        <span class="worker-day-handle" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="currentColor"><circle cx="9" cy="6" r="1.4"/><circle cx="9" cy="12" r="1.4"/><circle cx="9" cy="18" r="1.4"/><circle cx="15" cy="6" r="1.4"/><circle cx="15" cy="12" r="1.4"/><circle cx="15" cy="18" r="1.4"/></svg>
+        </span>
+        <label class="worker-day-toggle">
           <input class="worker-day-enabled" type="checkbox" data-day-of-week="${dayOfWeek}" ${enabled}>
-          <span>${label}</span>
-        </label>
-        <label>Start
-          <input class="worker-day-start" type="time" data-day-of-week="${dayOfWeek}" value="${startsAt}">
-        </label>
-        <label>End
-          <input class="worker-day-end" type="time" data-day-of-week="${dayOfWeek}" value="${endsAt}">
+          <span class="worker-day-name">${label}</span>
         </label>
         <div class="worker-day-copy-actions">
           <button class="button worker-copy-day" type="button">Copy</button>
           <button class="button worker-paste-day" type="button" ${copiedWorkerDaySchedule ? '' : 'disabled'}>Paste</button>
+        </div>
+        <div class="worker-day-times">
+          <input class="worker-day-start" type="time" data-day-of-week="${dayOfWeek}" value="${startsAt}" aria-label="${label} start time">
+          <span class="worker-day-dash" aria-hidden="true">&ndash;</span>
+          <input class="worker-day-end" type="time" data-day-of-week="${dayOfWeek}" value="${endsAt}" aria-label="${label} end time">
         </div>
       </div>
     `;
@@ -1619,6 +1621,25 @@ function renderWorkerDashboardToday(jobs) {
     return;
   }
   container.innerHTML = jobs.map(renderWorkerCurrentJobCard).join('');
+}
+
+// Today's Schedule strip on the Today's Job tab — a quick count of the day's
+// work by bucket. Accepted = jobs you're actively working; Upcoming = open jobs
+// you can still claim; Completed = done today; Cancelled = cancelled/return-required.
+function renderWorkerTodayCounts(counts) {
+  const container = document.querySelector('#worker-today-counts');
+  if (!container) return;
+  const cells = [
+    { label: 'Accepted', value: counts.accepted, cls: 'is-accepted' },
+    { label: 'Upcoming', value: counts.upcoming, cls: 'is-upcoming' },
+    { label: 'Completed', value: counts.completed, cls: 'is-completed' },
+    { label: 'Cancelled', value: counts.cancelled, cls: 'is-cancelled' },
+  ];
+  container.innerHTML = cells.map((c) => `
+    <div class="worker-count-cell ${c.cls}">
+      <span class="worker-count-value">${c.value}</span>
+      <span class="worker-count-label">${c.label}</span>
+    </div>`).join('');
 }
 
 // Earnings tab: completed jobs with their net take-home (service fees minus
@@ -2524,6 +2545,12 @@ async function loadWorkerJobs(silent = false) {
 
   renderWorkerDashboardToday([...cancelledReturnJobs, ...claimedJobs]);
   renderWorkerEarnings(completedToday);
+  renderWorkerTodayCounts({
+    accepted: claimedJobs.length,
+    upcoming: availableJobs.length,
+    completed: completedToday.length,
+    cancelled: cancelledReturnJobs.length,
+  });
   updateWorkerProgressTimeline(myJobs);
 }
 
