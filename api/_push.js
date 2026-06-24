@@ -72,12 +72,14 @@ async function notifyRequest(requestId, eventType) {
   if (eventType === 'completed' && !DONE_STATUSES.includes(request.status)) return;
   if (eventType === 'paid' && request.payment_status !== 'captured') return;
   if (eventType === 'assigned' && !request.assigned_employee_id) return;
+  if (eventType === 'reauth_needed' && request.payment_status !== 'needs_reauth') return;
 
   const messages = {
     cancelled: { who: 'worker', title: 'Job cancelled', body: `${request.customer_name || 'A customer'} cancelled — return the key/vehicle (${shortId}).`, url: '/worker/dashboard' },
     assigned:  { who: 'worker', title: 'New job assigned', body: `You've been assigned a ${request.service_label || 'service'} job (${shortId}).`, url: '/worker/dashboard' },
     completed: { who: 'customer', title: 'Service complete', body: `Your ${request.service_label || 'service'} is complete (${shortId}).`, url: '/track.html' },
     paid:      { who: 'customer', title: 'Payment processed', body: `Your payment for ${shortId} was processed — thank you!`, url: '/track.html' },
+    reauth_needed: { who: 'customer', title: 'Action needed: re-authorize payment', body: `We couldn't authorize payment for your upcoming ${request.service_label || 'service'} (${shortId}). Please re-authorize so we can complete it.`, url: '/track.html' },
   };
   const msg = messages[eventType];
   if (!msg) return;
