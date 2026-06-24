@@ -1,4 +1,4 @@
-﻿const trackForm = document.querySelector("#track-form");
+const trackForm = document.querySelector("#track-form");
 const trackingId = document.querySelector("#tracking-id");
 const trackingPhone = document.querySelector("#tracking-phone");
 const trackingEmail = document.querySelector("#tracking-email");
@@ -2912,11 +2912,20 @@ async function renderAllRequests(requests, phone, email) {
   // its "Canceled — Key/Vehicle Return Pending" card). Only fully-canceled
   // tickets go to the Cancelled section.
   const isReturnPending = (status) => status === 'cancelled_pending_key_return';
-  const cancelled = requests.filter((r) => isCanceledStatus(r.status) && !isReturnPending(r.status));
+  // Closed/finished requests fall off the customer's tracker after 30 days
+  // (based on last activity). Active requests always show, no matter how old.
+  const within30Days = (r) => {
+    const t = new Date(r.updated_at || r.created_at || 0).getTime();
+    return Number.isFinite(t) && (Date.now() - t) <= 30 * 24 * 60 * 60 * 1000;
+  };
+
   const inProgress = requests.filter(r => !terminalStatuses.includes(r.status) && (isReturnPending(r.status) || !isCanceledStatus(r.status)));
-  const completed  = requests.filter(r => r.status === 'complete');
-  // Denied (admin-closed without completion) is shown separately from Cancelled.
-  const denied = requests.filter((r) => deniedOnlyStatuses.has(r.status));
+  const completed  = requests.filter(r => r.status === 'complete' && within30Days(r));
+  // Cancelled (customer/admin) and Denied are merged into one "closed" history
+  // section — both are end states the customer can't act on. Return-pending
+  // cancellations stay in "In progress" until the worker confirms the return.
+  const closed = requests.filter((r) => within30Days(r)
+    && ((isCanceledStatus(r.status) && !isReturnPending(r.status)) || deniedOnlyStatuses.has(r.status)));
 
   // Auto-expand only a genuinely active (non-canceled) request. A return-pending
   // cancellation lists in this section but never auto-expands. The section opens
@@ -2964,38 +2973,23 @@ async function renderAllRequests(requests, phone, email) {
   }
   html += `</div></details>`;
 
-  // Cancelled section — always collapsed. Photos load lazily on expand.
+  // Cancelled & denied — merged history section, always collapsed. Each card
+  // renders in its own style (canceled vs denied). Photos load lazily on expand.
   html += `
     <details class="track-section">
       <summary class="track-section-header">
-        Cancelled requests
-        <span class="track-section-count">${cancelled.length}</span>
+        Cancelled &amp; denied requests
+        <span class="track-section-count">${closed.length}</span>
       </summary>
       <div class="track-section-body">
   `;
-  if (cancelled.length === 0) {
-    html += `<p class="track-empty-msg">No cancelled requests found.</p>`;
+  if (closed.length === 0) {
+    html += `<p class="track-empty-msg">No cancelled or denied requests in the last 30 days.</p>`;
   } else {
-    for (const request of cancelled) {
-      html += renderCanceledCard(request, [], { expanded: false });
-    }
-  }
-  html += `</div></details>`;
-
-  // Denied section
-  html += `
-    <details class="track-section">
-      <summary class="track-section-header">
-        Denied requests
-        <span class="track-section-count">${denied.length}</span>
-      </summary>
-      <div class="track-section-body">
-  `;
-  if (denied.length === 0) {
-    html += `<p class="track-empty-msg">No denied requests found.</p>`;
-  } else {
-    for (const request of denied) {
-      html += renderDeniedCard(request);
+    for (const request of closed) {
+      html += isCanceledStatus(request.status)
+        ? renderCanceledCard(request, [], { expanded: false })
+        : renderDeniedCard(request);
     }
   }
   html += `</div></details>`;
