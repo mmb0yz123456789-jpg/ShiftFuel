@@ -11,6 +11,22 @@
     <meta name="apple-mobile-web-app-title" content="SF Admin">
     <link rel="apple-touch-icon" href="icon-admin.svg">
     <link rel="stylesheet" href="styles.css">
+    <style>
+      /* Service-area editor modal */
+      #service-area-modal .modal-dialog { max-width: 780px; width: 95vw; }
+      #sa-map { width: 100%; height: 420px; border-radius: 8px; background: #1a1a2e; }
+      #sa-map-placeholder { display: flex; align-items: center; justify-content: center;
+        height: 420px; border-radius: 8px; background: var(--surface-2,#1e1e2e);
+        color: var(--text-2,#888); font-size: .9rem; }
+      .sa-controls { display: flex; flex-wrap: wrap; gap: .5rem; align-items: flex-end; margin-top: .75rem; }
+      .sa-controls label { font-size: .8rem; color: var(--text-2,#888); display: flex; flex-direction: column; gap: .25rem; }
+      .sa-controls select, .sa-controls input[type=number] {
+        padding: .35rem .5rem; border-radius: 6px; border: 1px solid var(--border,#333);
+        background: var(--surface-2,#1e1e2e); color: inherit; font-size: .9rem; }
+      .sa-controls input[type=number] { width: 80px; }
+      #sa-status { font-size: .85rem; min-height: 1.2em; margin-top: .5rem; }
+      .sa-summary { font-size: .8rem; color: var(--text-2,#888); margin-top: .25rem; }
+    </style>
   </head>
 
   <body class="admin-portal-page">
@@ -372,6 +388,12 @@
             <p class="form-status" id="admin-username-status" role="status"></p>
           </form>
           <section class="settings-card">
+            <h3>Service Area</h3>
+            <p class="field-help">Draw or adjust the polygon that defines your delivery coverage. Changes go live within ~1 minute.</p>
+            <p class="sa-summary" id="sa-summary">Loading…</p>
+            <button class="button secondary" type="button" id="open-service-area-editor">Open map editor</button>
+          </section>
+          <section class="settings-card">
             <h3>Account</h3>
             <button class="button secondary" id="admin-settings-logout-btn" type="button">Log out</button>
             <nav class="settings-legal" aria-label="Legal links">
@@ -660,6 +682,44 @@
       </div>
     </div>
 
+    <!-- Service-area editor modal -->
+    <div id="service-area-modal" class="modal-overlay" hidden aria-modal="true" role="dialog" aria-labelledby="sa-modal-title">
+      <div class="modal-dialog">
+        <div class="modal-header">
+          <h2 id="sa-modal-title">Edit Service Area</h2>
+          <button id="close-service-area-modal" class="modal-close" aria-label="Close">&times;</button>
+        </div>
+        <div class="modal-body">
+          <div id="sa-map-placeholder">Loading map…</div>
+          <div id="sa-map" style="display:none"></div>
+          <div class="sa-controls">
+            <label>Profile
+              <select id="sa-profile">
+                <option value="driving">Driving</option>
+                <option value="cycling">Cycling</option>
+                <option value="walking">Walking</option>
+              </select>
+            </label>
+            <label>Type
+              <select id="sa-contour-type">
+                <option value="distance">Distance (mi)</option>
+                <option value="time">Time (min)</option>
+              </select>
+            </label>
+            <label id="sa-value-label">Value
+              <input id="sa-contour-value" type="number" min="1" max="60" value="20">
+            </label>
+            <button class="button secondary" type="button" id="sa-generate-btn">Generate isochrone</button>
+          </div>
+          <p id="sa-status"></p>
+          <div style="display:flex;gap:.5rem;margin-top:.75rem;justify-content:flex-end">
+            <button class="button secondary" type="button" id="close-service-area-modal-2">Cancel</button>
+            <button class="button primary" type="button" id="sa-save-btn">Save service area</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- Ticket detail modal (opened from Find Tickets results) -->
     <div id="ticket-detail-modal" class="modal-overlay" hidden aria-modal="true" role="dialog" aria-labelledby="ticket-detail-title">
       <div class="modal-dialog ticket-detail-dialog">
@@ -679,6 +739,7 @@
 	<script src="photo-utils.js"></script>
 	<script src="date-picker.js"></script>
 	<script src="admin.js"></script>
+	<script src="admin-service-area.js"></script>
   <script defer src="/_vercel/insights/script.js"></script>
   <script defer src="/_vercel/speed-insights/script.js"></script>
   </body>
