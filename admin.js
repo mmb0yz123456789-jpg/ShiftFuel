@@ -4189,6 +4189,100 @@ document.querySelector('#pending-auth-list')?.addEventListener('click', (event) 
   if (button) voidPendingAuthorization(button);
 });
 
+// ── Authorizations needing customer action (advance / saved-card bookings) ─────
+const REAUTH_ERROR_LABELS = {
+  card_declined: 'Card declined',
+  authentication_required: 'Bank authentication required',
+  no_saved_card: 'No saved card on file',
+  invalid_amount: 'Invalid amount',
+};
+function reauthErrorLabel(code) {
+  if (!code) return '';
+  return REAUTH_ERROR_LABELS[code] || String(code).replace(/^unexpected_status:/, 'Unexpected status: ');
+}
+
+async function loadReauthNeeded() {
+  const section = document.querySelector('#reauth-needed-section');
+  const list = document.querySelector('#reauth-needed-list');
+  if (!section || !list) return;
+
+  try {
+    const res = await fetch('/api/payments', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'admin_list_reauth_needed', caller_token: adminToken() }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      // Backstop card — hide quietly (e.g. table not migrated yet).
+      section.hidden = true;
+      return;
+    }
+    const rows = data.requests || [];
+    if (!rows.length) {
+      section.hidden = true;
+      list.innerHTML = '';
+      return;
+    }
+    section.hidden = false;
+    list.innerHTML = rows.map((row) => {
+      const amount = money(Number(row.estimated_total) || 0);
+      const who = escapeHtml(row.customer_name || 'Unknown customer');
+      const email = row.customer_email ? ` · ${escapeHtml(row.customer_email)}` : '';
+      const svc = row.service_label ? `<span class="pending-auth-svc">${escapeHtml(row.service_label)}</span>` : '';
+      const date = row.service_date ? `<span class="pending-auth-age">Service ${escapeHtml(row.service_date)}</span>` : '';
+      const errLabel = reauthErrorLabel(row.auth_error);
+      const reason = errLabel ? `<span class="pending-auth-reason">${escapeHtml(errLabel)}</span>` : '';
+      return `
+        <div class="pending-auth-row" data-request-id="${escapeHtml(row.id)}">
+          <div class="pending-auth-info">
+            <strong>${amount}</strong> — ${who}${email}
+            <div class="pending-auth-meta">${svc}${date}${reason}</div>
+          </div>
+          <button class="button secondary reauth-retry-btn" data-request-id="${escapeHtml(row.id)}" type="button">Retry now</button>
+        </div>`;
+    }).join('');
+  } catch (err) {
+    console.warn('[reauth-needed] load failed:', err.message);
+    section.hidden = true;
+  }
+}
+
+document.querySelector('#reauth-needed-refresh-btn')?.addEventListener('click', loadReauthNeeded);
+document.querySelector('#reauth-needed-list')?.addEventListener('click', (event) => {
+  const button = event.target.closest('.reauth-retry-btn');
+  if (button) retryScheduledAuth(button);
+});
+
+async function retryScheduledAuth(button) {
+  const requestId = button.dataset.requestId;
+  if (!requestId) return;
+  const originalText = button.textContent;
+  button.disabled = true;
+  button.textContent = 'Retrying…';
+  try {
+    const res = await fetch('/api/payments', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'admin_retry_scheduled_auth', request_id: requestId, caller_token: adminToken() }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (res.ok) {
+      await loadReauthNeeded();
+    } else if (res.status === 401 || res.status === 403) {
+      window.location.href = '/admin/login';
+    } else {
+      button.disabled = false;
+      button.textContent = originalText;
+      alert(`Could not authorize: ${data.error || 'Unknown error. The customer may need to re-authorize.'}`);
+    }
+  } catch (err) {
+    button.disabled = false;
+    button.textContent = originalText;
+    alert('Network error. Please try again.');
+  }
+}
+
 async function saveDenyReason(button) {
   const id = button.dataset.id;
   const panel = button.closest('.deny-reason-panel');
@@ -5829,6 +5923,7 @@ async function refreshAdminView(button = null) {
       loadReviews(),
       loadApplicants(),
       loadPendingAuthorizations(),
+      loadReauthNeeded(),
     ]);
   } finally {
     if (button) {
@@ -6514,6 +6609,7 @@ loadVehiclePsiGuides().finally(() => {
 loadReviews();
 loadApplicants();
 loadPendingAuthorizations();
+loadReauthNeeded();
 
 // ── Create Request tab ────────────────────────────────────────────────────────
 

@@ -2267,6 +2267,32 @@ function renderPendingPaymentCard(request) {
   `;
 }
 
+// Advance (saved-card) booking whose off-session authorization failed. The
+// customer places a fresh hold on-session via the shared card modal.
+function renderReauthCard(request) {
+  const amount = request.estimated_total != null ? formatCurrency(request.estimated_total) : '';
+  const serviceDate = request.service_date
+    ? new Date(request.service_date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+    : '';
+  return `
+    <article class="track-request-card track-payment-card" data-request-id="${escapeHtml(request.id)}">
+      <details class="track-request-details" open>
+        ${requestSummaryHtml(request, { statusLabel: "Re-authorize payment", statusClass: "status-pill-payment" })}
+        <div class="track-request-body">
+          <div class="action-required-banner">
+            <strong>⚡ Action required — re-authorize payment</strong>
+            <p>We couldn't authorize your card for your upcoming service${serviceDate ? ` on ${escapeHtml(serviceDate)}` : ''}. Please re-authorize so we can complete it. You're not charged until the service is done.</p>
+          </div>
+          ${request.service_label ? `<p><strong>Service:</strong> ${escapeHtml(request.service_label)}</p>` : ''}
+          ${amount ? `<div class="estimated-total-card"><span class="estimated-total-label">Authorization total</span><span class="estimated-total-amount">${amount}</span></div>` : ''}
+          <button class="button primary track-reauth-btn" data-id="${escapeHtml(request.id)}" type="button">Re-authorize payment</button>
+          <p class="form-status" data-reauth-status="${escapeHtml(request.id)}"></p>
+        </div>
+      </details>
+    </article>
+  `;
+}
+
 function renderReturnCompletedNotice(request) {
   if (request.status !== 'canceled_return_completed') return '';
   if (request.cancellation_fee_applied) {
@@ -2810,6 +2836,9 @@ function renderRequestCard(request, photos = [], review = null, { expanded = fal
   }
   if (request.status === 'pending_customer_info') {
     return renderPendingCompletionCard(request);
+  }
+  if (request.payment_status === 'needs_reauth') {
+    return renderReauthCard(request);
   }
   if (needsCustomerPaymentAction(request)) {
     return renderPendingPaymentCard(request);
@@ -4049,6 +4078,51 @@ trackingResult.addEventListener('submit', async (event) => {
     rpcFn,
     statusEl,
     submitBtn,
+  );
+});
+
+// ── Re-authorize a saved-card booking whose off-session hold failed ───────────
+trackingResult?.addEventListener('click', async (event) => {
+  const button = event.target.closest('.track-reauth-btn');
+  if (!button) return;
+  const requestId = button.dataset.id;
+  const request = (window._trackingRequests || []).find((r) => r.id === requestId);
+  if (!request) return;
+
+  const statusEl = document.querySelector(`[data-reauth-status="${requestId}"]`);
+  const authAmountCents = Math.max(Math.round((Number(request.estimated_total) || 1) * 100), 50);
+
+  // _openCbModal creates a manual-capture intent + confirms the card (a hold),
+  // then calls this with the new PaymentIntent id. We attach it to the request.
+  const rpcFn = async (paymentIntentId) => {
+    if (!paymentIntentId) return new Error('Payment was not authorized. Please try again.');
+    const res = await fetch('/api/payments', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'customer_reauthorize_scheduled',
+        request_id: requestId,
+        phone: verifiedTrackingContact?.phone || '',
+        email: verifiedTrackingContact?.email || '',
+        new_payment_intent_id: paymentIntentId,
+      }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) return new Error(data.error || 'Could not re-authorize payment.');
+    setTimeout(() => { refreshTrackedRequestsAfterAction(); }, 1000);
+    return null;
+  };
+
+  _openCbModal(
+    {
+      authAmountCents,
+      serviceLabel:  request.service_label || 'ShiftFuel service',
+      customerName:  request.customer_name || '',
+      customerEmail: request.customer_email || '',
+    },
+    rpcFn,
+    statusEl,
+    button,
   );
 });
 

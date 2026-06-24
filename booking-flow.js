@@ -84,6 +84,11 @@ const bookingState = {
     authorizedAmountCents: 0,
     status: "",
     statusType: "",
+    // Advance bookings save the card now instead of holding funds (see
+    // NEAR_TERM_DAYS). The cron places the real hold ~2 days before service.
+    cardSaved: false,
+    setupIntentId: "",
+    stripeCustomerId: "",
   },
   submitted: false,
   submitting: false,
@@ -587,6 +592,13 @@ function closePaymentModal() {
 function openPaymentModal(panel) {
   closePaymentModal();
 
+  const advance = serviceIsAdvanceBooking();
+  const svcDate = bookingState.values.serviceDate || "your service date";
+  const helpCopy = advance
+    ? `Your card is saved now — no charge today. We'll authorize your estimated total about 2 days before ${svcDate}, and you're only charged once service is complete.`
+    : "Your card is authorized now. You are not charged until service is complete, unless you cancel after the worker has received your keys or service has started.";
+  const confirmCopy = advance ? "Save card" : "Authorize payment";
+
   const modal = document.createElement("div");
   modal.id = "booking-payment-modal";
   modal.className = "booking-payment-modal";
@@ -596,14 +608,14 @@ function openPaymentModal(panel) {
       <button class="booking-payment-close" type="button" aria-label="Close payment authorization" data-close-payment-modal>&times;</button>
       <p class="eyebrow">Secure payment authorization</p>
       <h3 id="booking-payment-title">Enter card information</h3>
-      <p class="field-help">Your card is authorized now. You are not charged until service is complete, unless you cancel after the worker has received your keys or service has started.</p>
+      <p class="field-help">${helpCopy}</p>
       <div class="payment-card-box">
         <label><span>Card information</span><div id="booking-card-element" class="booking-card-element"></div></label>
         <p id="booking-card-errors" class="booking-validation-message" data-status="error"></p>
       </div>
       <div class="admin-button-row">
         <button class="button secondary" type="button" data-close-payment-modal>Cancel</button>
-        <button class="button primary" type="button" data-confirm-payment-authorization>Authorize payment</button>
+        <button class="button primary" type="button" data-confirm-payment-authorization>${confirmCopy}</button>
       </div>
     </div>
   `;
@@ -656,8 +668,13 @@ function inputValue(input) {
 }
 
 function invalidatePaymentAuthorization() {
-  if (!bookingState.payment.authorized) return;
+  if (!bookingState.payment.authorized && !bookingState.payment.cardSaved) return;
   bookingState.payment.authorized = false;
+  // Also clear any saved-card (advance booking) state — changing details,
+  // including the service date, can flip the near-term/advance tier.
+  bookingState.payment.cardSaved = false;
+  bookingState.payment.setupIntentId = "";
+  bookingState.payment.stripeCustomerId = "";
   bookingState.payment.statusType = "warning";
   bookingState.payment.status = "Booking details changed. Please authorize payment again.";
   bookingState.payment.paymentIntentId = "";
@@ -1515,6 +1532,7 @@ function renderPaymentSummary(panel) {
       ${serviceNeedsFuel() ? `<div><dt>Estimated fuel</dt><dd>${escapeHtml(bookingState.values.fuelPreference || "Selected range")} selected. We authorize a ${totals.authorizationFuelGallons} gallon buffer just in case: ${totals.authorizationFuelGallons} gal x ${formatMoney(PRICE_PER_GALLON)}/gal = ${formatMoney(totals.fuelEstimate)}</dd></div>` : ""}
       ${totals.washPackage ? `<div><dt>Car wash package</dt><dd>${escapeHtml(totals.washPackage.label)} - ${formatMoney(totals.washAmount)}</dd></div>` : ""}
       <div><dt>Estimated total</dt><dd>${formatMoney(totals.estimatedTotal)}</dd></div>
+      ${serviceIsAdvanceBooking() ? `<div><dt>Scheduled authorization</dt><dd>Your card is saved now — no charge today. We authorize ${formatMoney(totals.estimatedTotal)} about 2 days before your service date, and you're only charged once service is complete.</dd></div>` : ""}
     </dl>
   `;
   const status = panel.querySelector("[data-payment-status]");
@@ -1524,9 +1542,33 @@ function renderPaymentSummary(panel) {
   }
   const button = panel.querySelector("[data-authorize-payment]");
   if (button) {
-    button.disabled = bookingState.payment.authorized;
-    button.textContent = bookingState.payment.authorized ? "Payment authorized" : "Authorize payment";
+    const done = bookingState.payment.authorized || bookingState.payment.cardSaved;
+    button.disabled = done;
+    button.textContent = bookingState.payment.cardSaved
+      ? "Card saved"
+      : (bookingState.payment.authorized ? "Payment authorized" : "Authorize payment");
   }
+}
+
+// A Stripe authorization hold expires in ~7 days, so it can't cover a booking
+// made further out. At/under NEAR_TERM_DAYS we authorize now (today's hold flow);
+// beyond it we save the card now and the daily cron places the hold ~2 days
+// before the service date.
+const NEAR_TERM_DAYS = 5;
+
+function daysUntilServiceDate() {
+  const raw = bookingState.values.serviceDate || "";
+  if (!raw) return null;
+  const svc = new Date(`${raw}T00:00:00`);
+  if (Number.isNaN(svc.getTime())) return null;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  return Math.round((svc - today) / 86400000);
+}
+
+function serviceIsAdvanceBooking() {
+  const days = daysUntilServiceDate();
+  return days != null && days > NEAR_TERM_DAYS;
 }
 
 async function authorizePayment(panel) {
@@ -1577,8 +1619,48 @@ async function confirmPaymentAuthorization(panel, button) {
     button.disabled = true;
     button.textContent = "Authorizing...";
   }
-  setStatus("warning", "Authorizing payment method...");
+  setStatus("warning", serviceIsAdvanceBooking() ? "Saving card..." : "Authorizing payment method...");
   try {
+    if (serviceIsAdvanceBooking()) {
+      // Advance booking: save the card now (no hold placed). The daily cron
+      // authorizes the real hold ~2 days before the service date.
+      const setupRes = await fetch("/api/payments", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "create_setup_intent",
+          customer_name: customerName(),
+          customer_email: bookingState.values.customerEmail,
+          customer_phone: bookingState.values.customerPhone,
+          service_label: serviceLabel(),
+        }),
+      });
+      const setup = await setupRes.json().catch(() => ({}));
+      if (!setupRes.ok) throw new Error(setup.error || "Could not start card setup.");
+
+      const result = await stripe.confirmCardSetup(setup.client_secret, {
+        payment_method: {
+          card: cardElement,
+          billing_details: {
+            name: customerName(),
+            email: bookingState.values.customerEmail || undefined,
+            phone: normalizePhone(bookingState.values.customerPhone) || undefined,
+          },
+        },
+      });
+      if (result.error) throw new Error(result.error.message);
+
+      bookingState.payment.cardSaved = true;
+      bookingState.payment.setupIntentId = result.setupIntent?.id || "";
+      bookingState.payment.stripeCustomerId = setup.customer_id || "";
+      bookingState.payment.authorizedAmountCents = Math.round(totals.estimatedTotal * 100);
+      const svcDate = bookingState.values.serviceDate || "your service date";
+      setStatus("success", `Card saved. We'll authorize ${formatMoney(totals.estimatedTotal)} about 2 days before ${svcDate}. You are not charged until service is complete.`);
+      closePaymentModal();
+      flowRoot?.dispatchEvent(new CustomEvent("booking-payment-authorized"));
+      return;
+    }
+
     const createRes = await fetch("/api/payments", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -1640,6 +1722,11 @@ async function cancelPaymentAuthorization(panel) {
     bookingState.payment.paymentIntentId = "";
     bookingState.payment.clientSecret = "";
     bookingState.payment.authorizedAmountCents = 0;
+    // Advance booking saved a card instead of a hold — nothing to release in
+    // Stripe, just clear the local state.
+    bookingState.payment.cardSaved = false;
+    bookingState.payment.setupIntentId = "";
+    bookingState.payment.stripeCustomerId = "";
     bookingState.values.reviewConfirmed = false;
     setStatus("warning", "Payment authorization was cleared. No request was booked.");
     return true;
@@ -2434,7 +2521,9 @@ initBookingFlow();
       bookingState.submitting = true;
       savePanelValues(panel);
       log('Validation started');
-      if (!bookingState.payment.authorized || !bookingState.payment.paymentIntentId) {
+      // Advance bookings have a saved card (no hold) instead of an authorized PI.
+      const isScheduled = Boolean(bookingState.payment.cardSaved && bookingState.payment.setupIntentId);
+      if (!isScheduled && (!bookingState.payment.authorized || !bookingState.payment.paymentIntentId)) {
         setStatus(panel, 'error', 'Please authorize payment before submitting.');
         return;
       }
@@ -2443,26 +2532,44 @@ initBookingFlow();
         return;
       }
       log('Validation passed');
-      const stored = sessionStorage.getItem(`shiftfuel_booking_request_${bookingState.payment.paymentIntentId}`);
+      const idemKey = bookingState.payment.paymentIntentId || bookingState.payment.setupIntentId;
+      const stored = sessionStorage.getItem(`shiftfuel_booking_request_${idemKey}`);
       if (stored) {
         const data = JSON.parse(stored);
         if (data?.id) { showSuccess(panel, data); submitted = true; return; }
       }
-      const payload = makePayload();
       button.disabled = true;
       button.textContent = 'Submitting...';
       setStatus(panel, 'warning', 'Submitting booking...');
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
       log('Supabase insert started');
-      const response = await Promise.race([
-        fetch('/api/create-authorized-booking', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload), signal: controller.signal }),
-        new Promise((_, reject) => setTimeout(() => reject(new Error('Booking is taking longer than expected.')), TIMEOUT_MS)),
-      ]).finally(() => clearTimeout(timer));
+      let response;
+      if (isScheduled) {
+        // Card saved, no hold yet — create the request in payment_scheduled
+        // state; the daily cron places the real hold ~2 days before service.
+        const totals = calculateTotals();
+        const amountCents = Math.round(Number(bookingState.payment.authorizedAmountCents || totals.estimatedTotal * 100));
+        const schedPayload = buildBookingPayload();
+        schedPayload.action = 'create_scheduled_booking';
+        schedPayload.setup_intent_id = bookingState.payment.setupIntentId;
+        schedPayload.amount_cents = amountCents;
+        schedPayload.estimated_total = amountCents / 100;
+        response = await Promise.race([
+          fetch('/api/payments', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(schedPayload), signal: controller.signal }),
+          new Promise((_, reject) => setTimeout(() => reject(new Error('Booking is taking longer than expected.')), TIMEOUT_MS)),
+        ]).finally(() => clearTimeout(timer));
+      } else {
+        const payload = makePayload();
+        response = await Promise.race([
+          fetch('/api/create-authorized-booking', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload), signal: controller.signal }),
+          new Promise((_, reject) => setTimeout(() => reject(new Error('Booking is taking longer than expected.')), TIMEOUT_MS)),
+        ]).finally(() => clearTimeout(timer));
+      }
       const data = await response.json().catch(() => ({}));
       if (!response.ok || !data?.id) throw new Error(data.error || 'Could not submit booking.');
       log('Supabase insert succeeded', data);
-      sessionStorage.setItem(`shiftfuel_booking_request_${bookingState.payment.paymentIntentId}`, JSON.stringify(data));
+      sessionStorage.setItem(`shiftfuel_booking_request_${idemKey}`, JSON.stringify(data));
       log('Request number created', { requestNumber: publicNumber(data.id), requestId: data.id });
       showSuccess(panel, data);
       submitted = true;
