@@ -83,11 +83,11 @@
           <span class="track-live-dot" aria-hidden="true"></span>
           <div>
             <h3>Live location</h3>
-            <p>${activeAllowed ? 'Live location available while your vehicle is being serviced.' : 'Live location is not currently available.'}</p>
+            <p>${activeAllowed ? 'Live location available while your vehicle is being serviced.' : 'Live location is not currently available. Status updates will still appear here.'}</p>
           </div>
         </div>
         <div class="track-live-location-body">
-          <p class="track-live-location-status">${activeAllowed ? 'Checking for live location...' : 'Live location is not currently available.'}</p>
+          <p class="track-live-location-status">${activeAllowed ? 'Checking for live location...' : 'Live location is not currently available. Status updates will still appear here.'}</p>
           <div class="track-live-location-map" hidden>
             <div class="track-live-map-canvas" aria-label="Approximate live vehicle service location"></div>
             <p class="field-help">Map data © OpenStreetMap contributors. Location is approximate and comes from the worker’s phone GPS.</p>
@@ -118,7 +118,7 @@
     return panel;
   }
 
-  function setUnavailable(panel, message = 'Live location is not currently available.') {
+  function setUnavailable(panel, message = 'Live location is not currently available. Status updates will still appear here.') {
     if (!panel) return;
     panel.classList.remove('is-live');
     panel.querySelector('.track-live-location-status').textContent = message;
@@ -332,7 +332,7 @@
       state.missCount = (state.missCount || 0) + 1;
       liveState.set(requestId, state);
       if (!isCurrentlyLive || state.missCount >= 2) {
-        setUnavailable(panel, 'Live location is not currently available.');
+        setUnavailable(panel, 'Live location is not currently available. Status updates will still appear here.');
       }
     }
   }

@@ -6,6 +6,7 @@
     }
   ],
   "rewrites": [
+    { "source": "/staff/access", "destination": "/staff-access.html" },
     { "source": "/join-the-team", "destination": "/hiring.html" },
     { "source": "/apply", "destination": "/hiring.html" },
     { "source": "/worker/login", "destination": "/worker-login.html" },

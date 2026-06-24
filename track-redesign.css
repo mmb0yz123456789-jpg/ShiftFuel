@@ -1134,15 +1134,17 @@
 .track-page .tk-update-title,
 .track-page .tk-update-desc { overflow-wrap: anywhere; white-space: normal; }
 
-/* Canceled request: stacked cards, status-first. */
-.track-page .track-canceled-body {
+/* Canceled / completed request: stacked cards, summary-first. */
+.track-page .track-canceled-body,
+.track-page .track-completed-body {
   display: grid;
   gap: 16px;
   margin-top: 6px;
 }
 
 @media (min-width: 901px) {
-  .track-page .track-canceled-body { width: min(720px, 100%); }
+  .track-page .track-canceled-body,
+  .track-page .track-completed-body { width: min(720px, 100%); }
 }
 
 .track-page .tk-canceled-status { border-color: rgba(220, 38, 38, 0.25); }
@@ -1196,3 +1198,124 @@
   /* Keep the footer and last card clear of the fixed bottom tab bar. */
   .track-page { padding-bottom: 90px; }
 }
+
+/* ── Compact request card summary (two-line mobile-first layout) ── */
+.track-request-summary {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0;
+  padding: 16px 20px;
+  user-select: none;
+}
+.track-request-summary-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 4px;
+}
+.track-request-expand-hint {
+  margin-top: 8px;
+  color: var(--sf-teal-dark);
+  font-size: 0.82rem;
+  font-weight: 850;
+  letter-spacing: 0.01em;
+  opacity: 0.7;
+}
+.track-request-details[open] .track-request-expand-hint {
+  display: none;
+}
+.track-request-total {
+  font-weight: 850;
+  color: var(--sf-teal-dark);
+}
+.track-request-payment-flag {
+  color: #b45309;
+  font-weight: 850;
+}
+
+/* ── Sub-accordions inside expanded requests ── */
+.tk-sub-acc {
+  border: 1px solid rgba(13, 59, 59, 0.09);
+  border-radius: var(--sf-radius-sm);
+  background: #fafbfa;
+  overflow: hidden;
+}
+.tk-sub-acc-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 13px 16px;
+  color: var(--sf-teal-dark);
+  font-size: 0.9rem;
+  font-weight: 850;
+  cursor: pointer;
+  list-style: none;
+  user-select: none;
+}
+.tk-sub-acc-head::-webkit-details-marker { display: none; }
+.tk-sub-acc-head::marker { display: none; }
+.tk-sub-acc-chevron {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  color: var(--sf-muted);
+  transition: transform 0.18s;
+}
+.tk-sub-acc[open] > .tk-sub-acc-head .tk-sub-acc-chevron {
+  transform: rotate(180deg);
+}
+.tk-sub-acc-body {
+  display: grid;
+  gap: 12px;
+  padding: 4px 12px 14px;
+}
+.tk-sub-acc-body .tk-card {
+  border-radius: calc(var(--sf-radius-sm) - 2px);
+}
+.tk-sub-acc-body > .tk-card:only-child {
+  box-shadow: none;
+  border: 1px solid rgba(13, 59, 59, 0.08);
+}
+
+/* Photo lazy placeholder */
+.tk-photos-lazy { padding: 8px 0; }
+
+/* Bottom nav padding — ensure last card clears the fixed tab bar */
+.track-page { padding-bottom: max(80px, env(safe-area-inset-bottom, 0px) + 80px); }
+
+@media (max-width: 640px) {
+  .track-page { padding-bottom: max(96px, env(safe-area-inset-bottom, 0px) + 96px); }
+  .track-section-body { padding: 0 12px 14px; }
+  .track-request-summary { padding: 14px 16px; }
+  .tk-sub-acc-head { padding: 12px 14px; font-size: 0.88rem; }
+  .tk-sub-acc-body { padding: 4px 10px 12px; }
+}
+
+/* ── Completed request: receipt-style summary card (open by default) ── */
+.track-page .tk-completed-summary { display: grid; gap: 12px; }
+.track-page .tk-completed-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+.track-page .tk-completed-total {
+  flex-shrink: 0;
+  text-align: right;
+  color: var(--sf-teal-dark);
+  font-size: 1.3rem;
+  font-weight: 950;
+  line-height: 1.1;
+}
+.track-page .tk-completed-total small {
+  display: block;
+  color: var(--sf-muted);
+  font-size: 0.7rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.track-page .tk-completed-meta { margin: 0; }
+.track-page .tk-completed-updates { margin-top: 14px; }

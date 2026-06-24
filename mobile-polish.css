@@ -173,7 +173,11 @@
   .pricing-card-grid,
   .safety-row {
     grid-template-columns: 1fr !important;
-    gap: 14px !important;
+    gap: 18px !important;
+  }
+
+  .safety-row > div {
+    padding: 20px !important;
   }
 
   .landing-section,
@@ -575,6 +579,7 @@
 
   .app-tab svg { width: 22px; height: 22px; }
 
+  .app-tab.active,
   .app-tab.is-active {
     color: var(--sf-teal-dark, #0d3b3b);
     background: rgba(167, 191, 166, 0.18);
@@ -1151,7 +1156,8 @@
   }
   .worker-portal-page .worker-portal-hero,
   .worker-portal-page .worker-dashboard-layout,
-  .worker-portal-page .worker-schedule-view {
+  .worker-portal-page .worker-schedule-view,
+  .worker-portal-page .worker-tab {
     width: 100% !important;
     max-width: 100% !important;
     margin-left: 0 !important;
@@ -1286,4 +1292,32 @@
   }
 
   body.worker-portal-page .worker-secondary-btn { min-height: 44px; }
+}
+
+/* ─────────────────────────────────────────────────────────────────────────
+   Worker tab panels — desktop shows all, mobile shows active only.
+   The hidden attribute is toggled by switchWorkerTab(); on desktop we
+   override it so all sections remain visible without a tab bar.
+   ───────────────────────────────────────────────────────────────────────── */
+@media (min-width: 761px) {
+  .worker-tab { display: block !important; }
+}
+
+/* ─────────────────────────────────────────────────────────────────────────
+   Fix: "Location" label in the Current Status card word-wrapping to
+   "Loca / tion" on narrow phones.  The dt must not break; the dd (which
+   can be a long address) wraps on the right side instead.
+   ───────────────────────────────────────────────────────────────────────── */
+@media (max-width: 760px) {
+  .worker-current-status-card dt,
+  .worker-profile-facts dt {
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+  .worker-current-status-card dd,
+  .worker-profile-facts dd {
+    overflow-wrap: anywhere;
+    word-break: break-word;
+    min-width: 0;
+  }
 }

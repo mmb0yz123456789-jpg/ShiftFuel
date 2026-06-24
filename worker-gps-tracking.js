@@ -34,7 +34,11 @@
     'unable_to_complete', 'auto_reversed', 'closed_no_charge',
   ]);
 
-  const MIN_UPDATE_MS = 15000;
+  // Movement-aware cadence: send often while the worker is moving, and back off
+  // to an occasional heartbeat while stopped — never track more than needed.
+  const MOVING_UPDATE_MS = 15000;   // ~10–20s while driving
+  const STOPPED_UPDATE_MS = 45000;  // ~30–60s while parked/stopped
+  const MOVING_SPEED_MPS = 0.7;     // ≈1.5 mph — above this counts as moving
   const MIN_DISTANCE_METERS = 25;
   const activeWatches = new Map();
   const blockedRequests = new Set();
@@ -174,8 +178,11 @@
     const watchId = navigator.geolocation.watchPosition(async (position) => {
       const point = { lat: position.coords.latitude, lng: position.coords.longitude };
       const moved = distanceMeters(active.lastPoint, point);
+      const speed = Number.isFinite(position.coords.speed) ? position.coords.speed : null;
+      const isMoving = (speed != null && speed >= MOVING_SPEED_MPS) || moved >= MIN_DISTANCE_METERS;
+      const minInterval = isMoving ? MOVING_UPDATE_MS : STOPPED_UPDATE_MS;
       const elapsed = Date.now() - active.lastSentAt;
-      if (active.sending || (active.lastPoint && elapsed < MIN_UPDATE_MS && moved < MIN_DISTANCE_METERS)) return;
+      if (active.sending || (active.lastPoint && elapsed < minInterval)) return;
 
       active.sending = true;
       try {
