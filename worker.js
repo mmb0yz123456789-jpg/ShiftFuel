@@ -2585,8 +2585,11 @@ async function loadWorkerJobs(silent = false) {
   renderWorkerDashboardToday(focusJobs, upcomingJobs);
   renderWorkerEarnings(completedToday);
   renderWorkerTodayCounts({
-    accepted: activeJobs.length,
-    upcoming: pendingAccepted.length,
+    // The job you're handling now (the focus card) counts as Accepted — unless it's
+    // a cancellation, which is counted under Cancelled instead. Other claimed jobs
+    // waiting behind it are Upcoming.
+    accepted: focusJobs.filter((job) => job.status !== 'cancelled_pending_key_return').length,
+    upcoming: upcomingJobs.length,
     completed: completedToday.length,
     cancelled: cancelledReturnJobs.length,
   });

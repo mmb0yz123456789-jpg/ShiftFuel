@@ -123,11 +123,15 @@ function openPhotoLightbox(src, label) {
   showLightboxAt(0);
 }
 
-// Open from a tapped thumbnail, building the gallery from every thumbnail in the
-// same request card so the customer can page through all of them.
+// Open from a tapped thumbnail and page through the photos in the SAME gallery
+// the user tapped — the recent strip or the full grouped grid, not both (photos
+// appear in both, and the full grid may be hidden). Skip hidden thumbnails.
 function openLightboxFromCard(card) {
-  const scope = card.closest('.track-request-card') || document;
-  const thumbs = Array.from(scope.querySelectorAll('[data-lightbox-src]'));
+  const scope = card.closest('.tk-photo-strip, .tk-photos-full')
+    || card.closest('.track-request-card')
+    || document;
+  const thumbs = Array.from(scope.querySelectorAll('[data-lightbox-src]'))
+    .filter((t) => t === card || t.offsetParent !== null);
   _lightboxItems = thumbs.map((t) => ({ src: t.dataset.lightboxSrc, label: t.dataset.lightboxLabel || '' }));
   showLightboxAt(Math.max(0, thumbs.indexOf(card)));
 }
@@ -2977,6 +2981,7 @@ function renderRequestCard(request, photos = [], review = null, { expanded = fal
                the key/vehicle; the script only injects when tracking is active. -->
           <div class="track-live-location-mount"></div>
 
+          <div class="tk-detail-grid">
           ${tkSubAcc('Full Timeline', `
             <section class="tk-card tk-status">${renderStatusStepper(request)}</section>
             ${hasWorker ? `<section class="tk-card tk-partner">${renderPartnerCard(request)}</section>` : ''}
@@ -3002,6 +3007,7 @@ function renderRequestCard(request, photos = [], review = null, { expanded = fal
           ].filter(Boolean).join(''))}
 
           ${tkSubAcc('Help', `<section class="tk-card tk-help">${renderHelpCard()}</section>`, { open: false })}
+          </div>
 
           ${renderReviewPrompt(request, review)}
           ${canCustomerCancel(request) ? `

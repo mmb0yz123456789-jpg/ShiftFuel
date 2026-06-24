@@ -1552,6 +1552,21 @@
   box-shadow: var(--sf-shadow-card, 0 14px 40px rgba(13,59,59,0.10));
 }
 
+/* Desktop two-column detail dashboard — uses the width on wide screens while the
+   hero, live map, and estimated total stay full-width above. Mobile = one column. */
+.track-page .tk-detail-grid {
+  display: grid;
+  gap: 12px;
+}
+@media (min-width: 1000px) {
+  .track-page .tk-detail-grid {
+    grid-template-columns: 1fr 1fr;
+    align-items: start;
+  }
+  /* Full Timeline holds the wide 7-step horizontal stepper — give it both columns. */
+  .track-page .tk-detail-grid > .tk-sub-acc:first-child { grid-column: 1 / -1; }
+}
+
 /* Photo viewer: prev/next paging controls + counter (added in track.js). */
 .photo-lightbox-nav {
   position: absolute;
