@@ -550,14 +550,26 @@ async function loadBookedSlots() {
 }
 
 function mountCardIfNeeded() {
-  if (!cardElement || cardMounted) return;
   const container = document.querySelector("#booking-card-element");
   if (!container) return;
+  // If Stripe didn't load (blocked script, offline, bad key), don't leave a
+  // silent empty box — tell the customer what to do.
+  if (!stripe || !cardElement) {
+    const display = document.querySelector("#booking-card-errors");
+    if (display) display.textContent = "Card entry could not load. Please refresh the page, disable any ad/script blockers, or try a different browser.";
+    return;
+  }
+  if (cardMounted) return;
   cardElement.mount("#booking-card-element");
   cardMounted = true;
   cardElement.on("change", (event) => {
     const display = document.querySelector("#booking-card-errors");
     if (display) display.textContent = event.error ? event.error.message : "";
+  });
+  // Surface the real reason if Stripe's card iframe fails to render.
+  cardElement.on("loaderror", (event) => {
+    const display = document.querySelector("#booking-card-errors");
+    if (display) display.textContent = event?.error?.message || "Card entry could not load. Please refresh and try again.";
   });
 }
 

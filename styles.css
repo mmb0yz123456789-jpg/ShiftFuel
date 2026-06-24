@@ -3292,27 +3292,42 @@ font-size: 0.85rem;
 /* Star rating widget */
 .star-rating {
   display: flex;
-  gap: 6px;
+  gap: 4px;
 }
 
 .star-btn {
   background: none;
   border: none;
-  font-size: 2rem;
+  font-size: 2.2rem;
   color: #d1d5db;
   cursor: pointer;
-  padding: 0;
+  padding: 4px 2px;
   line-height: 1;
-  transition: color 0.1s, transform 0.1s;
+  transition: color 0.12s, transform 0.1s;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
 }
 
-.star-btn:hover,
+/* Filled state set by JS via .filled class */
 .star-btn.filled {
   color: #f59e0b;
 }
 
-.star-btn:hover {
-  transform: scale(1.15);
+/* Desktop: just brighten the hovered star slightly */
+@media (hover: hover) {
+  .star-btn:hover { color: #fbbf24; transform: scale(1.2); }
+}
+
+.star-rating-label {
+  font-size: 0.85rem;
+  color: #888;
+  margin: 0;
+  min-height: 1.2em;
+}
+
+.star-rating-label.has-selection {
+  color: #f59e0b;
+  font-weight: 600;
 }
 
 /* Display-only star strip (submitted state) */

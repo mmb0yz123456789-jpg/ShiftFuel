@@ -5,8 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Track My Vehicle | ShiftFuel Concierge</title>
   <link rel="manifest" href="manifest.webmanifest">
-  <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <!-- Customer site opens in the browser (not standalone) so Stripe's card
+       iframe loads reliably on iOS home-screen launches. -->
+  <meta name="apple-mobile-web-app-capable" content="no">
   <meta name="apple-mobile-web-app-title" content="ShiftFuel">
   <link rel="apple-touch-icon" href="icon-main.svg">
   <link rel="stylesheet" href="styles.css">
