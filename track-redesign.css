@@ -1540,6 +1540,46 @@
   font-weight: 800;
 }
 
+/* Concierge quick card: full partner info (photo, verified, Call) in the hero. */
+.track-page .tk-hero-concierge-row {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+.track-page .tk-hero-avatar-photo {
+  width: 34px;
+  height: 34px;
+  display: block;
+  object-fit: cover;
+}
+.track-page .tk-hero-concierge-info { min-width: 0; }
+.track-page .tk-hero-verified {
+  display: block;
+  margin-top: 2px;
+  color: var(--sf-green-dark, #15793f);
+  font-size: 0.66rem;
+  font-weight: 800;
+  line-height: 1.2;
+}
+.track-page .tk-hero-call {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  width: 100%;
+  min-height: 38px;
+  margin-top: 11px;
+  border: 1px solid rgba(13, 59, 59, 0.16);
+  border-radius: 11px;
+  background: #fff;
+  color: var(--sf-teal-dark, #0d3b3b);
+  font-size: 0.85rem;
+  font-weight: 850;
+  text-decoration: none;
+}
+.track-page .tk-hero-call svg { width: 16px; height: 16px; }
+.track-page .tk-hero-call:active { transform: scale(0.97); }
+
 /* Promote the live map to a prominent, full-width card right under the hero. */
 .track-page .track-live-location-mount:empty { display: none; }
 .track-page .track-live-location-mount {

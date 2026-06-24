@@ -2497,8 +2497,23 @@ function renderTrackHero(request) {
   const worker = request.assigned_worker_name;
   const quick = [];
   if (worker) {
-    const initial = escapeHtml(worker.charAt(0).toUpperCase());
-    quick.push(`<div class="tk-hero-quick"><span class="tk-hero-quick-label">Your concierge</span><span class="tk-hero-quick-val"><span class="tk-hero-avatar" aria-hidden="true">${initial}</span>${escapeHtml(worker)}</span></div>`);
+    const isVerified = Boolean(request.assigned_employee_id) && verifiedWorkerIds.has(request.assigned_employee_id);
+    const avatar = request.assigned_worker_photo_url
+      ? `<img class="tk-hero-avatar tk-hero-avatar-photo" src="${escapeHtml(request.assigned_worker_photo_url)}" alt="${escapeHtml(worker)}">`
+      : `<span class="tk-hero-avatar" aria-hidden="true">${escapeHtml(worker.charAt(0).toUpperCase())}</span>`;
+    const canCall = isValidPhone(request.assigned_worker_phone);
+    quick.push(`
+      <div class="tk-hero-quick tk-hero-concierge">
+        <span class="tk-hero-quick-label">Your concierge</span>
+        <div class="tk-hero-concierge-row">
+          ${avatar}
+          <div class="tk-hero-concierge-info">
+            <span class="tk-hero-quick-val">${escapeHtml(worker)}</span>
+            ${isVerified ? '<span class="tk-hero-verified">&#10003; Verified ShiftFuel employee</span>' : ''}
+          </div>
+        </div>
+        ${canCall ? `<a class="tk-hero-call" href="tel:${escapeHtml(cleanPhone(request.assigned_worker_phone))}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M5 4h3l1.5 5-2 1a11 11 0 0 0 5 5l1-2 5 1.5v3a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2z"/></svg>Call</a>` : ''}
+      </div>`);
   }
   if (returnTime) {
     quick.push(`<div class="tk-hero-quick"><span class="tk-hero-quick-label">Back by</span><span class="tk-hero-quick-val">${escapeHtml(returnTime)}</span></div>`);
@@ -2984,7 +2999,6 @@ function renderRequestCard(request, photos = [], review = null, { expanded = fal
           <div class="tk-detail-grid">
           ${tkSubAcc('Full Timeline', `
             <section class="tk-card tk-status">${renderStatusStepper(request)}</section>
-            ${hasWorker ? `<section class="tk-card tk-partner">${renderPartnerCard(request)}</section>` : ''}
           `, { open: false })}
 
           ${tkSubAcc('Vehicle & Service Details', `
