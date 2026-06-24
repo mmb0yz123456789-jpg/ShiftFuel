@@ -159,4 +159,29 @@ begin
 end;
 $$;
 
+-- ── Auto-stamp lifecycle timestamps on the status transition ────────────────
+-- Path-independent: fires for the admin RPC, the worker RPC, and any server
+-- write, so key_received_at / vehicle_picked_up_at are always recorded the
+-- first time the request reaches that status — no per-RPC or client changes.
+create or replace function public.stamp_request_lifecycle_times()
+returns trigger
+language plpgsql
+set search_path = public, pg_temp
+as $$
+begin
+  if new.status = 'key_received' and new.key_received_at is null then
+    new.key_received_at := now();
+  end if;
+  if new.status = 'vehicle_picked_up' and new.vehicle_picked_up_at is null then
+    new.vehicle_picked_up_at := now();
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists trg_stamp_request_lifecycle_times on public.service_requests;
+create trigger trg_stamp_request_lifecycle_times
+  before insert or update on public.service_requests
+  for each row execute function public.stamp_request_lifecycle_times();
+
 commit;

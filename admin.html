@@ -39,8 +39,7 @@
 	  </nav>
 
 	  <div class="portal-header-actions">
-		<button id="admin-mobile-menu-btn" class="admin-menu-btn" aria-label="Open menu">☰</button>
-		<button id="admin-avatar-btn" class="admin-avatar-btn" aria-label="Admin menu">
+		<button id="admin-avatar-btn" class="admin-avatar-btn" aria-label="Open admin menu" title="Menu">
 		  <span id="admin-avatar-initials">A</span>
 		</button>
 	  </div>
@@ -51,8 +50,14 @@
 	  <div class="admin-menu-overlay"></div>
 	  <div class="admin-menu-panel">
 		<div class="admin-menu-header">
-		  <h3>Menu</h3>
-		  <button id="admin-menu-close" class="modal-close">✕</button>
+		  <div class="admin-menu-identity">
+			<div class="admin-menu-avatar"><span id="admin-menu-initials">A</span></div>
+			<div>
+			  <strong id="admin-menu-name">Admin</strong>
+			  <p class="admin-menu-role">Administrator</p>
+			</div>
+		  </div>
+		  <button id="admin-menu-close" class="modal-close" aria-label="Close menu">✕</button>
 		</div>
 		
 		<nav class="admin-menu-links">

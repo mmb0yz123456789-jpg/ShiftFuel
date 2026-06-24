@@ -132,7 +132,10 @@ workerEnableAlertsBtn?.addEventListener('click', async () => {
   workerEnableAlertsBtn.textContent = 'Enabling…';
   const result = await window.ShiftFuelPush.enablePush({ type: 'worker', workerToken: SESSION_WORKER_TOKEN });
   if (result.ok) {
-    workerEnableAlertsBtn.textContent = 'Alerts on ✓';
+    workerEnableAlertsBtn.textContent = 'Alerts on ✓ (tap to test)';
+    workerEnableAlertsBtn.disabled = false;
+    // Immediate confirmation — fire a test push so you see a real notification land.
+    window.ShiftFuelPush.sendTest(result.endpoint);
   } else {
     alert(window.ShiftFuelPush.friendlyReason(result.reason));
     workerEnableAlertsBtn.disabled = false;

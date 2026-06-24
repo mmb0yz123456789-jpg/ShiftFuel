@@ -497,18 +497,26 @@ function requestSummaryHtml(request, options = {}) {
   const payment = importantPaymentLabel(request);
   const statusClass = options.statusClass || "";
 
+  const totalAmount = request.final_total != null ? request.final_total
+    : (closedStatuses.includes(request.status) && request.estimated_total != null ? request.estimated_total : null);
+  const totalLabel = request.final_total != null ? 'Final' : 'Est.';
+
   return `
     <summary class="track-request-summary">
       <div class="track-request-summary-main">
-        <span class="track-request-number">${escapeHtml(trackRequestNumber(request.id))}</span>
+        <div class="track-request-summary-top">
+          <span class="track-request-number">${escapeHtml(trackRequestNumber(request.id))}</span>
+          <span class="status-pill ${escapeHtml(statusClass)}">${escapeHtml(status)}</span>
+        </div>
         <span class="track-request-vehicle">${escapeHtml(vehicle)}</span>
         <span class="track-request-meta">
           ${serviceDate ? `<span>${escapeHtml(serviceDate)}</span>` : ""}
           ${service ? `<span>${escapeHtml(service)}</span>` : ""}
-          ${payment ? `<span>${escapeHtml(payment)}</span>` : ""}
+          ${payment ? `<span class="track-request-payment-flag">${escapeHtml(payment)}</span>` : ""}
+          ${totalAmount != null ? `<span class="track-request-total">${escapeHtml(totalLabel)} ${formatCurrency(totalAmount)}</span>` : ""}
         </span>
       </div>
-      <span class="status-pill ${escapeHtml(statusClass)}">${escapeHtml(status)}</span>
+      <span class="track-request-expand-hint" aria-hidden="true">View details</span>
     </summary>
   `;
 }
@@ -1349,43 +1357,37 @@ async function loadRequestReview(requestId, phone = verifiedTrackingContact.phon
   return data || null;
 }
 
-function shouldShowReviewPrompt(request, review) {
-  return request.status === "complete" && !review && hoursSince(request.updated_at || request.created_at) <= 24;
-}
-
 function renderReviewPrompt(request, review) {
   if (review) {
-    return "";
+    const filled = '★'.repeat(review.rating);
+    const empty = '☆'.repeat(5 - review.rating);
+    return `
+      <section class="review-panel review-panel--submitted">
+        <h3>Your rating</h3>
+        <div class="star-display" aria-label="${review.rating} out of 5 stars">${filled}${empty}</div>
+        ${review.comments ? `<p class="review-comment">&ldquo;${escapeHtml(review.comments)}&rdquo;</p>` : ''}
+      </section>
+    `;
   }
 
-  if (!shouldShowReviewPrompt(request, review)) {
-    return "";
-  }
+  if (request.status !== "complete") return "";
 
-  const ratingLabels = {
-    5: "5 - Amazing",
-    4: "4 - Good",
-    3: "3 - Okay",
-    2: "2 - Poor",
-    1: "1 - Terrible",
-  };
+  const workerName = request.assigned_worker_name || "your service partner";
 
   return `
     <section class="review-panel">
-      <h3>Please review our service</h3>
-      <p class="field-help">Tell us how we did. After you submit, this review request will disappear from tracking.</p>
-      <p class="field-help">5 is amazing. 1 is terrible. Comments are optional for 4-5 and required for 1-3.</p>
-      <div class="rating-options" role="radiogroup" aria-label="Service rating">
-        ${[5, 4, 3, 2, 1].map((rating) => `
-          <label>
-            <input type="radio" name="service-rating" value="${rating}">
-            <span>${ratingLabels[rating]}</span>
-          </label>
-        `).join("")}
+      <h3>Rate your service</h3>
+      <p class="field-help">How did ${escapeHtml(workerName)} do with your vehicle service?</p>
+      <div class="star-rating" role="radiogroup" aria-label="Service rating" data-selected="0">
+        <button type="button" class="star-btn" data-star="1" aria-label="1 star">★</button>
+        <button type="button" class="star-btn" data-star="2" aria-label="2 stars">★</button>
+        <button type="button" class="star-btn" data-star="3" aria-label="3 stars">★</button>
+        <button type="button" class="star-btn" data-star="4" aria-label="4 stars">★</button>
+        <button type="button" class="star-btn" data-star="5" aria-label="5 stars">★</button>
       </div>
+      <input type="hidden" class="star-rating-value" value="">
       <label>
-        Comments
-        <textarea id="service-review-comments" rows="3" placeholder="Optional for 4-5. Required if rating is 3 or below."></textarea>
+        <textarea id="service-review-comments" rows="3" placeholder="Share anything about your experience…"></textarea>
       </label>
       <button
         class="button primary submit-service-review"
@@ -1397,10 +1399,6 @@ function renderReviewPrompt(request, review) {
       >Submit review</button>
     </section>
   `;
-}
-
-function routeHomeAfterReview() {
-  window.location.href = "index.html";
 }
 
 async function markReviewComplete(requestId) {
@@ -2525,6 +2523,21 @@ function renderHelpCard() {
   `;
 }
 
+// ── Sub-accordion helper ─────────────────────────────────────────────────────
+// Wraps content in a collapsible <details> section inside an expanded request.
+function tkSubAcc(title, content, { open = false } = {}) {
+  const trimmed = (content || '').trim();
+  if (!trimmed) return '';
+  return `
+    <details class="tk-sub-acc"${open ? ' open' : ''}>
+      <summary class="tk-sub-acc-head">
+        <span>${escapeHtml(title)}</span>
+        <svg class="tk-sub-acc-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
+      </summary>
+      <div class="tk-sub-acc-body">${trimmed}</div>
+    </details>`;
+}
+
 // ── Canceled-request view ───────────────────────────────────────────────────
 // A canceled request gets a dedicated top-down layout: "Canceled" + the right
 // message first, then cancellation/return details, then request details. The
@@ -2555,7 +2568,13 @@ const CANCELED_STAGE_MESSAGES = {
 function canceledStage(request) {
   const s = request.status;
   if (s === 'canceled_return_completed') return 'closed';
-  const pickedUp = Boolean(stepTimeTagFromNotes(request, 'pickup_time'));
+  // Prefer the explicit return-requirement fields set at cancel time over
+  // inferring the stage from notes.
+  if (request.vehicle_return_required === true) return 'after_pickup';
+  if (request.key_return_required === true) return 'after_key';
+  // A completed return stamps *_returned_at and clears the requirement.
+  if (request.vehicle_returned_at || request.key_returned_at) return 'closed';
+  const pickedUp = Boolean(request.vehicle_picked_up_at) || Boolean(stepTimeTagFromNotes(request, 'pickup_time'));
   if (s === 'cancelled_pending_key_return') return pickedUp ? 'after_pickup' : 'after_key';
   // Terminal canceled statuses (no return pending).
   if (pickedUp) return 'closed';
@@ -2635,51 +2654,146 @@ function renderCanceledCard(request, photos = [], { expanded = false } = {}) {
     <article class="track-request-card track-canceled-card" data-request-id="${escapeHtml(request.id)}">
       <details class="track-request-details"${expanded ? ' open' : ''}>
         ${requestSummaryHtml(request, { statusLabel: headline, statusClass: 'status-pill-denied' })}
-        <div class="track-request-body track-canceled-body">
+        <div class="track-request-body">
 
-          <section class="tk-card tk-canceled-status">
-            <p class="tk-eyebrow">Current Status</p>
-            <h2 class="tk-status-title tk-canceled-title">${escapeHtml(headline)}</h2>
-            <p class="tk-status-desc">${escapeHtml(message)}</p>
-            ${paymentNote ? `<p class="tk-canceled-note">${escapeHtml(paymentNote)}</p>` : ''}
-            <a class="button secondary tk-help-action" href="tel:${TRACK_SUPPORT_PHONE}">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M5 4h3l1.5 5-2 1a11 11 0 0 0 5 5l1-2 5 1.5v3a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2z"/></svg>
-              <span>Contact Support</span>
-            </a>
-          </section>
+          ${tkSubAcc('Current Status', `
+            <section class="tk-card tk-canceled-status">
+              <p class="tk-eyebrow">Current Status</p>
+              <h2 class="tk-status-title tk-canceled-title">${escapeHtml(headline)}</h2>
+              <p class="tk-status-desc">${escapeHtml(message)}</p>
+              ${paymentNote ? `<p class="tk-canceled-note">${escapeHtml(paymentNote)}</p>` : ''}
+              <a class="button secondary tk-help-action" href="tel:${TRACK_SUPPORT_PHONE}">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M5 4h3l1.5 5-2 1a11 11 0 0 0 5 5l1-2 5 1.5v3a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2z"/></svg>
+                <span>Contact Support</span>
+              </a>
+            </section>
+            ${returnStatusCard}
+            ${returnPending && request.assigned_worker_name ? `<section class="tk-card tk-partner">${renderReturnPartnerCard(request)}</section>` : ''}
+          `, { open: true })}
 
-          <section class="tk-card">
-            <p class="tk-eyebrow">Cancellation Details</p>
-            <dl class="tk-vehicle-meta">
-              ${canceledAt ? `<div><dt>Canceled</dt><dd>${escapeHtml(canceledAt)}</dd></div>` : ''}
-              ${canceledBy ? `<div><dt>Canceled by</dt><dd>${escapeHtml(canceledBy)}</dd></div>` : ''}
-              <div><dt>Cancellation fee</dt><dd>${request.cancellation_fee_applied ? '$15 charged' : 'None'}</dd></div>
-              ${reason ? `<div><dt>Reason</dt><dd>${escapeHtml(reason)}</dd></div>` : ''}
-            </dl>
-          </section>
+          ${tkSubAcc('Cancellation Details', `
+            <section class="tk-card">
+              <dl class="tk-vehicle-meta">
+                ${canceledAt ? `<div><dt>Canceled</dt><dd>${escapeHtml(canceledAt)}</dd></div>` : ''}
+                ${canceledBy ? `<div><dt>Canceled by</dt><dd>${escapeHtml(canceledBy)}</dd></div>` : ''}
+                <div><dt>Cancellation fee</dt><dd>${request.cancellation_fee_applied ? '$15 charged' : 'None'}</dd></div>
+                ${reason ? `<div><dt>Reason</dt><dd>${escapeHtml(reason)}</dd></div>` : ''}
+              </dl>
+            </section>
+          `)}
 
-          ${returnStatusCard}
+          ${tkSubAcc('Request Details', `
+            <section class="tk-card">
+              <dl class="tk-vehicle-meta">
+                ${service ? `<div><dt>Service</dt><dd>${escapeHtml(service)}</dd></div>` : ''}
+                ${requestNeedsFuel(request) && request.fuel_type ? `<div><dt>Fuel type</dt><dd>${escapeHtml(request.fuel_type)}</dd></div>` : ''}
+                ${requestNeedsWash(request) && request.wash_package ? `<div><dt>Car wash package</dt><dd>${escapeHtml(washLabelFromValue(request.wash_package))}</dd></div>` : ''}
+                <div><dt>Vehicle</dt><dd>${escapeHtml(vehicle)}${request.vehicle_color ? ', ' + escapeHtml(request.vehicle_color) : ''}</dd></div>
+                ${returnTime ? `<div><dt>Return window</dt><dd>${escapeHtml(serviceDate ? serviceDate + ', ' : '')}${escapeHtml(returnTime)}</dd></div>` : ''}
+                ${serviceArea ? `<div><dt>Service address</dt><dd>${escapeHtml(serviceArea)}</dd></div>` : ''}
+              </dl>
+            </section>
+          `)}
+
+          ${tkSubAcc('Photos', `
+            <div class="tk-photos-lazy"><p class="tk-empty">Loading photos…</p></div>
+          `)}
 
           <!-- Live location mounts here (only while a key/vehicle return is active). -->
           <div class="track-live-location-mount"></div>
 
-          <section class="tk-card">
-            <p class="tk-eyebrow">Request Details</p>
-            <dl class="tk-vehicle-meta">
-              ${service ? `<div><dt>Service</dt><dd>${escapeHtml(service)}</dd></div>` : ''}
-              ${requestNeedsFuel(request) && request.fuel_type ? `<div><dt>Fuel type</dt><dd>${escapeHtml(request.fuel_type)}</dd></div>` : ''}
-              ${requestNeedsWash(request) && request.wash_package ? `<div><dt>Car wash package</dt><dd>${escapeHtml(washLabelFromValue(request.wash_package))}</dd></div>` : ''}
+          <section class="tk-card tk-help">${renderHelpCard()}</section>
+        </div>
+      </details>
+    </article>
+  `;
+}
+
+// ── Completed-request view ──────────────────────────────────────────────────
+// A clean customer receipt: summary card open by default, heavier detail
+// (timeline, photos, inspection, timing, line items) tucked into collapsed
+// accordions so it doesn't read like an admin report.
+
+function capitalizeFirst(text) {
+  const s = String(text || '');
+  return s ? s.charAt(0).toUpperCase() + s.slice(1) : s;
+}
+
+function lowerFirst(text) {
+  const s = String(text || '');
+  return s ? s.charAt(0).toLowerCase() + s.slice(1) : s;
+}
+
+function completedOutcomeSummary(request) {
+  const needsFuel = requestNeedsFuel(request);
+  const needsWash = requestNeedsWash(request);
+  const unable = serviceUnableReasonsFromNotes(request) || { fuel: '', wash: '' };
+  const done = [];
+  const notDone = [];
+  if (needsWash) (unable.wash ? notDone : done).push({ label: 'car wash', reason: unable.wash });
+  if (needsFuel) (unable.fuel ? notDone : done).push({ label: 'fuel service', reason: unable.fuel });
+  if (request.quick_inspection) done.push({ label: 'quick vehicle care', reason: '' });
+
+  const sentences = [];
+  if (done.length) {
+    const names = done.map((d) => d.label);
+    const list = names.length > 1
+      ? names.slice(0, -1).join(', ') + ' and ' + names.slice(-1)
+      : names[0];
+    sentences.push(`Your ${list} ${done.length > 1 ? 'were' : 'was'} completed.`);
+  }
+  notDone.forEach((d) => {
+    const reason = String(d.reason || '').replace(/\.$/, '').trim();
+    sentences.push(`${capitalizeFirst(d.label)} was not completed${reason ? ` because ${lowerFirst(reason)}` : ''}.`);
+  });
+  return sentences.join(' ');
+}
+
+function renderCompletedCard(request, photos = [], review = null, { expanded = false } = {}) {
+  const vehicle = [request.vehicle_year, request.vehicle_make, request.vehicle_model].filter(Boolean).join(' ') || 'Your vehicle';
+  const service = request.service_label || serviceLabelFromType(request.service_type) || request.service_type || '';
+  const finalAmount = request.final_total != null ? request.final_total : request.estimated_total;
+  const completedAt = request.completed_at || request.updated_at;
+  const completedStr = completedAt
+    ? new Date(completedAt).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' })
+    : '';
+  const outcome = completedOutcomeSummary(request);
+  const inspection = inspectionSummaryFromNotes(request);
+  const timing = serviceTimingFromNotes(request);
+  const details = `${renderServicePackageDetails(request)}${serviceSummaryFromRequest(request)}`;
+  const reviewHtml = renderReviewPrompt(request, review);
+
+  return `
+    <article class="track-request-card track-completed-card" data-request-id="${escapeHtml(request.id)}">
+      <details class="track-request-details"${expanded ? ' open' : ''}>
+        ${requestSummaryHtml(request, { statusLabel: 'Complete', statusClass: 'status-pill-complete' })}
+        <div class="track-request-body track-completed-body">
+
+          <section class="tk-card tk-completed-summary">
+            <div class="tk-completed-head">
+              <div>
+                <p class="tk-eyebrow">Status</p>
+                <h2 class="tk-status-title">Complete<span class="tk-status-check" aria-hidden="true">✓</span></h2>
+              </div>
+              ${finalAmount != null ? `<div class="tk-completed-total"><small>Final total</small>${escapeHtml(formatCurrency(finalAmount))}</div>` : ''}
+            </div>
+            ${outcome ? `<p class="tk-status-desc">${escapeHtml(outcome)}</p>` : ''}
+            <dl class="tk-vehicle-meta tk-completed-meta">
               <div><dt>Vehicle</dt><dd>${escapeHtml(vehicle)}${request.vehicle_color ? ', ' + escapeHtml(request.vehicle_color) : ''}</dd></div>
-              ${returnTime ? `<div><dt>Return window</dt><dd>${escapeHtml(serviceDate ? serviceDate + ', ' : '')}${escapeHtml(returnTime)}</dd></div>` : ''}
-              ${serviceArea ? `<div><dt>Service address</dt><dd>${escapeHtml(serviceArea)}</dd></div>` : ''}
+              ${service ? `<div><dt>Service</dt><dd>${escapeHtml(service)}</dd></div>` : ''}
+              ${completedStr ? `<div><dt>Completed</dt><dd>${escapeHtml(completedStr)}</dd></div>` : ''}
+              ${request.assigned_worker_name ? `<div><dt>Service partner</dt><dd>${escapeHtml(request.assigned_worker_name)}</dd></div>` : ''}
             </dl>
           </section>
 
-          ${returnPending && request.assigned_worker_name ? `<section class="tk-card tk-partner">${renderReturnPartnerCard(request)}</section>` : ''}
+          ${reviewHtml}
 
-          <section class="tk-card tk-help">${renderHelpCard()}</section>
-
-          ${hasPhotos ? `<section class="tk-card tk-photos">${renderPhotoStrip(request, photos)}</section>` : ''}
+          ${tkSubAcc('Timeline', `${renderCurrentStatusCard(request)}<div class="tk-completed-updates"><p class="tk-eyebrow">Live updates</p>${renderLiveUpdatesFeed(request)}</div>`)}
+          ${tkSubAcc('Photos', `<div class="tk-photos-lazy"><p class="tk-empty">Loading photos…</p></div>`)}
+          ${tkSubAcc('Vehicle inspection', inspection)}
+          ${tkSubAcc('Service timing', timing)}
+          ${tkSubAcc('Service details', details)}
+          ${tkSubAcc('Contact & questions', renderHelpCard())}
         </div>
       </details>
     </article>
@@ -2689,6 +2803,9 @@ function renderCanceledCard(request, photos = [], { expanded = false } = {}) {
 function renderRequestCard(request, photos = [], review = null, { expanded = false } = {}) {
   if (isCanceledStatus(request.status)) {
     return renderCanceledCard(request, photos, { expanded });
+  }
+  if (request.status === 'complete') {
+    return renderCompletedCard(request, photos, review, { expanded });
   }
   if (request.status === 'pending_customer_info') {
     return renderPendingCompletionCard(request);
@@ -2728,24 +2845,36 @@ function renderRequestCard(request, photos = [], review = null, { expanded = fal
           ${renderEstimatedTotalCard(request)}
           ${renderServiceIssueBanner(request)}
           ${renderReturnCompletedNotice(request)}
+          ${request.status === 'auto_reversed' ? `<p class="track-auto-reversed-note">Your service was not completed on the scheduled date, so your payment has been reversed.</p>` : ''}
 
-          <div class="track-detail-layout${hasWorker ? '' : ' no-partner'}">
+          ${tkSubAcc('Current Status', `
             <section class="tk-card tk-status">${renderCurrentStatusCard(request)}</section>
-            <section class="tk-card tk-vehicle">${renderVehicleCard(request)}</section>
-            <section class="tk-card tk-updates"><p class="tk-eyebrow">Live Updates</p>${renderLiveUpdatesFeed(request)}</section>
             ${hasWorker ? `<section class="tk-card tk-partner">${renderPartnerCard(request)}</section>` : ''}
-            ${hasPhotos ? `<section class="tk-card tk-photos">${renderPhotoStrip(request, photos)}</section>` : ''}
             <section class="tk-card tk-help">${renderHelpCard()}</section>
-          </div>
+          `, { open: true })}
+
+          ${tkSubAcc('Vehicle & Service Details', `
+            <section class="tk-card tk-vehicle">${renderVehicleCard(request)}</section>
+          `)}
+
+          ${tkSubAcc('Live Updates', `
+            <section class="tk-card tk-updates"><p class="tk-eyebrow">Live Updates</p>${renderLiveUpdatesFeed(request)}</section>
+          `)}
+
+          ${tkSubAcc('Photos', `
+            <div class="tk-photos-lazy"><p class="tk-empty">Loading photos…</p></div>
+          `)}
+
+          ${tkSubAcc('Service Details', [
+            isReturned ? renderReturnDetails(request) : '',
+            serviceTimingFromNotes(request),
+            inspectionSummaryFromNotes(request),
+            request.status === 'complete' ? serviceSummaryFromRequest(request) : '',
+          ].filter(Boolean).join(''))}
 
           <!-- Live location mounts here while the worker holds the key/vehicle. -->
           <div class="track-live-location-mount"></div>
 
-          ${request.status === 'auto_reversed' ? `<p class="track-auto-reversed-note">Your service was not completed on the scheduled date, so your payment has been reversed.</p>` : ''}
-          ${isReturned ? renderReturnDetails(request) : ''}
-          ${serviceTimingFromNotes(request)}
-          ${inspectionSummaryFromNotes(request)}
-          ${request.status === 'complete' ? serviceSummaryFromRequest(request) : ''}
           ${renderReviewPrompt(request, review)}
           ${canCustomerCancel(request) ? `
             <div class="tracking-actions">
@@ -2807,9 +2936,9 @@ async function renderAllRequests(requests, phone, email) {
     html += `<p class="track-empty-msg">No requests in progress.</p>`;
   } else {
     for (const request of inProgress) {
-      const photos = await loadRequestPhotos(request.id, phone, email);
+      // Load review upfront (needed for review prompt); photos lazy-load on expand
       const review = await loadRequestReview(request.id, phone, email);
-      html += renderRequestCard(request, photos, review, { expanded: request.id === expandedRequestId });
+      html += renderRequestCard(request, [], review, { expanded: request.id === expandedRequestId });
     }
   }
   html += `</div></details>`;
@@ -2827,15 +2956,12 @@ async function renderAllRequests(requests, phone, email) {
     html += `<p class="track-empty-msg">No completed requests available.</p>`;
   } else {
     for (const request of completed) {
-      const photos = await loadRequestPhotos(request.id, phone, email);
-      const review = await loadRequestReview(request.id, phone, email);
-      html += renderRequestCard(request, photos, review);
+      html += renderRequestCard(request, [], null);
     }
   }
   html += `</div></details>`;
 
-  // Cancelled section — always collapsed by default. A canceled request never
-  // auto-opens or auto-expands, even when a key/vehicle return is still pending.
+  // Cancelled section — always collapsed. Photos load lazily on expand.
   html += `
     <details class="track-section">
       <summary class="track-section-header">
@@ -2848,8 +2974,7 @@ async function renderAllRequests(requests, phone, email) {
     html += `<p class="track-empty-msg">No cancelled requests found.</p>`;
   } else {
     for (const request of cancelled) {
-      const photos = await loadRequestPhotos(request.id, phone, email);
-      html += renderCanceledCard(request, photos, { expanded: false });
+      html += renderCanceledCard(request, [], { expanded: false });
     }
   }
   html += `</div></details>`;
@@ -2875,13 +3000,66 @@ async function renderAllRequests(requests, phone, email) {
   html += `</div>`;
   trackingResult.innerHTML = html;
 
-  trackingResult.querySelectorAll('.track-request-details').forEach((details) => {
-    details.addEventListener('toggle', () => {
-      if (details.open) mountVisibleCustomerPayCards(details);
+  // Map for lazy photo loading
+  const requestMap = new Map(requests.map((r) => [r.id, r]));
+
+  // One group section open at a time
+  trackingResult.querySelectorAll('.track-section').forEach((section) => {
+    section.addEventListener('toggle', () => {
+      if (!section.open) return;
+      trackingResult.querySelectorAll('.track-section').forEach((other) => {
+        if (other !== section && other.open) other.open = false;
+      });
     });
   });
-  trackingResult.querySelectorAll('.track-section[open] .track-request-details[open]').forEach((details) => {
+
+  // Lazy-load photos into a request's .tk-photos-lazy placeholder
+  async function loadPhotosInto(details) {
+    const card = details.closest('[data-request-id]');
+    const reqId = card?.dataset.requestId;
+    const photoMount = details.querySelector('.tk-photos-lazy:not([data-photos-loaded])');
+    if (!reqId || !photoMount) return;
+    photoMount.dataset.photosLoaded = '1';
+    try {
+      const request = requestMap.get(reqId);
+      const photos = await loadRequestPhotos(reqId, phone, email);
+      if (request && photos.length > 0) {
+        photoMount.innerHTML = renderPhotoStrip(request, photos);
+      } else {
+        photoMount.innerHTML = '<p class="tk-empty">No photos available yet.</p>';
+      }
+    } catch (e) {
+      photoMount.innerHTML = '<p class="tk-empty">Could not load photos.</p>';
+    }
+  }
+
+  // One request expanded at a time + mount payment cards
+  trackingResult.querySelectorAll('.track-request-details').forEach((details) => {
+    details.addEventListener('toggle', async () => {
+      if (!details.open) return;
+      const body = details.closest('.track-section-body');
+      if (body) {
+        body.querySelectorAll('.track-request-details').forEach((other) => {
+          if (other !== details && other.open) other.open = false;
+        });
+      }
+      mountVisibleCustomerPayCards(details);
+    });
+  });
+
+  // Load photos when the Photos sub-accordion is opened
+  trackingResult.querySelectorAll('.tk-sub-acc').forEach((subAcc) => {
+    subAcc.addEventListener('toggle', async () => {
+      if (!subAcc.open) return;
+      const details = subAcc.closest('.track-request-details');
+      if (details) await loadPhotosInto(details);
+    });
+  });
+
+  // For already-open request(s) on render, mount payment cards + load photos
+  trackingResult.querySelectorAll('.track-request-details[open]').forEach(async (details) => {
     mountVisibleCustomerPayCards(details);
+    await loadPhotosInto(details);
   });
 }
 
@@ -3068,7 +3246,9 @@ trackEnableAlertsBtn?.addEventListener("click", async () => {
     email: verifiedTrackingContact.email,
   });
   if (result.ok) {
-    trackEnableAlertsBtn.textContent = "Alerts on ✓";
+    trackEnableAlertsBtn.textContent = "Alerts on ✓ (tap to test)";
+    trackEnableAlertsBtn.disabled = false;
+    window.ShiftFuelPush.sendTest(result.endpoint);
   } else {
     alert(window.ShiftFuelPush.friendlyReason(result.reason));
     trackEnableAlertsBtn.disabled = false;
@@ -3216,26 +3396,34 @@ trackingResult.addEventListener("click", async (event) => {
   const showCancelButton = event.target.closest(".show-cancel-request");
   const confirmCancelButton = event.target.closest(".confirm-cancel-request");
   const submitReviewButton = event.target.closest(".submit-service-review");
+  const starBtn = event.target.closest(".star-btn");
+
+  // Star button tap: highlight 1–N stars and store value in hidden input
+  if (starBtn) {
+    const ratingWidget = starBtn.closest(".star-rating");
+    const selected = Number(starBtn.dataset.star);
+    ratingWidget.dataset.selected = selected;
+    ratingWidget.querySelectorAll(".star-btn").forEach((btn) => {
+      btn.classList.toggle("filled", Number(btn.dataset.star) <= selected);
+    });
+    const hiddenInput = ratingWidget.closest(".review-panel")?.querySelector(".star-rating-value");
+    if (hiddenInput) hiddenInput.value = selected;
+    return;
+  }
 
   if (submitReviewButton) {
     const panel = submitReviewButton.closest(".review-panel");
-    const rating = panel.querySelector("input[name='service-rating']:checked")?.value;
+    const rating = panel.querySelector(".star-rating-value")?.value;
     const comments = panel.querySelector("#service-review-comments")?.value.trim() || "";
     const requestId = submitReviewButton.dataset.requestId;
 
     if (!rating) {
-      trackMessage.textContent = "Choose a rating before submitting your review.";
-      return;
-    }
-
-    if (Number(rating) <= 3 && !comments) {
-      trackMessage.textContent = "Please add a comment for ratings of 3 or below so we know what to fix.";
-      panel.querySelector("#service-review-comments")?.focus();
+      trackMessage.textContent = "Select a star rating before submitting.";
       return;
     }
 
     submitReviewButton.disabled = true;
-    submitReviewButton.textContent = "Submitting...";
+    submitReviewButton.textContent = "Submitting…";
     trackMessage.textContent = "";
 
     let usedDirectReviewInsert = false;
@@ -3273,9 +3461,7 @@ trackingResult.addEventListener("click", async (event) => {
 
     if (error?.code === "23505") {
       await markReviewComplete(requestId);
-      panel.remove();
-      trackMessage.textContent = "Thank you for reviewing our service.";
-      routeHomeAfterReview();
+      panel.innerHTML = '<p class="review-thanks">Thank you for your feedback.</p>';
       return;
     }
 
@@ -3296,9 +3482,7 @@ trackingResult.addEventListener("click", async (event) => {
     if (usedDirectReviewInsert) {
       await markReviewComplete(requestId);
     }
-    panel.remove();
-    trackMessage.textContent = "Thank you for reviewing our service.";
-    routeHomeAfterReview();
+    panel.innerHTML = '<p class="review-thanks">Thank you for your feedback.</p>';
     return;
   }
 

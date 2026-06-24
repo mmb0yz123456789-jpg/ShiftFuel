@@ -42,48 +42,39 @@
     </header>
 
     <main>
-      <section class="section worker-portal-hero" data-app-view="jobs">
-        <div class="worker-hero-content">
-        <div class="section-heading">
-          <p class="eyebrow">Welcome back,</p>
-          <h1 id="worker-portal-heading">Worker profile</h1>
-          <p id="worker-hero-subtitle">You have 0 jobs scheduled today.</p>
-          <div class="actions">
-            <a class="button primary" href="/worker/dashboard#worker-jobs">View jobs</a>
-            <button class="button secondary" id="worker-refresh-jobs-btn" type="button" aria-label="Refresh worker dashboard">Refresh</button>
-          </div>
-        </div>
 
-        <aside class="worker-current-status-card">
-          <div class="worker-card-heading">
-            <h2>Current Status</h2>
-          </div>
-          <dl>
-            <div><dt>Working since</dt><dd id="worker-working-since">Today</dd></div>
-            <div><dt>Location</dt><dd id="worker-current-location">ShiftFuel</dd></div>
-            <div><dt>Jobs today</dt><dd id="worker-current-jobs-today">0</dd></div>
-            <div><dt>Rating</dt><dd id="worker-current-rating">&mdash;</dd></div>
-            <div><dt>On-time rate</dt><dd id="worker-current-ontime">&mdash;</dd></div>
-          </dl>
-        </aside>
-        </div>
-      </section>
+      <!-- ── Tab: Dashboard ────────────────────────────────── -->
+      <div id="wtab-dashboard" class="worker-tab">
 
-      <section class="section worker-dashboard-layout">
-        <div class="worker-dashboard-main">
-          <section id="worker-jobs" class="worker-dashboard-card worker-jobs-panel" data-app-view="jobs">
-            <div class="worker-card-heading">
-              <div>
-                <h2>My Jobs</h2>
-                <span class="worker-soft-pill"><span id="worker-stat-jobs-today">0</span> Today</span>
-              </div>
+        <section class="section worker-portal-hero">
+          <div class="worker-hero-content">
+          <div class="section-heading">
+            <p class="eyebrow">Welcome back,</p>
+            <h1 id="worker-portal-heading">Worker profile</h1>
+            <p id="worker-hero-subtitle">You have 0 jobs scheduled today.</p>
+            <div class="actions">
+              <button class="button primary" id="worker-view-jobs-btn" type="button">View jobs</button>
+              <button class="button secondary" id="worker-refresh-jobs-btn" type="button" aria-label="Refresh worker dashboard">Refresh</button>
             </div>
-            <div id="worker-job-list" class="request-list worker-job-list"></div>
-          </section>
-        </div>
+          </div>
 
-        <aside class="worker-dashboard-side">
-          <section class="worker-dashboard-card worker-progress-card" data-app-view="progress">
+          <aside class="worker-current-status-card">
+            <div class="worker-card-heading">
+              <h2>Current Status</h2>
+            </div>
+            <dl>
+              <div><dt>Working since</dt><dd id="worker-working-since">Today</dd></div>
+              <div><dt>Location</dt><dd id="worker-current-location">ShiftFuel</dd></div>
+              <div><dt>Jobs today</dt><dd id="worker-current-jobs-today">0</dd></div>
+              <div><dt>Rating</dt><dd id="worker-current-rating">&mdash;</dd></div>
+              <div><dt>On-time rate</dt><dd id="worker-current-ontime">&mdash;</dd></div>
+            </dl>
+          </aside>
+          </div>
+        </section>
+
+        <div class="section worker-dashboard-side">
+          <section class="worker-dashboard-card worker-progress-card">
             <div class="worker-card-heading">
               <h2>Today's Progress</h2>
               <button class="worker-progress-job-label" id="worker-progress-job-label" type="button" hidden>Continue</button>
@@ -112,7 +103,7 @@
             </div>
           </section>
 
-          <section class="worker-dashboard-card worker-updates-card" data-app-view="progress">
+          <section class="worker-dashboard-card worker-updates-card">
             <div class="worker-card-heading">
               <h2>Recent Updates</h2>
             </div>
@@ -122,8 +113,85 @@
               <li><span>M</span><strong>New message from customer</strong><small>Check job notes</small></li>
             </ul>
           </section>
+        </div>
 
-          <section class="worker-dashboard-card worker-profile-snapshot" data-app-view="profile">
+      </div><!-- /wtab-dashboard -->
+
+      <!-- ── Tab: Jobs ──────────────────────────────────────── -->
+      <div id="wtab-jobs" class="worker-tab" hidden>
+        <div class="section">
+          <section id="worker-jobs" class="worker-dashboard-card worker-jobs-panel">
+            <div class="worker-card-heading">
+              <div>
+                <h2>My Jobs</h2>
+                <span class="worker-soft-pill"><span id="worker-stat-jobs-today">0</span> Today</span>
+              </div>
+            </div>
+            <div id="worker-job-list" class="request-list worker-job-list"></div>
+          </section>
+        </div>
+      </div><!-- /wtab-jobs -->
+
+      <!-- ── Tab: Schedule ──────────────────────────────────── -->
+      <div id="wtab-schedule" class="worker-tab" hidden>
+        <section id="worker-availability" class="section worker-schedule-view">
+          <div class="section-heading">
+            <h2>My Availability</h2>
+          </div>
+          <form id="worker-schedule-form" class="admin-edit-panel worker-schedule-form-inline">
+            <label>Work location
+              <select id="worker-location" required>
+                <option value="">Select service center</option>
+              </select>
+            </label>
+            <div class="worker-schedule-actions">
+              <button id="open-workdays-panel" class="button primary" type="button">Work Days and Shift Times</button>
+              <button id="open-days-off-panel" class="button primary" type="button">Days Off</button>
+            </div>
+
+            <div id="workdays-panel" class="worker-availability-window" hidden>
+              <div class="worker-window-heading">
+                <h3>Work Days and Shift Times</h3>
+                <button id="close-workdays-panel" class="button" type="button">Close</button>
+              </div>
+              <div id="worker-days-grid" class="worker-days-grid"></div>
+              <button id="save-workdays" class="button primary" type="button">Save work days</button>
+            </div>
+
+            <div id="days-off-panel" class="worker-availability-window" hidden>
+              <div class="worker-window-heading">
+                <h3>Days Off</h3>
+                <button id="close-days-off-panel" class="button" type="button">Close</button>
+              </div>
+              <p class="field-help">Click any date in the 3-month booking window to make that day unbookable.</p>
+              <div id="worker-days-off-calendar" class="worker-days-off-calendar"></div>
+              <p id="worker-days-off-summary" class="field-help"></p>
+              <button id="save-days-off" class="button primary" type="button">Save days off</button>
+            </div>
+            <p id="worker-schedule-status" class="field-help"></p>
+          </form>
+        </section>
+      </div><!-- /wtab-schedule -->
+
+      <!-- ── Tab: Earnings ──────────────────────────────────── -->
+      <div id="wtab-earnings" class="worker-tab" hidden>
+        <section class="section">
+          <div class="section-heading">
+            <h2>My Earnings</h2>
+          </div>
+          <div class="worker-state-card worker-state-empty">
+            <p>No earnings available yet.</p>
+          </div>
+        </section>
+      </div><!-- /wtab-earnings -->
+
+      <!-- ── Tab: Profile ───────────────────────────────────── -->
+      <div id="wtab-profile" class="worker-tab" hidden>
+        <section class="section">
+          <div class="section-heading">
+            <h2>My Profile</h2>
+          </div>
+          <div class="worker-dashboard-card worker-profile-snapshot">
             <div class="worker-profile-mini">
               <div class="worker-profile-photo-frame worker-profile-photo-frame--mini">
                 <img id="worker-dashboard-photo" class="worker-profile-photo" alt="Worker profile photo" hidden>
@@ -142,48 +210,9 @@
               <div><dt>Location</dt><dd id="worker-dashboard-location">ShiftFuel</dd></div>
               <div><dt>Phone</dt><dd id="worker-dashboard-phone">Not provided</dd></div>
             </dl>
-          </section>
-        </aside>
-      </section>
-
-      <!-- Schedule view (inline, shown by tab bar) -->
-      <section id="worker-availability" class="section worker-schedule-view" data-app-view="schedule">
-        <div class="section-heading">
-          <h2>My Availability</h2>
-        </div>
-        <form id="worker-schedule-form" class="admin-edit-panel worker-schedule-form-inline">
-          <label>Work location
-            <select id="worker-location" required>
-              <option value="">Select service center</option>
-            </select>
-          </label>
-          <div class="worker-schedule-actions">
-            <button id="open-workdays-panel" class="button primary" type="button">Work Days and Shift Times</button>
-            <button id="open-days-off-panel" class="button primary" type="button">Days Off</button>
           </div>
-
-          <div id="workdays-panel" class="worker-availability-window" hidden>
-            <div class="worker-window-heading">
-              <h3>Work Days and Shift Times</h3>
-              <button id="close-workdays-panel" class="button" type="button">Close</button>
-            </div>
-            <div id="worker-days-grid" class="worker-days-grid"></div>
-            <button id="save-workdays" class="button primary" type="button">Save work days</button>
-          </div>
-
-          <div id="days-off-panel" class="worker-availability-window" hidden>
-            <div class="worker-window-heading">
-              <h3>Days Off</h3>
-              <button id="close-days-off-panel" class="button" type="button">Close</button>
-            </div>
-            <p class="field-help">Click any date in the 3-month booking window to make that day unbookable.</p>
-            <div id="worker-days-off-calendar" class="worker-days-off-calendar"></div>
-            <p id="worker-days-off-summary" class="field-help"></p>
-            <button id="save-days-off" class="button primary" type="button">Save days off</button>
-          </div>
-          <p id="worker-schedule-status" class="field-help"></p>
-        </form>
-      </section>
+        </section>
+      </div><!-- /wtab-profile -->
 
     </main>
 
@@ -214,7 +243,7 @@
 
 	<!-- Mobile app-style bottom tab bar -->
 	<nav class="app-tabbar" id="worker-tabbar" aria-label="Worker portal navigation">
-	  <button class="app-tab active" data-tab="dashboard" type="button">
+	  <button class="app-tab active" data-tab="dashboard" data-tab-view="dashboard" type="button">
 		<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
 		  <rect x="4" y="4" width="7" height="7" rx="1.4"/>
 		  <rect x="13" y="4" width="7" height="7" rx="1.4"/>
@@ -223,21 +252,21 @@
 		</svg>
 		<span>Dashboard</span>
 	  </button>
-	  <button class="app-tab" data-tab="jobs" type="button">
+	  <button class="app-tab" data-tab="jobs" data-tab-view="jobs" type="button">
 		<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
 		  <rect x="5" y="4" width="14" height="17" rx="1.6"/>
 		  <path d="M9 8h6M9 12h6M9 16h4"/>
 		</svg>
 		<span>Jobs</span>
 	  </button>
-	  <button class="app-tab" data-tab="schedule" type="button">
+	  <button class="app-tab" data-tab="schedule" data-tab-view="schedule" type="button">
 		<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
 		  <rect x="4" y="5" width="16" height="16" rx="2"/>
 		  <path d="M4 9h16M8 3v4M16 3v4"/>
 		</svg>
 		<span>Schedule</span>
 	  </button>
-	  <button class="app-tab" data-tab="earnings" type="button">
+	  <button class="app-tab" data-tab="earnings" data-tab-view="earnings" type="button">
 		<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
 		  <path d="M12 3a9 9 0 1 0 9 9"/>
 		  <path d="M12 7v5l3 2"/>
@@ -245,7 +274,7 @@
 		</svg>
 		<span>Earnings</span>
 	  </button>
-	  <button class="app-tab" data-tab="profile" type="button">
+	  <button class="app-tab" data-tab="profile" data-tab-view="profile" type="button">
 		<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
 		  <circle cx="12" cy="8" r="3.4"/>
 		  <path d="M5 20c0-3.3 3.1-6 7-6s7 2.7 7 6"/>
@@ -376,97 +405,34 @@
 
       function switchWorkerTab(tab) {
         currentWorkerTab = tab;
-
-        // Hide all tab content
-        document.querySelectorAll('section[data-app-view], .worker-dashboard-layout, #worker-availability').forEach(el => {
-          el.style.display = 'none';
+        // On mobile: show only the active panel. On desktop: show all panels.
+        const isMobile = window.matchMedia('(max-width: 760px)').matches;
+        document.querySelectorAll('.worker-tab').forEach(function(el) {
+          el.hidden = isMobile ? (el.id !== 'wtab-' + tab) : false;
         });
-
-        // Show correct content for each tab
-        if (tab === 'dashboard') {
-          document.querySelector('.worker-portal-hero').style.display = 'block';
-          document.querySelector('.worker-dashboard-layout').style.display = 'flex';
-        } 
-        else if (tab === 'jobs') {
-          document.getElementById('worker-jobs').style.display = 'block';
-        } 
-        else if (tab === 'schedule') {
-          document.getElementById('worker-availability').style.display = 'block';
-        } 
-        else if (tab === 'earnings') {
-          // Placeholder for future earnings page
-          let earningsEl = document.getElementById('worker-earnings-view');
-          if (!earningsEl) {
-            earningsEl = document.createElement('section');
-            earningsEl.id = 'worker-earnings-view';
-            earningsEl.className = 'section';
-            earningsEl.innerHTML = `
-              <div style="padding: 80px 20px; text-align: center;">
-                <h2>My Earnings</h2>
-                <p class="field-help" style="margin: 40px 0;">No earnings data available yet.</p>
-                <p class="field-help">This feature is coming soon.</p>
-              </div>`;
-            document.querySelector('main').appendChild(earningsEl);
-          }
-          earningsEl.style.display = 'block';
-        } 
-        else if (tab === 'profile') {
-          document.getElementById('worker-account').removeAttribute('hidden');
-        }
-
-        // Highlight active tab
-        document.querySelectorAll('#worker-tabbar .app-tab').forEach(btn => {
+        document.querySelectorAll('#worker-tabbar .app-tab').forEach(function(btn) {
           btn.classList.toggle('active', btn.dataset.tab === tab);
         });
+        if (isMobile) window.scrollTo(0, 0);
       }
 
       function initWorkerTabs() {
-        const tabButtons = document.querySelectorAll('#worker-tabbar .app-tab');
-        
-        tabButtons.forEach(button => {
-          button.addEventListener('click', () => {
-            switchWorkerTab(button.dataset.tab);
-          });
+        document.querySelectorAll('#worker-tabbar .app-tab').forEach(function(button) {
+          button.addEventListener('click', function() { switchWorkerTab(button.dataset.tab); });
         });
 
-        // View Jobs button → switch to Jobs tab
-        document.querySelectorAll('.button.primary').forEach(btn => {
-          if (btn.textContent.includes('View jobs')) {
-            btn.addEventListener('click', (e) => {
-              e.preventDefault();
-              switchWorkerTab('jobs');
-            });
-          }
+        // "View jobs" button on Dashboard → switch to Jobs tab
+        document.getElementById('worker-view-jobs-btn')?.addEventListener('click', function() {
+          switchWorkerTab('jobs');
         });
 
-        // Schedule button in profile → switch to Schedule tab
-        const scheduleBtn = document.getElementById('open-schedule-btn');
-        if (scheduleBtn) {
-          scheduleBtn.addEventListener('click', (e) => {
-            e.preventDefault();
-            document.getElementById('worker-account').setAttribute('hidden', '');
-            switchWorkerTab('schedule');
-          });
-        }
+        // Re-evaluate on resize so desktop always shows all panels
+        window.addEventListener('resize', function() { switchWorkerTab(currentWorkerTab); });
 
-        // Start on Dashboard
         switchWorkerTab('dashboard');
       }
 
-      function fixMobileLayout() {
-        const statusDl = document.querySelector('.worker-current-status-card dl');
-        if (statusDl) {
-          statusDl.style.display = 'grid';
-          statusDl.style.gridTemplateColumns = 'auto 1fr';
-          statusDl.style.gap = '8px 16px';
-        }
-      }
-
-      // Initialize everything
-      window.addEventListener('load', () => {
-        initWorkerTabs();
-        fixMobileLayout();
-      });
+      window.addEventListener('load', initWorkerTabs);
     </script>
 
     <!-- Original scripts -->

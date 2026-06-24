@@ -82,7 +82,23 @@
       return { ok: false, reason: 'save-failed' };
     }
 
-    return { ok: true };
+    return { ok: true, endpoint: sub.endpoint };
+  }
+
+  // Fire a test notification to the caller's own subscription so they can confirm
+  // delivery end-to-end without orchestrating a real job event.
+  async function sendTest(endpoint) {
+    if (!endpoint) return false;
+    try {
+      const r = await fetch('/api/push', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'test', endpoint }),
+      });
+      return r.ok;
+    } catch (_) {
+      return false;
+    }
   }
 
   function friendlyReason(reason) {
@@ -94,5 +110,5 @@
     }
   }
 
-  window.ShiftFuelPush = { enablePush, pushSupported, friendlyReason };
+  window.ShiftFuelPush = { enablePush, sendTest, pushSupported, friendlyReason };
 })();

@@ -155,6 +155,10 @@ document.querySelector('#admin-settings-logout-btn')?.addEventListener('click', 
   if (nameEl && !nameEl.dataset.staticTitle) { /* intentionally left as the static title */ }
   if (avatarEl) avatarEl.textContent = initials;
   if (headerNameEl) headerNameEl.textContent = displayName;
+  const menuInitialsEl = document.querySelector('#admin-menu-initials');
+  const menuNameEl = document.querySelector('#admin-menu-name');
+  if (menuInitialsEl) menuInitialsEl.textContent = initials;
+  if (menuNameEl) menuNameEl.textContent = displayName || 'Admin';
 })();
 
 // Service date helpers — used by booking form and admin create-request form.
@@ -1428,6 +1432,12 @@ function renderActions(request) {
   } else if (request.status === 'awaiting_key_return') {
     nextAction = 'Return the customer\'s keys and document who received them.';
     activePanel = renderKeysReturnedPanel(request);
+  } else if (request.status === 'cancelled_pending_key_return') {
+    const returnsVehicle = cancellationReturnsVehicle(request);
+    nextAction = returnsVehicle
+      ? 'Customer canceled after pickup. Confirm the vehicle was returned to close this request.'
+      : 'Customer canceled after key handoff. Confirm the key was returned to close this request.';
+    activePanel = renderCancellationReturnPanel(request, returnsVehicle);
   } else if (request.status === 'return_requested' || request.status === 'customer_return_requested') {
     nextAction = 'Decide whether to waive the fee, charge the $15 cancellation/service fee, or continue normal service.';
     activePanel = renderReturnRequestPanel(request);
@@ -1453,6 +1463,80 @@ function renderActions(request) {
     ${renderEditPanel(request)}
   `;
 }
+
+// A canceled request needs a VEHICLE return (vs just a key) when the vehicle was
+// picked up. Prefer the explicit fields; fall back to pickup evidence.
+function cancellationReturnsVehicle(request) {
+  if (request.vehicle_return_required === true) return true;
+  if (request.key_return_required === true) return false;
+  return Boolean(request.vehicle_picked_up_at) || /\[pickup_time/.test(String(request.notes || ''));
+}
+
+function renderLastKnownLocation(request) {
+  const lat = Number(request.last_latitude);
+  const lng = Number(request.last_longitude);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+    return `<p class="field-help">No live location recorded for this request.</p>`;
+  }
+  const when = request.last_location_at
+    ? new Date(request.last_location_at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
+    : '';
+  const url = `https://www.google.com/maps/search/?api=1&query=${lat},${lng}`;
+  return `
+    <p class="field-help">Last known worker location${when ? ` (updated ${escapeHtml(when)})` : ''}:</p>
+    <a class="button secondary" href="${url}" target="_blank" rel="noopener">Open last location in Google Maps</a>
+  `;
+}
+
+function renderCancellationReturnPanel(request, returnsVehicle) {
+  const item = returnsVehicle ? 'vehicle' : 'key';
+  return `
+    <div class="admin-edit-panel cancellation-return-panel">
+      <h4>${returnsVehicle ? 'Vehicle' : 'Key'} return pending</h4>
+      <p class="field-help">This canceled request stays open until the ${item} is back with the customer. Confirming closes it and stops live tracking.</p>
+      ${renderLastKnownLocation(request)}
+      <div class="admin-button-row">
+        <button class="button primary admin-confirm-cancellation-return" data-id="${escapeHtml(request.id)}" data-return-type="${item}" type="button">
+          Confirm ${item} returned &amp; close
+        </button>
+      </div>
+      <p class="cancellation-return-error form-error"></p>
+    </div>
+  `;
+}
+
+async function confirmCancellationReturn(button) {
+  const id = button.dataset.id;
+  const item = button.dataset.returnType || 'key';
+  const panel = button.closest('.cancellation-return-panel');
+  const errEl = panel?.querySelector('.cancellation-return-error');
+  const original = button.textContent;
+  button.disabled = true;
+  button.textContent = 'Closing…';
+  if (errEl) errEl.textContent = '';
+  try {
+    const res = await fetch('/api/payments', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'worker_confirm_cancellation_return', request_id: id, caller_token: adminToken() }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || `Could not confirm the ${item} return.`);
+    await loadRequests();
+  } catch (err) {
+    button.disabled = false;
+    button.textContent = original;
+    if (errEl) errEl.textContent = err.message || 'Something went wrong. Please try again.';
+  }
+}
+
+document.addEventListener('click', (event) => {
+  const btn = event.target.closest('.admin-confirm-cancellation-return');
+  if (btn) {
+    event.preventDefault();
+    confirmCancellationReturn(btn);
+  }
+});
 
 const DENY_REASON_OPTIONS = [
   'Car wash unavailable',
@@ -3875,8 +3959,13 @@ function buildActionNeededItems() {
       continue;
     }
     if (r.status === 'cancelled_pending_key_return') {
-      items.push({ kind: 'cancel', title: 'Cancellation — Keys Not Returned', who, requestId: r.id,
-        detail: 'Customer canceled. Confirm the key or vehicle was returned before closing.' });
+      const vehiclePending = cancellationReturnsVehicle(r);
+      items.push({ kind: 'cancel',
+        title: vehiclePending ? 'Cancellation — Vehicle Not Returned' : 'Cancellation — Key Not Returned',
+        who, requestId: r.id,
+        detail: vehiclePending
+          ? 'Customer canceled after pickup. Confirm the vehicle was returned before closing.'
+          : 'Customer canceled after key handoff. Confirm the key was returned before closing.' });
       continue;
     }
     if (r.status === 'vehicle_picked_up' && r.service_date && r.service_date < today) {
@@ -6802,7 +6891,6 @@ document.querySelector('#services-settings-form')?.addEventListener('submit', as
 });
 
 // ====================== ADMIN MOBILE MENU ======================
-const mobileMenuBtn = document.getElementById('admin-mobile-menu-btn');
 const avatarBtn = document.getElementById('admin-avatar-btn');
 const mobileMenu = document.getElementById('admin-mobile-menu');
 const menuClose = document.getElementById('admin-menu-close');
@@ -6810,10 +6898,14 @@ const menuOverlay = document.querySelector('.admin-menu-overlay');
 const menuLogout = document.getElementById('admin-menu-logout');
 
 function openAdminMenu() {
-  if (mobileMenu) {
-    mobileMenu.removeAttribute('hidden');
-    document.body.style.overflow = 'hidden';
-  }
+  if (!mobileMenu) return;
+  // Mark the current active page in the menu
+  const currentPage = document.body.dataset.adminPage || 'dashboard';
+  document.querySelectorAll('.admin-menu-item[data-page]').forEach(item => {
+    item.classList.toggle('is-active', item.dataset.page === currentPage);
+  });
+  mobileMenu.removeAttribute('hidden');
+  document.body.style.overflow = 'hidden';
 }
 
 function closeAdminMenu() {
@@ -6823,7 +6915,6 @@ function closeAdminMenu() {
   }
 }
 
-if (mobileMenuBtn) mobileMenuBtn.addEventListener('click', openAdminMenu);
 if (avatarBtn) avatarBtn.addEventListener('click', openAdminMenu);
 if (menuClose) menuClose.addEventListener('click', closeAdminMenu);
 if (menuOverlay) menuOverlay.addEventListener('click', closeAdminMenu);
