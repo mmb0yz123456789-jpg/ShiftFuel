@@ -58,14 +58,21 @@ module.exports = async (req, res) => {
   }
 
   if (action === 'test') {
-    // Send a test notification to the caller's own subscription. The endpoint is
-    // the caller's own (from their PushSubscription), so no extra auth is needed.
-    if (!body.endpoint) return res.status(400).json({ error: 'Missing endpoint' });
+    // Send a test notification to the caller's own subscription(s). Prefer the
+    // exact endpoint; fall back to the worker's token so it works even if the
+    // endpoint wasn't passed through.
     const db = getSupabaseAdmin();
-    const { data } = await db.from('push_subscriptions')
-      .select('endpoint,p256dh,auth')
-      .eq('endpoint', body.endpoint);
-    if (!data || !data.length) return res.status(404).json({ error: 'Subscription not found — try Enable alerts again.' });
+    let data = null;
+    if (body.endpoint) {
+      ({ data } = await db.from('push_subscriptions').select('endpoint,p256dh,auth').eq('endpoint', body.endpoint));
+    } else if (body.worker_token) {
+      const employeeId = await verifyWorkerToken(body.worker_token);
+      if (!employeeId) return res.status(401).json({ error: 'Unauthorized' });
+      ({ data } = await db.from('push_subscriptions').select('endpoint,p256dh,auth').eq('employee_id', employeeId));
+    } else {
+      return res.status(400).json({ error: 'Missing endpoint or worker_token' });
+    }
+    if (!data || !data.length) return res.status(404).json({ error: 'No subscription found — tap Enable alerts first.' });
     const results = await sendToSubs(data, {
       title: 'ShiftFuel alerts are on ✓',
       body: 'This is a test notification — you’re all set for job alerts.',
