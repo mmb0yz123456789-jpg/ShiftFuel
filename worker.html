@@ -36,9 +36,6 @@
           <span class="worker-presence-dot"></span>
           <span id="worker-presence-label">Online</span>
         </span>
-        <button class="portal-signout-btn" id="worker-enable-alerts" type="button">Enable alerts</button>
-        <button class="portal-signout-btn" id="worker-break-toggle" type="button" hidden>Take a break</button>
-        <button class="portal-signout-btn" id="worker-signout-btn" type="button">Sign out</button>
       </div>
     </header>
 
@@ -203,9 +200,12 @@
               </div>
             </div>
             <div class="worker-profile-actions">
+              <button class="button secondary" id="worker-enable-alerts" type="button">Enable alerts</button>
+              <button class="button secondary" id="worker-break-toggle" type="button" hidden>Take a break</button>
               <button class="button secondary" id="open-change-password-btn" type="button">Change password</button>
               <button class="button secondary" id="open-schedule-btn" type="button">Schedule</button>
               <button class="button secondary" id="open-edit-profile-btn" type="button">Edit profile</button>
+              <button class="button danger" id="worker-signout-btn" type="button">Sign out</button>
             </div>
             <dl class="worker-profile-facts">
               <div><dt>Location</dt><dd id="worker-dashboard-location">ShiftFuel</dd></div>
