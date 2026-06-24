@@ -3926,3 +3926,114 @@ loadVehiclePsiGuides().finally(loadWorkerProfile);
   attachObserver();
   document.addEventListener('DOMContentLoaded', attachObserver);
 })();
+
+// ============================================================
+// Uber-style worker job-card redesign (presentation only).
+// Reshapes the existing job card so the CURRENT ACTION is
+// unmistakable: one big labeled "what's next" callout + a
+// full-width, tall action button, with the header / progress
+// stepper / details quieted down around it. No job logic, GPS,
+// or push wiring is touched — this is pure CSS over the classes
+// worker.js already renders.
+// ============================================================
+(() => {
+  if (!document.body?.classList.contains('worker-portal-page')) return;
+  const style = document.createElement('style');
+  style.id = 'worker-card-redesign-style';
+  style.textContent = `
+    /* Card: calmer, roomier container so the action stands out. */
+    .worker-portal-page .worker-job-card {
+      border-radius: 18px !important;
+      padding: 18px !important;
+      box-shadow: 0 8px 24px rgba(13,59,59,.07) !important;
+    }
+    .worker-portal-page .worker-job-card .request-card-header { align-items: center !important; }
+    .worker-portal-page .worker-job-card .request-card-header h3 {
+      font-size: 1.25rem !important;
+      margin: 2px 0 0 !important;
+    }
+    .worker-portal-page .worker-job-card .request-card-header .eyebrow {
+      font-size: .72rem !important; letter-spacing: .06em !important;
+    }
+    .worker-portal-page .worker-job-card .status-pill {
+      font-weight: 700 !important; border-radius: 999px !important;
+    }
+
+    /* Progress stepper: compact + quiet — it's context, not the focus. */
+    .worker-portal-page .worker-vstepper { margin: 14px 0 !important; }
+    .worker-portal-page .worker-vstep { padding: 4px 0 !important; }
+    .worker-portal-page .worker-vstep-dot {
+      width: 22px !important; height: 22px !important; font-size: .72rem !important;
+    }
+    .worker-portal-page .worker-vstep.is-upcoming { opacity: .5 !important; }
+
+    /* "Job details": a clean, quiet, obviously-tappable disclosure row. */
+    .worker-portal-page .worker-job-details > summary {
+      padding: 12px 14px !important;
+      border-radius: 12px !important;
+      background: rgba(7,50,51,.04) !important;
+      font-weight: 700 !important;
+      cursor: pointer !important;
+    }
+
+    /* ── The hero: the guided-step action panel ── */
+    .worker-portal-page .guided-step {
+      margin-top: 16px !important;
+      padding: 18px !important;
+      border-radius: 16px !important;
+      border: 1px solid rgba(7,50,51,.12) !important;
+      background: linear-gradient(180deg, #ffffff, #f1f7f3) !important;
+    }
+    .worker-portal-page .guided-step .eyebrow {
+      font-size: .7rem !important; letter-spacing: .08em !important;
+      text-transform: uppercase !important; color: #5b6b67 !important;
+      margin: 0 0 2px !important;
+    }
+    .worker-portal-page .guided-step h4 {
+      font-size: 1.15rem !important; font-weight: 800 !important;
+      color: #073233 !important; margin: 0 0 10px !important;
+    }
+    /* The "do this now" instruction, as a labeled callout — the thing the
+       worker's eye should land on. */
+    .worker-portal-page .guided-step .next-action-label {
+      font-size: 1rem !important; line-height: 1.5 !important; color: #1c2b28 !important;
+      background: #ffffff !important;
+      border-left: 4px solid #16a34a !important;
+      border-radius: 0 10px 10px 0 !important;
+      padding: 12px 14px !important; margin: 0 0 16px !important;
+    }
+    .worker-portal-page .guided-step .next-action-label strong {
+      display: block !important; font-size: .7rem !important;
+      text-transform: uppercase !important; letter-spacing: .06em !important;
+      color: #16a34a !important; margin-bottom: 3px !important;
+    }
+
+    /* The big action: stacked, full-width, tall — Uber's one-obvious-tap. */
+    .worker-portal-page .guided-step .admin-button-row {
+      display: flex !important; flex-direction: column !important;
+      gap: 10px !important; margin: 0 !important;
+    }
+    .worker-portal-page .guided-step .admin-button-row .button {
+      width: 100% !important; min-height: 56px !important;
+      font-size: 1.05rem !important; font-weight: 800 !important;
+      border-radius: 14px !important;
+      display: inline-flex !important; align-items: center !important; justify-content: center !important;
+    }
+    .worker-portal-page .guided-step .admin-button-row .button.primary {
+      order: 1 !important;
+      background: #073233 !important;
+      box-shadow: 0 6px 16px rgba(7,50,51,.22) !important;
+    }
+    .worker-portal-page .guided-step .admin-button-row .button.primary:active { transform: translateY(1px); }
+    /* Back / secondary: present but visibly quieter, always below the primary. */
+    .worker-portal-page .guided-step .admin-button-row .button.secondary {
+      order: 2 !important; min-height: 46px !important;
+      font-size: .95rem !important; font-weight: 700 !important;
+      background: transparent !important;
+      border: 1px solid rgba(7,50,51,.2) !important;
+      color: #073233 !important; box-shadow: none !important;
+    }
+    .worker-portal-page .guided-step .admin-button-row .button.danger { order: 3 !important; }
+  `;
+  document.head.appendChild(style);
+})();
