@@ -5,8 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>ShiftFuel Concierge | Workday Vehicle Services</title>
     <link rel="manifest" href="manifest.webmanifest">
-    <meta name="apple-mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <!-- Customer site opens in the browser (not standalone) so Stripe's card
+         iframe loads reliably on iOS home-screen launches. -->
+    <meta name="apple-mobile-web-app-capable" content="no">
     <meta name="apple-mobile-web-app-title" content="ShiftFuel">
     <link rel="apple-touch-icon" href="icon-main.svg">
     <link rel="stylesheet" href="styles.css">
@@ -215,7 +216,6 @@
 		  </div>
 		  
 		  <div class="final-cta-portals">
-			<p class="staff-access-label">Staff Access</p>
 			<a class="button portal-button portal-button-primary" href="staff-access.html">
 			  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
 				<circle cx="12" cy="8" r="3.4"/>

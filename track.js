@@ -1385,6 +1385,7 @@ function renderReviewPrompt(request, review) {
         <button type="button" class="star-btn" data-star="4" aria-label="4 stars">★</button>
         <button type="button" class="star-btn" data-star="5" aria-label="5 stars">★</button>
       </div>
+      <p class="star-rating-label">Tap a star to rate</p>
       <input type="hidden" class="star-rating-value" value="">
       <label>
         <textarea id="service-review-comments" rows="3" placeholder="Share anything about your experience…"></textarea>
@@ -2788,8 +2789,8 @@ function renderCompletedCard(request, photos = [], review = null, { expanded = f
 
           ${reviewHtml}
 
+          ${tkSubAcc('Photos', `<div class="tk-photos-lazy"><p class="tk-empty">Loading photos…</p></div>`, { open: true })}
           ${tkSubAcc('Timeline', `${renderCurrentStatusCard(request)}<div class="tk-completed-updates"><p class="tk-eyebrow">Live updates</p>${renderLiveUpdatesFeed(request)}</div>`)}
-          ${tkSubAcc('Photos', `<div class="tk-photos-lazy"><p class="tk-empty">Loading photos…</p></div>`)}
           ${tkSubAcc('Vehicle inspection', inspection)}
           ${tkSubAcc('Service timing', timing)}
           ${tkSubAcc('Service details', details)}
@@ -3406,8 +3407,15 @@ trackingResult.addEventListener("click", async (event) => {
     ratingWidget.querySelectorAll(".star-btn").forEach((btn) => {
       btn.classList.toggle("filled", Number(btn.dataset.star) <= selected);
     });
-    const hiddenInput = ratingWidget.closest(".review-panel")?.querySelector(".star-rating-value");
+    const panel = ratingWidget.closest(".review-panel");
+    const hiddenInput = panel?.querySelector(".star-rating-value");
     if (hiddenInput) hiddenInput.value = selected;
+    const label = panel?.querySelector(".star-rating-label");
+    if (label) {
+      const labels = ["", "1 star — Poor", "2 stars — Fair", "3 stars — Okay", "4 stars — Good", "5 stars — Amazing"];
+      label.textContent = labels[selected] || "";
+      label.classList.add("has-selection");
+    }
     return;
   }
 

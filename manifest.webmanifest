@@ -4,7 +4,7 @@
   "description": "ShiftFuel Concierge — workday fuel & car wash concierge service.",
   "start_url": "./index.html",
   "scope": "./",
-  "display": "standalone",
+  "display": "browser",
   "orientation": "portrait-primary",
   "background_color": "#0d3b3b",
   "theme_color": "#0d3b3b",
