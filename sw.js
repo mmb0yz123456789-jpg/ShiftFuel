@@ -63,8 +63,11 @@ self.addEventListener('fetch', (event) => {
   let url;
   try { url = new URL(request.url); } catch (_) { return; }
 
-  // Only handle same-origin GETs. Everything else (APIs, POSTs, cross-origin) is untouched.
+  // Only handle same-origin GETs. Everything else (POSTs, cross-origin) is untouched.
   if (request.method !== 'GET' || url.origin !== self.location.origin) return;
+  // Never intercept API calls — they must always hit the network (never cached or
+  // offline-served), and letting them through here just logs spurious SW errors.
+  if (url.pathname.startsWith('/api/')) return;
 
   event.respondWith((async () => {
     try {
