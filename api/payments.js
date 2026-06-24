@@ -21,6 +21,17 @@
 
 const Stripe = require('stripe');
 const { setCorsHeaders, getSupabaseAdmin, verifyAdminToken, verifyWorkerToken, verifyAnyStaffToken } = require('./_auth');
+const { notifyRequest } = require('./_push');
+
+// Actions that should fire a push once the handler has updated the DB. The event
+// is self-validating against the request's real status, so a failed action that
+// didn't change anything won't send a false alert.
+const PUSH_AFTER_ACTION = {
+  customer_request_return: 'cancelled', // → assigned worker
+  customer_cancel:         'cancelled', // → assigned worker
+  worker_capture:          'completed', // → customer
+  mark_keys_returned:      'completed', // → customer
+};
 
 // ── Shared helpers ────────────────────────────────────────────────────────────
 
@@ -909,13 +920,16 @@ function cancellationOutcomeForStatus(status) {
     return { cancelable: false, message: blockedMessages[status] };
   }
   if (noFeeStatuses.includes(status)) {
-    return { cancelable: true, tier: 'none', requiresKeyReturn: false, newStatus: 'cancelled' };
+    // Canceled before any key handoff — nothing to return, fully closed.
+    return { cancelable: true, tier: 'none', requiresKeyReturn: false, returnType: null, newStatus: 'cancelled' };
   }
   if (flatFeeStatuses.includes(status)) {
-    return { cancelable: true, tier: 'flat_fee', requiresKeyReturn: true, newStatus: 'cancelled_pending_key_return' };
+    // Key received but vehicle not yet picked up — worker must return the KEY.
+    return { cancelable: true, tier: 'flat_fee', requiresKeyReturn: true, returnType: 'key', newStatus: 'cancelled_pending_key_return' };
   }
   if (feePlusCostsStatuses.includes(status)) {
-    return { cancelable: true, tier: 'fee_plus_costs', requiresKeyReturn: true, newStatus: 'cancelled_pending_key_return' };
+    // Vehicle already picked up / service started — worker must return the VEHICLE.
+    return { cancelable: true, tier: 'fee_plus_costs', requiresKeyReturn: true, returnType: 'vehicle', newStatus: 'cancelled_pending_key_return' };
   }
   return { cancelable: false, message: 'This request cannot be cancelled from Track right now. Please contact ShiftFuel.' };
 }
@@ -946,7 +960,7 @@ async function handleCustomerCancel(body, res) {
   const db = getSupabaseAdmin();
   const { data: request, error: reqErr } = await db
     .from('service_requests')
-    .select('id, payment_intent_id, payment_status, status, customer_phone, customer_email, notes, assigned_employee_id')
+    .select('id, payment_intent_id, payment_status, status, customer_phone, customer_email, notes, assigned_employee_id, estimated_total')
     .eq('id', request_id)
     .maybeSingle();
 
@@ -1037,6 +1051,15 @@ async function handleCustomerCancel(body, res) {
   }
 
   const trimmedReason = reason && reason.trim() ? reason.trim() : null;
+
+  // The authorization hold is held roughly at estimated_total; the reversal is
+  // whatever isn't captured as the final cancellation charge.
+  const heldAmount = Number(request.estimated_total);
+  const finalChargeAmount = charge.totalCharged;
+  const paymentReversalAmount = Number.isFinite(heldAmount)
+    ? roundMoney(Math.max(0, heldAmount - finalChargeAmount))
+    : null;
+
   const updateData = {
     status: outcome.newStatus,
     cancellation_reason: trimmedReason,
@@ -1051,6 +1074,12 @@ async function handleCustomerCancel(body, res) {
     cancellation_status: outcome.newStatus,
     cancellation_requires_key_return: outcome.requiresKeyReturn,
     cancellation_worker_notified_at: request.assigned_employee_id ? timestamp : null,
+    // Spec-named fields (additive): explicit key/vehicle return contract + audit.
+    key_return_required: outcome.returnType === 'key',
+    vehicle_return_required: outcome.returnType === 'vehicle',
+    cancellation_fee: charge.feeAmount,
+    final_charge_amount: finalChargeAmount,
+    payment_reversal_amount: paymentReversalAmount,
     payment_status: paymentStatus,
     updated_at: timestamp,
   };
@@ -1113,9 +1142,11 @@ async function handleWorkerConfirmCancellationReturn(body, res) {
   if (!employeeId) return res.status(401).json({ error: 'Invalid or expired worker session' });
 
   const db = getSupabaseAdmin();
+  // Select '*' so the new key/vehicle-return flags are read when present without
+  // erroring on databases where the migration has not run yet.
   const { data: request, error: reqErr } = await db
     .from('service_requests')
-    .select('id, status')
+    .select('*')
     .eq('id', request_id)
     .maybeSingle();
 
@@ -1125,20 +1156,48 @@ async function handleWorkerConfirmCancellationReturn(body, res) {
   }
 
   const timestamp = new Date().toISOString();
-  const { error: updateErr } = await db.from('service_requests').update({
+  // Which item is the worker returning? Prefer the explicit flag; fall back to
+  // the legacy "requires key return" flag (key) when the new columns are absent.
+  const returnedVehicle = request.vehicle_return_required === true;
+
+  const updateData = {
+    status: 'cancelled',
+    cancelled_at: timestamp,
+    cancellation_key_returned_at: timestamp,
+    cancellation_status: 'cancelled',
+    // Spec-named fields: stamp the actual return, clear the requirement, and
+    // stop live tracking now that the key/vehicle is back with the customer.
+    key_returned_at: returnedVehicle ? (request.key_returned_at || null) : timestamp,
+    vehicle_returned_at: returnedVehicle ? timestamp : (request.vehicle_returned_at || null),
+    key_return_required: false,
+    vehicle_return_required: false,
+    live_tracking_enabled: false,
+    updated_at: timestamp,
+  };
+  const minimalUpdateData = {
     status: 'cancelled',
     cancelled_at: timestamp,
     cancellation_key_returned_at: timestamp,
     cancellation_status: 'cancelled',
     updated_at: timestamp,
-  }).eq('id', request_id);
+  };
+
+  let { error: updateErr } = await db.from('service_requests').update(updateData).eq('id', request_id);
+  if (updateErr) {
+    const missingOptionalColumn = updateErr.code === 'PGRST204'
+      || updateErr.code === '42703'
+      || /column|schema cache/i.test(String(updateErr.message || ''));
+    if (missingOptionalColumn) {
+      ({ error: updateErr } = await db.from('service_requests').update(minimalUpdateData).eq('id', request_id));
+    }
+  }
 
   if (updateErr) {
     console.error('[payments/worker_confirm_cancellation_return] DB update failed:', updateErr.message);
     return res.status(500).json({ error: 'Could not update the request. Please try again.' });
   }
 
-  return res.status(200).json({ success: true, status: 'cancelled' });
+  return res.status(200).json({ success: true, status: 'cancelled', returned: returnedVehicle ? 'vehicle' : 'key' });
 }
 
 async function handleWorkerCapture(body, res) {
@@ -1887,7 +1946,42 @@ async function handleAdminListPendingAuthorizations(body, res) {
     console.error('[payments/admin_list_pending_authorizations] DB error:', error.message);
     return res.status(500).json({ error: 'Could not load incomplete authorizations.' });
   }
-  return res.status(200).json({ authorizations: data || [] });
+
+  const pending = data || [];
+  if (!pending.length) return res.status(200).json({ authorizations: [] });
+
+  // Defensive cross-check: this card is for holds that NEVER became a request.
+  // markAuthorizationBooked() (in create-authorized-booking) is best-effort and
+  // can miss — a deploy race, an alternate booking path, etc. — which would leave
+  // the hold for a real, active booking stuck as 'pending' and showing here
+  // forever. So recompute "incomplete" at read time: drop any hold whose payment
+  // intent already has a service_requests row, and self-heal those stale rows to
+  // 'booked' so they stop recomputing on every load.
+  const intentIds = pending.map((r) => r.payment_intent_id).filter(Boolean);
+  let bookedIds = new Set();
+  if (intentIds.length) {
+    const { data: reqs, error: reqErr } = await db
+      .from('service_requests')
+      .select('payment_intent_id')
+      .in('payment_intent_id', intentIds);
+    if (reqErr) {
+      console.error('[payments/admin_list_pending_authorizations] request cross-check failed:', reqErr.message);
+    } else {
+      bookedIds = new Set((reqs || []).map((r) => r.payment_intent_id).filter(Boolean));
+    }
+  }
+
+  const authorizations = pending.filter((r) => !bookedIds.has(r.payment_intent_id));
+
+  if (bookedIds.size) {
+    // Fire-and-forget self-heal; never block the response on it.
+    db.from('pending_authorizations')
+      .update({ status: 'booked', resolved_at: new Date().toISOString() })
+      .in('payment_intent_id', [...bookedIds])
+      .then(() => {}, (err) => console.warn('[pending_auth] self-heal failed:', err.message));
+  }
+
+  return res.status(200).json({ authorizations });
 }
 
 async function handleAdminVoidAuthorization(body, res) {
@@ -1956,7 +2050,14 @@ module.exports = async (req, res) => {
   }
 
   try {
-    return await handler(body, res);
+    const result = await handler(body, res);
+    // Fire-and-forget push after the handler has updated the DB (status-guarded
+    // inside notifyRequest, so a no-op action won't send a false alert).
+    const pushEvent = PUSH_AFTER_ACTION[action];
+    if (pushEvent && body.request_id) {
+      notifyRequest(body.request_id, pushEvent).catch((e) => console.warn('[payments/push]', e.message));
+    }
+    return result;
   } catch (err) {
     console.error(`[payments/${action}] Unhandled error:`, err.message);
     return res.status(500).json({ error: 'An unexpected error occurred. Please try again.' });
