@@ -18,7 +18,7 @@
 
 const fs = require('fs');
 const path = require('path');
-const { setCorsHeaders } = require('./_auth');
+const { setCorsHeaders, getSupabaseAdmin } = require('./_auth');
 
 const SERVICE_ANCHOR_LAT = 39.6789; // 132 Christiana Mall, Newark DE 19702
 const SERVICE_ANCHOR_LON = -75.6653;
@@ -88,21 +88,52 @@ function pointInPolygon(lon, lat, polygon) {
   return true;
 }
 
-// Returns true/false if the polygon is available, or null if it isn't (so the
-// caller can fall back to the straight-line radius check).
-function pointInServiceArea(lat, lon) {
-  const geom = SERVICE_AREA?.geometry;
+// Tests a point against a GeoJSON Polygon/MultiPolygon geometry.
+function pointInGeometry(lat, lon, geom) {
   if (!geom) return null;
   if (geom.type === 'Polygon') return pointInPolygon(lon, lat, geom.coordinates);
   if (geom.type === 'MultiPolygon') return geom.coordinates.some((poly) => pointInPolygon(lon, lat, poly));
   return null;
 }
 
-// Single source of truth for "do we serve this point?": prefers the drive-time
-// polygon, falls back to the straight-line radius if the polygon isn't loaded.
-function checkServiceArea(lat, lon) {
+// The DB-backed polygon (edited from the admin portal) is the source of truth.
+// Cached briefly so we don't hit Supabase on every keystroke-driven validation.
+// Falls back to the checked-in file, then to a straight-line radius.
+let dbAreaCache = { at: 0, geometry: undefined };
+const DB_AREA_TTL_MS = 60 * 1000; // short, so admin edits propagate within a minute
+
+async function loadDbGeometry() {
+  if (dbAreaCache.geometry !== undefined && Date.now() - dbAreaCache.at < DB_AREA_TTL_MS) {
+    return dbAreaCache.geometry;
+  }
+  let geometry = null;
+  try {
+    const db = getSupabaseAdmin();
+    const { data } = await db
+      .from('service_area_settings')
+      .select('geometry')
+      .eq('id', 1)
+      .maybeSingle();
+    if (data?.geometry?.type) geometry = data.geometry;
+  } catch (e) {
+    // Supabase env not configured (e.g. local dev) or table missing — fall back.
+  }
+  dbAreaCache = { at: Date.now(), geometry };
+  return geometry;
+}
+
+async function resolveServiceGeometry() {
+  const dbGeom = await loadDbGeometry();
+  if (dbGeom) return dbGeom;
+  return SERVICE_AREA?.geometry || null;
+}
+
+// Single source of truth for "do we serve this point?": prefers the editable
+// drive-time polygon (DB → file), falls back to a straight-line radius.
+async function checkServiceArea(lat, lon) {
   const distanceMiles = Math.round(haversineMiles(SERVICE_ANCHOR_LAT, SERVICE_ANCHOR_LON, lat, lon) * 10) / 10;
-  const inPolygon = pointInServiceArea(lat, lon);
+  const geometry = await resolveServiceGeometry();
+  const inPolygon = pointInGeometry(lat, lon, geometry);
   if (inPolygon === null) {
     return { inArea: distanceMiles <= SERVICE_MAX_MILES, distanceMiles, method: 'radius' };
   }
@@ -122,8 +153,8 @@ async function nominatimSearch(query) {
 // Run the service-area check against a known lat/lon and return the standard
 // valid/invalid response. Shared by the geocode path and the Mapbox-coords
 // fast path (which skips geocoding entirely).
-function respondForCoords(res, lat, lon, canonicalAddress) {
-  const { inArea, distanceMiles } = checkServiceArea(lat, lon);
+async function respondForCoords(res, lat, lon, canonicalAddress) {
+  const { inArea, distanceMiles } = await checkServiceArea(lat, lon);
   if (!inArea) {
     return res.status(200).json({
       valid: false,
@@ -154,7 +185,7 @@ async function handleValidateServiceArea(body, res) {
   const lon = Number(body.lon);
   if (Number.isFinite(lat) && Number.isFinite(lon) && (lat !== 0 || lon !== 0)) {
     const canonicalAddress = [street, city, state, zip].filter(Boolean).join(', ');
-    return respondForCoords(res, lat, lon, canonicalAddress);
+    return await respondForCoords(res, lat, lon, canonicalAddress);
   }
 
   const query = [street, city, state, zip].filter(Boolean).join(', ');
@@ -177,7 +208,7 @@ async function handleValidateServiceArea(body, res) {
       });
     }
 
-    const { inArea, distanceMiles } = checkServiceArea(Number(result.lat), Number(result.lon));
+    const { inArea, distanceMiles } = await checkServiceArea(Number(result.lat), Number(result.lon));
 
     if (!inArea) {
       return res.status(200).json({
