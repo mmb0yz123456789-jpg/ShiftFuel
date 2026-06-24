@@ -447,6 +447,9 @@ module.exports = async function handler(req, res) {
         console.warn('[create-authorized-booking] pending_auth fail-tag skipped:', tagErr.message);
       }
     }
-    return res.status(500).json({ error: 'Could not submit booking. Please try again.' });
+    // TEMPORARY DIAGNOSTIC: surface the underlying DB/Stripe error to the client
+    // so we can see the real failure reason on the page. Revert to the generic
+    // message once the returning-customer booking issue is resolved.
+    return res.status(500).json({ error: `Could not submit booking. [debug: ${String(error.message || error).slice(0, 300)}]` });
   }
 };

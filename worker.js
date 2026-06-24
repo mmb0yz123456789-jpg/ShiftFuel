@@ -1513,6 +1513,20 @@ function renderWorkerCurrentJobCard(request) {
   `;
 }
 
+// Mirror today's claimed jobs (already time-ordered) onto the Dashboard, each
+// with its full guided baby-step card, so the worker lands straight on
+// "what to do next" without digging into the Jobs tab. Reuses the same card +
+// document-delegated handlers, so no job/GPS/push logic is duplicated.
+function renderWorkerDashboardToday(jobs) {
+  const container = document.querySelector('#worker-dashboard-today');
+  if (!container) return;
+  if (!jobs.length) {
+    container.innerHTML = '<div class="worker-state-card worker-state-empty"><p>No jobs scheduled today. You’re all caught up.</p></div>';
+    return;
+  }
+  container.innerHTML = jobs.map(renderWorkerCurrentJobCard).join('');
+}
+
 // Completed-today summary card: customer, service, completed time, amount charged.
 function renderWorkerCompletedCard(request) {
   const when = workerFormatClockTime(request.completed_at || request.updated_at);
@@ -2406,6 +2420,7 @@ async function loadWorkerJobs(silent = false) {
     ` : ''}
   `;
 
+  renderWorkerDashboardToday([...cancelledReturnJobs, ...claimedJobs]);
   updateWorkerProgressTimeline(myJobs);
 }
 

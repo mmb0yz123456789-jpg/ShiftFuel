@@ -22,6 +22,7 @@
 const Stripe = require('stripe');
 const { setCorsHeaders, getSupabaseAdmin, verifyAdminToken, verifyWorkerToken, verifyAnyStaffToken } = require('./_auth');
 const { notifyRequest } = require('./_push');
+const { placeScheduledHold } = require('./_scheduled-auth');
 
 // Actions that should fire a push once the handler has updated the DB. The event
 // is self-validating against the request's real status, so a failed action that
@@ -2361,34 +2362,35 @@ async function handleAdminRetryScheduledAuth(body, res) {
   const amountCents = Math.round(Number(request.estimated_total) * 100);
   if (!amountCents || amountCents < 50) return res.status(400).json({ error: 'Invalid amount on this request.' });
 
-  try {
-    const stripe = getStripe();
-    const pi = await stripe.paymentIntents.create({
-      amount: amountCents,
-      currency: 'usd',
-      customer: pm.stripe_customer_id,
-      payment_method: pm.stripe_payment_method_id,
-      off_session: true,
-      confirm: true,
-      capture_method: 'manual',
-      description: `ShiftFuel scheduled ${request.service_date || ''}`.trim(),
-    }, { idempotencyKey: `sched-auth-retry-${request_id}-${Date.now()}` });
+  const result = await placeScheduledHold({
+    db,
+    stripe: getStripe(),
+    request,
+    pm,
+    idempotencyKey: `sched-auth-retry-${request_id}-${Date.now()}`,
+  });
 
-    if (pi.status === 'requires_capture') {
-      await db.from('service_requests').update({ payment_status: 'authorized', payment_intent_id: pi.id }).eq('id', request_id);
-      await db.from('request_payment_methods').update({ auth_error: null, updated_at: new Date().toISOString() }).eq('request_id', request_id);
-      return res.status(200).json({ status: 'authorized' });
-    }
-    await db.from('request_payment_methods').update({ auth_error: `unexpected_status:${pi.status}`, updated_at: new Date().toISOString() }).eq('request_id', request_id);
-    return res.status(409).json({ error: `Card still needs customer action (${pi.status}).` });
-  } catch (err) {
-    const code = err.code || err.decline_code || 'auth_failed';
-    await db.from('request_payment_methods')
-      .update({ auth_error: String(code), auth_attempts: (pm.auth_attempts || 0) + 1, updated_at: new Date().toISOString() })
-      .eq('request_id', request_id);
-    console.warn('[payments/admin_retry_scheduled_auth] retry failed for', request_id, '-', code);
-    return res.status(409).json({ error: `Could not authorize the saved card: ${code}.` });
+  if (result.status === 'authorized') {
+    // service_requests + request_payment_methods already updated by the helper.
+    return res.status(200).json({ status: 'authorized' });
   }
+
+  if (result.piStatus) {
+    // PI came back in a non-capture state — record it but don't bump the attempt
+    // counter (matches the original behavior for this specific case).
+    await db.from('request_payment_methods')
+      .update({ auth_error: result.reason, updated_at: new Date().toISOString() })
+      .eq('request_id', request_id);
+    return res.status(409).json({ error: `Card still needs customer action (${result.piStatus}).` });
+  }
+
+  // Thrown card error or transient error — the original catch block handled both
+  // identically: record the error, bump the attempt counter, and 409.
+  await db.from('request_payment_methods')
+    .update({ auth_error: String(result.reason), auth_attempts: (pm.auth_attempts || 0) + 1, updated_at: new Date().toISOString() })
+    .eq('request_id', request_id);
+  console.warn('[payments/admin_retry_scheduled_auth] retry failed for', request_id, '-', result.reason);
+  return res.status(409).json({ error: `Could not authorize the saved card: ${result.reason}.` });
 }
 
 async function handleAdminVoidAuthorization(body, res) {

@@ -38,13 +38,15 @@
   padding: 12px 16px !important;
   box-shadow: 0 2px 12px rgba(6, 39, 39, 0.18) !important;
 }
-/* Force a slim single-row top bar: logo left, presence right. */
+/* Force a slim single-row top bar, logo pushed to the right, presence left. */
 .worker-portal-page .portal-header {
-  flex-direction: row !important;
+  flex-direction: row-reverse !important;
   align-items: center !important;
   justify-content: space-between !important;
   gap: 12px !important;
+  padding: 9px 16px !important;
 }
+.worker-portal-page .portal-header .logo span:last-child { font-size: 0.92rem !important; line-height: 1.05 !important; }
 .worker-portal-page .portal-header .logo span:last-child { font-size: 1rem; }
 /* "Worker Dashboard" label is redundant with the tab bar below. */
 .worker-portal-page .portal-header-label { display: none !important; }
@@ -83,6 +85,50 @@
   margin: 0 0 4px !important;
 }
 .worker-portal-page #worker-hero-subtitle { margin: 0 0 14px !important; }
+
+/* ---- Dashboard greeting (just the name, under the header) ---- */
+.worker-portal-page .worker-greeting .eyebrow { margin-bottom: 0 !important; }
+.worker-portal-page .worker-greeting h1 {
+  font-size: 1.7rem !important;
+  line-height: 1.05 !important;
+  margin: 2px 0 0 !important;
+}
+
+/* ---- Today's Jobs: the dashboard work surface ---- */
+.worker-portal-page .worker-today-section { padding-top: 4px !important; }
+.worker-portal-page .worker-today-heading {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  margin-bottom: 12px !important;
+}
+.worker-portal-page .worker-today-heading h2 { margin: 0 !important; }
+.worker-portal-page .worker-refresh-chip {
+  width: auto !important;
+  min-height: 36px !important;
+  padding: 6px 14px !important;
+  font-size: 0.85rem !important;
+  border-radius: 999px !important;
+}
+.worker-portal-page .worker-today-list { display: grid !important; gap: 14px !important; }
+
+/* The guided baby-step card on the dashboard reads as a clean white card. */
+.worker-portal-page .worker-current-job-card {
+  background: #ffffff !important;
+  border: 1px solid rgba(13, 59, 59, 0.08) !important;
+  border-radius: 18px !important;
+  box-shadow: 0 8px 24px rgba(13, 59, 59, 0.06) !important;
+  padding: 18px !important;
+  margin: 0 !important;
+}
+.worker-portal-page .worker-today-list .worker-state-card {
+  background: #ffffff !important;
+  border: 1px dashed rgba(13, 59, 59, 0.18) !important;
+  border-radius: 18px !important;
+  padding: 22px 18px !important;
+  text-align: center !important;
+  color: #60716d !important;
+}
 
 /* Dashboard primary actions: full-width, app-sized taps. */
 .worker-portal-page .worker-portal-hero .actions {

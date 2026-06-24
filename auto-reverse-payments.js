@@ -1,6 +1,7 @@
 const Stripe = require('stripe');
 const { createClient } = require('@supabase/supabase-js');
 const { notifyRequest } = require('./_push');
+const { placeScheduledHold } = require('./_scheduled-auth');
 
 // Place the off-session hold for advance (saved-card) bookings this many days
 // before the service date — fresh enough to stay inside Stripe's ~7-day capture
@@ -221,47 +222,27 @@ module.exports = async (req, res) => {
         continue;
       }
 
-      try {
-        // Stable idempotency key + the optimistic claim together prevent a
-        // duplicate hold across reruns.
-        const pi = await stripe.paymentIntents.create({
-          amount: amountCents,
-          currency: 'usd',
-          customer: pm.stripe_customer_id,
-          payment_method: pm.stripe_payment_method_id,
-          off_session: true,
-          confirm: true,
-          capture_method: 'manual',
-          description: `ShiftFuel scheduled ${reqRow.service_date || ''}`.trim(),
-        }, { idempotencyKey: `sched-auth-${reqRow.id}` });
+      // Stable idempotency key + the optimistic claim together prevent a
+      // duplicate hold across reruns.
+      const result = await placeScheduledHold({
+        db: supabase,
+        stripe,
+        request: reqRow,
+        pm,
+        idempotencyKey: `sched-auth-${reqRow.id}`,
+      });
 
-        if (pi.status === 'requires_capture') {
-          await supabase.from('service_requests')
-            .update({ payment_status: 'authorized', payment_intent_id: pi.id })
-            .eq('id', reqRow.id);
-          await supabase.from('request_payment_methods')
-            .update({ auth_error: null, updated_at: new Date().toISOString() })
-            .eq('request_id', reqRow.id);
-          results.scheduledAuthorized.push({ id: reqRow.id, payment_intent_id: pi.id });
-        } else {
-          // requires_action / processing / etc. — not a usable hold; customer must act.
-          await failReauth(`unexpected_status:${pi.status}`, pm.auth_attempts);
-        }
-      } catch (err) {
-        const code = err.code || err.decline_code || 'auth_failed';
-        const isCardError = err.type === 'StripeCardError'
-          || err.code === 'authentication_required'
-          || err.code === 'card_declined'
-          || /requires_action|authentication/i.test(String(err.message || ''));
-        if (isCardError) {
-          await failReauth(code, pm.auth_attempts);
-        } else {
-          // Transient (network/Stripe outage) — release the claim so the next
-          // daily run retries.
-          console.error(`[auto-reverse] scheduled-auth transient error for ${reqRow.id}:`, err.message);
-          await supabase.from('service_requests').update({ payment_status: 'payment_scheduled' }).eq('id', reqRow.id);
-          results.scheduledFailed.push({ id: reqRow.id, reason: `transient:${code}` });
-        }
+      if (result.status === 'authorized') {
+        results.scheduledAuthorized.push({ id: reqRow.id, payment_intent_id: result.paymentIntentId });
+      } else if (result.status === 'needs_reauth') {
+        // Card decline / authentication_required / non-usable PI status — customer must act.
+        await failReauth(result.reason, pm.auth_attempts);
+      } else {
+        // Transient (network/Stripe outage) — release the claim so the next
+        // daily run retries.
+        console.error(`[auto-reverse] scheduled-auth transient error for ${reqRow.id}:`, result.message);
+        await supabase.from('service_requests').update({ payment_status: 'payment_scheduled' }).eq('id', reqRow.id);
+        results.scheduledFailed.push({ id: reqRow.id, reason: `transient:${result.reason}` });
       }
     }
   }

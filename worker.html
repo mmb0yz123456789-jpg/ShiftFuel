@@ -45,29 +45,22 @@
       <div id="wtab-dashboard" class="worker-tab">
 
         <section class="section worker-portal-hero">
-          <div class="worker-hero-content">
-          <div class="section-heading">
+          <div class="worker-greeting">
             <p class="eyebrow">Welcome back,</p>
             <h1 id="worker-portal-heading">Worker profile</h1>
-            <p id="worker-hero-subtitle">You have 0 jobs scheduled today.</p>
-            <div class="actions">
-              <button class="button primary" id="worker-view-jobs-btn" type="button">View jobs</button>
-              <button class="button secondary" id="worker-refresh-jobs-btn" type="button" aria-label="Refresh worker dashboard">Refresh</button>
-            </div>
+            <p id="worker-hero-subtitle" hidden>You have 0 jobs scheduled today.</p>
+            <button class="button primary" id="worker-view-jobs-btn" type="button" hidden>View jobs</button>
           </div>
+        </section>
 
-          <aside class="worker-current-status-card">
-            <div class="worker-card-heading">
-              <h2>Current Status</h2>
-            </div>
-            <dl>
-              <div><dt>Working since</dt><dd id="worker-working-since">Today</dd></div>
-              <div><dt>Location</dt><dd id="worker-current-location">ShiftFuel</dd></div>
-              <div><dt>Jobs today</dt><dd id="worker-current-jobs-today">0</dd></div>
-              <div><dt>Rating</dt><dd id="worker-current-rating">&mdash;</dd></div>
-              <div><dt>On-time rate</dt><dd id="worker-current-ontime">&mdash;</dd></div>
-            </dl>
-          </aside>
+        <!-- Today's jobs with step-by-step guidance — the home work surface. -->
+        <section class="section worker-today-section">
+          <div class="worker-card-heading worker-today-heading">
+            <h2>Today's Jobs</h2>
+            <button class="button secondary worker-refresh-chip" id="worker-refresh-jobs-btn" type="button" aria-label="Refresh worker dashboard">Refresh</button>
+          </div>
+          <div id="worker-dashboard-today" class="worker-today-list">
+            <div class="worker-state-card worker-state-empty"><p>Loading today’s jobs…</p></div>
           </div>
         </section>
 
@@ -112,6 +105,21 @@
             </ul>
           </section>
         </div>
+
+        <section class="section">
+          <aside class="worker-current-status-card">
+            <div class="worker-card-heading">
+              <h2>Current Status</h2>
+            </div>
+            <dl>
+              <div><dt>Working since</dt><dd id="worker-working-since">Today</dd></div>
+              <div><dt>Location</dt><dd id="worker-current-location">ShiftFuel</dd></div>
+              <div><dt>Jobs today</dt><dd id="worker-current-jobs-today">0</dd></div>
+              <div><dt>Rating</dt><dd id="worker-current-rating">&mdash;</dd></div>
+              <div><dt>On-time rate</dt><dd id="worker-current-ontime">&mdash;</dd></div>
+            </dl>
+          </aside>
+        </section>
 
       </div><!-- /wtab-dashboard -->
 
