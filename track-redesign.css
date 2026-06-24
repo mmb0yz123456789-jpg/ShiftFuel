@@ -1292,9 +1292,15 @@
 }
 .tk-sub-acc-body {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 12px;
   padding: 4px 12px 14px;
 }
+/* The .tk-card classes carry grid-area names for the desktop .track-detail-layout
+   grid. Inside a sub-accordion those areas are undefined, which both collapses
+   the cards onto one cell (overlap) and shrinks them to content width (huge empty
+   gutters on desktop). Reset them to stack full-width in the single column. */
+.track-page .tk-sub-acc-body .tk-card { grid-area: auto; width: 100%; }
 .tk-sub-acc-body .tk-card {
   border-radius: calc(var(--sf-radius-sm) - 2px);
 }
