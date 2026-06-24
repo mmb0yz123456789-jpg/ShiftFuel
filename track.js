@@ -2989,6 +2989,10 @@ function renderRequestCard(request, photos = [], review = null, { expanded = fal
 
   const hasWorker = Boolean(request.assigned_worker_name);
   const hasPhotos = Array.isArray(photos) && photos.length > 0;
+  // Desktop: open every detail section by default so the two-column dashboard is
+  // filled. Mobile keeps them collapsed for the cleaner app-like feel.
+  const detailsOpen = typeof window !== 'undefined' && typeof window.matchMedia === 'function'
+    && window.matchMedia('(min-width: 1000px)').matches;
 
   return `
     <article class="track-request-card track-dashboard-card" data-request-id="${escapeHtml(request.id)}">
@@ -3010,28 +3014,28 @@ function renderRequestCard(request, photos = [], review = null, { expanded = fal
           <div class="tk-detail-grid">
           ${tkSubAcc('Full Timeline', `
             <section class="tk-card tk-status">${renderStatusStepper(request)}</section>
-          `, { open: false })}
+          `, { open: detailsOpen })}
 
           ${tkSubAcc('Vehicle & Service Details', `
             <section class="tk-card tk-vehicle">${renderVehicleCard(request)}</section>
-          `)}
+          `, { open: detailsOpen })}
 
           ${tkSubAcc('Live Updates', `
             <section class="tk-card tk-updates"><p class="tk-eyebrow">Live Updates</p>${renderLiveUpdatesFeed(request)}</section>
-          `)}
+          `, { open: detailsOpen })}
 
           ${tkSubAcc('Photos', `
             <div class="tk-photos-lazy"><p class="tk-empty">Loading photos…</p></div>
-          `)}
+          `, { open: detailsOpen })}
 
           ${tkSubAcc('Service Details', [
             isReturned ? renderReturnDetails(request) : '',
             serviceTimingFromNotes(request),
             inspectionSummaryFromNotes(request),
             request.status === 'complete' ? serviceSummaryFromRequest(request) : '',
-          ].filter(Boolean).join(''))}
+          ].filter(Boolean).join(''), { open: detailsOpen })}
 
-          ${tkSubAcc('Help', `<section class="tk-card tk-help">${renderHelpCard()}</section>`, { open: false })}
+          ${tkSubAcc('Help', `<section class="tk-card tk-help">${renderHelpCard()}</section>`, { open: detailsOpen })}
           </div>
 
           ${renderReviewPrompt(request, review)}
@@ -3199,6 +3203,9 @@ async function renderAllRequests(requests, phone, email) {
         });
       }
       mountVisibleCustomerPayCards(details);
+      // Photos may be open-by-default (desktop), so their own toggle won't fire —
+      // load them whenever the request expands.
+      await loadPhotosInto(details);
     });
   });
 
