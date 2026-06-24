@@ -164,6 +164,10 @@
     width: 100%;
   }
 
+  /* Desktop three-box variant hides on mobile; single Staff Access button shows */
+  .final-cta-portals--desktop { display: none !important; }
+  .final-cta-portals--mobile { display: grid !important; }
+
   .landing-actions .button,
   .pricing-button {
     width: 100%;
