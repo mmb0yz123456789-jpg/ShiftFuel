@@ -3138,7 +3138,9 @@ async function submitWorkerKeysReturned(button) {
   }
 }
 
-workerJobList?.addEventListener('click', async (event) => {
+// Delegated on document (not just #worker-job-list) because the same job cards
+// now render on the Today's Job dashboard too — both surfaces must respond.
+document.addEventListener('click', async (event) => {
   const button = event.target.closest('button');
   if (!button) return;
 
@@ -3304,7 +3306,7 @@ workerJobList?.addEventListener('click', async (event) => {
   }
 });
 
-workerJobList?.addEventListener('change', (event) => {
+document.addEventListener('change', (event) => {
   if (event.target.matches('input[type="file"]')) {
     const control = event.target.closest('.file-button-control');
     const label = control?.querySelector('.selected-file-name');
@@ -3334,7 +3336,7 @@ workerJobList?.addEventListener('change', (event) => {
   }
 });
 
-workerJobList?.addEventListener('input', (event) => {
+document.addEventListener('input', (event) => {
   if (!event.target.classList.contains('inspection-trouble-code')) return;
 
   const code = normalizeTroubleCode(event.target.value);
