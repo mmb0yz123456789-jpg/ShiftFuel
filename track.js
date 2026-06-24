@@ -2582,6 +2582,24 @@ function renderLiveUpdatesFeed(request) {
     </li>`).join('')}</ul>`;
 }
 
+// Live GPS panel. The live map (injected by track-live-location.js into the
+// mount) is only relevant while the worker holds the vehicle — i.e. after the
+// keys are received and before the vehicle is returned. Outside that window we
+// show a plain status note instead.
+function renderGpsTracking(request) {
+  const keysReceived = isStepDone('key_received', request);
+  const vehicleReturned = isStepDone('vehicle_returned', request) || isFinalRequestComplete(request);
+
+  if (!keysReceived) {
+    return `<div class="tk-gps-state tk-gps-off"><span class="tk-gps-dot" aria-hidden="true"></span>GPS is not currently on — keys not received</div>`;
+  }
+  if (vehicleReturned) {
+    return `<div class="tk-gps-state tk-gps-done"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M5 12.5l4 4 10-10"/></svg>Keys returned — GPS is no longer needed</div>`;
+  }
+  // Active service window — the live map injects into this mount.
+  return `<div class="track-live-location-mount"></div>`;
+}
+
 function renderPartnerCard(request) {
   if (!request.assigned_worker_name) return '';
   const name = request.assigned_worker_name;
@@ -3021,10 +3039,6 @@ function renderRequestCard(request, photos = [], review = null, { expanded = fal
 
           ${renderTrackHero(request)}
 
-          <!-- Live location mounts here (promoted up top) while the worker holds
-               the key/vehicle; the script only injects when tracking is active. -->
-          <div class="track-live-location-mount"></div>
-
           <div class="tk-detail-grid">
           ${tkSubAcc('Full Timeline', `
             <section class="tk-card tk-status">${renderStatusStepper(request)}</section>
@@ -3035,7 +3049,7 @@ function renderRequestCard(request, photos = [], review = null, { expanded = fal
           `, { open: detailsOpen })}
 
           ${tkSubAcc('Live Updates', `
-            <section class="tk-card tk-updates"><p class="tk-eyebrow">Live Updates</p>${renderLiveUpdatesFeed(request)}</section>
+            <section class="tk-card tk-updates"><p class="tk-eyebrow">Live GPS tracking</p>${renderGpsTracking(request)}</section>
           `, { open: detailsOpen })}
 
           ${tkSubAcc('Photos', `
@@ -3172,6 +3186,21 @@ async function renderAllRequests(requests, phone, email) {
 
   html += `</div>`;
   trackingResult.innerHTML = html;
+
+  // After a successful lookup, condense the search form to a slim bar so the
+  // result cards get the space. Tapping the bar re-expands it for a new search.
+  const searchCard = document.querySelector('.track-search-card');
+  if (searchCard && requests && requests.length) {
+    searchCard.classList.add('is-condensed');
+    if (!searchCard.dataset.toggleWired) {
+      searchCard.dataset.toggleWired = '1';
+      searchCard.addEventListener('click', () => {
+        if (!searchCard.classList.contains('is-condensed')) return;
+        searchCard.classList.remove('is-condensed');
+        searchCard.querySelector('input')?.focus();
+      });
+    }
+  }
 
   // Map for lazy photo loading
   const requestMap = new Map(requests.map((r) => [r.id, r]));

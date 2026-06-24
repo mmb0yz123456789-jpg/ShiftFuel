@@ -250,6 +250,35 @@
   flex-shrink: 0;
 }
 
+/* Condensed search bar — after a successful lookup (toggled in track.js), the
+   form collapses to a slim, tappable "Search again" bar to free space for the
+   result cards. Tapping it re-expands the full form. */
+.track-page .track-search-card.is-condensed {
+  padding: 14px 18px;
+  cursor: pointer;
+}
+.track-page .track-search-card.is-condensed .track-field-grid,
+.track-page .track-search-card.is-condensed .track-search-note,
+.track-page .track-search-card.is-condensed .track-search-heading p,
+.track-page .track-search-card.is-condensed #track-message { display: none; }
+.track-page .track-search-card.is-condensed .track-search-form { gap: 0; }
+.track-page .track-search-card.is-condensed .track-search-heading {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.track-page .track-search-card.is-condensed .track-search-icon { width: 40px; height: 40px; }
+.track-page .track-search-card.is-condensed .track-search-icon svg { width: 20px; height: 20px; }
+.track-page .track-search-card.is-condensed .track-search-heading h2 { margin: 0; font-size: 1.1rem; }
+.track-page .track-search-card.is-condensed .track-search-heading::after {
+  content: "Search again";
+  margin-left: auto;
+  color: var(--sf-teal-dark);
+  font-size: 0.82rem;
+  font-weight: 850;
+  white-space: nowrap;
+}
+
 #tracking-result {
   /* Match the header/footer width (also enforced in layout-width-polish.css)
      so the request sections line up with the rest of the page edge-to-edge. */
@@ -1351,66 +1380,15 @@
 .track-page .tk-completed-updates { margin-top: 14px; }
 
 /* ─────────────────────────────────────────────────────────────────────────
-   App-like bottom tab bar (phones only)
-   track.html doesn't load mobile-polish.css, so the tab bar markup in the page
-   has no styling there. Style it here, on-brand, and only on phones.
+   No bottom tab bar — the tracker matches the marketing landing page (a clean
+   vertical scroll, no bottom action bar). The .app-tabbar markup in track.html
+   stays inert; it's simply never shown.
    ───────────────────────────────────────────────────────────────────────── */
-.track-page .app-tabbar { display: none; }
+.track-page .app-tabbar { display: none !important; }
 
-@media (max-width: 760px) {
-  .track-page .app-tabbar {
-    display: flex;
-    position: fixed;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    z-index: 1200;
-    gap: 4px;
-    padding: 8px 8px calc(8px + env(safe-area-inset-bottom, 0px));
-    background: rgba(255, 255, 255, 0.98);
-    -webkit-backdrop-filter: blur(12px);
-    backdrop-filter: blur(12px);
-    border-top: 1px solid rgba(13, 59, 59, 0.12);
-    box-shadow: 0 -6px 24px rgba(6, 39, 39, 0.10);
-  }
-
-  .track-page .app-tab {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: 4px;
-    min-height: 52px;
-    padding: 6px 4px;
-    border: 0;
-    border-radius: 14px;
-    background: none;
-    color: var(--sf-muted, #60716d);
-    font-size: 0.66rem;
-    font-weight: 800;
-    letter-spacing: 0.01em;
-    text-decoration: none;
-    cursor: pointer;
-    transition: color 0.15s ease, background 0.15s ease;
-    -webkit-tap-highlight-color: transparent;
-  }
-
-  .track-page .app-tab svg { width: 23px; height: 23px; }
-
-  .track-page .app-tab.is-active,
-  .track-page .app-tab.active {
-    color: var(--sf-teal-dark, #0d3b3b);
-    background: rgba(167, 191, 166, 0.20);
-  }
-
-  .track-page .app-tab:active { transform: scale(0.96); }
-
-  /* Keep page content clear of the fixed bar (overrides the earlier 90px). */
-  .track-page { padding-bottom: calc(70px + env(safe-area-inset-bottom, 0px)); }
-
-  /* App feel on phones: drop the marketing "portals" banner above the footer. */
-  .track-page .portal-closing-banner { display: none; }
+@media (max-width: 767px) {
+  /* No fixed bar to clear — reset the reserved bottom padding. */
+  .track-page { padding-bottom: 24px; }
 }
 
 /* ─────────────────────────────────────────────────────────────────────────
@@ -1580,6 +1558,12 @@
 .track-page .tk-hero-call svg { width: 16px; height: 16px; }
 .track-page .tk-hero-call:active { transform: scale(0.97); }
 
+/* Phones: stack the concierge + return cards full-width so names/badges don't
+   wrap awkwardly in a cramped half-width column. */
+@media (max-width: 600px) {
+  .track-page .tk-hero-quickrow { flex-direction: column; }
+}
+
 /* Promote the live map to a prominent, full-width card right under the hero. */
 .track-page .track-live-location-mount:empty { display: none; }
 .track-page .track-live-location-mount {
@@ -1590,6 +1574,42 @@
   border-radius: var(--sf-radius-md, 16px);
   overflow: hidden;
   box-shadow: var(--sf-shadow-card, 0 14px 40px rgba(13,59,59,0.10));
+}
+
+/* GPS status notes shown in the Live Updates section when the live map isn't
+   relevant (before keys received / after the vehicle is returned). */
+.track-page .tk-gps-state {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 13px 15px;
+  border-radius: var(--sf-radius-sm, 12px);
+  font-size: 0.9rem;
+  font-weight: 800;
+  line-height: 1.35;
+}
+.track-page .tk-gps-off {
+  color: #8a5300;
+  background: rgba(240, 159, 39, 0.13);
+  border: 1px solid rgba(240, 159, 39, 0.30);
+}
+.track-page .tk-gps-dot {
+  flex-shrink: 0;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: #d68a1e;
+}
+.track-page .tk-gps-done {
+  color: var(--sf-teal-dark, #0d3b3b);
+  background: var(--sf-sage-light, #e7f1ec);
+  border: 1px solid rgba(13, 59, 59, 0.12);
+}
+.track-page .tk-gps-done svg {
+  flex-shrink: 0;
+  width: 18px;
+  height: 18px;
+  color: var(--sf-success, #1f9d57);
 }
 
 /* Desktop two-column detail dashboard — uses the width on wide screens while the
@@ -1649,4 +1669,111 @@
   font-size: 0.78rem;
   font-weight: 800;
   letter-spacing: 0.05em;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────
+   Phone app-ification — make Track read like a native app screen, not a web
+   page: slim title (no marketing hero), flat cards (no boxes-in-boxes),
+   compact lookup, tighter density. Phones only; desktop is untouched.
+   ───────────────────────────────────────────────────────────────────────── */
+@media (max-width: 640px) {
+  /* 1 — Compact app-style hero banner: the car photo as a background with the
+     title overlaid, instead of a giant heading floating on empty space. */
+  .track-page .track-hero-redesign {
+    position: relative;
+    display: block;
+    min-height: 150px;
+    border: 0;
+    border-radius: 18px;
+    box-shadow: none;
+    overflow: hidden;
+  }
+  .track-page .track-hero-redesign .booking-flow-hero-image {
+    position: absolute;
+    inset: 0;
+    margin: 0;
+    width: 100%;
+    height: 100%;
+  }
+  .track-page .track-hero-redesign .booking-flow-hero-image::before { display: none; }
+  .track-page .track-hero-redesign .booking-flow-hero-image img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+  .track-page .track-hero-redesign::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    background: linear-gradient(160deg, rgba(13, 59, 59, 0.40) 0%, rgba(13, 59, 59, 0.84) 100%);
+  }
+  .track-page .track-hero-redesign .booking-flow-hero-copy {
+    position: relative;
+    z-index: 2;
+    width: 100%;
+    min-height: 150px;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+    padding: 18px;
+  }
+  .track-page .track-hero-redesign .eyebrow {
+    display: block;
+    margin: 0 0 4px;
+    color: rgba(255, 255, 255, 0.82);
+    font-size: 0.72rem;
+    font-weight: 800;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+  .track-page .track-hero-redesign p:not(.eyebrow) { display: none; }
+  .track-page .track-hero-redesign h1 {
+    margin: 0;
+    color: #fff;
+    font-size: 1.6rem;
+    line-height: 1.05;
+    letter-spacing: -0.02em;
+  }
+
+  .track-shell { margin: 12px auto 56px; }
+
+  /* 3 — Compact, app-style lookup card. */
+  .track-page .track-search-card {
+    margin-top: 12px;
+    padding: 16px;
+    border-radius: 16px;
+    box-shadow: none;
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+    background: #fff;
+  }
+  .track-page .track-search-heading { grid-template-columns: 1fr; gap: 2px; }
+  .track-page .track-search-icon { display: none; }
+  .track-page .track-search-heading h2 { font-size: 1.35rem; }
+  .track-page .track-search-form { gap: 14px; }
+
+  /* 2 + 4 — Flatten the nested cards and tighten density so a request reads as
+     one clean screen rather than boxes inside boxes. */
+  .track-page .track-section {
+    border: 0;
+    box-shadow: none;
+    background: transparent;
+  }
+  .track-page .track-request-card {
+    box-shadow: none;
+    border: 1px solid rgba(13, 59, 59, 0.10);
+    border-radius: 16px;
+  }
+  .track-page .track-request-body { padding: 12px; gap: 12px; }
+  .track-page .tk-hero { padding: 14px; margin-bottom: 12px; }
+  .track-page .estimated-total-card { padding: 12px 14px; }
+  .track-page .tk-detail-grid { gap: 10px; }
+  .track-page .tk-sub-acc { background: #fff; }
+  .track-page .tk-sub-acc-body { padding: 2px 12px 12px; }
+  .track-page .tk-card {
+    box-shadow: none;
+    border: 1px solid rgba(13, 59, 59, 0.08);
+    padding: 14px;
+  }
 }

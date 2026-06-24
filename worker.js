@@ -161,6 +161,16 @@ workerEnableAlertsBtn?.addEventListener('click', async () => {
 document.querySelector('#worker-reviews-viewall')?.addEventListener('click', () => {
   document.querySelector('#worker-reviews-trigger')?.click();
 });
+// Dashboard aside cards: reviews → modal, availability → Schedule tab, header → sign out.
+document.querySelector('#worker-dash-reviews-all')?.addEventListener('click', () => {
+  document.querySelector('#worker-reviews-trigger')?.click();
+});
+document.querySelector('#worker-snapshot-schedule')?.addEventListener('click', () => {
+  document.querySelector('[data-tab-view="schedule"]')?.click();
+});
+document.querySelector('#worker-header-signout')?.addEventListener('click', () => {
+  document.querySelector('#worker-signout-btn')?.click();
+});
 
 document.querySelector('#worker-progress-job-label')?.addEventListener('click', async () => {
   const jobLabel = document.querySelector('#worker-progress-job-label');
@@ -1038,6 +1048,40 @@ function renderWorkerDaysOffCalendar() {
   updateWorkerDaysOffSummary();
 }
 
+let workerAvailabilityRows = [];
+
+function workerTimeToMinutes(t) {
+  const [h, m] = String(t || '00:00').slice(0, 5).split(':').map(Number);
+  return (Number.isFinite(h) ? h : 0) * 60 + (Number.isFinite(m) ? m : 0);
+}
+
+// Today's availability as a 24-hour timeline bar (desktop dashboard aside).
+function renderWorkerAvailabilitySnapshot() {
+  const container = document.querySelector('#worker-availability-snapshot');
+  if (!container) return;
+  const today = new Date();
+  const todayRow = workerAvailabilityRows.find((r) => Number(r.day_of_week) === today.getDay());
+  const dateLabel = today.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' });
+  let fill = '';
+  if (todayRow && todayRow.starts_at && todayRow.ends_at) {
+    const startMin = workerTimeToMinutes(todayRow.starts_at);
+    const endMin = workerTimeToMinutes(todayRow.ends_at);
+    if (endMin > startMin) {
+      fill = `<span class="worker-avail-fill" style="left:${(startMin / 1440) * 100}%;width:${((endMin - startMin) / 1440) * 100}%"></span>`;
+    }
+  }
+  container.innerHTML = `
+    <p class="worker-avail-date">Today &middot; ${escapeHtml(dateLabel)}</p>
+    <div class="worker-avail-bar">${fill}</div>
+    <div class="worker-avail-axis"><span>12 AM</span><span>6 AM</span><span>12 PM</span><span>6 PM</span><span>12 AM</span></div>
+    <div class="worker-avail-legend">
+      <span><span class="worker-avail-key is-on"></span>Available</span>
+      <span><span class="worker-avail-key is-off"></span>Unavailable</span>
+    </div>
+    ${!todayRow ? '<p class="field-help" style="margin-top:10px">Not scheduled to work today.</p>' : ''}
+  `;
+}
+
 async function loadWorkerSchedule() {
   if (!currentEmployee) return;
 
@@ -1048,9 +1092,11 @@ async function loadWorkerSchedule() {
 
   if (availabilityError) {
     console.warn('Could not load worker availability:', availabilityError);
+    workerAvailabilityRows = [];
     renderWorkerDaysGrid([]);
   } else {
     const rows = availability || [];
+    workerAvailabilityRows = rows;
     renderWorkerDaysGrid(rows.map((row) => ({
       dayOfWeek: row.day_of_week,
       startsAt: String(row.starts_at || '09:00').slice(0, 5),
@@ -1060,6 +1106,8 @@ async function loadWorkerSchedule() {
     const scheduleLocation = rows.find((row) => row.work_location)?.work_location || currentEmployee.home_location || DEFAULT_WORK_LOCATION;
     if (workerLocation) workerLocation.value = scheduleLocation;
   }
+
+  renderWorkerAvailabilitySnapshot();
 
   const { data: daysOff, error: daysOffError } = await workerDb
     .from('employee_days_off')
@@ -1088,6 +1136,10 @@ async function loadWorkerProfile() {
     if (profileStatusBadge) profileStatusBadge.hidden = currentEmployee.active === false;
     const verifiedBadge = document.querySelector('#worker-verified-badge');
     if (verifiedBadge) verifiedBadge.hidden = !currentEmployee.background_verified;
+    const headerName = document.querySelector('#worker-header-name');
+    if (headerName) headerName.textContent = workerName;
+    const headerAvatar = document.querySelector('#worker-header-avatar');
+    if (headerAvatar) headerAvatar.textContent = (workerName.trim().charAt(0) || 'W').toUpperCase();
     if (workerProfileName) workerProfileName.value = workerName;
     if (workerProfilePhone) workerProfilePhone.value = formatPhone(currentEmployee.phone || '');
     if (workerProfileLocation) workerProfileLocation.value = currentEmployee.home_location || DEFAULT_WORK_LOCATION;
@@ -1418,6 +1470,8 @@ async function loadWorkerReviews() {
   if (profileRatingRow) profileRatingRow.hidden = false;
   if (profileReviews) profileReviews.innerHTML = reviews.slice(0, 3).map(renderProfileReview).join('');
   if (profileReviewsCard) profileReviewsCard.hidden = false;
+  const dashReviews = document.querySelector('#worker-dash-reviews');
+  if (dashReviews) dashReviews.innerHTML = reviews.slice(0, 2).map(renderProfileReview).join('');
 }
 
 function workerFormatAddress(request) {
@@ -1580,21 +1634,21 @@ function renderWorkerCurrentJobCard(request) {
     .filter(Boolean).map(escapeHtml).join(' &middot; ');
   return `
     <article class="worker-card worker-current-job-card" data-current-job-id="${escapeHtml(request.id)}">
-      <div class="worker-job-head">
-        <span class="worker-avatar" aria-hidden="true">${initial}</span>
-        <div class="worker-job-head-main">
-          <h3 class="worker-current-job-name">${escapeHtml(name)}</h3>
-          <p class="worker-card-vehicle">${vehicleLine}</p>
+      <div class="worker-job-statusrow">${workerStatusBadge(request)}</div>
+      <div class="worker-job-grid">
+        <div class="worker-job-identity">
+          <span class="worker-avatar" aria-hidden="true">${initial}</span>
+          <div class="worker-job-head-main">
+            <h3 class="worker-current-job-name">${escapeHtml(name)}</h3>
+            <p class="worker-card-vehicle">${vehicleLine}</p>
+          </div>
         </div>
-        <div class="worker-job-head-meta">
-          ${workerStatusBadge(request)}
-          ${returnBy ? `<span class="worker-return-by">${escapeHtml(returnBy)}</span>` : ''}
+        <div class="worker-job-facts">
+          ${workerFactRow(WK_ICONS.pin, 'Service address', `<span class="worker-job-address-value">${escapeHtml(workerFormatAddress(request))}</span>`)}
+          ${workerFactRow(WK_ICONS.car, 'Parking', parking)}
+          ${workerFactRow(WK_ICONS.key, 'Key handoff', keyHandoff)}
+          ${returnBy ? workerFactRow(WK_ICONS.clock, 'Desired return', escapeHtml(returnBy)) : ''}
         </div>
-      </div>
-      <div class="worker-job-facts">
-        ${workerFactRow(WK_ICONS.pin, 'Service address', `<span class="worker-job-address-value">${escapeHtml(workerFormatAddress(request))}</span>`)}
-        ${workerFactRow(WK_ICONS.car, 'Parking', parking)}
-        ${workerFactRow(WK_ICONS.key, 'Key handoff', keyHandoff)}
       </div>
       ${renderWorkerJobActions(request)}
       <div class="worker-secondary-actions">
@@ -1639,12 +1693,14 @@ function renderWorkerUpcomingRow(request) {
   const when = workerReturnByLabel(request);
   const sub = [workerVehicleSummary(request), request.service_label || request.service_type]
     .filter(Boolean).map(escapeHtml).join(' &middot; ');
+  const address = workerFormatAddress(request);
   return `
     <article class="worker-card worker-upcoming-row">
       <span class="worker-avatar worker-avatar-sm" aria-hidden="true">${initial}</span>
       <div class="worker-upcoming-main">
         <strong>${escapeHtml(request.customer_name || 'Customer')}</strong>
         <span class="worker-card-sub">${sub}</span>
+        ${address ? `<span class="worker-upcoming-addr">${WK_ICONS.pin}<span>${escapeHtml(address)}</span></span>` : ''}
       </div>
       ${when ? `<span class="worker-upcoming-when">${escapeHtml(when)}</span>` : ''}
     </article>`;

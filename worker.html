@@ -30,12 +30,41 @@
         <span class="logo-mark">S</span>
         <span>ShiftFuel Concierge</span>
       </a>
+      <nav class="app-tabbar" id="worker-tabbar" aria-label="Worker portal navigation">
+        <button class="app-tab active" data-tab="dashboard" data-tab-view="dashboard" type="button">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="5" width="16" height="14" rx="2"/><path d="M4 9h16M8 3v4M16 3v4M9 13l2 2 4-4"/></svg>
+          <span>Today's Job</span>
+        </button>
+        <button class="app-tab" data-tab="jobs" data-tab-view="jobs" type="button">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="5" y="4" width="14" height="17" rx="1.6"/><path d="M9 8h6M9 12h6M9 16h4"/></svg>
+          <span>Jobs</span>
+        </button>
+        <button class="app-tab" data-tab="schedule" data-tab-view="schedule" type="button">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="5" width="16" height="16" rx="2"/><path d="M4 9h16M8 3v4M16 3v4"/></svg>
+          <span>Schedule</span>
+        </button>
+        <button class="app-tab" data-tab="earnings" data-tab-view="earnings" type="button">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3a9 9 0 1 0 9 9"/><path d="M12 7v5l3 2"/><path d="M16 3l5 2-2 5"/></svg>
+          <span>Earnings</span>
+        </button>
+        <button class="app-tab" data-tab="profile" data-tab-view="profile" type="button">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="8" r="3.4"/><path d="M5 20c0-3.3 3.1-6 7-6s7 2.7 7 6"/></svg>
+          <span>Profile</span>
+        </button>
+      </nav>
       <div class="portal-header-actions">
         <span class="portal-header-label">Worker Dashboard</span>
         <span class="worker-presence-indicator" id="worker-presence-indicator" hidden>
           <span class="worker-presence-dot"></span>
           <span id="worker-presence-label">Online</span>
         </span>
+        <div class="worker-account-chip worker-desktop-only">
+          <span class="worker-account-avatar" id="worker-header-avatar" aria-hidden="true">M</span>
+          <div class="worker-account-text">
+            <span class="worker-account-name" id="worker-header-name">Worker</span>
+            <button class="worker-account-signout" id="worker-header-signout" type="button">Sign out</button>
+          </div>
+        </div>
       </div>
     </header>
 
@@ -49,7 +78,7 @@
         <div class="worker-dash-grid">
           <div class="worker-dash-main">
 
-            <section class="section worker-portal-hero">
+            <section class="section worker-portal-hero worker-mobile-only">
               <div class="worker-greeting">
                 <p class="eyebrow">Welcome back,</p>
                 <h1 id="worker-portal-heading">Worker profile</h1>
@@ -73,21 +102,11 @@
               </div>
             </section>
 
-            <!-- Today's Progress (desktop dashboard only) -->
+            <!-- Quick stats (desktop dashboard only) — the 6-step tracker was
+                 redundant with the job card's status, so it's gone. -->
             <section class="section worker-desktop-only">
-              <div class="worker-dashboard-card worker-progress-card">
-                <div class="worker-card-heading">
-                  <h2>Today's Progress</h2>
-                  <button class="worker-progress-job-label" id="worker-progress-job-label" type="button" hidden>Continue</button>
-                </div>
-                <div class="worker-progress-line" aria-label="Worker progress">
-                  <div class="worker-progress-step"><span class="worker-progress-dot">1</span><span class="worker-progress-caption">Accepted</span></div>
-                  <div class="worker-progress-step"><span class="worker-progress-dot">2</span><span class="worker-progress-caption">Key Received</span></div>
-                  <div class="worker-progress-step"><span class="worker-progress-dot">3</span><span class="worker-progress-caption">Vehicle Picked Up</span></div>
-                  <div class="worker-progress-step"><span class="worker-progress-dot">4</span><span class="worker-progress-caption">Service</span></div>
-                  <div class="worker-progress-step"><span class="worker-progress-dot">5</span><span class="worker-progress-caption">Returned</span></div>
-                  <div class="worker-progress-step"><span class="worker-progress-dot">6</span><span class="worker-progress-caption">Complete</span></div>
-                </div>
+              <div class="worker-dashboard-card">
+                <div class="worker-card-heading"><h2>Quick Stats</h2></div>
                 <div class="worker-stat-grid">
                   <div class="worker-stat-card">
                     <span class="worker-stat-value" id="worker-stat-jobs-completed">0</span>
@@ -105,14 +124,6 @@
               </div>
             </section>
 
-            <!-- Recent Updates (desktop dashboard only) -->
-            <section class="section worker-desktop-only">
-              <div class="worker-dashboard-card worker-updates-card">
-                <div class="worker-card-heading"><h2>Recent Updates</h2></div>
-                <ul class="worker-update-list"><li class="field-help">No recent activity yet.</li></ul>
-              </div>
-            </section>
-
           </div>
 
           <!-- Info aside (desktop dashboard only) -->
@@ -127,6 +138,32 @@
                   <div><dt>Rating</dt><dd id="worker-current-rating">&mdash;</dd></div>
                   <div><dt>On-time rate</dt><dd id="worker-current-ontime">&mdash;</dd></div>
                 </dl>
+              </div>
+            </section>
+            <section class="section">
+              <div class="worker-dashboard-card worker-updates-card">
+                <div class="worker-card-heading"><h2>Recent Updates</h2></div>
+                <ul class="worker-update-list"><li class="field-help">No recent activity yet.</li></ul>
+              </div>
+            </section>
+            <section class="section">
+              <div class="worker-dashboard-card">
+                <div class="worker-card-heading worker-aside-heading">
+                  <h2>Availability Snapshot</h2>
+                  <button class="worker-aside-link" id="worker-snapshot-schedule" type="button">View calendar</button>
+                </div>
+                <div id="worker-availability-snapshot"></div>
+              </div>
+            </section>
+            <section class="section">
+              <div class="worker-dashboard-card">
+                <div class="worker-card-heading worker-aside-heading">
+                  <h2>Recent Reviews</h2>
+                  <button class="worker-aside-link" id="worker-dash-reviews-all" type="button">View all</button>
+                </div>
+                <div id="worker-dash-reviews">
+                  <p class="field-help">No reviews yet. Complete jobs to earn reviews from customers.</p>
+                </div>
               </div>
             </section>
           </aside>
@@ -269,45 +306,20 @@
 
     </main>
 
-	<!-- Mobile app-style bottom tab bar -->
-	<nav class="app-tabbar" id="worker-tabbar" aria-label="Worker portal navigation">
-	  <button class="app-tab active" data-tab="dashboard" data-tab-view="dashboard" type="button">
-		<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
-		  <rect x="4" y="5" width="16" height="14" rx="2"/>
-		  <path d="M4 9h16M8 3v4M16 3v4M9 13l2 2 4-4"/>
-		</svg>
-		<span>Today's Job</span>
-	  </button>
-	  <button class="app-tab" data-tab="jobs" data-tab-view="jobs" type="button">
-		<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
-		  <rect x="5" y="4" width="14" height="17" rx="1.6"/>
-		  <path d="M9 8h6M9 12h6M9 16h4"/>
-		</svg>
-		<span>Jobs</span>
-	  </button>
-	  <button class="app-tab" data-tab="schedule" data-tab-view="schedule" type="button">
-		<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
-		  <rect x="4" y="5" width="16" height="16" rx="2"/>
-		  <path d="M4 9h16M8 3v4M16 3v4"/>
-		</svg>
-		<span>Schedule</span>
-	  </button>
-	  <button class="app-tab" data-tab="earnings" data-tab-view="earnings" type="button">
-		<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
-		  <path d="M12 3a9 9 0 1 0 9 9"/>
-		  <path d="M12 7v5l3 2"/>
-		  <path d="M16 3l5 2-2 5"/>
-		</svg>
-		<span>Earnings</span>
-	  </button>
-	  <button class="app-tab" data-tab="profile" data-tab-view="profile" type="button">
-		<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
-		  <circle cx="12" cy="8" r="3.4"/>
-		  <path d="M5 20c0-3.3 3.1-6 7-6s7 2.7 7 6"/>
-		</svg>
-		<span>Profile</span>
-	  </button>
-	</nav>
+    <!-- Worker website footer — desktop only (mobile is the installed app). -->
+    <footer class="site-footer worker-desktop-only">
+      <div class="footer-main">
+        <p class="footer-copy">&copy; <span class="worker-year"></span> ShiftFuel Concierge. All rights reserved.</p>
+        <nav class="footer-links" aria-label="Legal links">
+          <button type="button" class="worker-legal-link" data-legal="privacy.html">Privacy Policy</button>
+          <button type="button" class="worker-legal-link" data-legal="terms.html">Terms of Service</button>
+          <button type="button" class="worker-legal-link" data-legal="liability-waiver.html">Liability Waiver</button>
+        </nav>
+      </div>
+    </footer>
+
+	<!-- Worker nav now lives inside the header (single bar). -->
+
 
     <!-- My service reviews modal -->
     <div id="worker-reviews-section" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="wr-title" hidden>
@@ -469,6 +481,11 @@
         window.addEventListener('resize', function() { switchWorkerTab(currentWorkerTab); });
 
         switchWorkerTab('dashboard');
+
+        // Stamp the current year into the footer + profile copyright.
+        document.querySelectorAll('#year, .worker-year').forEach(function(el) {
+          el.textContent = new Date().getFullYear();
+        });
       }
 
       window.addEventListener('load', initWorkerTabs);
