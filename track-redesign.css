@@ -1083,6 +1083,41 @@
   gap: 12px;
 }
 
+/* Photo groups (starting/ending exterior, odometer & fuel before→after,
+   receipts). Each is a plain headed section — label + photos directly below —
+   on every screen. No per-group accordion; the Photos section already collapses
+   the whole thing on mobile, so this avoids a third tap-to-open layer. */
+.track-page .tk-photo-groups { display: grid; gap: 4px; }
+.track-page .tk-photo-group { border-top: 1px solid rgba(13, 59, 59, 0.08); }
+.track-page .tk-photo-group:first-child { border-top: 0; }
+.track-page .tk-photo-group-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  padding: 14px 2px 8px;
+}
+.track-page .tk-photo-group-title {
+  font-size: 0.82rem;
+  font-weight: 900;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--sf-muted);
+}
+.track-page .tk-photo-group-count {
+  display: inline-grid;
+  place-items: center;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: rgba(13, 59, 59, 0.08);
+  color: var(--sf-teal-dark);
+  font-size: 0.72rem;
+  font-weight: 800;
+}
+.track-page .tk-photo-group-body { padding: 0 0 12px; }
+
 .track-page .tk-photo-tile {
   display: grid;
   gap: 6px;

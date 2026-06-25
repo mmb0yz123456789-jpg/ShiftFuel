@@ -2761,26 +2761,87 @@ function trackPhotoLabel(type) {
   return TRACK_PHOTO_LABELS[type] || String(type || '').replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
+// Customer-facing photo groups, in display order: starting/ending exterior,
+// odometer + fuel level (each before→after), and service receipts.
+const TRACK_PHOTO_GROUPS = [
+  { key: 'starting', title: 'Starting exterior' },
+  { key: 'odometer', title: 'Odometer' },
+  { key: 'fuel',     title: 'Fuel level' },
+  { key: 'receipts', title: 'Service receipts' },
+  { key: 'ending',   title: 'Ending exterior' },
+];
+
+function trackPhotoGroup(type) {
+  const t = String(type || '');
+  if (t.includes('odometer')) return 'odometer';
+  if (t.includes('fuel_gauge')) return 'fuel';
+  if (t.includes('receipt')) return 'receipts';
+  if (t.startsWith('dropoff')) return 'ending';
+  return 'starting'; // pickup_* exterior, key_received, anything else
+}
+
+// 'before' = pickup, 'after' = dropoff — orders + labels the odometer/fuel pairs.
+function trackPhotoPhase(type) {
+  const t = String(type || '');
+  if (t.startsWith('dropoff')) return 'after';
+  if (t.startsWith('pickup')) return 'before';
+  return '';
+}
+
+function renderPhotoTile(p) {
+  const thumb = p.thumbnail_url || p.image_url;
+  const full = p.original_url || p.image_url;
+  if (!thumb && !full) return '';
+  const fullLabel = trackPhotoLabel(p.photo_type);
+  const group = trackPhotoGroup(p.photo_type);
+  const phase = trackPhotoPhase(p.photo_type);
+  // In before/after groups the heading already says Odometer/Fuel, so the tile
+  // just labels which shot it is.
+  const label = (group === 'odometer' || group === 'fuel') && phase
+    ? (phase === 'before' ? 'Before' : 'After')
+    : fullLabel;
+  const time = p.created_at ? formatTimeShort(p.created_at) : '';
+  return `
+    <button class="tk-photo-tile" type="button"
+            data-lightbox-src="${escapeHtml(full)}" data-lightbox-label="${escapeHtml(fullLabel)}">
+      <img src="${escapeHtml(thumb)}" alt="${escapeHtml(label)}" loading="lazy">
+      <span class="tk-photo-label">${escapeHtml(label)}</span>
+      ${time ? `<span class="tk-photo-time">${escapeHtml(time)}</span>` : ''}
+    </button>`;
+}
+
 function renderPhotoStrip(request, photos) {
   if (!photos || !photos.length) return '';
-  const tiles = photos.map((p) => {
-    const thumb = p.thumbnail_url || p.image_url;
-    const full = p.original_url || p.image_url;
-    if (!thumb && !full) return '';
-    const label = trackPhotoLabel(p.photo_type);
-    const time = p.created_at ? formatTimeShort(p.created_at) : '';
+  // Bucket photos into the customer-facing groups.
+  const buckets = {};
+  for (const p of photos) {
+    const g = trackPhotoGroup(p.photo_type);
+    (buckets[g] = buckets[g] || []).push(p);
+  }
+  // Order before (pickup) → after (dropoff) within the paired groups, so the
+  // "before" shot sits on the left and "after" on the right.
+  const phaseRank = { before: 0, after: 1, '': 2 };
+  ['odometer', 'fuel'].forEach((g) => {
+    if (buckets[g]) buckets[g].sort((a, b) => phaseRank[trackPhotoPhase(a.photo_type)] - phaseRank[trackPhotoPhase(b.photo_type)]);
+  });
+  // Groups render as plain headed sections (label + photos directly below) on
+  // every screen — no per-group accordion. The Photos section itself still
+  // collapses the whole thing on mobile, so this avoids a third tap-to-open layer.
+  const sections = TRACK_PHOTO_GROUPS.map(({ key, title }) => {
+    const items = buckets[key];
+    if (!items || !items.length) return '';
+    const tiles = items.map(renderPhotoTile).join('');
     return `
-      <button class="tk-photo-tile" type="button"
-              data-lightbox-src="${escapeHtml(full)}" data-lightbox-label="${escapeHtml(label)}">
-        <img src="${escapeHtml(thumb)}" alt="${escapeHtml(label)}" loading="lazy">
-        <span class="tk-photo-label">${escapeHtml(label)}</span>
-        ${time ? `<span class="tk-photo-time">${escapeHtml(time)}</span>` : ''}
-      </button>`;
+      <section class="tk-photo-group">
+        <p class="tk-photo-group-head">
+          <span class="tk-photo-group-title">${escapeHtml(title)}</span>
+          <span class="tk-photo-group-count">${items.length}</span>
+        </p>
+        <div class="tk-photo-group-body"><div class="tk-photo-grid">${tiles}</div></div>
+      </section>`;
   }).join('');
-  // One responsive grid showing every photo at once (no horizontal scroll strip
-  // and no "View all" toggle — they showed the same photos twice). Tapping a tile
-  // opens the full-screen lightbox.
-  return `<div class="tk-photo-grid">${tiles}</div>`;
+
+  return `<div class="tk-photo-groups">${sections}</div>`;
 }
 
 function renderHelpCard() {

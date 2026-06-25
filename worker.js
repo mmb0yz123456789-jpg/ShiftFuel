@@ -2192,6 +2192,13 @@ function workerPrimaryStatusButton(request, label, status) {
   return `<button class="button primary worker-update-status" data-id="${escapeHtml(request.id)}" data-status="${escapeHtml(status)}" type="button">${escapeHtml(label)}</button>`;
 }
 
+// In-app navigation to the gas station for the fuel service drive. No
+// worker-start-nav class here — that's the en-route gate; this only opens the map
+// (data-route-map), so it never re-runs the "started"/GPS-start logic.
+function workerNavStationButton(request) {
+  return `<button class="button secondary" data-route-map data-route-dest="station" data-id="${escapeHtml(request.id)}" type="button">Navigate to gas station</button>`;
+}
+
 function workerBackStatusFor(request) {
   const map = {
     // No Back once the job is underway: 'accepted' (use "Send back to open pool")
@@ -2296,11 +2303,13 @@ function renderWorkerJobActions(request) {
     // The customer tracker advances to "Service in progress" after this click.
     nextAction = 'Start the requested service.';
     actions.push(workerPrimaryStatusButton(request, 'Start service', 'service_in_progress'));
+    if (serviceNeedsFuel(request)) actions.push(workerNavStationButton(request));
   } else if (request.status === 'service_in_progress') {
     // Worker performs the actual service. Show fuel/wash action buttons.
     nextAction = 'Complete the requested fuel or cleaning service.';
     if (serviceNeedsFuel(request) && !serviceDoneOrUnable(request, 'fuel')) {
       actions.push(workerPrimaryStatusButton(request, `Fuel complete â€” ${request.fuel_type || 'fuel'}`, 'fueling_complete'));
+      actions.push(workerNavStationButton(request));
       actions.push(workerServiceUnableButton(request, 'fuel'));
     }
     if (serviceNeedsWash(request) && !serviceDoneOrUnable(request, 'wash')) {
