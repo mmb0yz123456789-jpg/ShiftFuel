@@ -60,6 +60,11 @@ const ALLOWED_BOOKING_FIELDS = [
   'payment_operating_recovery_amount', 'displayed_fuel_service_fee', 'displayed_car_wash_service_fee',
   'displayed_inspection_fee', 'net_target_amount', 'gross_total_before_rounding', 'rounded_customer_total',
   'authorized_amount', 'booking_source', 'notes',
+  // Customer-chosen gas station (closest = free default, or a specific station +
+  // distance surcharge). Persisted so the worker knows where to fuel and the
+  // customer/admin can see the choice. Without these in the allow-list they were
+  // silently stripped before insert, so the station never reached Supabase.
+  'gas_station_name', 'gas_station_address', 'gas_station_lat', 'gas_station_lon', 'gas_station_surcharge',
 ];
 
 const NUMERIC_FIELDS = [
@@ -69,6 +74,7 @@ const NUMERIC_FIELDS = [
   'base_inspection_fee', 'payment_operating_recovery_amount', 'displayed_fuel_service_fee',
   'displayed_car_wash_service_fee', 'displayed_inspection_fee', 'net_target_amount',
   'gross_total_before_rounding', 'rounded_customer_total', 'authorized_amount',
+  'gas_station_lat', 'gas_station_lon', 'gas_station_surcharge',
 ];
 
 const UUID_FIELDS = ['customer_id', 'vehicle_id', 'user_id'];
