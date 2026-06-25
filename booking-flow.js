@@ -1039,6 +1039,12 @@ async function validateAddress(panel) {
       setAddressStatus(panel, "error", data.message || "We currently do not serve this area.");
       return;
     }
+    // Keep the resolved coordinates so Service Details can load nearby stations
+    // (saved addresses arrive without coordinates until validated).
+    if (Number.isFinite(Number(data.lat)) && Number.isFinite(Number(data.lon))) {
+      bookingState.values.address_lat = Number(data.lat);
+      bookingState.values.address_lon = Number(data.lon);
+    }
     bookingState.address.validated = true;
     setAddressStatus(panel, "success", "Address verified.");
   } catch (error) {
@@ -1191,6 +1197,22 @@ function requestVehicleFromRecord(record) {
   };
 }
 
+// Collapse saved addresses that are the same place formatted differently
+// ("1702 Saint Mihiel Avenue" vs "…Ave"), so the picker doesn't show duplicates.
+function dedupeReturningAddresses(addresses) {
+  const suffixes = { avenue: "ave", street: "st", boulevard: "blvd", highway: "hwy", road: "rd", drive: "dr", lane: "ln", court: "ct", place: "pl", parkway: "pkwy", terrace: "ter" };
+  const norm = (s) => String(s || "").toLowerCase().replace(/[.,]/g, " ")
+    .replace(/\b(avenue|street|boulevard|highway|road|drive|lane|court|place|parkway|terrace)\b/g, (m) => suffixes[m] || m)
+    .replace(/\s+/g, " ").trim();
+  const keyOf = (a) => [norm(a.street), norm(a.unit), norm(a.city), norm(a.state), String(a.zip || "").replace(/\D/g, "")].join("|");
+  const seen = new Map();
+  for (const a of (Array.isArray(addresses) ? addresses : [])) {
+    const key = keyOf(a);
+    if (!seen.has(key)) seen.set(key, a);
+  }
+  return [...seen.values()];
+}
+
 function requestsToReturningOptions(requests) {
   const addresses = [];
   const vehicles = [];
@@ -1306,7 +1328,7 @@ async function verifyReturningCustomer(panel) {
       }
     }
 
-    bookingState.returning.addresses = options.addresses;
+    bookingState.returning.addresses = dedupeReturningAddresses(options.addresses);
     bookingState.returning.vehicles = options.vehicles;
     bookingState.returning.selectedAddressId = null;
     bookingState.returning.selectedVehicleId = null;
@@ -1335,6 +1357,11 @@ function applySelectedAddress(address) {
   bookingState.values.city = address.city;
   bookingState.values.state = address.state || "DE";
   bookingState.values.zip = address.zip;
+  // Saved addresses carry no coordinates, and we must not reuse coords from a
+  // previously-typed address. Clear them so validation geocodes this address
+  // fresh and stores the correct coordinates (needed for nearby stations).
+  bookingState.values.address_lat = Number(address.lat) || "";
+  bookingState.values.address_lon = Number(address.lon) || "";
   bookingState.address.validated = true;
   bookingState.address.status = "success";
   bookingState.address.message = "Address verified.";
@@ -1482,7 +1509,7 @@ async function detectReturningCustomer() {
       const savedOptions = savedOptionsToReturningOptions(saved.data);
       if (savedOptions.addresses.length || savedOptions.vehicles.length) options = savedOptions;
     }
-    bookingState.returning.addresses = options.addresses;
+    bookingState.returning.addresses = dedupeReturningAddresses(options.addresses);
     bookingState.returning.vehicles = options.vehicles;
     bookingState.returning.verified = true;
     bookingState.returning.detectedOnBookNow = true;
@@ -1604,7 +1631,9 @@ function renderVehicleFields(panel) {
   if (bookingState.values.vehicleYear) yearSelect.value = bookingState.values.vehicleYear;
   if (bookingState.values.vehicleMake) makeSelect.value = bookingState.values.vehicleMake;
 
-  loadVehicleModelOptions(yearSelect, makeSelect, modelSelect, bookingState.values.vehicleModel || "");
+  // Returned so callers can await the async model load before re-checking step
+  // completion (otherwise picking a saved vehicle leaves Continue disabled).
+  return loadVehicleModelOptions(yearSelect, makeSelect, modelSelect, bookingState.values.vehicleModel || "");
 }
 
 function renderReturningVehicleFields(panel) {
@@ -2222,6 +2251,10 @@ async function recheckReturningSavedAddress(panel, address) {
       bookingState.returning.addressStatusType = "error";
       bookingState.returning.addressStatus = data.message || "We currently do not serve this area.";
     } else {
+      if (Number.isFinite(Number(data.lat)) && Number.isFinite(Number(data.lon))) {
+        bookingState.values.address_lat = Number(data.lat);
+        bookingState.values.address_lon = Number(data.lon);
+      }
       bookingState.returning.addressValidated = true;
       bookingState.returning.addressStatusType = "success";
       bookingState.returning.addressStatus = "Address verified — in your service area.";
@@ -2278,6 +2311,10 @@ async function validateReturningAddress(panel) {
       bookingState.returning.addresses = bookingState.returning.addresses.map((item) => (
         item.id === address.id ? address : item
       ));
+    }
+    if (Number.isFinite(Number(data.lat)) && Number.isFinite(Number(data.lon))) {
+      bookingState.values.address_lat = Number(data.lat);
+      bookingState.values.address_lon = Number(data.lon);
     }
     applySelectedAddress(address);
     bookingState.returning.addressMode = "";
@@ -2904,10 +2941,11 @@ function renderFlow(root) {
         applySelectedVehicle(vehicle);
         renderReturningVehicles(panel);
         renderBookNowSavedVehicles(panel);
-        // Book Now: fill the typed vehicle fields from the saved vehicle.
+        // Book Now: fill the typed vehicle fields from the saved vehicle. Await
+        // the async model load so Continue enables once the fields are populated.
         if (panel.dataset.currentStep === "Vehicle") {
           restorePanelValues(panel);
-          renderVehicleFields(panel);
+          await renderVehicleFields(panel);
         }
       }
       updateContinue();

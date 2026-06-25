@@ -113,6 +113,8 @@ async function respondForCoords(res, lat, lon, canonicalAddress) {
     message: 'Address verified.',
     canonicalAddress: canonicalAddress || undefined,
     distanceMiles,
+    lat,
+    lon,
   });
 }
 
@@ -177,6 +179,8 @@ async function handleValidateServiceArea(body, res) {
       message: 'Address verified.',
       canonicalAddress,
       distanceMiles,
+      lat: Number(result.lat),
+      lon: Number(result.lon),
     });
   } catch (err) {
     console.error('[address/validate_service_area] Error:', err.message);
