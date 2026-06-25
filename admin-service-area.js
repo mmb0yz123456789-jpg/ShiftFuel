@@ -205,7 +205,12 @@
     $('sa-generate').addEventListener('click', generate);
     $('sa-save').addEventListener('click', save);
 
-    map.on('load', loadCurrent);
+    map.on('load', () => {
+      $('sa-map-placeholder').style.display = 'none';
+      $('sa-map').style.display = '';
+      setTimeout(() => map.resize(), 0);
+      loadCurrent();
+    });
   }
 
   // ── inline init (called when Settings tab becomes visible) ───────────────
