@@ -5646,8 +5646,23 @@ function switchPageTab(page) {
   document.body.dataset.adminPage = page;
   adminPageTabs.forEach((btn) => btn.classList.toggle('active', btn.dataset.page === page));
   document.querySelectorAll('[data-page-section]').forEach((el) => {
-    el.hidden = !el.dataset.pageSection.split(' ').includes(page);
+    const belongs = el.dataset.pageSection.split(' ').includes(page);
+    if (!belongs) {
+      el.hidden = true;
+    } else if (!el.hasAttribute('data-conditional')) {
+      // Conditional "needs attention" sections decide their own visibility from
+      // data (renderActionNeeded / loadPendingAuthorizations / loadReauthNeeded);
+      // don't force them visible just because the page matches — that left them
+      // showing an empty card when nothing actually needed attention.
+      el.hidden = false;
+    }
   });
+  // Recompute the data-driven sections for the page we're entering.
+  renderActionNeeded();
+  if (page === 'dashboard') {
+    loadPendingAuthorizations();
+    loadReauthNeeded();
+  }
   if (page === 'requests') {
     currentView = 'all';
     switchAdminTab('requests');
