@@ -311,6 +311,26 @@
   color: var(--sf-green, #1f7a45);
   font-size: 1.05rem;
 }
+
+/* Native-maps "Navigate ›" deep link on job cards */
+.worker-portal-page .worker-nav-link {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: var(--sf-green, #1f7a45);
+  color: #fff;
+  font-weight: 700;
+  font-size: 0.82rem;
+  text-decoration: none;
+  white-space: nowrap;
+}
+.worker-portal-page .worker-nav-link:hover { filter: brightness(1.08); }
+.worker-portal-page .worker-station-pref {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: #b45309;
+}
 .worker-portal-page .worker-available-card .worker-card-action {
   width: 100% !important;
   min-height: 50px !important;

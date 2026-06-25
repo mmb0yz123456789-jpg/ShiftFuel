@@ -1534,6 +1534,28 @@ function workerFormatAddress(request) {
   return request.hospital || 'Not provided';
 }
 
+// Build a turn-by-turn directions URL that opens the driver's native maps app
+// (Apple Maps on iOS, Google Maps elsewhere). Prefers exact coordinates and
+// falls back to the address text.
+function mapsNavUrl({ lat, lon, address } = {}) {
+  const nLat = Number(lat);
+  const nLon = Number(lon);
+  const hasCoords = Number.isFinite(nLat) && Number.isFinite(nLon) && (nLat !== 0 || nLon !== 0);
+  const dest = hasCoords ? `${nLat},${nLon}` : String(address || '').trim();
+  if (!dest) return '';
+  const encoded = encodeURIComponent(dest);
+  const isIOS = /iPad|iPhone|iPod/.test((typeof navigator !== 'undefined' && navigator.userAgent) || '');
+  return isIOS
+    ? `https://maps.apple.com/?daddr=${encoded}`
+    : `https://www.google.com/maps/dir/?api=1&destination=${encoded}`;
+}
+
+// "Navigate ›" link markup, or empty string when there's no usable destination.
+function workerNavLink(dest, label = 'Navigate') {
+  const url = mapsNavUrl(dest);
+  return url ? ` <a class="worker-nav-link" href="${url}" target="_blank" rel="noopener noreferrer">${escapeHtml(label)} ›</a>` : '';
+}
+
 function workerFormatService(request) {
   const parts = [request.service_label || request.service_type];
   if (request.fuel_type) parts.push(`Fuel: ${request.fuel_type}`);
@@ -1960,11 +1982,11 @@ function renderWorkerJobInfoBlock(request, mode) {
     <div class="request-details">
       <p><strong>Customer:</strong> ${escapeHtml(request.customer_name || 'Customer')}</p>
       <p><strong>Phone:</strong> ${request.customer_phone ? escapeHtml(formatPhone(request.customer_phone)) : 'Not provided'}</p>
-      <p class="worker-job-address-line"><strong>Service address:</strong> <span class="worker-job-address-value">${escapeHtml(workerFormatAddress(request))}</span></p>
+      <p class="worker-job-address-line"><strong>Service address:</strong> <span class="worker-job-address-value">${escapeHtml(workerFormatAddress(request))}</span>${workerNavLink({ lat: request.address_lat, lon: request.address_lon, address: workerFormatAddress(request) })}</p>
       <p><strong>Parking:</strong> ${[request.parking_location, request.parking_spot ? `spot ${request.parking_spot}` : ''].filter(Boolean).map(escapeHtml).join(', ') || 'Not provided'}</p>
       ${(mode === 'mine' && request.key_handoff_details) ? `<p><strong>Key handoff:</strong> ${escapeHtml(request.key_handoff_details)}</p>` : ''}
       <p><strong>Service:</strong> ${escapeHtml(workerFormatService(request))}</p>
-      ${request.gas_station_name ? `<p><strong>Gas station:</strong> ${escapeHtml(request.gas_station_name)}${request.gas_station_address ? ` — ${escapeHtml(request.gas_station_address)}` : ''}${Number(request.gas_station_surcharge) > 0 ? ' <span class="worker-station-pref">(customer preferred)</span>' : ''}</p>` : ''}
+      ${request.gas_station_name ? `<p><strong>Gas station:</strong> ${escapeHtml(request.gas_station_name)}${request.gas_station_address ? ` — ${escapeHtml(request.gas_station_address)}` : ''}${Number(request.gas_station_surcharge) > 0 ? ' <span class="worker-station-pref">(customer preferred)</span>' : ''}${workerNavLink({ lat: request.gas_station_lat, lon: request.gas_station_lon, address: request.gas_station_address || request.gas_station_name })}</p>` : ''}
       <p><strong>Vehicle:</strong> ${escapeHtml([request.vehicle_year, request.vehicle_make, request.vehicle_model, request.vehicle_color].filter(Boolean).join(' '))}${request.license_plate ? ` | Plate: ${escapeHtml(request.license_plate)}` : ''}</p>
       ${request.return_parking_location ? `<p><strong>Car location:</strong> ${escapeHtml(request.return_parking_location)}</p>` : ''}
       ${(receiptTotals.fuel || receiptTotals.wash) ? `<p><strong>Receipts entered:</strong> Fuel ${money(receiptTotals.fuel)} | Car wash ${money(receiptTotals.wash)} | Total ${money(workerReceiptTotal)}</p>` : ''}
