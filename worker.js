@@ -2199,10 +2199,18 @@ function workerNavStationButton(request, primary = false) {
   return `<button class="button ${primary ? 'primary' : 'secondary'}" data-route-map data-route-dest="station" data-id="${escapeHtml(request.id)}" type="button">Navigate to gas station</button>`;
 }
 
-// In-app navigation back to the service address for the return drive (mirror of the
-// station button). data-route-dest="return" → arriving auto-marks the vehicle returned.
+// In-app navigation back to the car's exact pickup spot for the return drive (mirror
+// of the station button). data-route-dest="return" → arriving auto-marks the vehicle
+// returned. Routes to the captured pickup_coords spot, falling back to the address.
 function workerNavReturnButton(request, primary = false) {
-  return `<button class="button ${primary ? 'primary' : 'secondary'}" data-route-map data-route-dest="return" data-id="${escapeHtml(request.id)}" type="button">Navigate back to service address</button>`;
+  return `<button class="button ${primary ? 'primary' : 'secondary'}" data-route-map data-route-dest="return" data-id="${escapeHtml(request.id)}" type="button">Navigate back to drop the car</button>`;
+}
+
+// Navigation back to where the worker met the customer (handoff_coords), so they can
+// return the keys at the same spot. Only shown once that spot was captured.
+function workerNavHandoffButton(request) {
+  if (!/\[handoff_coords /.test(String(request.notes || ''))) return '';
+  return `<button class="button secondary" data-route-map data-route-dest="handoff" data-id="${escapeHtml(request.id)}" type="button">Navigate to meet the customer</button>`;
 }
 
 // No "Back" in the worker card by design: once a job starts it can't be undone, so
@@ -2360,6 +2368,8 @@ function renderWorkerJobActions(request) {
     activePanel = renderWorkerCompletePanel(request);
   } else if (request.status === 'awaiting_key_return') {
     nextAction = 'Return the customer\'s keys and document who received them.';
+    const handoffNav = workerNavHandoffButton(request);
+    if (handoffNav) actions.push(handoffNav);
     activePanel = renderWorkerKeysReturnedPanel(request);
   } else if (request.status === 'payment_issue' || request.status === 'authorization_too_low') {
     nextAction = 'The customer is updating their payment method. No action needed from you right now.';
@@ -2985,6 +2995,35 @@ async function claimWorkerJob(requestId) {
   await loadWorkerReviews();
 }
 
+// One-shot current GPS fix for the worker. Uses a cached reading when available
+// (e.g. the Key-received gate just took one), so it resolves fast.
+function workerCurrentCoords() {
+  return new Promise((resolve) => {
+    if (!navigator.geolocation) return resolve(null);
+    navigator.geolocation.getCurrentPosition(
+      (pos) => resolve({ lat: pos.coords.latitude, lon: pos.coords.longitude }),
+      () => resolve(null),
+      { enableHighAccuracy: true, timeout: 6000, maximumAge: 12000 }
+    );
+  });
+}
+
+// Stamp a [<tag> lat,lon] note onto the request once, capturing a meaningful spot
+// (e.g. handoff_coords where the worker met the customer for keys). Falls back to
+// the last streamed position if a fresh fix isn't available.
+async function workerSaveSpotNote(request, tag) {
+  if (!request || String(request.notes || '').includes(`[${tag} `)) return;
+  const fix = await workerCurrentCoords();
+  const lat = fix?.lat ?? Number(request.last_latitude);
+  const lon = fix?.lon ?? Number(request.last_longitude);
+  if (!(Number.isFinite(lat) && Number.isFinite(lon) && (lat || lon))) return;
+  const note = `[${tag} ${lat.toFixed(6)},${lon.toFixed(6)}]`;
+  const notes = request.notes ? `${request.notes}\n${note}` : note;
+  try {
+    await workerDb.rpc('worker_update_request', { p_token: SESSION_WORKER_TOKEN, p_request_id: request.id, p_data: { notes } });
+  } catch (err) { console.warn('Could not save spot note:', err); }
+}
+
 async function updateWorkerJobStatus(id, status) {
   const { error } = await workerDb.rpc('worker_update_request', {
     p_token: SESSION_WORKER_TOKEN,
@@ -3134,7 +3173,17 @@ async function uploadWorkerPhotoSet(button) {
 
   const timestamp = new Date().toISOString();
   const note = photoTimestampNote(panel.dataset.photoStage, timestamp);
-  const notes = request.notes ? `${request.notes}\n${note}` : note;
+  let notes = request.notes ? `${request.notes}\n${note}` : note;
+  // Capture the car's exact spot from the worker's live GPS at pickup (they're
+  // standing at the car). The return drive + the customer's "car coming back" ETA
+  // target this spot — the geocoded address could be the building front, not the
+  // car parked in the back of the lot.
+  if (panel.dataset.photoStage === 'pickup' && !/\[pickup_coords /.test(notes)) {
+    const lat = Number(request.last_latitude), lon = Number(request.last_longitude);
+    if (Number.isFinite(lat) && Number.isFinite(lon) && (lat || lon)) {
+      notes += `\n[pickup_coords ${lat.toFixed(6)},${lon.toFixed(6)}]`;
+    }
+  }
   const nextStatus = panel.dataset.nextStatus;
   const { error } = await workerDb.rpc('worker_update_request', {
     p_token: SESSION_WORKER_TOKEN,
@@ -3653,6 +3702,11 @@ document.addEventListener('click', async (event) => {
         }
       }
       button.disabled = true;
+      // Capture where the worker met the customer for keys, so they can navigate
+      // back to the same spot to return the keys at the end.
+      if (button.dataset.status === 'key_received') {
+        await workerSaveSpotNote(allWorkerJobs.find((j) => j.id === button.dataset.id), 'handoff_coords');
+      }
       await updateWorkerJobStatus(button.dataset.id, button.dataset.status);
       return;
     }

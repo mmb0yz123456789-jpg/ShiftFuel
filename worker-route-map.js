@@ -215,6 +215,15 @@
   }
 
   // ── Destination resolution ──────────────────────────────────────────────────
+  // A spot captured into the request notes as [<tag> lat,lon] (pickup_coords = the
+  // car's parking spot; handoff_coords = where the worker met the customer).
+  function parseSpotCoords(request, tag) {
+    const m = String(request?.notes || '').match(new RegExp('\\[' + tag + ' (-?\\d+(?:\\.\\d+)?),(-?\\d+(?:\\.\\d+)?)\\]'));
+    if (!m) return null;
+    const lat = Number(m[1]), lon = Number(m[2]);
+    return (Number.isFinite(lat) && Number.isFinite(lon)) ? { lat, lon } : null;
+  }
+
   // The service-address destination (pickup / return drives).
   async function resolveAddressDest(request) {
     if (isRealCoord(request.address_lat) && isRealCoord(request.address_lon)) {
@@ -442,13 +451,17 @@
   async function openRouteMap(request, destType) {
     const isStation = destType === 'station';
     const isReturn = destType === 'return';
+    const isHandoff = destType === 'handoff';
     const modal = ensureModal();
     const titleEl = modal.querySelector('.wrm-title');
     const etaEl = modal.querySelector('.wrm-eta');
     const nativeBtn = modal.querySelector('.wrm-open-native');
     const banner = modal.querySelector('.wrm-banner');
     const startBtn = modal.querySelector('.wrm-start-service');
-    titleEl.textContent = isStation ? 'Drive to gas station' : isReturn ? 'Drive back to service address' : 'Directions to service address';
+    titleEl.textContent = isStation ? 'Drive to gas station'
+      : isReturn ? 'Drive the car back to its spot'
+      : isHandoff ? 'Meet the customer for keys'
+      : 'Directions to service address';
     etaEl.textContent = 'Loading map…';
     banner.hidden = true;
     if (startBtn) startBtn.hidden = true;
@@ -467,9 +480,20 @@
 
     // Worker location first — needed as the route origin and for the closest-station search.
     const workerLoc = await getWorkerLocation();
-    const dest = isStation ? await resolveStationDest(request, workerLoc) : await resolveAddressDest(request);
+    let dest;
+    if (isStation) {
+      dest = await resolveStationDest(request, workerLoc);
+    } else if (isReturn) {
+      const spot = parseSpotCoords(request, 'pickup_coords');
+      dest = spot ? { ...spot, label: "Vehicle's spot" } : await resolveAddressDest(request);
+    } else if (isHandoff) {
+      const spot = parseSpotCoords(request, 'handoff_coords');
+      dest = spot ? { ...spot, label: 'Meeting spot' } : await resolveAddressDest(request);
+    } else {
+      dest = await resolveAddressDest(request);
+    }
     if (!dest) {
-      etaEl.textContent = isStation ? 'Could not find a gas station nearby.' : 'Could not locate the service address.';
+      etaEl.textContent = isStation ? 'Could not find a gas station nearby.' : 'Could not locate the destination.';
       nativeBtn.href = navUrl(null, isStation ? (request.gas_station_address || request.gas_station_name) : addressText(request));
       return;
     }

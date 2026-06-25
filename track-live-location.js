@@ -274,6 +274,13 @@
   function needsFuel(request) {
     return /fuel/.test(String(request.service_type || ''));
   }
+  // A spot captured into the request notes as [<tag> lat,lon].
+  function parseSpotCoords(request, tag) {
+    const m = String(request?.notes || '').match(new RegExp('\\[' + tag + ' (-?\\d+(?:\\.\\d+)?),(-?\\d+(?:\\.\\d+)?)\\]'));
+    if (!m) return null;
+    const lat = Number(m[1]), lon = Number(m[2]);
+    return (Number.isFinite(lat) && Number.isFinite(lon)) ? { lat, lon } : null;
+  }
 
   // Which destination (if any) the worker is currently driving toward, so we can
   // show the customer a live ETA for that leg. Returns null while the car is parked
@@ -287,10 +294,13 @@
     if (drivingToStation) {
       return { lat: Number(request.gas_station_lat), lon: Number(request.gas_station_lon), label: 'Heading to the gas station' };
     }
-    const drivingBack = ['receipts_recorded', 'returned_location_pending', 'return_location_recorded', 'return_photos_needed'].includes(s)
-      && isReal(request.address_lat) && isReal(request.address_lon);
-    if (drivingBack) {
-      return { lat: Number(request.address_lat), lon: Number(request.address_lon), label: 'Bringing your car back', back: true };
+    if (['receipts_recorded', 'returned_location_pending', 'return_location_recorded', 'return_photos_needed'].includes(s)) {
+      // Prefer the exact spot the car was picked up from; fall back to the address.
+      const spot = parseSpotCoords(request, 'pickup_coords');
+      if (spot) return { lat: spot.lat, lon: spot.lon, label: 'Bringing your car back', back: true };
+      if (isReal(request.address_lat) && isReal(request.address_lon)) {
+        return { lat: Number(request.address_lat), lon: Number(request.address_lon), label: 'Bringing your car back', back: true };
+      }
     }
     return null;
   }
