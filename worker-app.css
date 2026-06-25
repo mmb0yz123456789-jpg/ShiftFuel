@@ -601,6 +601,50 @@
 /* Mobile-only avatar button in header */
 #worker-mobile-avatar-btn { display: flex !important; }
 
+/* ------------------------------------------------------------
+   Mobile header: single row, matching the admin portal.
+   Logo left · live-presence pill centered · avatar right.
+
+   The shared header rule in styles.css (.unified-portal-header
+   mobile) sets flex-wrap:wrap and forces .portal-header-actions to
+   width:100%, which dropped the Online pill + avatar onto a second
+   row and let the logo wrap to two lines. We undo that here.
+   ------------------------------------------------------------ */
+@media (max-width: 760px) {
+  .worker-portal-page .unified-portal-header.worker-top-nav {
+    flex-wrap: nowrap;
+    align-items: center;
+    gap: 10px;
+  }
+  .worker-portal-page .worker-top-nav .logo {
+    flex: 0 0 auto;
+    white-space: nowrap;
+  }
+  .worker-portal-page .worker-top-nav .logo > span {
+    white-space: nowrap;
+  }
+
+  /* Promote the action items (presence pill, avatar) to direct
+     children of the header bar so the pill can center between the
+     logo and the avatar instead of being trapped in a 100%-wide row. */
+  .worker-portal-page .unified-portal-header.worker-top-nav .portal-header-actions {
+    display: contents;
+  }
+  .worker-portal-page .worker-top-nav .portal-header-label {
+    display: none;
+  }
+
+  /* Centered Online / On-break pill (sits between logo and avatar). */
+  .worker-portal-page .worker-top-nav .worker-presence-indicator {
+    margin-inline: auto;
+  }
+
+  /* Avatar stays pinned to the far right. */
+  .worker-portal-page #worker-mobile-avatar-btn {
+    flex: 0 0 auto;
+  }
+}
+
 /* Footer legal links open the in-app modal but look like plain footer links. */
 .worker-portal-page .site-footer .worker-legal-link {
   background: none; border: 0; padding: 0; cursor: pointer;
