@@ -817,7 +817,8 @@ const WORKER_SERVICE_FEE_SHARE = 0.5;   // 50% of service fees, net of card proc
 const WORKER_MILEAGE_RATE = 0.725;      // IRS rate for chosen-station detours
 
 // Did the customer cancel after the worker already had the keys? Those workers
-// are still owed half the service fee (no mileage — they never drove).
+// are owed half the cancellation fee actually collected (no mileage — they never
+// drove to a station).
 function isCanceledAfterKeys(request) {
   const canceled = !!request.canceled_at || /cancel/i.test(String(request.status || ''));
   return canceled && !!request.key_received_at;
@@ -830,8 +831,8 @@ function workerMileagePay(request) {
 
 // What a worker earned on a single request. Completed/captured jobs pay 50% of
 // service fees (net of Stripe) plus station mileage; a customer-cancel-after-keys
-// pays 50% of the base service fee (net of Stripe), no mileage; anything else
-// hasn't earned yet.
+// pays 50% of the cancellation fee actually collected (net of Stripe), no
+// mileage; anything else hasn't earned yet.
 function workerPayoutForRequest(request) {
   let gross = 0;
   let mileage = 0;
@@ -841,9 +842,9 @@ function workerPayoutForRequest(request) {
     const fees = hasReceipts ? feeSummary(request, receipts) : feeSummary(request);
     gross = Number(fees.fuel || 0) + Number(fees.wash || 0) + Number(fees.inspection || 0);
     mileage = workerMileagePay(request);
-  } else if (isCanceledAfterKeys(request)) {
-    const fees = feeSummary(request); // base service fees only (no receipts)
-    gross = Number(fees.fuel || 0) + Number(fees.wash || 0) + Number(fees.inspection || 0);
+  } else if (isCanceledAfterKeys(request) && request.payment_status === 'cancellation_fee_paid') {
+    // 50% of the cancellation fee the company actually collected.
+    gross = Number(request.cancellation_fee ?? request.cancellation_fee_amount ?? 0);
   } else {
     return 0;
   }

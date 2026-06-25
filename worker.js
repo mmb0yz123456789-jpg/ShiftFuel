@@ -630,7 +630,8 @@ function workerMileagePay(request) {
 }
 
 // Did the customer cancel after the worker already had the keys? Those workers
-// are still owed half the service fee (no mileage — they never drove).
+// are owed half the cancellation fee actually collected (no mileage — they never
+// drove to a station).
 function isCanceledAfterKeys(request) {
   const canceled = !!request.canceled_at || /cancel/i.test(String(request.status || ''));
   return canceled && !!request.key_received_at;
@@ -638,15 +639,21 @@ function isCanceledAfterKeys(request) {
 
 // Worker's estimated take-home for a job: 50% of the service fees (fuel + wash +
 // inspection) net of Stripe processing (2.9% + $0.30), plus full mileage pay for
-// any extra driving to a chosen station. A customer-cancel-after-keys still pays
-// the 50% service-fee share (no mileage). Never negative.
+// any extra driving to a chosen station. A customer-cancel-after-keys pays 50% of
+// the cancellation fee actually collected (no mileage). Never negative.
 function workerNetPayout(request) {
-  const fees = feeSummary(request);
-  const gross = fees.fuel + fees.wash + fees.inspection;
   const completed = request.status === 'complete' || request.payment_status === 'captured';
-  // Mileage only on completed jobs — a cancel-after-keys never drove to the station.
-  let payout = completed ? workerMileagePay(request) : 0;
-  if (gross > 0 && (completed || isCanceledAfterKeys(request))) {
+  let gross = 0;
+  let mileage = 0;
+  if (completed) {
+    const fees = feeSummary(request);
+    gross = fees.fuel + fees.wash + fees.inspection;
+    mileage = workerMileagePay(request);
+  } else if (isCanceledAfterKeys(request) && request.payment_status === 'cancellation_fee_paid') {
+    gross = Number(request.cancellation_fee ?? request.cancellation_fee_amount ?? 0);
+  }
+  let payout = mileage;
+  if (gross > 0) {
     const stripe = roundMoneyValue(gross * PAYMENT_RECOVERY_RATE + PAYMENT_RECOVERY_FIXED);
     payout += Math.max(0, gross - stripe) * WORKER_SERVICE_FEE_SHARE;
   }
