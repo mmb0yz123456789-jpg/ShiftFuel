@@ -724,19 +724,25 @@ function isOpen(request) {
 function dashboardRangeBounds(range) {
   const now = new Date();
   if (range === 'today') {
-    const d = new Date(now);
-    d.setHours(0, 0, 0, 0);
-    return { start: d, end: null };
+    const start = new Date(now); start.setHours(0, 0, 0, 0);
+    const end = new Date(now); end.setHours(23, 59, 59, 999);
+    return { start, end };
   }
   if (range === 'week') {
-    const d = new Date(now);
-    const dayIndex = (d.getDay() + 6) % 7;
-    d.setDate(d.getDate() - dayIndex);
-    d.setHours(0, 0, 0, 0);
-    return { start: d, end: null };
+    const start = new Date(now);
+    const dayIndex = (start.getDay() + 6) % 7;
+    start.setDate(start.getDate() - dayIndex);
+    start.setHours(0, 0, 0, 0);
+    const end = new Date(start);
+    end.setDate(end.getDate() + 6);
+    end.setHours(23, 59, 59, 999);
+    return { start, end };
   }
   if (range === 'month') {
-    return { start: new Date(now.getFullYear(), now.getMonth(), 1), end: null };
+    return {
+      start: new Date(now.getFullYear(), now.getMonth(), 1),
+      end: new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999),
+    };
   }
   if (range === 'custom') {
     const start = customRange.start ? new Date(customRange.start + 'T00:00:00') : null;
@@ -749,7 +755,12 @@ function dashboardRangeBounds(range) {
 function isInDashboardRange(request, range) {
   const { start, end } = dashboardRangeBounds(range);
   if (!start && !end) return true;
-  const stamp = new Date(request.updated_at || request.created_at);
+  // Filter by the SCHEDULED service date (what the customer booked for), not the
+  // submission date — so "Today" shows everything happening today, regardless of
+  // when it was created. Falls back to created_at for requests with no date.
+  const stamp = request.service_date
+    ? new Date(request.service_date + 'T12:00:00')
+    : new Date(request.updated_at || request.created_at);
   if (start && stamp < start) return false;
   if (end && stamp > end) return false;
   return true;

@@ -2155,9 +2155,10 @@ function renderWorkerJobActions(request) {
     nextAction = 'Accept the request to begin service.';
     actions.push(workerPrimaryStatusButton(request, 'Accept request', 'accepted'));
   } else if (request.status === 'accepted') {
-    nextAction = 'Tap Start to map the route to the vehicle, then confirm the keys/handoff are received.';
+    nextAction = 'Tap Start to map the route to the vehicle, then confirm the keys/handoff are received. Can\'t make it? Send the job back to the open pool.';
     actions.push(`<button class="button primary worker-start-nav" data-route-map data-id="${escapeHtml(request.id)}" type="button">Start — open map</button>`);
     actions.push(`<button class="button secondary worker-update-status" data-id="${escapeHtml(request.id)}" data-status="key_received" type="button">Key received</button>`);
+    actions.push(`<button class="button danger worker-release-job" data-id="${escapeHtml(request.id)}" type="button">Send back to open pool</button>`);
   } else if (request.status === 'key_received') {
     nextAction = 'Upload the pickup photo set below.';
     activePanel = renderWorkerPhotoPanel(request, 'pickup');
@@ -3378,6 +3379,24 @@ document.addEventListener('click', async (event) => {
       button.disabled = true;
       button.textContent = 'Claiming...';
       await claimWorkerJob(button.dataset.id);
+      return;
+    }
+
+    if (button.classList.contains('worker-release-job')) {
+      if (!confirm('Send this job back to the open pool? You will be unassigned and another worker can pick it up.')) return;
+      button.disabled = true;
+      try {
+        const { error } = await workerDb.rpc('worker_release_request', {
+          p_token: SESSION_WORKER_TOKEN,
+          p_request_id: button.dataset.id,
+        });
+        if (error) throw error;
+        await loadWorkerJobs();
+      } catch (err) {
+        console.error('Release job failed:', err);
+        button.disabled = false;
+        alert('Could not release the job. Please try again.');
+      }
       return;
     }
 
