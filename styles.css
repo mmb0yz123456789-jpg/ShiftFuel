@@ -1744,6 +1744,14 @@ font-size: 0.85rem;
   box-shadow: var(--sf-shadow-card);
 }
 
+/* The expanded step must not clip the date picker's calendar popup, which is
+   absolutely positioned and can extend past the card's bottom edge (Schedule
+   step). Collapsed cards keep overflow:hidden for clean rounded corners.
+   Higher specificity (0,2,0) also wins over the mobile-polish override. */
+.booking-accordion-card.is-active {
+  overflow: visible;
+}
+
 .booking-accordion-card.is-locked {
   opacity: 0.6;
 }
