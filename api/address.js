@@ -37,6 +37,7 @@ const RATE_LIMITS = {
   nearby_gas_stations:   { limit: 40, windowSeconds: 60 },
   gas_station_search:    { limit: 20, windowSeconds: 60 },
   isochrone:             { limit: 20, windowSeconds: 60 },
+  geocode:               { limit: 40, windowSeconds: 60 },
 };
 
 // Short-lived in-memory cache for station lookups, keyed by rounded coords (and
@@ -408,12 +409,32 @@ async function handleGasStationSearch(body, res) {
   }
 }
 
+// Geocode a service address to coordinates (used as a fallback by the worker
+// route map for requests booked before address_lat/lon were stored).
+async function handleGeocode(body, res) {
+  const query = [body.street, body.city, body.state, body.zip].map((v) => String(v || '').trim()).filter(Boolean).join(', ');
+  if (!query) return res.status(400).json({ ok: false, message: 'Missing address.' });
+  try {
+    let result = await nominatimSearch(query);
+    if (!result) {
+      const fallback = [body.city, body.state, body.zip].map((v) => String(v || '').trim()).filter(Boolean).join(', ');
+      if (fallback && fallback !== query) result = await nominatimSearch(fallback);
+    }
+    if (!result) return res.status(200).json({ ok: false, message: 'Could not locate address.' });
+    return res.status(200).json({ ok: true, lat: Number(result.lat), lon: Number(result.lon) });
+  } catch (err) {
+    console.error('[address/geocode] Error:', err.message);
+    return res.status(200).json({ ok: false, message: 'Could not locate address.' });
+  }
+}
+
 const HANDLERS = {
   validate_service_area: handleValidateServiceArea,
   address_suggest: handleAddressSuggest,
   address_retrieve: handleAddressRetrieve,
   nearby_gas_stations: handleNearbyGasStations,
   gas_station_search: handleGasStationSearch,
+  geocode: handleGeocode,
   isochrone: handleIsochrone,
   get_service_area: handleGetServiceArea,
   save_service_area: handleSaveServiceArea,

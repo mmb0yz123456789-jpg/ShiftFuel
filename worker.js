@@ -2155,11 +2155,8 @@ function renderWorkerJobActions(request) {
     nextAction = 'Accept the request to begin service.';
     actions.push(workerPrimaryStatusButton(request, 'Accept request', 'accepted'));
   } else if (request.status === 'accepted') {
-    nextAction = 'Tap Start for directions to the vehicle, then confirm the keys/handoff are received.';
-    const startNavUrl = mapsNavUrl({ lat: request.address_lat, lon: request.address_lon, address: workerFormatAddress(request) });
-    if (startNavUrl) {
-      actions.push(`<a class="button primary worker-start-nav" href="${startNavUrl}" target="_blank" rel="noopener noreferrer">Start — open directions</a>`);
-    }
+    nextAction = 'Tap Start to map the route to the vehicle, then confirm the keys/handoff are received.';
+    actions.push(`<button class="button primary worker-start-nav" data-route-map data-id="${escapeHtml(request.id)}" type="button">Start — open map</button>`);
     actions.push(`<button class="button secondary worker-update-status" data-id="${escapeHtml(request.id)}" data-status="key_received" type="button">Key received</button>`);
   } else if (request.status === 'key_received') {
     nextAction = 'Upload the pickup photo set below.';

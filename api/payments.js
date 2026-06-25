@@ -379,6 +379,7 @@ const ALLOWED_BOOKING_FIELDS = [
   'vehicle_year', 'vehicle_make', 'vehicle_model', 'vehicle_color', 'license_plate',
   'vehicle_id',
   'hospital', 'address_street', 'address_apt', 'address_city', 'address_state', 'address_zip',
+  'address_lat', 'address_lon',
   'address_validation_status',
   // Chosen gas station (descriptive fields are safe to persist from the client;
   // the surcharge itself is recomputed server-side, never trusted here).
