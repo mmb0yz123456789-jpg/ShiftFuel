@@ -1386,7 +1386,35 @@ function applySelectedVehicle(vehicle) {
   bookingState.values.vehicleModel = vehicle.model;
   bookingState.values.vehicleColor = vehicle.color;
   bookingState.values.licensePlate = vehicle.license;
-  bookingState.values.fuelType = vehicle.fuelType || "";
+  // Fuel type: the vehicle's saved type, else the one they used most in their
+  // booking history for this vehicle.
+  bookingState.values.fuelType = vehicle.fuelType || getPreferredFuelType() || "";
+}
+
+// Mobile: after picking a saved address/vehicle, glide to the Continue button so
+// the customer doesn't have to scroll past the form to proceed.
+function scrollToContinue(panel) {
+  if (window.innerWidth > 980) return;
+  const btn = panel.querySelector("[data-continue]");
+  if (btn) btn.scrollIntoView({ behavior: "smooth", block: "center" });
+}
+
+// The fuel type the returning customer used most often for the selected vehicle.
+function getPreferredFuelType() {
+  const reqs = Array.isArray(bookingState.returning.requests) ? bookingState.returning.requests : [];
+  const matches = reqs.filter((r) => r.fuel_type && requestMatchesSelectedVehicle(r));
+  if (!matches.length) return "";
+  const tally = new Map();
+  for (const r of matches) {
+    const key = String(r.fuel_type).trim();
+    if (key) tally.set(key, (tally.get(key) || 0) + 1);
+  }
+  let best = "";
+  let bestCount = 0;
+  for (const [type, count] of tally) {
+    if (count > bestCount) { best = type; bestCount = count; }
+  }
+  return best;
 }
 
 function addressCard(address) {
@@ -2943,6 +2971,7 @@ function renderFlow(root) {
           // Returning flow: same service-area re-check (renders internally).
           await recheckReturningSavedAddress(panel, address);
         }
+        scrollToContinue(panel);
       }
       updateContinue();
       return;
@@ -2975,6 +3004,7 @@ function renderFlow(root) {
           restorePanelValues(panel);
           await renderVehicleFields(panel);
         }
+        scrollToContinue(panel);
       }
       updateContinue();
       return;
