@@ -2199,35 +2199,15 @@ function workerNavStationButton(request, primary = false) {
   return `<button class="button ${primary ? 'primary' : 'secondary'}" data-route-map data-route-dest="station" data-id="${escapeHtml(request.id)}" type="button">Navigate to gas station</button>`;
 }
 
-function workerBackStatusFor(request) {
-  const map = {
-    // No Back once the job is underway: 'accepted' (use "Send back to open pool")
-    // and 'key_received' (keys are in hand — there's no going back).
-    vehicle_picked_up:       'key_received',
-    service_in_progress:     'vehicle_picked_up',
-    fueling_complete:        'service_in_progress',
-    car_wash_complete:       'service_in_progress',
-    fuel_receipt_uploaded:   'fueling_complete',
-    wash_receipt_uploaded:   'car_wash_complete',
-    service_complete:        'service_in_progress',
-    receipts_recorded:       'service_complete',
-    returned_location_pending: 'receipts_recorded',
-    return_location_recorded:  'returned_location_pending',
-    return_photos_needed:      'return_location_recorded',
-    vehicle_returned:          'return_photos_needed',
-    inspection_needed:         'vehicle_returned',
-    inspection_recorded:       'inspection_needed',
-  };
-
-  return map[request.status] || '';
+// In-app navigation back to the service address for the return drive (mirror of the
+// station button). data-route-dest="return" → arriving auto-marks the vehicle returned.
+function workerNavReturnButton(request, primary = false) {
+  return `<button class="button ${primary ? 'primary' : 'secondary'}" data-route-map data-route-dest="return" data-id="${escapeHtml(request.id)}" type="button">Navigate back to service address</button>`;
 }
 
-function workerBackButton(request) {
-  const previousStatus = workerBackStatusFor(request);
-  return previousStatus
-    ? `<button class="button secondary worker-update-status" data-id="${escapeHtml(request.id)}" data-status="${escapeHtml(previousStatus)}" type="button">Back</button>`
-    : '';
-}
+// No "Back" in the worker card by design: once a job starts it can't be undone, so
+// the status-rewind helpers were removed entirely. The only way to release a job is
+// "Send back to open pool", and only before it's accepted/started.
 
 function filePicker(label, className, extraAttributes = '', accept = 'image/*') {
   return `
@@ -2316,8 +2296,9 @@ function renderWorkerJobActions(request) {
     nextAction = 'Complete the requested fuel or cleaning service.';
     if (serviceNeedsFuel(request) && !serviceDoneOrUnable(request, 'fuel')) {
       actions.push(workerPrimaryStatusButton(request, `Fuel complete â€” ${request.fuel_type || 'fuel'}`, 'fueling_complete'));
-      actions.push(workerNavStationButton(request));
       actions.push(workerServiceUnableButton(request, 'fuel'));
+      // Keep navigation available, but below "Fuel unable" as a just-in-case fallback.
+      actions.push(workerNavStationButton(request));
     }
     if (serviceNeedsWash(request) && !serviceDoneOrUnable(request, 'wash')) {
       actions.push(workerPrimaryStatusButton(request, `Wash complete â€” ${request.wash_package_label || 'selected wash'}`, 'car_wash_complete'));
@@ -2344,8 +2325,16 @@ function renderWorkerJobActions(request) {
     nextAction = 'Review the receipt totals below, then confirm to continue.';
     activePanel = renderWorkerReceiptConfirmPanel(request);
   } else if (request.status === 'receipts_recorded') {
-    nextAction = 'Mark the vehicle as returned once it is back.';
-    actions.push(workerPrimaryStatusButton(request, 'Vehicle returned', 'returned_location_pending'));
+    if (serviceNeedsFuel(request)) {
+      // Fuel job: drive the car back. Lead with navigation; it auto-marks returned
+      // on arrival. Manual "Vehicle returned" stays as a fallback.
+      nextAction = 'Drive the vehicle back to the service address — it marks returned automatically when you arrive.';
+      actions.push(workerNavReturnButton(request, true));
+      actions.push(`<button class="button secondary worker-update-status" data-id="${escapeHtml(request.id)}" data-status="returned_location_pending" type="button">Vehicle returned</button>`);
+    } else {
+      nextAction = 'Mark the vehicle as returned once it is back.';
+      actions.push(workerPrimaryStatusButton(request, 'Vehicle returned', 'returned_location_pending'));
+    }
   } else if (request.status === 'returned_location_pending') {
     nextAction = 'Record where the vehicle was returned before return photos.';
     activePanel = renderWorkerReturnLocationPanel(request);
@@ -2379,8 +2368,8 @@ function renderWorkerJobActions(request) {
     actions.push(`<button class="button primary confirm-cancellation-return" data-id="${escapeHtml(request.id)}" type="button">Confirm Key/Vehicle Returned</button>`);
   }
 
-  const back = workerBackButton(request);
-  if (back) actions.push(back);
+  // No Back buttons anywhere — the job flow is strictly forward. Backing into an
+  // already-completed step used to strand the worker with no way to continue.
 
   // The labelled "Next action" box is dropped on steps that already have a button
   // or an input panel (the action speaks for itself). It only survives as a plain
@@ -2388,11 +2377,11 @@ function renderWorkerJobActions(request) {
   // never blank.
   const showNote = nextAction && !actions.length && !activePanel;
   return `
+    ${activePanel}
     <div class="guided-step">
       ${showNote ? `<p class="next-action-label">${escapeHtml(nextAction)}</p>` : ''}
-      <div class="admin-button-row">${actions.join('')}</div>
+      ${actions.length ? `<div class="admin-button-row">${actions.join('')}</div>` : ''}
     </div>
-    ${activePanel}
     ${renderWorkerServiceUnablePanel(request)}
   `;
 }
@@ -2470,6 +2459,9 @@ function renderWorkerPhotoPanel(request, stage = 'pickup') {
     { label: `${isDropoff ? 'Return' : 'Pickup'} odometer`,   type: `${prefix}_odometer` },
     { label: `${isDropoff ? 'Ending' : 'Pickup'} fuel gauge`, type: isDropoff ? 'dropoff_fuel_gauge' : 'pickup_fuel_gauge' },
   ];
+  // Return photos run in reverse of pickup: start at the fuel gauge, end at driver
+  // side front (the worker walks the car the opposite way on the way out).
+  if (isDropoff) steps.reverse();
 
   const stepsHtml = steps.map((s, i) => `
     <div class="photo-wizard-step${i === 0 ? ' is-current' : ''}" data-step="${i}" data-step-label="${escapeHtml(s.label)}">
@@ -3002,17 +2994,29 @@ async function updateWorkerJobStatus(id, status) {
 
   if (error) throw error;
   await loadWorkerJobs();
+
+  // After receipts are confirmed on a fuel job, take the worker straight into
+  // navigation back to the service address; arriving there auto-marks the vehicle
+  // returned (mirror of the pickup→station auto-open). One-time on this transition.
+  if (status === 'receipts_recorded') {
+    const job = allWorkerJobs.find((item) => item.id === id);
+    if (job && serviceNeedsFuel(job) && window.ShiftFuelRouteMap?.open) {
+      window.ShiftFuelRouteMap.open(job, 'return');
+    }
+  }
 }
 
-// Called by the in-app navigator when the worker reaches the gas station on the
-// "drive to station" step — auto-advances to service_in_progress so they don't have
-// to tap "Start service" once they're already there. Guarded to the right status so
-// reopening the map later can't mis-fire.
+// Called by the in-app navigator when the worker reaches the destination on an
+// auto-advance leg — so they don't have to tap once they're already there. Each
+// case is guarded to its status so reopening the map later can't mis-fire.
 window.ShiftFuelOnNavArrive = function (requestId, destType) {
-  if (destType !== 'station') return;
   const job = allWorkerJobs.find((j) => j.id === requestId);
-  if (!job || job.status !== 'vehicle_picked_up') return;
-  updateWorkerJobStatus(requestId, 'service_in_progress').catch((err) => console.warn('Auto-start service failed:', err));
+  if (!job) return;
+  if (destType === 'station' && job.status === 'vehicle_picked_up') {
+    updateWorkerJobStatus(requestId, 'service_in_progress').catch((err) => console.warn('Auto-start service failed:', err));
+  } else if (destType === 'return' && job.status === 'receipts_recorded') {
+    updateWorkerJobStatus(requestId, 'returned_location_pending').catch((err) => console.warn('Auto-mark returned failed:', err));
+  }
 };
 
 async function saveWorkerServiceUnable(button) {

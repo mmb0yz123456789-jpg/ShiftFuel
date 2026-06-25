@@ -165,8 +165,9 @@
     // hook the auto-arrival uses, so it's a no-op if service already started).
     modal.querySelector('.wrm-start-service').addEventListener('click', () => {
       const rid = nav?.requestId;
+      const dt = nav?.destType;
       closeModal();
-      if (rid && typeof window.ShiftFuelOnNavArrive === 'function') window.ShiftFuelOnNavArrive(rid, 'station');
+      if (rid && typeof window.ShiftFuelOnNavArrive === 'function') window.ShiftFuelOnNavArrive(rid, dt);
     });
     return modal;
   }
@@ -366,8 +367,9 @@
       const loc = { lat: pos.coords.latitude, lon: pos.coords.longitude };
       if (workerMarker) workerMarker.setLngLat([loc.lon, loc.lat]);
 
-      // Auto-arrival: reached the station on the "drive to station" step → start service.
-      if (nav && nav.autoArriveStart && !nav.arrived && nav.dest && haversine(loc, nav.dest) <= ARRIVE_METERS) {
+      // Auto-arrival: reached the destination on an auto step (drive to station →
+      // start service, or drive back → vehicle returned).
+      if (nav && nav.autoArrive && !nav.arrived && nav.dest && haversine(loc, nav.dest) <= ARRIVE_METERS) {
         nav.arrived = true;
         handleArrival();
         return;
@@ -396,19 +398,23 @@
   // job to "service in progress" (so they don't tap Start service — they're here).
   function handleArrival() {
     const requestId = nav?.requestId;
+    const destType = nav?.destType;
+    const isReturn = destType === 'return';
     const modal = document.getElementById('worker-route-modal');
     if (modal) {
       const banner = modal.querySelector('.wrm-banner');
       const instrEl = modal.querySelector('.wrm-banner-instruction');
       const distEl = modal.querySelector('.wrm-banner-distance');
       if (banner) banner.hidden = false;
-      if (instrEl) instrEl.textContent = 'Arrived at the gas station — starting service…';
+      if (instrEl) instrEl.textContent = isReturn
+        ? 'Back at the service address — marking the vehicle returned…'
+        : 'Arrived at the gas station — starting service…';
       if (distEl) distEl.textContent = '';
     }
     stopNavWatch();
     setTimeout(() => {
       closeModal();
-      if (requestId && typeof window.ShiftFuelOnNavArrive === 'function') window.ShiftFuelOnNavArrive(requestId, 'station');
+      if (requestId && typeof window.ShiftFuelOnNavArrive === 'function') window.ShiftFuelOnNavArrive(requestId, destType);
     }, 1600);
   }
 
@@ -416,13 +422,14 @@
   // destType: 'address' (pickup / return) or 'station' (fuel service drive).
   async function openRouteMap(request, destType) {
     const isStation = destType === 'station';
+    const isReturn = destType === 'return';
     const modal = ensureModal();
     const titleEl = modal.querySelector('.wrm-title');
     const etaEl = modal.querySelector('.wrm-eta');
     const nativeBtn = modal.querySelector('.wrm-open-native');
     const banner = modal.querySelector('.wrm-banner');
     const startBtn = modal.querySelector('.wrm-start-service');
-    titleEl.textContent = isStation ? 'Drive to gas station' : 'Directions to service address';
+    titleEl.textContent = isStation ? 'Drive to gas station' : isReturn ? 'Drive back to service address' : 'Directions to service address';
     etaEl.textContent = 'Loading map…';
     banner.hidden = true;
     if (startBtn) startBtn.hidden = true;
@@ -486,11 +493,16 @@
       adoptRoute(route, dest);
       nav.requestId = request.id;
       nav.destType = destType;
-      // Only auto-start service when this is the "drive to station" step (the worker
-      // hasn't started yet). Reopening nav later won't auto-close on arrival.
-      nav.autoArriveStart = isStation && request.status === 'vehicle_picked_up';
+      // Auto-action only on the leg where the worker hasn't done the step yet:
+      // station drive at vehicle_picked_up → start service; return drive at
+      // receipts_recorded → vehicle returned. Reopening later won't auto-fire.
+      nav.autoArrive = (isStation && request.status === 'vehicle_picked_up')
+        || (isReturn && request.status === 'receipts_recorded');
       nav.arrived = false;
-      if (startBtn) startBtn.hidden = !nav.autoArriveStart;
+      if (startBtn) {
+        startBtn.textContent = isReturn ? 'Vehicle returned' : 'Start service';
+        startBtn.hidden = !nav.autoArrive;
+      }
       updateBanner(workerLoc);
 
       // Enter the follow-camera facing the start of the route.
