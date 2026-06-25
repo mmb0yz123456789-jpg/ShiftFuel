@@ -2555,12 +2555,6 @@ function renderWorkerProfileCard(employee) {
         <label>Email
           <input class="admin-worker-email" type="email" value="${escapeHtml(employee.email || '')}">
         </label>
-        <label>Work location
-          <select class="admin-worker-location">
-            <option value="">Select service center</option>
-            ${SERVICE_CENTERS.map(loc => `<option value="${escapeHtml(loc)}" ${employee.home_location === loc ? 'selected' : ''}>${escapeHtml(loc)}</option>`).join('')}
-          </select>
-        </label>
         <label>Started
           <input class="admin-worker-started" type="date" value="${escapeHtml(employee.started_at || '')}">
         </label>

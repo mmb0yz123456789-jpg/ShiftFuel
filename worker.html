@@ -122,10 +122,6 @@
           <button class="button danger" id="panel-signout" type="button">Sign out</button>
         </div>
         <div class="worker-contact-row" style="margin-top:.75rem">
-          <span class="worker-fact-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s7-5.6 7-11a7 7 0 1 0-14 0c0 5.4 7 11 7 11z"/><circle cx="12" cy="10" r="2.5"/></svg></span>
-          <span class="worker-fact-value" id="worker-panel-location" style="font-size:.9rem">—</span>
-        </div>
-        <div class="worker-contact-row">
           <span class="worker-fact-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M6.5 3.5h3l1.5 4-2 1.3a11 11 0 0 0 5 5l1.3-2 4 1.5v3a2 2 0 0 1-2.2 2A16.5 16.5 0 0 1 4.5 5.7 2 2 0 0 1 6.5 3.5z"/></svg></span>
           <span class="worker-fact-value" id="worker-panel-phone" style="font-size:.9rem">Not provided</span>
         </div>
@@ -197,7 +193,6 @@
                 <div class="worker-card-heading"><h2>Current Status</h2></div>
                 <dl>
                   <div><dt>Working since</dt><dd id="worker-working-since">Today</dd></div>
-                  <div><dt>Location</dt><dd id="worker-current-location">ShiftFuel</dd></div>
                   <div><dt>Jobs today</dt><dd id="worker-current-jobs-today">0</dd></div>
                   <div><dt>Rating</dt><dd id="worker-current-rating">&mdash;</dd></div>
                   <div><dt>On-time rate</dt><dd id="worker-current-ontime">&mdash;</dd></div>
@@ -254,11 +249,6 @@
             <h2>My Availability</h2>
           </div>
           <form id="worker-schedule-form" class="admin-edit-panel worker-schedule-form-inline">
-            <label>Work location
-              <select id="worker-location" required>
-                <option value="">Select service center</option>
-              </select>
-            </label>
             <div class="worker-schedule-actions">
               <button id="open-workdays-panel" class="button primary" type="button">Work Days and Shift Times</button>
               <button id="open-days-off-panel" class="button primary" type="button">Days Off</button>
@@ -436,12 +426,6 @@
                 <label>
                   Phone number
                   <input id="worker-profile-phone" type="tel" placeholder="(302) 555-0100">
-                </label>
-                <label>
-                  Work location
-                  <select id="worker-profile-location">
-                    <option value="">Select service center</option>
-                  </select>
                 </label>
                 <label>
                   Started

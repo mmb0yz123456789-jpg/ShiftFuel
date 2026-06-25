@@ -2705,7 +2705,7 @@ async function loadWorkerJobs(silent = false) {
   // completed jobs, so this card would otherwise always be empty.
   const completedToday = await loadWorkerCompletedToday();
 
-  const profileIncomplete = !currentEmployee.phone || !currentEmployee.home_location;
+  const profileIncomplete = !currentEmployee.phone;
 
   // "Current Job" = the claimed job actually underway (key received or beyond).
   // Everything else claimed is the day's schedule. Lead with the one job the
