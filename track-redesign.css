@@ -1688,7 +1688,7 @@
     box-shadow: none;
     background: none;
     overflow: visible;
-    padding: 6px 4px 0;
+    padding: 22px 4px 6px;
   }
   .track-page .track-hero-redesign .booking-flow-hero-image,
   .track-page .track-hero-redesign::after,
@@ -1704,8 +1704,9 @@
   .track-page .track-hero-redesign h1 {
     margin: 0;
     color: var(--sf-teal-dark);
-    font-size: 2rem;
-    line-height: 1.1;
+    font-size: clamp(2.5rem, 11vw, 3.2rem);
+    font-weight: 900;
+    line-height: 1.04;
     letter-spacing: -0.02em;
   }
 
