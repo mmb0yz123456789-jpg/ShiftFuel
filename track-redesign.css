@@ -1677,62 +1677,35 @@
    compact lookup, tighter density. Phones only; desktop is untouched.
    ───────────────────────────────────────────────────────────────────────── */
 @media (max-width: 640px) {
-  /* 1 — Compact app-style hero banner: the car photo as a background with the
-     title overlaid, instead of a giant heading floating on empty space. */
+  /* 1 — Plain title on phones: just "Track My Vehicle", no marketing photo or
+     overlay, leading straight into the lookup form. */
   .track-page .track-hero-redesign {
-    position: relative;
+    position: static;
     display: block;
-    min-height: 150px;
+    min-height: 0;
     border: 0;
-    border-radius: 18px;
+    border-radius: 0;
     box-shadow: none;
-    overflow: hidden;
+    background: none;
+    overflow: visible;
+    padding: 6px 4px 0;
   }
-  .track-page .track-hero-redesign .booking-flow-hero-image {
-    position: absolute;
-    inset: 0;
-    margin: 0;
-    width: 100%;
-    height: 100%;
-  }
-  .track-page .track-hero-redesign .booking-flow-hero-image::before { display: none; }
-  .track-page .track-hero-redesign .booking-flow-hero-image img {
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-  }
-  .track-page .track-hero-redesign::after {
-    content: "";
-    position: absolute;
-    inset: 0;
-    z-index: 1;
-    background: linear-gradient(160deg, rgba(13, 59, 59, 0.40) 0%, rgba(13, 59, 59, 0.84) 100%);
-  }
-  .track-page .track-hero-redesign .booking-flow-hero-copy {
-    position: relative;
-    z-index: 2;
-    width: 100%;
-    min-height: 150px;
-    display: flex;
-    flex-direction: column;
-    justify-content: flex-end;
-    padding: 18px;
-  }
-  .track-page .track-hero-redesign .eyebrow {
-    display: block;
-    margin: 0 0 4px;
-    color: rgba(255, 255, 255, 0.82);
-    font-size: 0.72rem;
-    font-weight: 800;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-  }
+  .track-page .track-hero-redesign .booking-flow-hero-image,
+  .track-page .track-hero-redesign::after,
+  .track-page .track-hero-redesign .eyebrow,
   .track-page .track-hero-redesign p:not(.eyebrow) { display: none; }
+  .track-page .track-hero-redesign .booking-flow-hero-copy {
+    position: static;
+    width: 100%;
+    min-height: 0;
+    display: block;
+    padding: 0;
+  }
   .track-page .track-hero-redesign h1 {
     margin: 0;
-    color: #fff;
-    font-size: 1.6rem;
-    line-height: 1.05;
+    color: var(--sf-teal-dark);
+    font-size: 2rem;
+    line-height: 1.1;
     letter-spacing: -0.02em;
   }
 
