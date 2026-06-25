@@ -3040,6 +3040,10 @@ function renderCompletedCard(request, photos = [], review = null, { expanded = f
   const timing = serviceTimingFromNotes(request);
   const details = `${renderServicePackageDetails(request)}${serviceSummaryFromRequest(request)}`;
   const reviewHtml = renderReviewPrompt(request, review);
+  // Desktop reads as a website: expand the detail sections by default (no clicking
+  // through every accordion). Mobile keeps them collapsed for the app-like feel.
+  const detailsOpen = typeof window !== 'undefined' && typeof window.matchMedia === 'function'
+    && window.matchMedia('(min-width: 1000px)').matches;
 
   return `
     <article class="track-request-card track-completed-card" data-request-id="${escapeHtml(request.id)}">
@@ -3067,12 +3071,12 @@ function renderCompletedCard(request, photos = [], review = null, { expanded = f
 
           ${reviewHtml}
 
-          ${tkSubAcc('Photos', `<div class="tk-photos-lazy"><p class="tk-empty">Loading photos…</p></div>`, { open: true })}
-          ${tkSubAcc('Timeline', `${renderCurrentStatusCard(request)}<div class="tk-completed-updates"><p class="tk-eyebrow">Live updates</p>${renderLiveUpdatesFeed(request)}</div>`)}
-          ${tkSubAcc('Vehicle inspection', inspection)}
-          ${tkSubAcc('Service timing', timing)}
-          ${tkSubAcc('Service details', details)}
-          ${tkSubAcc('Contact & questions', renderHelpCard())}
+          ${tkSubAcc('Photos', `<div class="tk-photos-lazy"><p class="tk-empty">Loading photos…</p></div>`, { open: detailsOpen })}
+          ${tkSubAcc('Timeline', `<div class="tk-completed-updates">${renderLiveUpdatesFeed(request)}</div>`, { open: detailsOpen })}
+          ${tkSubAcc('Vehicle inspection', inspection, { open: detailsOpen })}
+          ${tkSubAcc('Service timing', timing, { open: detailsOpen })}
+          ${tkSubAcc('Service details', details, { open: detailsOpen })}
+          ${tkSubAcc('Contact & questions', renderHelpCard(), { open: detailsOpen })}
         </div>
       </details>
     </article>

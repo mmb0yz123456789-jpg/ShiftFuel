@@ -1662,8 +1662,6 @@
     grid-template-columns: 1fr 1fr;
     align-items: start;
   }
-  /* Full Timeline holds the wide 7-step horizontal stepper — give it both columns. */
-  .track-page .tk-detail-grid > .tk-sub-acc:first-child { grid-column: 1 / -1; }
 
   /* Desktop: detail sections render open (see detailsOpen in track.js) and stay
      open — disable the toggle and drop the chevron so they read as plain cards.
@@ -1673,6 +1671,27 @@
     cursor: default;
   }
   .track-page .tk-detail-grid > .tk-sub-acc > .tk-sub-acc-head .tk-sub-acc-chevron {
+    display: none;
+  }
+
+  /* Completed receipt: same 2-column dashboard so it fills the width instead of a
+     narrow 720px column (overrides the 901px width cap). The Status summary and
+     the review prompt stay full-width up top; the detail sections flow into two
+     columns and render open as plain cards. */
+  .track-page .track-completed-body {
+    width: 100%;
+    grid-template-columns: 1fr 1fr;
+    align-items: start;
+  }
+  .track-page .track-completed-body > .tk-completed-summary,
+  .track-page .track-completed-body > .review-panel {
+    grid-column: 1 / -1;
+  }
+  .track-page .track-completed-body > .tk-sub-acc > .tk-sub-acc-head {
+    pointer-events: none;
+    cursor: default;
+  }
+  .track-page .track-completed-body > .tk-sub-acc > .tk-sub-acc-head .tk-sub-acc-chevron {
     display: none;
   }
 }
