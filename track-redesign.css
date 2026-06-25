@@ -1688,7 +1688,7 @@
     box-shadow: none;
     background: none;
     overflow: visible;
-    padding: 4px 16px 6px;
+    padding: 4px 16px 2px;
     text-align: center;
   }
   .track-page .track-hero-redesign .booking-flow-hero-image,
@@ -1705,9 +1705,10 @@
   .track-page .track-hero-redesign h1 {
     margin: 0;
     color: var(--sf-teal-dark);
-    /* Sized in vw so it scales down to stay on ONE line with side margin;
-       nowrap guarantees it never wraps. */
-    font-size: clamp(1.6rem, 7.4vw, 2.7rem);
+    /* Sized so the text is NARROWER than the column — otherwise text-align/margin
+       centering has no free space to work with and it sits left. nowrap keeps it
+       on one line. */
+    font-size: clamp(1.25rem, 6vw, 2.4rem);
     font-weight: 900;
     line-height: 1.1;
     letter-spacing: -0.03em;

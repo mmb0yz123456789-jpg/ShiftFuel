@@ -194,10 +194,37 @@
     width: var(--sf-content-width-mobile) !important;
   }
 
+  /* The shell is a full-height grid with place-items:center, which stretched the
+     rows (huge gaps) and centered items oddly (apparent right-shift). Make it a
+     plain top-aligned block on phones so things stack naturally. */
+  .track-page .track-shell {
+    display: block !important;
+    min-height: 0 !important;
+    place-items: initial !important;
+  }
+
+  /* Guarantee the title is horizontally centered: symmetric padding, and shrink
+     the heading to its text width so auto margins center the actual text. */
+  .track-page .track-hero-redesign {
+    padding-left: 16px !important;
+    padding-right: 16px !important;
+    text-align: center !important;
+  }
+  .track-page .track-hero-redesign .booking-flow-hero-copy {
+    text-align: center !important;
+  }
+  .track-page .track-hero-redesign h1 {
+    width: fit-content;
+    max-width: 100%;
+    margin-left: auto !important;
+    margin-right: auto !important;
+    text-align: center !important;
+  }
+
   /* Make the lookup form read as part of the page, not a floating glass overlay:
      no hero overlap, no big drop shadow, no backdrop blur. */
   .track-page .track-search-card {
-    margin-top: 4px !important;
+    margin-top: 0 !important;
     box-shadow: none !important;
     backdrop-filter: none !important;
     background: #ffffff !important;
