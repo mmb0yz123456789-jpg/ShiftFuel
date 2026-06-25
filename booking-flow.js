@@ -895,6 +895,10 @@ function summaryRow({ label, stepName, content, unlockedIndex, steps }) {
   `;
 }
 
+// Mobile only: the Booking Summary collapses into a tappable accordion at the
+// top. Persisted across re-renders so toggling doesn't reset on every step change.
+let summaryMobileOpen = false;
+
 function renderSummarySidebar(steps, flowName, unlockedIndex) {
   const v = bookingState.values;
   const totals = calculateTotals();
@@ -930,18 +934,25 @@ function renderSummarySidebar(steps, flowName, unlockedIndex) {
   ].join("");
 
   return `
-    <aside class="booking-summary-sidebar">
-      <h3>Booking Summary</h3>
-      <p class="field-help">Review your details before continuing.</p>
-      <div class="summary-rows">${rows}</div>
-      <div class="summary-total-row">
-        <span>
-          <strong>Estimated Total</strong>
-          <small>Includes service and convenience fees.</small>
-        </span>
-        <span class="summary-total-amount">${formatMoney(totals.estimatedTotal)}</span>
+    <aside class="booking-summary-sidebar${summaryMobileOpen ? " is-open" : ""}">
+      <button type="button" class="booking-summary-toggle" data-summary-toggle aria-expanded="${summaryMobileOpen ? "true" : "false"}">
+        <span class="booking-summary-toggle-label">Booking Summary</span>
+        <span class="booking-summary-toggle-total">${formatMoney(totals.estimatedTotal)}</span>
+        <span class="booking-summary-chevron" aria-hidden="true">▾</span>
+      </button>
+      <div class="booking-summary-body">
+        <h3>Booking Summary</h3>
+        <p class="field-help">Review your details before continuing.</p>
+        <div class="summary-rows">${rows}</div>
+        <div class="summary-total-row">
+          <span>
+            <strong>Estimated Total</strong>
+            <small>Includes service and convenience fees.</small>
+          </span>
+          <span class="summary-total-amount">${formatMoney(totals.estimatedTotal)}</span>
+        </div>
+        <p class="summary-secure-note">Secure, encrypted, and trusted.</p>
       </div>
-      <p class="summary-secure-note">Secure, encrypted, and trusted.</p>
     </aside>
   `;
 }
@@ -2811,6 +2822,15 @@ function renderFlow(root) {
   });
 
   root.addEventListener("click", async (event) => {
+    const summaryToggle = event.target.closest("[data-summary-toggle]");
+    if (summaryToggle) {
+      summaryMobileOpen = !summaryMobileOpen;
+      const aside = summaryToggle.closest(".booking-summary-sidebar");
+      if (aside) aside.classList.toggle("is-open", summaryMobileOpen);
+      summaryToggle.setAttribute("aria-expanded", summaryMobileOpen ? "true" : "false");
+      return;
+    }
+
     const railStep = event.target.closest("[data-rail-step]");
     if (railStep && !railStep.disabled && Number(railStep.dataset.railStep) <= unlockedIndex) {
       goToStep(Number(railStep.dataset.railStep));

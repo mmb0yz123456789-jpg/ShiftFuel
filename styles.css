@@ -1844,6 +1844,13 @@ font-size: 0.85rem;
   box-shadow: var(--sf-shadow-card);
 }
 
+/* The collapse toggle is mobile-only; on desktop the summary is always expanded. */
+.booking-summary-toggle { display: none; }
+
+/* Smooth-scroll a newly-opened step so its header lands just below the sticky
+   nav instead of jumping under it. */
+.booking-accordion-card { scroll-margin-top: 90px; }
+
 .booking-summary-sidebar h3 {
   margin: 0;
   color: var(--sf-teal-dark);
@@ -1959,7 +1966,28 @@ font-size: 0.85rem;
   .booking-summary-sidebar {
     position: static;
     order: -1;
+    padding: 0;
+    gap: 0;
+    overflow: hidden;
   }
+  .booking-summary-toggle {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    padding: 14px 18px;
+    background: none;
+    border: none;
+    cursor: pointer;
+    font: inherit;
+  }
+  .booking-summary-toggle-label { font-weight: 900; color: var(--sf-teal-dark); }
+  .booking-summary-toggle-total { margin-left: auto; font-weight: 900; color: var(--sf-teal-dark); }
+  .booking-summary-chevron { transition: transform 0.2s; color: var(--sf-teal-dark); }
+  .booking-summary-sidebar.is-open .booking-summary-chevron { transform: rotate(180deg); }
+  .booking-summary-body { display: none; padding: 0 18px 22px; }
+  .booking-summary-sidebar.is-open .booking-summary-body { display: grid; gap: 16px; }
+  .booking-summary-body h3 { display: none; }
 
   .booking-progress-rail {
     justify-content: flex-start;
