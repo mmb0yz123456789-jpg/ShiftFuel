@@ -25,6 +25,15 @@ const { notifyRequest } = require('./_push');
 const { placeScheduledHold } = require('./_scheduled-auth');
 const { verifyServiceArea } = require('./_service-area');
 const { computeSurchargeForChosen, PER_MILE_RATE } = require('./_gas-stations');
+const { enforceRateLimit } = require('./_rate-limit');
+
+// Per-IP caps on the actions that reach Mapbox before Stripe verification.
+const PAYMENTS_RATE_LIMITS = {
+  create_authorized_booking: { limit: 20, windowSeconds: 60 },
+  create_scheduled_booking:  { limit: 20, windowSeconds: 60 },
+  create_intent:             { limit: 30, windowSeconds: 60 },
+  create_setup_intent:       { limit: 30, windowSeconds: 60 },
+};
 
 // Actions that should fire a push once the handler has updated the DB. The event
 // is self-validating against the request's real status, so a failed action that
@@ -2527,6 +2536,12 @@ module.exports = async (req, res) => {
   if (!handler) {
     return res.status(400).json({ error: `Unknown action: ${action}` });
   }
+
+  // The booking-creation actions call Mapbox (service-area + station surcharge)
+  // before Stripe verification, so rate-limit them per IP to block abuse. The
+  // cap is generous — a real customer never submits dozens of bookings a minute.
+  const rl = PAYMENTS_RATE_LIMITS[action];
+  if (rl && await enforceRateLimit(req, res, `payments:${action}`, rl)) return;
 
   try {
     const result = await handler(body, res);

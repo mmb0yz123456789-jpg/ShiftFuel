@@ -25,6 +25,36 @@ const {
   SERVICE_ANCHOR_LON,
 } = require('./_service-area');
 const { computeStationOptions, computeTypedStationOptions } = require('./_gas-stations');
+const { enforceRateLimit } = require('./_rate-limit');
+
+// Per-IP rate limits for the actions that call paid third-party APIs. Tuned so
+// normal interactive use is never blocked, but scripted abuse hits a wall.
+// Typeahead (suggest) is the most frequent legitimately, so it gets more room.
+const RATE_LIMITS = {
+  address_suggest:       { limit: 80, windowSeconds: 60 },
+  address_retrieve:      { limit: 40, windowSeconds: 60 },
+  validate_service_area: { limit: 60, windowSeconds: 60 },
+  nearby_gas_stations:   { limit: 40, windowSeconds: 60 },
+  gas_station_search:    { limit: 20, windowSeconds: 60 },
+  isochrone:             { limit: 20, windowSeconds: 60 },
+};
+
+// Short-lived in-memory cache for station lookups, keyed by rounded coords (and
+// query). Repeated identical lookups (re-renders, nearby users, retries) reuse
+// the result instead of re-hitting Mapbox — cuts cost and softens abuse.
+const STATION_CACHE_TTL_MS = 5 * 60 * 1000;
+const stationCache = new Map(); // key -> { at, data }
+
+function stationCacheGet(key) {
+  const entry = stationCache.get(key);
+  if (entry && Date.now() - entry.at < STATION_CACHE_TTL_MS) return entry.data;
+  if (entry) stationCache.delete(key);
+  return null;
+}
+function stationCacheSet(key, data) {
+  if (stationCache.size > 2000) stationCache.clear();
+  stationCache.set(key, { at: Date.now(), data });
+}
 
 // Public Mapbox token. Prefer an env var; fall back to the same public pk.*
 // token the live-tracking map already ships in the browser. Search Box API
@@ -338,9 +368,14 @@ async function handleNearbyGasStations(body, res) {
   if (!Number.isFinite(lat) || !Number.isFinite(lon) || (lat === 0 && lon === 0)) {
     return res.status(400).json({ ok: false, message: 'Missing service address coordinates.' });
   }
+  const cacheKey = `n:${lat.toFixed(3)},${lon.toFixed(3)}`;
+  const cached = stationCacheGet(cacheKey);
+  if (cached) return res.status(200).json(cached);
   try {
     const { stations, closest, per_mile_rate } = await computeStationOptions(lat, lon);
-    return res.status(200).json({ ok: true, stations, closest, per_mile_rate });
+    const payload = { ok: true, stations, closest, per_mile_rate };
+    stationCacheSet(cacheKey, payload);
+    return res.status(200).json(payload);
   } catch (err) {
     console.error('[address/nearby_gas_stations] Error:', err.message);
     return res.status(200).json({ ok: false, message: 'Could not load nearby stations.', stations: [] });
@@ -359,9 +394,14 @@ async function handleGasStationSearch(body, res) {
   if (q.length < 2) {
     return res.status(200).json({ ok: true, stations: [] });
   }
+  const cacheKey = `s:${lat.toFixed(3)},${lon.toFixed(3)}:${q.toLowerCase()}`;
+  const cached = stationCacheGet(cacheKey);
+  if (cached) return res.status(200).json(cached);
   try {
     const { stations } = await computeTypedStationOptions(lat, lon, q);
-    return res.status(200).json({ ok: true, stations });
+    const payload = { ok: true, stations };
+    stationCacheSet(cacheKey, payload);
+    return res.status(200).json(payload);
   } catch (err) {
     console.error('[address/gas_station_search] Error:', err.message);
     return res.status(200).json({ ok: false, message: 'Could not search stations.', stations: [] });
@@ -393,6 +433,9 @@ module.exports = async (req, res) => {
   if (!handler) {
     return res.status(400).json({ error: `Unknown action: ${action}` });
   }
+
+  const rl = RATE_LIMITS[action];
+  if (rl && await enforceRateLimit(req, res, action, rl)) return;
 
   try {
     return await handler(body, res);
