@@ -1688,7 +1688,7 @@
     box-shadow: none;
     background: none;
     overflow: visible;
-    padding: 22px 4px 6px;
+    padding: 20px 16px 14px;
   }
   .track-page .track-hero-redesign .booking-flow-hero-image,
   .track-page .track-hero-redesign::after,
@@ -1704,10 +1704,13 @@
   .track-page .track-hero-redesign h1 {
     margin: 0;
     color: var(--sf-teal-dark);
-    font-size: clamp(2.5rem, 11vw, 3.2rem);
+    /* Sized in vw so it scales down to stay on ONE line with side margin;
+       nowrap guarantees it never wraps. */
+    font-size: clamp(1.6rem, 7.4vw, 2.7rem);
     font-weight: 900;
-    line-height: 1.04;
-    letter-spacing: -0.02em;
+    line-height: 1.1;
+    letter-spacing: -0.03em;
+    white-space: nowrap;
   }
 
   .track-shell { margin: 12px auto 56px; }

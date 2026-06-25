@@ -193,4 +193,14 @@
   .track-page #tracking-result {
     width: var(--sf-content-width-mobile) !important;
   }
+
+  /* Make the lookup form read as part of the page, not a floating glass overlay:
+     no hero overlap, no big drop shadow, no backdrop blur. */
+  .track-page .track-search-card {
+    margin-top: 8px !important;
+    box-shadow: none !important;
+    backdrop-filter: none !important;
+    background: #ffffff !important;
+    border-color: rgba(13, 59, 59, 0.10) !important;
+  }
 }
