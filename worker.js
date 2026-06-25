@@ -173,6 +173,10 @@ document.querySelector('#worker-header-signout')?.addEventListener('click', () =
   document.querySelector('#worker-signout-btn')?.click();
 });
 
+document.querySelector('#worker-mobile-avatar-btn')?.addEventListener('click', () => {
+  document.querySelector('[data-tab-view="profile"]')?.click();
+});
+
 document.querySelector('#worker-progress-job-label')?.addEventListener('click', async () => {
   const jobLabel = document.querySelector('#worker-progress-job-label');
   const jobId = jobLabel?.dataset.jobId;
@@ -1141,6 +1145,8 @@ async function loadWorkerProfile() {
     if (headerName) headerName.textContent = workerName;
     const headerAvatar = document.querySelector('#worker-header-avatar');
     if (headerAvatar) headerAvatar.textContent = (workerName.trim().charAt(0) || 'W').toUpperCase();
+    const mobileAvatar = document.querySelector('#worker-mobile-avatar-initial');
+    if (mobileAvatar) mobileAvatar.textContent = (workerName.trim().charAt(0) || 'W').toUpperCase();
     if (workerProfileName) workerProfileName.value = workerName;
     if (workerProfileUsername) workerProfileUsername.value = currentEmployee.username || '';
     if (workerProfilePhone) workerProfilePhone.value = formatPhone(currentEmployee.phone || '');

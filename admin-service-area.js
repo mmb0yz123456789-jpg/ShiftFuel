@@ -208,28 +208,27 @@
     map.on('load', loadCurrent);
   }
 
-  // ── modal open/close ──────────────────────────────────────────────────────
-  const modal = $('service-area-modal');
+  // ── inline init (called when Settings tab becomes visible) ───────────────
+  let inited = false;
   async function openEditor() {
-    if (!modal) return;
-    modal.hidden = false;
+    if (inited) { if (map) { map.resize(); loadCurrent(); } return; }
+    inited = true;
     status('Loading map…');
     try {
       await loadAssets();
     } catch (e) {
       status('Could not load the map library: ' + e.message, 'err');
+      inited = false;
       return;
     }
-    if (!map) initMap();
-    else { map.resize(); loadCurrent(); }
-    // Mapbox needs a resize once the (previously hidden) container has size.
-    setTimeout(() => map && map.resize(), 60);
+    initMap();
+    setTimeout(() => map && map.resize(), 80);
   }
-  function closeEditor() { if (modal) modal.hidden = true; }
+
+  // Expose so switchPageTab can trigger it directly.
+  window._saOpenEditor = openEditor;
 
   $('open-service-area-editor')?.addEventListener('click', openEditor);
-  $('close-service-area')?.addEventListener('click', closeEditor);
-  modal?.addEventListener('click', (e) => { if (e.target === modal) closeEditor(); });
 
   // ── settings card summary (no Mapbox needed) ──────────────────────────────
   async function updateSummary() {

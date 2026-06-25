@@ -598,6 +598,9 @@
    mobile app). Shown again inside the desktop media query below. */
 .worker-portal-page .worker-desktop-only { display: none; }
 
+/* Mobile-only avatar button in header */
+#worker-mobile-avatar-btn { display: flex !important; }
+
 /* Footer legal links open the in-app modal but look like plain footer links. */
 .worker-portal-page .site-footer .worker-legal-link {
   background: none; border: 0; padding: 0; cursor: pointer;
@@ -677,6 +680,7 @@
   }
   .worker-portal-page .worker-desktop-only { display: block; }
   .worker-portal-page .worker-mobile-only { display: none !important; }
+  #worker-mobile-avatar-btn { display: none !important; }
   /* 2-column dashboard — same container width as the header so edges align. */
   .worker-portal-page .worker-dash-grid {
     display: grid;
