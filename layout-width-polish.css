@@ -197,7 +197,7 @@
   /* Make the lookup form read as part of the page, not a floating glass overlay:
      no hero overlap, no big drop shadow, no backdrop blur. */
   .track-page .track-search-card {
-    margin-top: 8px !important;
+    margin-top: 4px !important;
     box-shadow: none !important;
     backdrop-filter: none !important;
     background: #ffffff !important;

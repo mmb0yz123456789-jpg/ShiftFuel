@@ -1688,7 +1688,8 @@
     box-shadow: none;
     background: none;
     overflow: visible;
-    padding: 20px 16px 14px;
+    padding: 4px 16px 6px;
+    text-align: center;
   }
   .track-page .track-hero-redesign .booking-flow-hero-image,
   .track-page .track-hero-redesign::after,
@@ -1713,7 +1714,7 @@
     white-space: nowrap;
   }
 
-  .track-shell { margin: 12px auto 56px; }
+  .track-shell { margin: 2px auto 56px; }
 
   /* 3 — Compact, app-style lookup card. */
   .track-page .track-search-card {
