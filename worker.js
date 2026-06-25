@@ -1964,6 +1964,7 @@ function renderWorkerJobInfoBlock(request, mode) {
       <p><strong>Parking:</strong> ${[request.parking_location, request.parking_spot ? `spot ${request.parking_spot}` : ''].filter(Boolean).map(escapeHtml).join(', ') || 'Not provided'}</p>
       ${(mode === 'mine' && request.key_handoff_details) ? `<p><strong>Key handoff:</strong> ${escapeHtml(request.key_handoff_details)}</p>` : ''}
       <p><strong>Service:</strong> ${escapeHtml(workerFormatService(request))}</p>
+      ${request.gas_station_name ? `<p><strong>Gas station:</strong> ${escapeHtml(request.gas_station_name)}${request.gas_station_address ? ` — ${escapeHtml(request.gas_station_address)}` : ''}${Number(request.gas_station_surcharge) > 0 ? ' <span class="worker-station-pref">(customer preferred)</span>' : ''}</p>` : ''}
       <p><strong>Vehicle:</strong> ${escapeHtml([request.vehicle_year, request.vehicle_make, request.vehicle_model, request.vehicle_color].filter(Boolean).join(' '))}${request.license_plate ? ` | Plate: ${escapeHtml(request.license_plate)}` : ''}</p>
       ${request.return_parking_location ? `<p><strong>Car location:</strong> ${escapeHtml(request.return_parking_location)}</p>` : ''}
       ${(receiptTotals.fuel || receiptTotals.wash) ? `<p><strong>Receipts entered:</strong> Fuel ${money(receiptTotals.fuel)} | Car wash ${money(receiptTotals.wash)} | Total ${money(workerReceiptTotal)}</p>` : ''}

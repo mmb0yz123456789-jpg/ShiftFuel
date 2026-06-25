@@ -2066,6 +2066,54 @@ font-size: 0.85rem;
   gap: 14px;
 }
 
+/* "Customer choice" gas-station picker (Service Details step) */
+.station-picker {
+  margin-top: 18px;
+  padding-top: 16px;
+  border-top: 1px solid #e2e9e5;
+}
+.station-picker-head strong {
+  display: block;
+  color: var(--brand-dark);
+  font-weight: 800;
+  margin-bottom: 2px;
+}
+.station-option {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  margin-top: 8px;
+  border: 1px solid #d8e1dc;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: border-color .15s, background .15s;
+}
+.station-option:hover { border-color: var(--brand, #1f7a45); }
+.station-option.is-selected {
+  border-color: var(--brand, #1f7a45);
+  background: #f1f8f3;
+}
+.station-option input[type="radio"] {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 auto;
+  accent-color: var(--brand, #1f7a45);
+}
+.station-option-info { display: flex; flex-direction: column; gap: 2px; flex: 1 1 auto; min-width: 0; }
+.station-option-name { font-weight: 700; color: var(--ink); }
+.station-option-addr { font-size: .8rem; color: #6b7280; }
+.station-badge {
+  flex: 0 0 auto;
+  font-size: .78rem;
+  font-weight: 700;
+  padding: 4px 9px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+.station-badge--free { background: #e6f4ea; color: #15803d; }
+.station-badge--fee { background: #fef3e2; color: #b45309; }
+
 .booking-field-grid .span-2 {
   grid-column: span 2;
 }

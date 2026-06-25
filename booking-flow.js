@@ -90,6 +90,20 @@ const bookingState = {
     setupIntentId: "",
     stripeCustomerId: "",
   },
+  // "Customer choice" gas station. Closest station is the free default; the
+  // surcharge for a farther one ($0.75/extra round-trip mile) is computed by the
+  // server and echoed here so the quote matches what's charged.
+  station: {
+    options: [],
+    fetchedFor: "",
+    selectedId: "",
+    name: "",
+    address: "",
+    lat: "",
+    lon: "",
+    surcharge: 0,
+    extraMiles: 0,
+  },
   submitted: false,
   submitting: false,
   submittedRequestNumber: "",
@@ -415,7 +429,11 @@ function calculateTotals() {
   const fuelBaseFee = serviceNeedsFuel() ? FUEL_SERVICE_FEE : 0;
   const washBaseFee = serviceNeedsWash() ? CAR_WASH_SERVICE_FEE : 0;
   const quickFee = bookingState.values.quickCare ? QUICK_CARE_FEE : 0;
-  const netTarget = fuelEstimate + washAmount + fuelBaseFee + washBaseFee + quickFee;
+  // Gas-station distance surcharge only applies to fuel services with a chosen
+  // (non-closest) station. The server is authoritative; this mirrors it so the
+  // authorized total matches.
+  const stationSurcharge = serviceNeedsFuel() ? (Number(bookingState.station.surcharge) || 0) : 0;
+  const netTarget = fuelEstimate + washAmount + fuelBaseFee + washBaseFee + quickFee + stationSurcharge;
   const grossBeforeRounding = netTarget ? (netTarget + 0.30) / (1 - 0.029) : 0;
   const estimatedTotal = netTarget ? Math.ceil(grossBeforeRounding) : 0;
   const recovery = Math.round((estimatedTotal - netTarget) * 100) / 100;
@@ -451,6 +469,7 @@ function calculateTotals() {
     fuelFee,
     washFee,
     quickFee,
+    stationSurcharge,
     estimatedTotal,
     fuelBaseFee,
     washBaseFee,
@@ -1598,14 +1617,128 @@ function renderServiceDetails(panel) {
     <div data-wash-includes></div>
   ` : "";
 
+  const stationFields = serviceNeedsFuel() ? `
+    <div class="station-picker" data-station-picker>
+      <div class="station-picker-head">
+        <strong>Preferred gas station</strong>
+        <p class="field-help">We fuel up at the closest station by default — no extra charge. Prefer a specific station? Every extra mile to and from it adds ${formatMoney(STATION_PER_MILE_RATE)}.</p>
+      </div>
+      <div data-station-list><p class="field-help">Verify your service address to see nearby stations.</p></div>
+    </div>
+  ` : "";
+
   container.innerHTML = `
     ${fuelFields}
     ${washFields}
+    ${stationFields}
     <div class="placeholder-note">Only fields needed for your selected service are shown.</div>
   `;
   if (WASH_PACKAGES.length === 1 && serviceNeedsWash()) bookingState.values.washPackage = WASH_PACKAGES[0].value;
   renderWashIncludes(panel);
   restorePanelValues(panel);
+  if (serviceNeedsFuel()) loadStationOptions(panel);
+}
+
+// Per-extra-mile rate shown in the UI; the server (api/_gas-stations.js) is the
+// source of truth for the actual surcharge.
+const STATION_PER_MILE_RATE = 0.75;
+
+// Fetch nearby gas stations for the verified service address and render them.
+// Closest is auto-selected (free); the customer can upgrade to a farther one.
+async function loadStationOptions(panel) {
+  const list = panel.querySelector("[data-station-list]");
+  if (!list) return;
+  const lat = Number(bookingState.values.address_lat);
+  const lon = Number(bookingState.values.address_lon);
+  if (!Number.isFinite(lat) || !Number.isFinite(lon) || (lat === 0 && lon === 0)) {
+    list.innerHTML = `<p class="field-help">Verify your service address to see nearby stations.</p>`;
+    return;
+  }
+
+  const key = `${lat},${lon}`;
+  if (bookingState.station.fetchedFor === key && bookingState.station.options.length) {
+    renderStationList(panel);
+    return;
+  }
+
+  list.innerHTML = `<p class="field-help">Loading nearby stations…</p>`;
+  try {
+    const res = await fetch("/api/address", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "nearby_gas_stations", lat, lon }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!data.ok || !Array.isArray(data.stations) || !data.stations.length) {
+      list.innerHTML = `<p class="field-help">We couldn't load nearby stations right now — we'll fuel at the closest one (no extra charge).</p>`;
+      bookingState.station.options = [];
+      return;
+    }
+    bookingState.station.options = data.stations;
+    bookingState.station.fetchedFor = key;
+    const chosen = bookingState.station.selectedId;
+    if (!chosen || !data.stations.some((s) => s.id === chosen)) {
+      applyStationSelection(data.stations[0]);
+    }
+    renderStationList(panel);
+    refreshTotalsUI(panel);
+  } catch (err) {
+    list.innerHTML = `<p class="field-help">We couldn't load nearby stations right now — we'll fuel at the closest one (no extra charge).</p>`;
+  }
+}
+
+function renderStationList(panel) {
+  const list = panel.querySelector("[data-station-list]");
+  if (!list) return;
+  const opts = bookingState.station.options;
+  if (!opts.length) return;
+  list.innerHTML = opts.map((s) => {
+    const checked = s.id === bookingState.station.selectedId;
+    const badge = s.is_closest
+      ? `<span class="station-badge station-badge--free">Closest · Free</span>`
+      : `<span class="station-badge station-badge--fee">+${formatMoney(s.surcharge)}</span>`;
+    return `
+      <label class="station-option${checked ? " is-selected" : ""}">
+        <input type="radio" name="gasStation" value="${escapeHtml(s.id)}"${checked ? " checked" : ""}>
+        <span class="station-option-info">
+          <span class="station-option-name">${escapeHtml(s.name)}</span>
+          ${s.address ? `<span class="station-option-addr">${escapeHtml(s.address)}</span>` : ""}
+        </span>
+        ${badge}
+      </label>`;
+  }).join("");
+}
+
+function applyStationSelection(s) {
+  if (!s) return;
+  bookingState.station.selectedId = s.id;
+  bookingState.station.name = s.name || "";
+  bookingState.station.address = s.address || "";
+  bookingState.station.lat = s.lat ?? "";
+  bookingState.station.lon = s.lon ?? "";
+  bookingState.station.surcharge = Number(s.surcharge) || 0;
+  bookingState.station.extraMiles = Number(s.extra_round_trip_miles) || 0;
+}
+
+// Clear any station selection (e.g. when the address changes or fuel is dropped)
+// so a stale surcharge never carries over.
+function resetStationSelection() {
+  bookingState.station.options = [];
+  bookingState.station.fetchedFor = "";
+  bookingState.station.selectedId = "";
+  bookingState.station.name = "";
+  bookingState.station.address = "";
+  bookingState.station.lat = "";
+  bookingState.station.lon = "";
+  bookingState.station.surcharge = 0;
+  bookingState.station.extraMiles = 0;
+}
+
+// Refresh any visible price summaries after a station change. Both are no-ops if
+// the relevant container isn't in this panel.
+function refreshTotalsUI(panel) {
+  if (panel.querySelector("[data-payment-summary]")) renderPaymentSummary(panel);
+  if (panel.querySelector("[data-review-summary]")) renderReviewSummary(panel);
 }
 
 function renderScheduleFields(panel) {
@@ -1642,6 +1775,7 @@ function renderPaymentSummary(panel) {
       ${bookingState.values.quickCare ? `<div><dt>Quick Vehicle Care add-on</dt><dd>${formatMoney(totals.quickFee)}</dd></div>` : ""}
       ${serviceNeedsFuel() ? `<div><dt>Estimated fuel</dt><dd>${escapeHtml(bookingState.values.fuelPreference || "Selected range")} selected. We authorize a ${totals.authorizationFuelGallons} gallon buffer just in case: ${totals.authorizationFuelGallons} gal x ${formatMoney(PRICE_PER_GALLON)}/gal = ${formatMoney(totals.fuelEstimate)}</dd></div>` : ""}
       ${totals.washPackage ? `<div><dt>Car wash package</dt><dd>${escapeHtml(totals.washPackage.label)} - ${formatMoney(totals.washAmount)}</dd></div>` : ""}
+      ${totals.stationSurcharge > 0 ? `<div><dt>Preferred station distance</dt><dd>${escapeHtml(bookingState.station.name || "Selected station")} (+${formatMoney(totals.stationSurcharge)})</dd></div>` : ""}
       <div><dt>Estimated total</dt><dd>${formatMoney(totals.estimatedTotal)}</dd></div>
       ${serviceIsAdvanceBooking() ? `<div><dt>Scheduled authorization</dt><dd>Your card is saved now — no charge today. We authorize ${formatMoney(totals.estimatedTotal)} about 2 days before your service date, and you're only charged once service is complete.</dd></div>` : ""}
     </dl>
@@ -2049,6 +2183,13 @@ function buildBookingPayload() {
     // They are read from the request body, not persisted as booking columns.
     address_lat: bookingState.values.address_lat || "",
     address_lon: bookingState.values.address_lon || "",
+    // Chosen gas station. Coords let the server recompute the distance surcharge
+    // authoritatively; gas_station_surcharge is only a fallback hint.
+    gas_station_name: serviceNeedsFuel() ? bookingState.station.name || "" : "",
+    gas_station_address: serviceNeedsFuel() ? bookingState.station.address || "" : "",
+    gas_station_lat: serviceNeedsFuel() ? bookingState.station.lat || "" : "",
+    gas_station_lon: serviceNeedsFuel() ? bookingState.station.lon || "" : "",
+    gas_station_surcharge: serviceNeedsFuel() ? bookingState.station.surcharge || 0 : 0,
     address_validation_status: bookingState.address.validated ? "validated" : "not_validated",
     parking_location: bookingState.values.parking || "",
     key_handoff_details: bookingState.values.handoff || "",
@@ -2177,6 +2318,7 @@ function renderReviewSummary(panel) {
       <div><dt>Selected services</dt><dd>${escapeHtml(serviceLabel())}</dd></div>
       ${serviceNeedsFuel() ? `<div><dt>Fuel details</dt><dd>${escapeHtml(values.fuelType || "Not selected")}, ${escapeHtml(values.fuelPreference || "Not selected")} gallons selected. Authorization uses a ${totals.authorizationFuelGallons} gallon buffer.</dd></div>` : ""}
       ${totals.washPackage ? `<div><dt>Car wash package</dt><dd>${escapeHtml(totals.washPackage.label)}</dd></div>` : ""}
+      ${serviceNeedsFuel() && bookingState.station.name ? `<div><dt>Gas station</dt><dd>${escapeHtml(bookingState.station.name)}${totals.stationSurcharge > 0 ? ` | +${formatMoney(totals.stationSurcharge)} distance surcharge` : " | Closest (no extra charge)"}</dd></div>` : ""}
       <div><dt>Add-ons</dt><dd>${escapeHtml(addOns)}</dd></div>
       <div><dt>Service date</dt><dd>${escapeHtml(values.serviceDate || "Not selected")}</dd></div>
       <div><dt>Desired return time</dt><dd>${escapeHtml(values.returnTime || "Not selected")}</dd></div>
@@ -2277,6 +2419,8 @@ function renderFlow(root) {
       // stale pin for a typed address.
       bookingState.values.address_lat = "";
       bookingState.values.address_lon = "";
+      // A new address means new nearby stations — drop the old selection.
+      resetStationSelection();
       // Editing the address after it was validated re-locks every later step
       // until it is validated again. Materializes on the next render.
       const addrIdx = steps.indexOf("Address");
@@ -2322,6 +2466,8 @@ function renderFlow(root) {
     if (event.target.matches('[name="serviceType"]')) {
       bookingState.values.fuelPreference = "";
       bookingState.values.washPackage = "";
+      // A non-fuel service has no station surcharge; clear any prior pick.
+      if (!serviceNeedsFuel()) resetStationSelection();
       renderServiceDetails(panel);
     }
     if (event.target.matches('[name="serviceDate"]')) {
@@ -2348,6 +2494,17 @@ function renderFlow(root) {
     }
     if (event.target.matches('[name="washPackage"]')) {
       renderWashIncludes(panel);
+    }
+    if (event.target.matches('[name="gasStation"]')) {
+      const picked = bookingState.station.options.find((s) => s.id === event.target.value);
+      if (picked) {
+        applyStationSelection(picked);
+        renderStationList(panel);
+        refreshTotalsUI(panel);
+        // Picking a different station changes the total, so any prior payment
+        // authorization is stale.
+        invalidatePaymentAuthorization();
+      }
     }
     updateContinue();
   });
