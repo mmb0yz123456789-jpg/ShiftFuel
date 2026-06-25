@@ -3169,6 +3169,16 @@ initBookingFlow();
     const actions = panel.querySelector('.booking-step-actions');
     if (actions) actions.hidden = true;
     panel.querySelectorAll('[data-submit-booking], [data-cancel-authorization]').forEach((button) => { button.hidden = true; });
+    // Scroll the Review & Submit step back into view (below the sticky header) so
+    // the customer clearly sees it went through — the "Request received"
+    // confirmation + their request number. rAF lets the replaced content settle
+    // before we measure. (The older submit path does the same at the call site.)
+    requestAnimationFrame(() => {
+      const header = document.querySelector('.site-header');
+      const headerHeight = header ? header.getBoundingClientRect().height : 0;
+      const top = panel.getBoundingClientRect().top + window.scrollY - headerHeight - 18;
+      window.scrollTo({ top: Math.max(top, 0), behavior: 'smooth' });
+    });
   }
 
   function makePayload() {
