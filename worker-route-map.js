@@ -68,7 +68,7 @@
       <div class="wrm-dialog">
         <div class="wrm-header">
           <div class="wrm-heading">
-            <strong class="wrm-title">Directions to vehicle</strong>
+            <strong class="wrm-title">Directions to service address</strong>
             <span class="wrm-eta"></span>
           </div>
           <button class="wrm-close" type="button" aria-label="Close">&times;</button>
@@ -159,7 +159,7 @@
     const titleEl = modal.querySelector('.wrm-title');
     const etaEl = modal.querySelector('.wrm-eta');
     const nativeBtn = modal.querySelector('.wrm-open-native');
-    titleEl.textContent = 'Directions to vehicle';
+    titleEl.textContent = 'Directions to service address';
     etaEl.textContent = 'Loading map…';
     modal.hidden = false;
 

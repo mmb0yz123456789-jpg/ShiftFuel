@@ -174,6 +174,17 @@ letter-spacing: 0;
 text-transform: none;
 }
 
+/* Eyebrow/kicker label pills removed site-wide (the small box above hero and
+   section headings). Hidden in CSS rather than deleted from each page's markup
+   so JS that updates their text (e.g. the admin greeting / request-queue label)
+   keeps working without errors. .portal-login-badge is the same pill on the
+   worker/admin sign-in pages ("Worker Access" / "Admin Access"). */
+.eyebrow,
+.sf-kicker,
+.portal-login-badge {
+  display: none !important;
+}
+
 .hero-copy,
 .location-note,
 .section-heading p,
@@ -10515,4 +10526,10 @@ justify-self: start;
   .portal-hero-wordmark { font-size: 1.42rem; }
   .portal-hero-role { font-size: 1.14rem; }
   .portal-login-page .portal-login-card { margin-top: -56px; }
+  .staff-access-page .portal-login-card { margin-top: 16px; }
 }
+
+/* Staff Access uses the thin app-bar header, not the tall sign-in hero, so its
+   card must sit BELOW the header. Without this it inherited the hero's negative
+   top margin and pulled up under the header, clipping the shield badge. */
+.staff-access-page .portal-login-card { margin-top: 24px; }

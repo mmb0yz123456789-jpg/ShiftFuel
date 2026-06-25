@@ -390,6 +390,22 @@
   border-left: 1px solid rgba(13, 59, 59, 0.07);
 }
 .worker-portal-page .worker-count-cell:first-child { border-left: 0; }
+/* Tappable tiles (count > 0) are buttons — reset native chrome, keep the look. */
+.worker-portal-page button.worker-count-cell {
+  -webkit-appearance: none;
+  appearance: none;
+  background: none;
+  border: 0;
+  border-left: 1px solid rgba(13, 59, 59, 0.07);
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+.worker-portal-page button.worker-count-cell:first-child { border-left: 0; }
+.worker-portal-page button.worker-count-cell:hover { background: #f6faf8; }
+.worker-portal-page button.worker-count-cell:active { background: #eef5f1; }
+/* Zero-count tiles are dimmed and inert. */
+.worker-portal-page .worker-count-cell.is-empty { opacity: 0.4; }
 .worker-portal-page .worker-count-value { font-size: 1.5rem; font-weight: 800; line-height: 1; }
 .worker-portal-page .worker-count-label { font-size: 0.72rem; color: #60716d; }
 .worker-portal-page .worker-count-cell.is-accepted .worker-count-value { color: var(--sf-green, #1f7a45); }
@@ -960,18 +976,40 @@
   border-radius: 14px !important;
 }
 
-/* Reference facts shown inside the "View job details" drawer. */
-.worker-portal-page .worker-wizard-facts { margin-bottom: 14px !important; }
+/* Clean single-line job details on the active-job card. */
+.worker-portal-page .worker-job-plain {
+  display: grid !important;
+  gap: 9px !important;
+  margin: 0 0 16px !important;
+}
+.worker-portal-page .wjp-row { display: grid !important; gap: 1px !important; }
+.worker-portal-page .wjp-label {
+  font-size: 0.62rem !important;
+  font-weight: 800 !important;
+  letter-spacing: 0.06em !important;
+  text-transform: uppercase !important;
+  color: #7c8b87 !important;
+}
+.worker-portal-page .wjp-value {
+  font-size: 0.95rem !important;
+  font-weight: 600 !important;
+  color: #1f2d2a !important;
+  line-height: 1.35 !important;
+}
+/* Customer name leads, a touch larger and in brand teal. */
+.worker-portal-page .worker-job-plain .wjp-row:first-child .wjp-value {
+  font-size: 1.08rem !important;
+  font-weight: 800 !important;
+  color: var(--sf-teal, #0d3b3b) !important;
+}
 
 /* Desktop: keep the single step a calm, centered column instead of stretching
    it across the whole dashboard main area. */
 @media (min-width: 761px) {
   .worker-portal-page .worker-wizard-card { padding: 26px !important; }
-  .worker-portal-page .worker-wizard-head,
-  .worker-portal-page .worker-wizard-progress,
+  .worker-portal-page .worker-job-plain,
   .worker-portal-page .worker-wizard-step,
-  .worker-portal-page .worker-wizard-card .worker-secondary-actions,
-  .worker-portal-page .worker-wizard-card .worker-card-expanded {
+  .worker-portal-page .worker-wizard-card .worker-secondary-actions {
     max-width: 620px !important;
     margin-left: auto !important;
     margin-right: auto !important;

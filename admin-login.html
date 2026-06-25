@@ -11,8 +11,27 @@
   <meta name="apple-mobile-web-app-title" content="SF Admin">
   <link rel="apple-touch-icon" href="icon-admin.svg">
   <link rel="stylesheet" href="styles.css">
+  <style>
+    /* Installed-app (PWA) view: hide the website wayfinding links. An admin who
+       opens the home-screen app didn't come from the staff/customer site, so
+       "Back to Staff Access" / "Back to customer site" would just dump them onto
+       the public site inside the app shell. Browser visitors still see them. */
+    html.is-pwa .portal-hero-back,
+    html.is-pwa .portal-login-back { display: none !important; }
+  </style>
 </head>
 <body class="landing-page portal-login-page admin-login-page">
+
+  <!-- Flag the installed-app view so the website "Back to…" links can hide.
+       Runs before the header paints, so the links never flash in. -->
+  <script>
+    (function () {
+      var standalone = window.matchMedia && window.matchMedia("(display-mode: standalone)").matches;
+      if (standalone || window.navigator.standalone === true) {
+        document.documentElement.classList.add("is-pwa");
+      }
+    })();
+  </script>
 
   <script>
     (function () {

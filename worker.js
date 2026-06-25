@@ -100,6 +100,9 @@ function renderPresenceControls() {
   if (workerPresenceIndicator) {
     workerPresenceIndicator.hidden = false;
     workerPresenceIndicator.classList.toggle('is-on-break', onBreak);
+    workerPresenceIndicator.setAttribute('role', 'button');
+    workerPresenceIndicator.setAttribute('tabindex', '0');
+    workerPresenceIndicator.title = onBreak ? 'On break — tap to go back online' : 'Online — tap to take a break';
   }
   if (workerPresenceLabel) workerPresenceLabel.textContent = onBreak ? 'On break' : 'Online';
   if (workerBreakToggle) {
@@ -118,11 +121,33 @@ function startWorkerHeartbeat() {
   });
 }
 
-workerBreakToggle?.addEventListener('click', () => {
+function toggleWorkerBreak() {
   workerPresenceStatus = workerPresenceStatus === 'on_break' ? 'online' : 'on_break';
   renderPresenceControls();
   sendWorkerHeartbeat();
+}
+workerBreakToggle?.addEventListener('click', toggleWorkerBreak);
+// The header "Online / On break" pill is itself a tap target — clicking it
+// toggles the break, same as the account-menu button.
+workerPresenceIndicator?.addEventListener('click', toggleWorkerBreak);
+workerPresenceIndicator?.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleWorkerBreak(); }
 });
+
+// Show the worker's profile photo in an avatar circle (cover-cropped); fall back
+// to the initial letter when there's no photo.
+function applyAvatarPhoto(el, url) {
+  if (!el) return;
+  if (url) {
+    el.style.backgroundImage = `url("${url}")`;
+    el.style.backgroundSize = 'cover';
+    el.style.backgroundPosition = 'center';
+    el.classList.add('has-avatar-photo');
+  } else {
+    el.style.backgroundImage = '';
+    el.classList.remove('has-avatar-photo');
+  }
+}
 
 // Enable push notifications for this worker (new jobs, customer cancellations).
 const workerEnableAlertsBtn = document.querySelector('#worker-enable-alerts');
@@ -194,6 +219,7 @@ document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape' && workerProfilePanel && !workerProfilePanel.hasAttribute('hidden')) closeWorkerProfilePanel();
 });
 document.querySelector('#worker-mobile-avatar-btn')?.addEventListener('click', openWorkerProfilePanel);
+document.querySelector('#close-worker-profile-panel')?.addEventListener('click', closeWorkerProfilePanel);
 workerProfilePanelOverlay?.addEventListener('click', closeWorkerProfilePanel);
 document.querySelector('#panel-signout')?.addEventListener('click', () => {
   closeWorkerProfilePanel();
@@ -1218,10 +1244,13 @@ async function loadWorkerProfile() {
     if (verifiedBadge) verifiedBadge.hidden = !currentEmployee.background_verified;
     const headerName = document.querySelector('#worker-header-name');
     if (headerName) headerName.textContent = workerName;
+    const avatarInitial = (workerName.trim().charAt(0) || 'W').toUpperCase();
+    const avatarPhoto = currentEmployee.cropped_photo_url || currentEmployee.photo_url || '';
     const headerAvatar = document.querySelector('#worker-header-avatar');
-    if (headerAvatar) headerAvatar.textContent = (workerName.trim().charAt(0) || 'W').toUpperCase();
+    if (headerAvatar) { headerAvatar.textContent = avatarInitial; applyAvatarPhoto(headerAvatar, avatarPhoto); }
     const mobileAvatar = document.querySelector('#worker-mobile-avatar-initial');
-    if (mobileAvatar) mobileAvatar.textContent = (workerName.trim().charAt(0) || 'W').toUpperCase();
+    if (mobileAvatar) mobileAvatar.textContent = avatarInitial;
+    applyAvatarPhoto(document.querySelector('#worker-mobile-avatar-btn'), avatarPhoto);
     const panelName = document.getElementById('worker-panel-name');
     if (panelName) panelName.textContent = workerName;
     const panelLocation = document.getElementById('worker-panel-location');
@@ -1609,6 +1638,15 @@ let expandedWorkerJobId = null;
 // deliberately collapsed it.
 let hasAutoExpandedCurrentJob = false;
 
+// Jobs the worker has tapped "Start — open map" on this session. Used to flip the
+// Accepted step from "Start" to "Key received" instantly, before the first GPS
+// fix lands. The persistent/synced source of truth is live_tracking_enabled
+// (set server-side once a location uploads), so the flip survives reloads too.
+const workerStartedJobIds = new Set();
+function workerHasStarted(request) {
+  return workerStartedJobIds.has(request.id) || request.live_tracking_enabled === true;
+}
+
 function workerQueueInitials(name) {
   const parts = String(name || '').trim().split(/\s+/).filter(Boolean);
   if (!parts.length) return '?';
@@ -1773,33 +1811,72 @@ function renderWorkerHorizontalStepper(request) {
     </div>`;
 }
 
-// One-step-at-a-time wizard card for an active job. The screen is dominated by
-// the single current step (renderWorkerJobActions). The job's reference facts —
-// address, parking, key handoff, vehicle, etc. — are tucked behind "Job details"
-// so nothing competes with "what to do right now". The status/action engine and
-// every action panel are reused unchanged; only the presentation is the wizard.
+// Desired return time as a friendly clock label ("2:30 PM"), no "Return by".
+function workerReturnTimeOnly(request) {
+  const time = String(request.desired_return_time || '').slice(0, 5);
+  if (!time) return '';
+  const [h, m] = time.split(':').map(Number);
+  if (Number.isNaN(h)) return '';
+  const period = h >= 12 ? 'PM' : 'AM';
+  const hour12 = ((h + 11) % 12) + 1;
+  return `${hour12}:${String(m || 0).padStart(2, '0')} ${period}`;
+}
+
+// Clean, single-line job reference block shown on the active-job card. Each row is
+// a small uppercase label + value. The service shows as "Fuel — <type>" and/or
+// "Car wash — <package>", fuel and wash on their own lines when both apply.
+function renderWorkerJobPlainDetails(request) {
+  const parking = [request.parking_location, request.parking_spot ? `spot ${request.parking_spot}` : '']
+    .filter(Boolean).join(', ');
+  const vehicle = [request.vehicle_year, request.vehicle_make, request.vehicle_model, request.vehicle_color]
+    .filter(Boolean).join(' ');
+  const vehicleLine = [vehicle, request.license_plate ? `Plate ${request.license_plate}` : '']
+    .filter(Boolean).join(' · ');
+  const returnTime = workerReturnTimeOnly(request);
+  const serviceLines = [];
+  if (serviceNeedsFuel(request)) serviceLines.push(`Fuel — ${request.fuel_type || 'Regular'}`);
+  if (serviceNeedsWash(request)) serviceLines.push(`Car wash — ${request.wash_package_label || 'Selected wash'}`);
+
+  // Gas station only matters for fuel jobs: the chosen station (flagged when the
+  // customer paid the preference surcharge), or the default closest station.
+  let gasStation = '';
+  if (serviceNeedsFuel(request)) {
+    if (request.gas_station_name) {
+      gasStation = request.gas_station_name
+        + (request.gas_station_address ? ` — ${request.gas_station_address}` : '')
+        + (Number(request.gas_station_surcharge) > 0 ? ' (customer preferred)' : '');
+    } else {
+      gasStation = 'Closest station to the vehicle';
+    }
+  }
+
+  const row = (label, value) => value
+    ? `<div class="wjp-row"><span class="wjp-label">${label}</span><span class="wjp-value">${value}</span></div>`
+    : '';
+
+  return `
+    <div class="worker-job-plain">
+      ${row('Customer', escapeHtml(request.customer_name || 'Customer'))}
+      ${row('Service address', escapeHtml(workerFormatAddress(request)))}
+      ${row('Parking', escapeHtml(parking || 'Not provided'))}
+      ${row('Key handoff', escapeHtml(request.key_handoff_details || 'Not provided'))}
+      ${row('Desired return', escapeHtml(returnTime))}
+      ${row('Vehicle', escapeHtml(vehicleLine || 'On file'))}
+      ${row('Service', serviceLines.map(escapeHtml).join('<br>') || escapeHtml(request.service_label || request.service_type || ''))}
+      ${row('Gas station', escapeHtml(gasStation))}
+    </div>`;
+}
+
+// One-step-at-a-time wizard card for an active job. A clean plain-text details
+// block sits up top (no name header / no progress rail — the worker knows who
+// they are and that they accepted the job), then the single current step
+// (renderWorkerJobActions) leads the action. The status/action engine and every
+// action panel are reused unchanged; only the presentation is the wizard.
 function renderWorkerCurrentJobCard(request) {
-  const keyHandoff = request.key_handoff_details ? escapeHtml(request.key_handoff_details) : 'Not provided';
-  const parking = [request.parking_location, request.parking_spot ? `spot ${request.parking_spot}` : ''].filter(Boolean).map(escapeHtml).join(', ') || 'Not provided';
-  const returnBy = workerReturnByLabel(request);
   const phone = request.customer_phone ? normalizePhone(request.customer_phone) : '';
-  const name = request.customer_name || 'Customer';
-  const initial = escapeHtml((name.trim().charAt(0) || 'C').toUpperCase());
-  const vehicleLine = [workerVehicleSummary(request) || 'Vehicle on file', request.service_label || request.service_type]
-    .filter(Boolean).map(escapeHtml).join(' &middot; ');
-  const isExpanded = expandedWorkerJobId === request.id;
   return `
     <article class="worker-card worker-current-job-card worker-wizard-card" data-current-job-id="${escapeHtml(request.id)}">
-      <header class="worker-wizard-head">
-        <span class="worker-avatar" aria-hidden="true">${initial}</span>
-        <div class="worker-wizard-head-main">
-          <h3 class="worker-current-job-name">${escapeHtml(name)}</h3>
-          <p class="worker-card-vehicle">${vehicleLine}</p>
-        </div>
-        ${workerStatusBadge(request)}
-      </header>
-
-      ${renderWorkerHorizontalStepper(request)}
+      ${renderWorkerJobPlainDetails(request)}
 
       <div class="worker-wizard-step">
         ${renderWorkerJobActions(request)}
@@ -1807,20 +1884,7 @@ function renderWorkerCurrentJobCard(request) {
 
       <div class="worker-secondary-actions">
         ${phone ? `<a class="button secondary worker-secondary-btn" href="tel:${escapeHtml(phone)}">Call customer</a>` : ''}
-        <button class="button secondary worker-secondary-btn worker-row-toggle" data-id="${escapeHtml(request.id)}" type="button" aria-expanded="${isExpanded}">${isExpanded ? 'Hide job details' : 'View job details'}</button>
       </div>
-      ${isExpanded ? `
-        <div class="worker-card-expanded">
-          <div class="worker-job-facts worker-wizard-facts">
-            ${workerFactRow(WK_ICONS.pin, 'Service address', `<span class="worker-job-address-value">${escapeHtml(workerFormatAddress(request))}</span>`)}
-            ${workerFactRow(WK_ICONS.car, 'Parking', parking)}
-            ${workerFactRow(WK_ICONS.key, 'Key handoff', keyHandoff)}
-            ${returnBy ? workerFactRow(WK_ICONS.clock, 'Desired return', escapeHtml(returnBy)) : ''}
-          </div>
-          ${renderWorkerVerticalStepper(request)}
-          ${renderWorkerJobInfoBlock(request, 'mine')}
-        </div>
-      ` : ''}
     </article>
   `;
 }
@@ -1873,16 +1937,21 @@ function renderWorkerTodayCounts(counts) {
   const container = document.querySelector('#worker-today-counts');
   if (!container) return;
   const cells = [
-    { label: 'Accepted', value: counts.accepted, cls: 'is-accepted' },
-    { label: 'Upcoming', value: counts.upcoming, cls: 'is-upcoming' },
-    { label: 'Completed', value: counts.completed, cls: 'is-completed' },
-    { label: 'Cancelled', value: counts.cancelled, cls: 'is-cancelled' },
+    { label: 'Accepted', value: counts.accepted, cls: 'is-accepted', action: 'focus' },
+    { label: 'Upcoming', value: counts.upcoming, cls: 'is-upcoming', action: 'upcoming' },
+    { label: 'Completed', value: counts.completed, cls: 'is-completed', action: 'earnings' },
+    { label: 'Cancelled', value: counts.cancelled, cls: 'is-cancelled', action: 'focus' },
   ];
-  container.innerHTML = cells.map((c) => `
-    <div class="worker-count-cell ${c.cls}">
+  // A tile with a count > 0 is a button that jumps to the matching content. A
+  // zero-count tile is a dimmed, non-interactive div (nothing to jump to).
+  container.innerHTML = cells.map((c) => {
+    const inner = `
       <span class="worker-count-value">${c.value}</span>
-      <span class="worker-count-label">${c.label}</span>
-    </div>`).join('');
+      <span class="worker-count-label">${c.label}</span>`;
+    return c.value > 0
+      ? `<button type="button" class="worker-count-cell ${c.cls}" data-count-action="${c.action}">${inner}</button>`
+      : `<div class="worker-count-cell ${c.cls} is-empty" aria-disabled="true">${inner}</div>`;
+  }).join('');
 }
 
 // Earnings tab: completed jobs with their net take-home (service fees minus
@@ -2125,7 +2194,8 @@ function workerPrimaryStatusButton(request, label, status) {
 
 function workerBackStatusFor(request) {
   const map = {
-    accepted:                'request_received',
+    // 'accepted' deliberately has no Back — "Send back to open pool" is the
+    // correct way to undo an accept, and Back to request_received was confusing.
     key_received:            'accepted',
     vehicle_picked_up:       'key_received',
     service_in_progress:     'vehicle_picked_up',
@@ -2204,10 +2274,21 @@ function renderWorkerJobActions(request) {
     nextAction = 'Accept the request to begin service.';
     actions.push(workerPrimaryStatusButton(request, 'Accept request', 'accepted'));
   } else if (request.status === 'accepted') {
-    nextAction = 'Tap Start to map the route to the vehicle, then confirm the keys/handoff are received. Can\'t make it? Send the job back to the open pool.';
-    actions.push(`<button class="button primary worker-start-nav" data-route-map data-id="${escapeHtml(request.id)}" type="button">Start — open map</button>`);
-    actions.push(`<button class="button secondary worker-update-status" data-id="${escapeHtml(request.id)}" data-status="key_received" type="button">Key received</button>`);
-    actions.push(`<button class="button danger worker-release-job" data-id="${escapeHtml(request.id)}" type="button">Send back to open pool</button>`);
+    if (!workerHasStarted(request)) {
+      // Phase 1 — before starting: one clear action (Start). Tapping it opens the
+      // route map AND begins sharing location, which the customer sees as "on the
+      // way". Key received only appears after they've started.
+      nextAction = 'Tap Start to open the route to the vehicle. Can\'t make it? Send the job back to the open pool.';
+      actions.push(`<button class="button primary worker-start-nav" data-route-map data-id="${escapeHtml(request.id)}" type="button">Start — open map</button>`);
+      actions.push(`<button class="button danger worker-release-job" data-id="${escapeHtml(request.id)}" type="button">Send back to open pool</button>`);
+    } else {
+      // Phase 2 — en route: the customer can see you're on the way. Now the main
+      // action is confirming the key/handoff. Map stays reachable via "Open map".
+      nextAction = 'You\'re on the way — the customer can see you\'re en route. When you have the key/handoff, tap Key received.';
+      actions.push(`<button class="button primary worker-update-status" data-id="${escapeHtml(request.id)}" data-status="key_received" type="button">Key received</button>`);
+      actions.push(`<button class="button secondary worker-start-nav" data-route-map data-id="${escapeHtml(request.id)}" type="button">Open map</button>`);
+      actions.push(`<button class="button danger worker-release-job" data-id="${escapeHtml(request.id)}" type="button">Send back to open pool</button>`);
+    }
   } else if (request.status === 'key_received') {
     nextAction = 'Upload the pickup photo set below.';
     activePanel = renderWorkerPhotoPanel(request, 'pickup');
@@ -2286,11 +2367,14 @@ function renderWorkerJobActions(request) {
   const back = workerBackButton(request);
   if (back) actions.push(back);
 
+  // The labelled "Next action" box is dropped on steps that already have a button
+  // or an input panel (the action speaks for itself). It only survives as a plain
+  // fallback message for passive statuses with nothing else to show, so a step is
+  // never blank.
+  const showNote = nextAction && !actions.length && !activePanel;
   return `
     <div class="guided-step">
-      <p class="eyebrow">Current status</p>
-      <h4>${escapeHtml(workerStatusLabels[request.status] || request.status)}</h4>
-      ${nextAction ? `<p class="next-action-label"><strong>Next action:</strong> ${escapeHtml(nextAction)}</p>` : ''}
+      ${showNote ? `<p class="next-action-label">${escapeHtml(nextAction)}</p>` : ''}
       <div class="admin-button-row">${actions.join('')}</div>
     </div>
     ${activePanel}
@@ -3421,6 +3505,33 @@ document.addEventListener('click', async (event) => {
       const id = button.dataset.id;
       expandedWorkerJobId = expandedWorkerJobId === id ? null : id;
       await loadWorkerJobs();
+      return;
+    }
+
+    // Today's Schedule tiles: jump to the matching content. (Zero-count tiles are
+    // rendered as inert divs, so only the tappable ones reach here.)
+    if (button.classList.contains('worker-count-cell')) {
+      const action = button.dataset.countAction;
+      if (action === 'earnings') {
+        if (typeof switchWorkerTab === 'function') switchWorkerTab('earnings');
+      } else if (action === 'upcoming') {
+        const el = document.querySelector('.worker-upcoming-block') || document.querySelector('#worker-dashboard-today');
+        el?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      } else {
+        document.querySelector('#worker-dashboard-today')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+      return;
+    }
+
+    // "Start — open map": let the route-map + GPS listeners (separate handlers) do
+    // their thing, but also flag the job as started so the Accepted step flips to
+    // "Key received" right away. Re-render after this click cycle so the map opens
+    // and GPS starts first. No preventDefault — those other listeners must run.
+    if (button.classList.contains('worker-start-nav')) {
+      if (button.dataset.id) {
+        workerStartedJobIds.add(button.dataset.id);
+        setTimeout(() => { loadWorkerJobs(); }, 0);
+      }
       return;
     }
 
