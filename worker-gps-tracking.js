@@ -44,10 +44,13 @@
   const blockedRequests = new Set();
 
   // ── Screen wake lock ────────────────────────────────────────────────────────
-  // Keep the worker's screen on while any job is being tracked, so iOS Auto-Lock
-  // can't dim/lock the phone mid-drive — which would suspend the page and silently
-  // stop GPS. Supported on iOS 16.4+ as an installed PWA (same bar as push).
-  // Released the instant no job is being tracked, so the screen returns to normal.
+  // Keep the worker's screen on ONLY once they hold the key/vehicle — from
+  // "Key received" through to "Keys returned". The earlier en-route phase
+  // ('accepted', after "Start — open map") streams GPS for the customer's ETA but
+  // does NOT pin the screen on. Supported on iOS 16.4+ as an installed PWA. When
+  // the phone locks the page is suspended (tracking pauses) and the lock releases;
+  // it re-acquires the moment the worker returns to the app. Released for good once
+  // no key-in-hand job is being tracked, so the screen returns to normal.
   let wakeLock = null;
 
   async function acquireWakeLock() {
@@ -118,6 +121,17 @@
   // render the panel or trigger auto-resume until the key is actually received.
   function shouldTrack(job) {
     return isEligibleForGps(job) && job.status !== 'accepted';
+  }
+
+  // The screen wake lock is held only when a tracked job is key-in-hand
+  // (key_received onward) — never during the en-route 'accepted' phase, even
+  // though GPS is already streaming then for the customer's ETA.
+  function shouldHoldWakeLock() {
+    for (const requestId of activeWatches.keys()) {
+      const job = findRequest(requestId);
+      if (job && shouldTrack(job)) return true;
+    }
+    return false;
   }
 
   function distanceMeters(a, b) {
@@ -246,7 +260,8 @@
 
     active.watchId = watchId;
     activeWatches.set(requestId, active);
-    acquireWakeLock(); // keep the screen on for the duration of the drive
+    // Screen stays on only from key-in-hand onward, not during the en-route phase.
+    if (shouldTrack(request)) acquireWakeLock();
     refreshGpsPanels();
   }
 
@@ -315,7 +330,7 @@
     // iOS only reliably grants a screen wake lock inside a user gesture, and drops
     // it whenever the app backgrounds. So treat every tap as a chance to (re)arm it
     // while a job is being tracked. acquireWakeLock() is a no-op if already held.
-    if (activeWatches.size > 0) acquireWakeLock();
+    if (shouldHoldWakeLock()) acquireWakeLock();
 
     // Begin sharing location the moment the worker taps "Start" (within the tap
     // gesture, so the permission prompt is allowed) — this powers the customer's
@@ -436,7 +451,7 @@
   // iOS releases the wake lock whenever the app is backgrounded, so re-acquire it
   // when the worker comes back to a screen that still has an active job.
   document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'visible' && activeWatches.size > 0) acquireWakeLock();
+    if (document.visibilityState === 'visible' && shouldHoldWakeLock()) acquireWakeLock();
   });
 
   window.addEventListener('beforeunload', () => {

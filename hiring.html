@@ -6,6 +6,39 @@
     <base href="/">
     <title>Hiring — ShiftFuel Concierge</title>
     <link rel="stylesheet" href="styles.css">
+    <style>
+      /* "Driving & eligibility" section: clear separation from the fields above. */
+      .hiring-page .hiring-form-subheading {
+        margin-top: 22px;
+        padding-top: 20px;
+        border-top: 1px solid rgba(13, 59, 59, 0.12);
+      }
+      /* Background-check consent: a distinct bordered box with a comfortably sized
+         checkbox, so it reads as a deliberate acknowledgement (mobile + desktop). */
+      .hiring-page .applicant-consent {
+        display: flex;
+        flex-direction: row;
+        align-items: flex-start;
+        gap: 12px;
+        margin: 18px 0 4px;
+        padding: 14px 16px;
+        background: var(--sf-sage-light, #eef4f0);
+        border: 1px solid rgba(13, 59, 59, 0.14);
+        border-radius: 12px;
+        font-size: 0.9rem;
+        line-height: 1.45;
+        font-weight: 500;
+        cursor: pointer;
+      }
+      .hiring-page .applicant-consent input[type="checkbox"] {
+        width: 20px;
+        height: 20px;
+        flex: 0 0 auto;
+        margin-top: 1px;
+        accent-color: var(--sf-green, #1f9d57);
+        cursor: pointer;
+      }
+    </style>
   </head>
   <body class="landing-page hiring-page">
     <header class="portal-header unified-portal-header portal-login-header">
@@ -96,6 +129,66 @@
                 <input type="text" name="applicantAvailability" placeholder="Weekdays, weekends, evenings">
               </label>
             </div>
+
+            <div class="section-heading hiring-form-subheading">
+              <h3 style="margin:0; font-size:1.05rem">Driving &amp; eligibility</h3>
+              <p style="margin:4px 0 0; font-size:.88rem; color:var(--sf-muted,#5f6f6b)">You'll be driving customers' vehicles, so a few quick checks:</p>
+            </div>
+            <div class="field-grid">
+              <label>
+                Valid driver's license?
+                <select name="applicantLicense" required>
+                  <option value="" disabled selected>Select…</option>
+                  <option>Yes</option>
+                  <option>No</option>
+                </select>
+              </label>
+              <label>
+                License state
+                <input type="text" name="applicantLicenseState" placeholder="DE" autocapitalize="characters" maxlength="2">
+              </label>
+              <label>
+                Are you 21 or older?
+                <select name="applicantAge21" required>
+                  <option value="" disabled selected>Select…</option>
+                  <option>Yes</option>
+                  <option>No</option>
+                </select>
+              </label>
+              <label>
+                Moving violations in the last 3 years?
+                <select name="applicantViolations">
+                  <option value="" disabled selected>Select…</option>
+                  <option>No</option>
+                  <option>Yes</option>
+                </select>
+              </label>
+              <label>
+                Authorized to work in the U.S.?
+                <select name="applicantWorkAuth" required>
+                  <option value="" disabled selected>Select…</option>
+                  <option>Yes</option>
+                  <option>No</option>
+                </select>
+              </label>
+              <label>
+                Area you can cover
+                <input type="text" name="applicantServiceArea" placeholder="e.g. Wilmington, DE">
+              </label>
+              <label>
+                Reliable transportation to job sites?
+                <select name="applicantTransport">
+                  <option value="" disabled selected>Select…</option>
+                  <option>Yes</option>
+                  <option>No</option>
+                </select>
+              </label>
+            </div>
+            <label class="applicant-consent">
+              <input type="checkbox" name="applicantBgConsent" required>
+              <span>I consent to a background check as part of the hiring process, and I confirm the information above is accurate.</span>
+            </label>
+
             <label>
               Experience or notes
               <textarea name="applicantNotes" rows="3" placeholder="Driving, customer service, car wash, or fuel service experience"></textarea>

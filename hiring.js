@@ -82,6 +82,21 @@ applicantForm?.addEventListener('submit', async (event) => {
       ? await uploadApplicantResume(applicantResume, applicantName)
       : { resumeUrl: null, resumeStoragePath: null };
 
+    // Screening answers are folded into `notes` as a labeled block so they're
+    // saved + visible to admins without needing a new applicants-table column.
+    const licenseState = String(data.get('applicantLicenseState') || '').trim().toUpperCase();
+    const screeningLines = [
+      `Driver's license: ${String(data.get('applicantLicense') || '—').trim()}${licenseState ? ` (${licenseState})` : ''}`,
+      `21 or older: ${String(data.get('applicantAge21') || '—').trim()}`,
+      String(data.get('applicantViolations') || '').trim() ? `Moving violations (last 3 yr): ${String(data.get('applicantViolations')).trim()}` : null,
+      `Work authorized (US): ${String(data.get('applicantWorkAuth') || '—').trim()}`,
+      String(data.get('applicantServiceArea') || '').trim() ? `Service area: ${String(data.get('applicantServiceArea')).trim()}` : null,
+      String(data.get('applicantTransport') || '').trim() ? `Reliable transport: ${String(data.get('applicantTransport')).trim()}` : null,
+      `Background-check consent: ${data.get('applicantBgConsent') ? 'Yes' : 'No'}`,
+    ].filter(Boolean);
+    const freeNotes = String(data.get('applicantNotes') || '').trim();
+    const combinedNotes = [`— Screening —\n${screeningLines.join('\n')}`, freeNotes].filter(Boolean).join('\n\n');
+
     const applicantRow = {
       name: applicantName,
       first_name: firstName,
@@ -89,7 +104,7 @@ applicantForm?.addEventListener('submit', async (event) => {
       email: applicantEmail || null,
       phone: applicantPhone || null,
       availability: String(data.get('applicantAvailability') || '').trim() || null,
-      notes: String(data.get('applicantNotes') || '').trim() || null,
+      notes: combinedNotes || null,
       resume_url: resume.resumeUrl,
       resume_storage_path: resume.resumeStoragePath,
     };

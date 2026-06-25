@@ -1043,22 +1043,6 @@
   margin: 0 0 10px !important;
 }
 .worker-portal-page .photo-wizard-step.is-done .photo-wizard-step-label { margin: 0 !important; }
-.worker-portal-page .photo-wizard-num {
-  display: inline-grid !important;
-  place-items: center !important;
-  width: 22px !important;
-  height: 22px !important;
-  border-radius: 50% !important;
-  margin-right: 8px !important;
-  background: #e3ece8 !important;
-  color: #42554f !important;
-  font-size: 0.72rem !important;
-  font-weight: 800 !important;
-}
-.worker-portal-page .photo-wizard-step.is-done .photo-wizard-num {
-  background: var(--sf-green, #1f7a45) !important;
-  color: #fff !important;
-}
 .worker-portal-page .photo-wizard-step.is-done .file-button-control { display: none !important; }
 .worker-portal-page .photo-wizard-done-tag { display: none !important; }
 .worker-portal-page .photo-wizard-step.is-done .photo-wizard-done-tag {

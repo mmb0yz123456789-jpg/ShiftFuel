@@ -2457,7 +2457,7 @@ function renderWorkerPhotoPanel(request, stage = 'pickup') {
 
   const stepsHtml = steps.map((s, i) => `
     <div class="photo-wizard-step${i === 0 ? ' is-current' : ''}" data-step="${i}" data-step-label="${escapeHtml(s.label)}">
-      <p class="photo-wizard-step-label"><span class="photo-wizard-num">${i + 1}</span>${escapeHtml(s.label)}</p>
+      <p class="photo-wizard-step-label">${escapeHtml(s.label)}</p>
       ${filePicker(s.label, 'photo-file required-photo', `data-photo-type="${s.type}"`)}
       <span class="photo-wizard-done-tag">Photo added &#10003; <button type="button" class="photo-wizard-retake">Retake</button></span>
     </div>`).join('');
