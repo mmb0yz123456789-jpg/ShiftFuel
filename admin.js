@@ -2964,10 +2964,12 @@ async function saveAdminWorkerProfile(button) {
     if (rateInput) rateInput.value = adminCompanyTimeRatePerMin;
     if (status) status.textContent = `Time rate capped at the company rate ($${adminCompanyTimeRatePerMin.toFixed(2)}/min).`;
   }
-  try {
-    await db.rpc('admin_set_employee_time_rate', { p_token: adminToken(), p_employee_id: employeeId, p_rate: Number.isFinite(timeRate) ? timeRate : null });
-  } catch (rateErr) {
+  // db.rpc returns the error in the result (it doesn't throw), so check it and
+  // surface a clear message instead of failing silently.
+  const { error: rateErr } = await db.rpc('admin_set_employee_time_rate', { p_token: adminToken(), p_employee_id: employeeId, p_rate: Number.isFinite(timeRate) ? timeRate : null });
+  if (rateErr) {
     console.warn('Could not save employee time rate:', rateErr);
+    if (status) status.textContent = 'Worker saved — but the time rate did not save. Run the time-based-pay SQL migration in Supabase, then try again.';
   }
 
   // admin_update_employee also syncs employee_availability.work_location when

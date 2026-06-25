@@ -1999,6 +1999,25 @@ font-size: 0.85rem;
   color: var(--sf-green, #1f9d57);
 }
 
+/* Promo control + discount line shown inside the Payment Authorization step. */
+.payment-promo-wrap { margin-top: 2px; }
+.payment-promo-wrap .summary-promo { margin: 0; }
+.review-summary-list .payment-promo-line dt,
+.review-summary-list .payment-promo-line dd {
+  color: var(--sf-green, #1f9d57);
+  font-weight: 800;
+}
+
+/* One promo input per screen: desktop uses the always-visible summary sidebar;
+   mobile (where the sidebar collapses) uses the Payment Authorization step. The
+   discount line + total still show in both places. */
+@media (max-width: 980px) {
+  .summary-promo-wrap { display: none; }
+}
+@media (min-width: 981px) {
+  .payment-promo-wrap { display: none; }
+}
+
 .summary-total-row {
   display: flex;
   align-items: center;
@@ -2174,6 +2193,20 @@ font-size: 0.85rem;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 14px;
 }
+
+/* Up-front card-hold notice under the fuel preference (amber callout). */
+.fuel-buffer-note {
+  margin: 12px 0 0;
+  padding: 12px 14px;
+  background: #fff8e8;
+  border: 1px solid #e7c46a;
+  border-radius: 12px;
+  color: #6b4e16;
+  font-size: 0.9rem;
+  line-height: 1.45;
+}
+.fuel-buffer-note[hidden] { display: none; }
+.fuel-buffer-note strong { color: #5a3f0e; }
 
 /* Book Now: returning-customer saved address/vehicle pickers */
 .booknow-saved-block { margin-bottom: 18px; }

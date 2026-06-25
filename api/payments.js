@@ -105,16 +105,28 @@ function calculateBookingAuthorization(row, opts = {}) {
   const fuelGallons = needsFuel ? BOOKING_FUEL_AUTHORIZATION_GALLONS[row.estimated_fuel_range] || 0 : 0;
   const pricePerGallon = Number(row.price_per_gallon) > 0 ? Number(row.price_per_gallon) : BOOKING_PRICE_PER_GALLON;
   const fuelEstimate = roundMoney(fuelGallons * pricePerGallon);
-  const washPackage = needsWash ? BOOKING_WASH_PACKAGES[row.wash_package] || null : null;
+  // All fees/prices come from the DB settings (so an admin change in the Services
+  // tab reflects here too); fall back to the constants if the read failed. These
+  // MUST match what the client read or the price-match check rejects the booking.
+  const s = opts.settings || {};
+  const num = (v, d) => (v != null && Number.isFinite(Number(v)) ? Number(v) : d);
+  const washBase = needsWash ? (BOOKING_WASH_PACKAGES[row.wash_package] || null) : null;
+  const washPackage = washBase ? { label: washBase.label, price: num(s.washPrices && s.washPrices[row.wash_package], washBase.price) } : null;
   const washAmount = washPackage ? washPackage.price : 0;
-  const fuelBaseFee = needsFuel ? BOOKING_FUEL_SERVICE_FEE : 0;
-  const washBaseFee = needsWash ? BOOKING_CAR_WASH_SERVICE_FEE : 0;
-  const quickFee = row.quick_inspection ? BOOKING_QUICK_CARE_FEE : 0;
+  const fuelBaseFee = needsFuel ? num(s.fuelServiceFee, BOOKING_FUEL_SERVICE_FEE) : 0;
+  const washBaseFee = needsWash ? num(s.washServiceFee, BOOKING_CAR_WASH_SERVICE_FEE) : 0;
+  const quickFee = row.quick_inspection ? num(s.quickInspectionFee, BOOKING_QUICK_CARE_FEE) : 0;
   // "Customer choice" gas-station distance surcharge — server-authoritative,
   // never trusted from the client. Folded into the net so it grosses up like
   // every other line item.
   const stationSurcharge = roundMoney(opts.stationSurcharge || 0);
-  const netTarget = roundMoney(fuelEstimate + washAmount + fuelBaseFee + washBaseFee + quickFee + stationSurcharge);
+  // Service-time cost — same DB rates / gallon map / rounding as the client.
+  const timeRate = num(s.timeRatePerMin, 0);
+  const selectedGallons = needsFuel ? (BOOKING_SELECTED_GALLONS[row.estimated_fuel_range] || 0) : 0;
+  const fuelTimeCost = roundMoney((needsFuel ? (num(s.fuelTimeBaseMin, 3) + num(s.fuelTimePerGalMin, 0.5) * selectedGallons) : 0) * timeRate);
+  const washTimeCost = roundMoney((needsWash ? num(s.washTimeMin, 20) : 0) * timeRate);
+  const timeCost = roundMoney(fuelTimeCost + washTimeCost);
+  const netTarget = roundMoney(fuelEstimate + washAmount + fuelBaseFee + washBaseFee + quickFee + stationSurcharge + timeCost);
 
   if ((needsFuel && !fuelGallons) || (needsWash && !washPackage) || !netTarget) {
     return { valid: false, error: 'Service pricing details are incomplete. Please review the booking.' };
@@ -152,13 +164,56 @@ function calculateBookingAuthorization(row, opts = {}) {
     fuelBaseFee,
     washBaseFee,
     quickFee,
-    fuelFee: roundMoney(fuelBaseFee + fuelRecovery),
-    washFee: roundMoney(washBaseFee + washRecovery),
+    fuelFee: roundMoney(fuelBaseFee + fuelRecovery + fuelTimeCost),
+    washFee: roundMoney(washBaseFee + washRecovery + washTimeCost),
     recovery,
     netTarget,
     grossBeforeRounding,
     estimatedTotal,
+    timeCost,
   };
+}
+
+// All pricing settings from the DB, so the server price matches the client (which
+// reads the same row) and any Services-tab change reflects everywhere. Falls back to
+// the booking constants if the read fails or columns aren't there yet.
+async function getServerPricingSettings(db) {
+  const fallback = {
+    fuelServiceFee: BOOKING_FUEL_SERVICE_FEE,
+    washServiceFee: BOOKING_CAR_WASH_SERVICE_FEE,
+    quickInspectionFee: BOOKING_QUICK_CARE_FEE,
+    washPrices: {
+      'buff-shine': BOOKING_WASH_PACKAGES['buff-shine'].price,
+      'shine-protect': BOOKING_WASH_PACKAGES['shine-protect'].price,
+      shine: BOOKING_WASH_PACKAGES.shine.price,
+      'double-wash': BOOKING_WASH_PACKAGES['double-wash'].price,
+    },
+    timeRatePerMin: 0, fuelTimeBaseMin: 3, fuelTimePerGalMin: 0.5, washTimeMin: 20,
+  };
+  try {
+    const { data } = await db.from('service_pricing_settings')
+      .select('fuel_service_fee,wash_service_fee,quick_inspection_fee,wash_buff_shine_price,wash_shine_protect_price,wash_shine_price,wash_double_wash_price,time_rate_per_min,fuel_time_base_min,fuel_time_per_gallon_min,wash_time_min')
+      .eq('id', 1).maybeSingle();
+    if (!data) return fallback;
+    const n = (v, d) => (v != null && Number.isFinite(Number(v)) ? Number(v) : d);
+    return {
+      fuelServiceFee: n(data.fuel_service_fee, BOOKING_FUEL_SERVICE_FEE),
+      washServiceFee: n(data.wash_service_fee, BOOKING_CAR_WASH_SERVICE_FEE),
+      quickInspectionFee: n(data.quick_inspection_fee, BOOKING_QUICK_CARE_FEE),
+      washPrices: {
+        'buff-shine': n(data.wash_buff_shine_price, fallback.washPrices['buff-shine']),
+        'shine-protect': n(data.wash_shine_protect_price, fallback.washPrices['shine-protect']),
+        shine: n(data.wash_shine_price, fallback.washPrices.shine),
+        'double-wash': n(data.wash_double_wash_price, fallback.washPrices['double-wash']),
+      },
+      timeRatePerMin: n(data.time_rate_per_min, 0),
+      fuelTimeBaseMin: n(data.fuel_time_base_min, 3),
+      fuelTimePerGalMin: n(data.fuel_time_per_gallon_min, 0.5),
+      washTimeMin: n(data.wash_time_min, 20),
+    };
+  } catch (_) {
+    return fallback;
+  }
 }
 
 function receiptTotalsFromNotes(notes) {
@@ -585,6 +640,13 @@ function assignServerPricingFields(row, serverPricing) {
   row.net_target_amount = serverPricing.netTarget;
   row.gross_total_before_rounding = serverPricing.grossBeforeRounding;
   row.rounded_customer_total = serverPricing.estimatedTotal;
+  // Freeze the server-computed time charge into the notes so completion captures it
+  // (worker.js frozenTimeCharge). Strip any client-sent tag and write ours, so the
+  // captured amount can never exceed/undershoot what was authorized here.
+  row.notes = String(row.notes || '').replace(/\s*\[time_charge [\d.]+\]/g, '').trim();
+  if (Number(serverPricing.timeCost) > 0) {
+    row.notes = [row.notes, `[time_charge ${Number(serverPricing.timeCost).toFixed(2)}]`].filter(Boolean).join(' ');
+  }
   row.parking_spot = row.parking_spot || row.parking_location || 'See parking location';
   row.key_handoff_method = row.key_handoff_method || row.key_handoff_details || 'See key handoff details';
 }
@@ -733,15 +795,21 @@ async function handleCreateAuthorizedBooking(body, res) {
   }
 
   const station = await resolveStationSurcharge(body);
-  const serverPricing = calculateBookingAuthorization(row, { stationSurcharge: station.surcharge });
+  const settings = await getServerPricingSettings(getSupabaseAdmin());
+  const serverPricing = calculateBookingAuthorization(row, { stationSurcharge: station.surcharge, settings });
   if (!serverPricing.valid) {
     return res.status(400).json({ error: serverPricing.error });
   }
   const db = getSupabaseAdmin();
   const promoResolve = await resolveBookingPromo(db, body, row, serverPricing);
   if (promoResolve.error) return res.status(409).json({ error: promoResolve.error });
-  if (serverPricing.amount_cents - promoResolve.discountCents !== expectedCents) {
-    console.error('[payments/create_authorized_booking] Server total mismatch:', serverPricing.amount_cents - promoResolve.discountCents, 'vs client', expectedCents, {
+  // The hold may equal the full total (promo applied AFTER authorizing) or the
+  // discounted total (promo applied before) — accept either. The discount is
+  // re-applied authoritatively at final capture, so a higher hold just means the
+  // extra is released when we capture the (lower) discounted final.
+  if (serverPricing.amount_cents !== expectedCents
+      && serverPricing.amount_cents - promoResolve.discountCents !== expectedCents) {
+    console.error('[payments/create_authorized_booking] Server total mismatch:', serverPricing.amount_cents, 'vs client', expectedCents, {
       service_type: row.service_type,
       estimated_fuel_range: row.estimated_fuel_range,
       wash_package: row.wash_package,
@@ -894,13 +962,16 @@ async function handleCreateScheduledBooking(body, res) {
   if (!expectedCents || expectedCents < 50) return res.status(400).json({ error: 'Amount must be at least $0.50' });
 
   const station = await resolveStationSurcharge(body);
-  const serverPricing = calculateBookingAuthorization(row, { stationSurcharge: station.surcharge });
+  const settings = await getServerPricingSettings(getSupabaseAdmin());
+  const serverPricing = calculateBookingAuthorization(row, { stationSurcharge: station.surcharge, settings });
   if (!serverPricing.valid) return res.status(400).json({ error: serverPricing.error });
   const db = getSupabaseAdmin();
   const promoResolve = await resolveBookingPromo(db, body, row, serverPricing);
   if (promoResolve.error) return res.status(409).json({ error: promoResolve.error });
-  if (serverPricing.amount_cents - promoResolve.discountCents !== expectedCents) {
-    console.error('[payments/create_scheduled_booking] Server total mismatch:', serverPricing.amount_cents - promoResolve.discountCents, 'vs client', expectedCents, { station_surcharge: station.surcharge, promo_discount_cents: promoResolve.discountCents });
+  // Accept a hold equal to the full OR the discounted total (see immediate path).
+  if (serverPricing.amount_cents !== expectedCents
+      && serverPricing.amount_cents - promoResolve.discountCents !== expectedCents) {
+    console.error('[payments/create_scheduled_booking] Server total mismatch:', serverPricing.amount_cents, 'vs client', expectedCents, { station_surcharge: station.surcharge, promo_discount_cents: promoResolve.discountCents });
     return res.status(400).json({ error: 'Payment total changed. Please review the booking and try again.' });
   }
   row.gas_station_surcharge = station.surcharge;

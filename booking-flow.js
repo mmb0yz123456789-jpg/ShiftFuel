@@ -105,7 +105,7 @@ const bookingState = {
     extraMiles: 0,
     perMileRate: 0.75,
   },
-  promo: { code: "", discount: 0 },
+  promo: { code: "", discount_type: "", discount_value: 0 },
   submitted: false,
   submitting: false,
   submittedRequestNumber: "",
@@ -403,6 +403,24 @@ const FUEL_AUTHORIZATION_GALLONS = {
   "20-25": 30,
   "25+": 40,
 };
+
+// Up-front, dynamic explanation of the card hold the moment a fuel range is picked.
+// The hold covers a gallon buffer (you might pump a little more than the range), so
+// the authorized amount is higher than expected — make that clear here, not at checkout.
+function updateFuelBufferNote(panel) {
+  const note = panel?.querySelector('[data-fuel-buffer-note]');
+  if (!note) return;
+  const pref = bookingState.values.fuelPreference;
+  const authGal = FUEL_AUTHORIZATION_GALLONS[pref];
+  if (!serviceNeedsFuel() || !pref || !authGal) {
+    note.hidden = true;
+    note.textContent = '';
+    return;
+  }
+  const totals = calculateTotals();
+  note.hidden = false;
+  note.innerHTML = `💳 <strong>Card hold:</strong> we authorize a temporary hold of about <strong>${formatMoney(totals.estimatedTotal)}</strong> — enough for up to <strong>${authGal} gallons</strong> plus the service fee, in case your tank takes a bit more than the range. You're only charged for the fuel actually pumped; the rest is released right after service.`;
+}
 const slotHoldingStatuses = new Set([
   "accepted", "key_received", "vehicle_picked_up", "service_in_progress",
   "fueling_in_progress", "car_wash_in_progress", "partial_service_complete",
@@ -454,11 +472,12 @@ function calculateTotals() {
   // (non-closest) station. The server is authoritative; this mirrors it so the
   // authorized total matches.
   const stationSurcharge = serviceNeedsFuel() ? (Number(bookingState.station.surcharge) || 0) : 0;
-  // Service-time cost, baked invisibly into the fee (uniform per job). 0 until the
-  // admin sets the company time rate, so this is a no-op until then.
-  const serviceTimeMinutes = (serviceNeedsFuel() ? TIME_COMP_RATES.fuelBaseMin + TIME_COMP_RATES.fuelPerGallonMin * selectedFuelGallons : 0)
-    + (serviceNeedsWash() ? TIME_COMP_RATES.washMin : 0);
-  const timeCost = Math.round(serviceTimeMinutes * (TIME_COMP_RATES.timeRatePerMin || 0) * 100) / 100;
+  // Service-time cost, baked into the SERVICE FEES (so the summary still adds up),
+  // split per service. 0 until the admin sets the company time rate.
+  const timeRate = TIME_COMP_RATES.timeRatePerMin || 0;
+  const fuelTimeCost = Math.round((serviceNeedsFuel() ? (TIME_COMP_RATES.fuelBaseMin + TIME_COMP_RATES.fuelPerGallonMin * selectedFuelGallons) : 0) * timeRate * 100) / 100;
+  const washTimeCost = Math.round((serviceNeedsWash() ? TIME_COMP_RATES.washMin : 0) * timeRate * 100) / 100;
+  const timeCost = Math.round((fuelTimeCost + washTimeCost) * 100) / 100;
   const netTarget = fuelEstimate + washAmount + fuelBaseFee + washBaseFee + quickFee + stationSurcharge + timeCost;
   const grossBeforeRounding = netTarget ? (netTarget + 0.30) / (1 - 0.029) : 0;
   const estimatedTotal = netTarget ? Math.ceil(grossBeforeRounding) : 0;
@@ -482,14 +501,22 @@ function calculateTotals() {
     washRecovery = recovery;
   }
 
-  const fuelFee = Math.round((fuelBaseFee + fuelRecovery) * 100) / 100;
-  const washFee = Math.round((washBaseFee + washRecovery) * 100) / 100;
+  const fuelFee = Math.round((fuelBaseFee + fuelRecovery + fuelTimeCost) * 100) / 100;
+  const washFee = Math.round((washBaseFee + washRecovery + washTimeCost) * 100) / 100;
 
   // Promo discount applies to SERVICE FEES only (never the at-cost fuel). The
   // server re-validates + recomputes this at booking; this mirrors it so the
   // authorized total + summary match what they'll be charged.
   const serviceFees = Math.round((fuelFee + washFee + quickFee) * 100) / 100;
-  const promoDiscount = Math.min(Math.max(0, Number(bookingState.promo && bookingState.promo.discount) || 0), serviceFees);
+  // Recompute the discount from the code's type/value against the CURRENT service
+  // fees, so a % code scales (and a $ code caps) as the customer changes service.
+  let promoDiscount = 0;
+  const promo = bookingState.promo;
+  if (promo && promo.code && serviceFees > 0) {
+    const dv = Number(promo.discount_value) || 0;
+    promoDiscount = promo.discount_type === "percent" ? serviceFees * (dv / 100) : dv;
+    promoDiscount = Math.round(Math.min(Math.max(0, promoDiscount), serviceFees) * 100) / 100;
+  }
   const subtotal = estimatedTotal; // pre-discount gross total
   const discountedTotal = Math.max(0, Math.round((estimatedTotal - promoDiscount) * 100) / 100);
 
@@ -934,21 +961,11 @@ function summaryRow({ label, stepName, content, unlockedIndex, steps }) {
 // top. Persisted across re-renders so toggling doesn't reset on every step change.
 let summaryMobileOpen = false;
 
-// A promo change moves the total, so any prior payment authorization is stale —
-// clear it so the customer re-authorizes at the new amount (no-op if they
-// haven't authorized yet).
-function resetPaymentAuthForPromo() {
-  bookingState.payment.authorized = false;
-  bookingState.payment.authorizedAmountCents = 0;
-  bookingState.payment.paymentIntentId = "";
-  bookingState.payment.setupIntentId = "";
-}
-
 // Promo-code control inside the Booking Summary. Shows an input + Apply, or an
 // "applied" chip with Remove once a valid code is in bookingState.promo.
 function renderPromoBlock() {
   const p = bookingState.promo;
-  if (p && p.code && p.discount > 0) {
+  if (p && p.code) {
     return `
       <div class="summary-promo is-applied">
         <span class="summary-promo-chip">&#10003; ${escapeHtml(p.code)} applied</span>
@@ -1010,7 +1027,7 @@ function renderSummarySidebar(steps, flowName, unlockedIndex) {
         <h3>Booking Summary</h3>
         <p class="field-help">Review your details before continuing.</p>
         <div class="summary-rows">${rows}</div>
-        ${totals.subtotal > 0 ? renderPromoBlock(totals) : ""}
+        ${totals.subtotal > 0 ? `<div class="summary-promo-wrap">${renderPromoBlock()}</div>` : ""}
         ${totals.promoDiscount > 0 ? `
         <div class="summary-discount-row">
           <span>Promo ${escapeHtml(bookingState.promo.code)}</span>
@@ -1808,6 +1825,7 @@ function renderServiceDetails(panel) {
         <option value="25+">25+ gallons</option>
       </select></label>
     </div>
+    <p class="fuel-buffer-note" data-fuel-buffer-note hidden></p>
   ` : "";
 
   const washFields = serviceNeedsWash() ? `
@@ -1847,6 +1865,7 @@ function renderServiceDetails(panel) {
   if (WASH_PACKAGES.length === 1 && serviceNeedsWash()) bookingState.values.washPackage = WASH_PACKAGES[0].value;
   renderWashIncludes(panel);
   restorePanelValues(panel);
+  updateFuelBufferNote(panel);
   if (serviceNeedsFuel()) loadStationOptions(panel);
 }
 
@@ -2131,9 +2150,11 @@ function renderPaymentSummary(panel) {
       ${serviceNeedsFuel() ? `<div><dt>Estimated fuel</dt><dd>${escapeHtml(bookingState.values.fuelPreference || "Selected range")} selected. We authorize a ${totals.authorizationFuelGallons} gallon buffer just in case: ${totals.authorizationFuelGallons} gal x ${formatMoney(PRICE_PER_GALLON)}/gal = ${formatMoney(totals.fuelEstimate)}</dd></div>` : ""}
       ${totals.washPackage ? `<div><dt>Car wash package</dt><dd>${escapeHtml(totals.washPackage.label)} - ${formatMoney(totals.washAmount)}</dd></div>` : ""}
       ${totals.stationSurcharge > 0 ? `<div><dt>Preferred station distance</dt><dd>${escapeHtml(bookingState.station.name || "Selected station")} (+${formatMoney(totals.stationSurcharge)})</dd></div>` : ""}
+      ${totals.promoDiscount > 0 ? `<div class="payment-promo-line"><dt>Promo ${escapeHtml(bookingState.promo.code)}</dt><dd>&minus;${formatMoney(totals.promoDiscount)}</dd></div>` : ""}
       <div><dt>Estimated total</dt><dd>${formatMoney(totals.estimatedTotal)}</dd></div>
       ${serviceIsAdvanceBooking() ? `<div><dt>Scheduled authorization</dt><dd>Your card is saved now — no charge today. We authorize ${formatMoney(totals.estimatedTotal)} about 2 days before your service date, and you're only charged once service is complete.</dd></div>` : ""}
     </dl>
+    ${totals.subtotal > 0 ? `<div class="payment-promo-wrap">${renderPromoBlock()}</div>` : ""}
   `;
   const status = panel.querySelector("[data-payment-status]");
   if (status) {
@@ -2915,6 +2936,9 @@ function renderFlow(root) {
     if (event.target.matches('[name="washPackage"]')) {
       renderWashIncludes(panel);
     }
+    if (event.target.matches('[name="fuelPreference"], [name="fuelType"]')) {
+      updateFuelBufferNote(panel);
+    }
     if (event.target.matches('[name="gasStation"]')) {
       const picked = bookingState.station.options.find((s) => s.id === event.target.value);
       if (picked) {
@@ -3012,9 +3036,9 @@ function renderFlow(root) {
     // Promo code (lives in the always-visible summary sidebar, not a step panel).
     const promoApply = event.target.closest("[data-promo-apply]");
     if (promoApply) {
-      const sidebar = promoApply.closest(".booking-summary-sidebar");
-      const input = sidebar?.querySelector("[data-promo-input]");
-      const msg = sidebar?.querySelector("[data-promo-msg]");
+      const wrap = promoApply.closest(".summary-promo");
+      const input = wrap?.querySelector("[data-promo-input]");
+      const msg = wrap?.querySelector("[data-promo-msg]");
       const code = String(input?.value || "").trim();
       const v = bookingState.values;
       if (msg) msg.textContent = "";
@@ -3032,8 +3056,7 @@ function renderFlow(root) {
         });
         const data = await r.json().catch(() => ({}));
         if (data && data.valid) {
-          bookingState.promo = { code: data.code, discount: Number(data.discount) || 0 };
-          resetPaymentAuthForPromo();
+          bookingState.promo = { code: data.code, discount_type: data.discount_type, discount_value: Number(data.discount_value) || 0 };
           render();
         } else {
           if (msg) msg.textContent = (data && data.reason) || "That code isn't valid.";
@@ -3046,8 +3069,7 @@ function renderFlow(root) {
       return;
     }
     if (event.target.closest("[data-promo-remove]")) {
-      bookingState.promo = { code: "", discount: 0 };
-      resetPaymentAuthForPromo();
+      bookingState.promo = { code: "", discount_type: "", discount_value: 0 };
       render();
       return;
     }

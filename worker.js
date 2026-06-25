@@ -791,9 +791,12 @@ function transactionPricingSummary(request, receiptTotals = { fuel: 0, wash: 0 }
   // A service is chargeable if it was actually performed (has a receipt) or
   // admin/worker explicitly chose to charge the fee anyway for an
   // unable_to_complete service. Fuel/wash cost is never charged without a receipt.
-  const fuelBase = serviceNeedsFuel(request) && (Number(receiptTotals.fuel || 0) > 0 || serviceUnableFeeCharged(request, 'fuel')) ? BASE_FUEL_SERVICE_FEE : 0;
-  const washBase = serviceNeedsWash(request) && (Number(receiptTotals.wash || 0) > 0 || serviceUnableFeeCharged(request, 'wash')) ? BASE_WASH_SERVICE_FEE : 0;
-  const inspection = request.quick_inspection ? BASE_QUICK_INSPECTION_FEE : 0;
+  // Use the fee FROZEN on the booking (so a later Settings change can't re-price an
+  // existing job); fall back to the current default for older rows.
+  const frozenFee = (value, dflt) => { const n = Number(value); return Number.isFinite(n) && n > 0 ? n : dflt; };
+  const fuelBase = serviceNeedsFuel(request) && (Number(receiptTotals.fuel || 0) > 0 || serviceUnableFeeCharged(request, 'fuel')) ? frozenFee(request.base_fuel_service_fee, BASE_FUEL_SERVICE_FEE) : 0;
+  const washBase = serviceNeedsWash(request) && (Number(receiptTotals.wash || 0) > 0 || serviceUnableFeeCharged(request, 'wash')) ? frozenFee(request.base_car_wash_service_fee, BASE_WASH_SERVICE_FEE) : 0;
+  const inspection = request.quick_inspection ? frozenFee(request.base_inspection_fee, BASE_QUICK_INSPECTION_FEE) : 0;
   // Carry the locked time charge only when a service was actually performed.
   const timeCharge = (fuelBase || washBase) ? frozenTimeCharge(request) : 0;
   const netTarget = roundMoneyValue(Number(receiptTotals.fuel || 0) + Number(receiptTotals.wash || 0) + fuelBase + washBase + inspection + timeCharge);
@@ -819,9 +822,13 @@ function transactionPricingSummary(request, receiptTotals = { fuel: 0, wash: 0 }
     washRecovery = recovery;
   }
 
+  // Fold the locked time charge into the displayed service fee (fuel side, or wash
+  // when there's no fuel) so the fee lines still sum to the total.
+  const fuelTime = fuelBase ? timeCharge : 0;
+  const washTime = (!fuelBase && washBase) ? timeCharge : 0;
   return {
-    fuel: roundMoneyValue(fuelBase + fuelRecovery),
-    wash: roundMoneyValue(washBase + washRecovery),
+    fuel: roundMoneyValue(fuelBase + fuelRecovery + fuelTime),
+    wash: roundMoneyValue(washBase + washRecovery + washTime),
     fuelBase,
     washBase,
     inspection,
