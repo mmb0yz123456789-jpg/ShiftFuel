@@ -362,46 +362,11 @@
           </div>
         </div>
         <div class="settings-grid">
-          <form class="settings-card" id="admin-password-form">
-            <h3>Change Admin Password</h3>
-            <label>Current password
-              <input type="password" id="admin-current-password" autocomplete="current-password" required>
-            </label>
-            <label>New password
-              <input type="password" id="admin-new-password" autocomplete="new-password" minlength="8" required>
-            </label>
-            <label>Confirm new password
-              <input type="password" id="admin-confirm-password" autocomplete="new-password" minlength="8" required>
-            </label>
-            <button class="button primary" type="submit">Update password</button>
-            <p class="form-status" id="admin-password-status" role="status"></p>
-          </form>
-          <form class="settings-card" id="admin-username-form">
-            <h3>Change Admin Username</h3>
-            <label>Current password
-              <input type="password" id="admin-username-current-password" autocomplete="current-password" required>
-            </label>
-            <label>New username
-              <input type="text" id="admin-new-username" autocomplete="username" autocapitalize="none" spellcheck="false" required>
-            </label>
-            <button class="button primary" type="submit">Update username</button>
-            <p class="form-status" id="admin-username-status" role="status"></p>
-          </form>
           <section class="settings-card">
             <h3>Service Area</h3>
             <p class="field-help">Draw or adjust the polygon that defines your delivery coverage. Changes go live within ~1 minute.</p>
             <p class="sa-summary" id="service-area-summary">Loading…</p>
             <button class="button secondary" type="button" id="open-service-area-editor">Open map editor</button>
-          </section>
-          <section class="settings-card">
-            <h3>Account</h3>
-            <button class="button secondary" id="admin-settings-logout-btn" type="button">Log out</button>
-            <nav class="settings-legal" aria-label="Legal links">
-              <span class="settings-legal-label">Legal</span>
-              <a href="privacy.html">Privacy Policy</a>
-              <a href="terms.html">Terms of Service</a>
-              <a href="liability-waiver.html">Liability Waiver</a>
-            </nav>
           </section>
         </div>
       </section>
@@ -743,12 +708,7 @@
           <form id="account-username-form" autocomplete="off">
             <div class="form-group">
               <label for="account-current-pw-name">Current password</label>
-              <div class="password-field">
-                <input id="account-current-pw-name" type="password" class="form-input" autocomplete="current-password" required>
-                <button type="button" class="password-toggle" aria-label="Show/hide password">
-                  <svg class="eye-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
-                </button>
-              </div>
+              <input id="account-current-pw-name" type="password" class="form-input" autocomplete="current-password" required>
             </div>
             <div class="form-group">
               <label for="account-new-name">New name</label>
@@ -764,21 +724,11 @@
           <form id="account-password-form" autocomplete="off">
             <div class="form-group">
               <label for="account-current-pw">Current password</label>
-              <div class="password-field">
-                <input id="account-current-pw" type="password" class="form-input" autocomplete="current-password" required>
-                <button type="button" class="password-toggle" aria-label="Show/hide password">
-                  <svg class="eye-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
-                </button>
-              </div>
+              <input id="account-current-pw" type="password" class="form-input" autocomplete="current-password" required>
             </div>
             <div class="form-group">
               <label for="account-new-pw">New password</label>
-              <div class="password-field">
-                <input id="account-new-pw" type="password" class="form-input" autocomplete="new-password" required>
-                <button type="button" class="password-toggle" aria-label="Show/hide password">
-                  <svg class="eye-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
-                </button>
-              </div>
+              <input id="account-new-pw" type="password" class="form-input" autocomplete="new-password" required>
             </div>
             <p id="account-password-status" class="form-status" style="min-height:1.2em"></p>
             <button type="submit" class="button primary" style="width:100%">Update password</button>
