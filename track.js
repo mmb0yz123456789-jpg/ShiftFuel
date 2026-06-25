@@ -732,22 +732,30 @@ async function loadVerifiedWorkers(requests) {
   }
 }
 
-// The worker is driving to the vehicle: accepted, live GPS on, and we have both
-// the worker's last location and the service-address destination.
+// A real coordinate (not null/empty, which Number() turns into a "finite" 0).
+function isRealCoord(v) {
+  const n = Number(v);
+  return Number.isFinite(n) && n !== 0;
+}
+
+// The worker is driving to the vehicle: accepted, live GPS on, and we have the
+// worker's real location. The destination is resolved in updateEtaBanners (from
+// the stored address coords, or by geocoding the address if they're missing).
 function workerEnRouteToVehicle(request) {
   return request.status === 'accepted'
     && request.live_tracking_enabled
-    && Number.isFinite(Number(request.last_latitude))
-    && Number.isFinite(Number(request.last_longitude))
-    && Number.isFinite(Number(request.address_lat))
-    && Number.isFinite(Number(request.address_lon));
+    && isRealCoord(request.last_latitude)
+    && isRealCoord(request.last_longitude);
 }
 
 function etaBannerHtml(request) {
   if (!workerEnRouteToVehicle(request)) return '';
+  const addr = [request.address_street, request.address_city, request.address_state, request.address_zip]
+    .filter(Boolean).join(', ');
   return `<div class="worker-eta-banner" data-eta
     data-olat="${request.last_latitude}" data-olon="${request.last_longitude}"
-    data-dlat="${request.address_lat}" data-dlon="${request.address_lon}">
+    data-dlat="${request.address_lat || ''}" data-dlon="${request.address_lon || ''}"
+    data-addr="${escapeHtml(addr)}">
     <span class="worker-eta-text">Locating your specialist…</span></div>`;
 }
 
@@ -757,12 +765,28 @@ async function updateEtaBanners() {
   for (const el of els) {
     const text = el.querySelector('.worker-eta-text');
     try {
+      let dlat = el.dataset.dlat;
+      let dlon = el.dataset.dlon;
+      // No stored destination coords (booking predates address coords) — geocode
+      // the service address so the ETA still works.
+      if (!(isRealCoord(dlat) && isRealCoord(dlon)) && el.dataset.addr) {
+        const gres = await fetch('/api/address', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'geocode', street: el.dataset.addr }),
+        });
+        const gdata = await gres.json().catch(() => ({}));
+        if (gdata.ok) { dlat = gdata.lat; dlon = gdata.lon; }
+      }
+      if (!(isRealCoord(dlat) && isRealCoord(dlon))) {
+        if (text) text.textContent = 'Your specialist is on the way.';
+        continue;
+      }
       const res = await fetch('/api/address', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           action: 'route_eta',
           origin_lat: el.dataset.olat, origin_lon: el.dataset.olon,
-          dest_lat: el.dataset.dlat, dest_lon: el.dataset.dlon,
+          dest_lat: dlat, dest_lon: dlon,
         }),
       });
       const data = await res.json().catch(() => ({}));
