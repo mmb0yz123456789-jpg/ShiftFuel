@@ -26,6 +26,48 @@
       .sa-controls input[type=number] { width: 80px; }
       #sa-status { font-size: .85rem; min-height: 1.2em; margin-top: .5rem; }
       .sa-summary { font-size: .8rem; color: var(--text-2,#888); margin-top: .25rem; }
+
+      /* Mobile header: full-width bar flush to top, logo left, avatar right. */
+      @media (max-width: 760px) {
+        html, body.admin-portal-page {
+          overflow-x: hidden;
+          max-width: 100%;
+        }
+        body.admin-portal-page .portal-header.admin-top-nav {
+          position: sticky;
+          top: 0;
+          z-index: 200;
+          width: 100% !important;
+          max-width: 100% !important;
+          margin: 0 !important;
+          border-radius: 0 !important;
+          padding: 10px 14px !important;
+          box-sizing: border-box;
+          display: flex;
+          flex-direction: row;
+          align-items: center;
+          justify-content: space-between;
+          gap: 10px;
+        }
+        body.admin-portal-page .portal-header.admin-top-nav .logo {
+          flex: 1 1 auto;
+          min-width: 0;
+        }
+        body.admin-portal-page .portal-header.admin-top-nav .admin-page-tabs {
+          display: none !important;
+        }
+        body.admin-portal-page .portal-header.admin-top-nav .portal-header-actions {
+          flex: 0 0 auto;
+          margin-left: auto;
+        }
+        /* Prevent any child from causing horizontal scroll */
+        body.admin-portal-page .admin-main,
+        body.admin-portal-page .admin-page-row,
+        body.admin-portal-page .admin-page-content {
+          max-width: 100vw;
+          overflow-x: hidden;
+        }
+      }
     </style>
   </head>
 

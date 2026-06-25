@@ -5666,6 +5666,10 @@ function switchPageTab(page) {
     workerPresenceFilter = null;
     renderWorkerProfiles();
   }
+  if (page === 'settings') {
+    // Auto-open the service area map when landing on Settings.
+    setTimeout(() => document.getElementById('open-service-area-editor')?.click(), 80);
+  }
   renderRequests();
 }
 
