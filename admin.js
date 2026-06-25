@@ -6713,6 +6713,7 @@ const SERVICE_PRICING_FIELDS = [
   { id: 'sp-fuel-fee', label: 'Fuel concierge service fee ($)', step: '0.01' },
   { id: 'sp-wash-fee', label: 'Car wash service fee ($)', step: '0.01' },
   { id: 'sp-inspection-fee', label: 'Quick inspection fee ($)', step: '0.01' },
+  { id: 'sp-per-mile-rate', label: 'Gas station distance surcharge ($/extra round-trip mile)', step: '0.01' },
   { id: 'sp-wash-buff-shine', label: 'Buff & Shine package ($)', step: '0.01' },
   { id: 'sp-wash-shine-protect', label: 'Shine & Protect package ($)', step: '0.01' },
   { id: 'sp-wash-shine', label: 'Shine package ($)', step: '0.01' },
@@ -6749,8 +6750,10 @@ function renderServicesSettingsList() {
       <label class="pricing-fee-row">Car wash service fee ($)<input id="sp-wash-fee" type="number" step="0.01" min="0"></label>
     </div>
 
-    <div class="pricing-group pricing-group--single">
-      <label>Quick inspection fee ($)<input id="sp-inspection-fee" type="number" step="0.01" min="0"></label>
+    <div class="pricing-group">
+      <label class="pricing-fee-row">Quick inspection fee ($)<input id="sp-inspection-fee" type="number" step="0.01" min="0"></label>
+      <label class="pricing-fee-row">Gas station distance surcharge ($/extra round-trip mile)<input id="sp-per-mile-rate" type="number" step="0.01" min="0"></label>
+      <p class="pricing-effective-hint">Applies to new and in-progress bookings immediately. Already-booked tickets keep their original surcharge.</p>
     </div>
 
     <div class="pricing-effective-date-row">
@@ -6809,6 +6812,7 @@ function showPricingPendingBanner(fuelData, pricingData) {
           p_wash_shine_price: Number(document.getElementById('sp-wash-shine')?.value || 0),
           p_wash_double_wash_price: Number(document.getElementById('sp-wash-double')?.value || 0),
           p_effective_at: null,
+          p_per_mile_rate: Number(document.getElementById('sp-per-mile-rate')?.value || 0.75),
         }),
       ]);
       banner.hidden = true;
@@ -6865,6 +6869,7 @@ async function loadServicePricing() {
     if (v('sp-fuel-fee')) v('sp-fuel-fee').value = Number(data.fuel_service_fee).toFixed(2);
     if (v('sp-wash-fee')) v('sp-wash-fee').value = Number(data.wash_service_fee).toFixed(2);
     if (v('sp-inspection-fee')) v('sp-inspection-fee').value = Number(data.quick_inspection_fee).toFixed(2);
+    if (v('sp-per-mile-rate')) v('sp-per-mile-rate').value = Number(data.per_mile_rate ?? 0.75).toFixed(2);
     if (v('sp-wash-buff-shine')) v('sp-wash-buff-shine').value = Number(data.wash_buff_shine_price).toFixed(2);
     if (v('sp-wash-shine-protect')) v('sp-wash-shine-protect').value = Number(data.wash_shine_protect_price).toFixed(2);
     if (v('sp-wash-shine')) v('sp-wash-shine').value = Number(data.wash_shine_price).toFixed(2);
@@ -7010,6 +7015,7 @@ document.querySelector('#services-settings-form')?.addEventListener('submit', as
         p_wash_shine_price: val('sp-wash-shine'),
         p_wash_double_wash_price: val('sp-wash-double'),
         p_effective_at: effectiveAt,
+        p_per_mile_rate: val('sp-per-mile-rate'),
       }),
     ]);
 

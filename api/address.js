@@ -339,8 +339,8 @@ async function handleNearbyGasStations(body, res) {
     return res.status(400).json({ ok: false, message: 'Missing service address coordinates.' });
   }
   try {
-    const { stations, closest } = await computeStationOptions(lat, lon);
-    return res.status(200).json({ ok: true, stations, closest });
+    const { stations, closest, per_mile_rate } = await computeStationOptions(lat, lon);
+    return res.status(200).json({ ok: true, stations, closest, per_mile_rate });
   } catch (err) {
     console.error('[address/nearby_gas_stations] Error:', err.message);
     return res.status(200).json({ ok: false, message: 'Could not load nearby stations.', stations: [] });

@@ -16,9 +16,32 @@
  * customer sees is the surcharge they're charged.
  */
 
-const PER_MILE_RATE = 0.75;       // dollars per extra round-trip mile
+const { getSupabaseAdmin } = require('./_auth');
+
+const PER_MILE_RATE = 0.75;       // default $/extra round-trip mile (admin-editable)
 const STATION_SEARCH_LIMIT = 10;  // how many nearby stations to consider
 const METERS_PER_MILE = 1609.34;
+
+// The per-mile rate is admin-editable (service_pricing_settings.per_mile_rate).
+// Cache it briefly so we don't hit the DB on every distance calc.
+let rateCache = { at: 0, rate: undefined };
+const RATE_TTL_MS = 60 * 1000;
+
+async function getPerMileRate() {
+  const now = Date.now();
+  if (rateCache.rate !== undefined && now - rateCache.at < RATE_TTL_MS) return rateCache.rate;
+  let rate = PER_MILE_RATE;
+  try {
+    const db = getSupabaseAdmin();
+    const { data, error } = await db.rpc('public_get_service_pricing');
+    const v = Number(data?.per_mile_rate);
+    if (!error && Number.isFinite(v) && v >= 0) rate = v;
+  } catch (e) {
+    // DB unavailable / column missing — fall back to the default.
+  }
+  rateCache = { at: now, rate };
+  return rate;
+}
 
 const MAPBOX_TOKEN =
   process.env.MAPBOX_TOKEN ||
@@ -84,16 +107,30 @@ function preferStation(a, b) {
   return a.one_way_miles <= b.one_way_miles ? a : b;
 }
 
-// Collapse duplicate listings that share an address. Stations with no address
-// fall back to their id so distinct places aren't merged.
+// Collapse duplicate listings. Two passes catch the two kinds of duplicate
+// Mapbox returns: (1) different map entries at the same street address, and
+// (2) the same-named place at near-identical coordinates but with the address
+// formatted differently ("900 Center Blvd" vs "900 Center Boulevard South").
 function dedupeStations(list) {
-  const groups = new Map();
-  for (const s of list) {
-    const key = normalizeAddressKey(s.address) || `id:${s.id}`;
-    const existing = groups.get(key);
-    groups.set(key, existing ? preferStation(existing, s) : s);
-  }
-  return [...groups.values()];
+  const mergeBy = (items, keyOf) => {
+    const groups = new Map();
+    for (const s of items) {
+      const key = keyOf(s);
+      const existing = groups.get(key);
+      groups.set(key, existing ? preferStation(existing, s) : s);
+    }
+    return [...groups.values()];
+  };
+  // Pass 1: same street address (handles different brands at one address too).
+  const byAddress = mergeBy(list, (s) => normalizeAddressKey(s.address) || `id:${s.id}`);
+  // Pass 2: same name within ~150m (coords rounded to ~3 decimal places).
+  return mergeBy(byAddress, (s) => {
+    const lat = Number(s.lat), lon = Number(s.lon);
+    if (Number.isFinite(lat) && Number.isFinite(lon)) {
+      return `${normalizeName(s.name)}@${lat.toFixed(3)},${lon.toFixed(3)}`;
+    }
+    return `id:${s.id}`;
+  });
 }
 
 // Find nearby gas stations around a point via Mapbox Category Search.
@@ -157,12 +194,12 @@ async function drivingMilesFromOrigin(originLat, originLon, dests) {
 
 // Surcharge for choosing a station `chosenMiles` (one-way) away when the closest
 // station is `closestMiles` (one-way) away. Charges the extra round trip.
-function surchargeFromMiles(chosenMiles, closestMiles) {
+function surchargeFromMiles(chosenMiles, closestMiles, rate = PER_MILE_RATE) {
   const extraOneWay = Math.max(0, chosenMiles - closestMiles);
   const extraRoundTrip = roundMoney(extraOneWay * 2);
   return {
     extra_round_trip_miles: extraRoundTrip,
-    surcharge: roundMoney(extraRoundTrip * PER_MILE_RATE),
+    surcharge: roundMoney(extraRoundTrip * rate),
   };
 }
 
@@ -181,9 +218,10 @@ async function computeStationOptions(lat, lon) {
 
   if (!withMiles.length) return { stations: [], closest: null };
   const closestMiles = withMiles[0].one_way_miles;
+  const rate = await getPerMileRate();
 
   const options = withMiles.map((s) => {
-    const { extra_round_trip_miles, surcharge } = surchargeFromMiles(s.one_way_miles, closestMiles);
+    const { extra_round_trip_miles, surcharge } = surchargeFromMiles(s.one_way_miles, closestMiles, rate);
     return {
       id: s.id,
       name: s.name,
@@ -196,7 +234,7 @@ async function computeStationOptions(lat, lon) {
       is_closest: s.id === withMiles[0].id,
     };
   });
-  return { stations: options, closest: options[0] };
+  return { stations: options, closest: options[0], per_mile_rate: rate };
 }
 
 // Free-text search for a specific station the customer has in mind (Mapbox
@@ -260,13 +298,14 @@ async function computeTypedStationOptions(lat, lon, query) {
   const areaMiles = miles.slice(0, areaStations.length).filter((m) => Number.isFinite(m));
   const matchMiles = miles.slice(areaStations.length);
   const baseline = areaMiles.length ? Math.min(...areaMiles) : null;
+  const rate = await getPerMileRate();
 
   const options = deduped
     .map((s, i) => {
       const oneWay = matchMiles[i];
       if (!Number.isFinite(oneWay)) return null;
       const closestMiles = baseline == null ? oneWay : baseline;
-      const { extra_round_trip_miles, surcharge } = surchargeFromMiles(oneWay, closestMiles);
+      const { extra_round_trip_miles, surcharge } = surchargeFromMiles(oneWay, closestMiles, rate);
       return {
         id: s.id,
         name: s.name,
@@ -280,7 +319,8 @@ async function computeTypedStationOptions(lat, lon, query) {
       };
     })
     .filter(Boolean)
-    .sort((a, b) => a.surcharge - b.surcharge);
+    .sort((a, b) => a.surcharge - b.surcharge)
+    .slice(0, 4); // keep the few nearest matches; drop far-flung same-name POIs
 
   return { stations: options };
 }
@@ -309,12 +349,14 @@ async function computeSurchargeForChosen({ serviceLat, serviceLon, chosenLat, ch
 
   // If we somehow found no other stations, there's no cheaper baseline → no charge.
   const closestMiles = stationMiles.length ? Math.min(...stationMiles) : chosenMiles;
-  const { extra_round_trip_miles, surcharge } = surchargeFromMiles(chosenMiles, closestMiles);
+  const rate = await getPerMileRate();
+  const { extra_round_trip_miles, surcharge } = surchargeFromMiles(chosenMiles, closestMiles, rate);
   return { surcharge, extra_round_trip_miles, chosen_one_way_miles: roundMoney(chosenMiles), reason: 'ok' };
 }
 
 module.exports = {
   PER_MILE_RATE,
+  getPerMileRate,
   findNearbyStations,
   drivingMilesFromOrigin,
   surchargeFromMiles,

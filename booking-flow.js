@@ -103,6 +103,7 @@ const bookingState = {
     lon: "",
     surcharge: 0,
     extraMiles: 0,
+    perMileRate: 0.75,
   },
   submitted: false,
   submitting: false,
@@ -1621,7 +1622,7 @@ function renderServiceDetails(panel) {
     <div class="station-picker" data-station-picker>
       <div class="station-picker-head">
         <strong>Preferred gas station</strong>
-        <p class="field-help">We fuel up at the closest station by default — no extra charge. Prefer a specific station? Every extra mile to and from it adds ${formatMoney(STATION_PER_MILE_RATE)}.</p>
+        <p class="field-help">We fuel up at the closest station by default — no extra charge. Prefer a specific station? Every extra mile to and from it adds <span data-station-rate>${formatMoney(bookingState.station.perMileRate || STATION_PER_MILE_RATE)}</span>.</p>
       </div>
       <div data-station-list><p class="field-help">Verify your service address to see nearby stations.</p></div>
       <div class="station-search">
@@ -1681,6 +1682,11 @@ async function loadStationOptions(panel) {
     }
     bookingState.station.options = data.stations;
     bookingState.station.fetchedFor = key;
+    if (Number.isFinite(Number(data.per_mile_rate))) {
+      bookingState.station.perMileRate = Number(data.per_mile_rate);
+      const rateEl = panel.querySelector("[data-station-rate]");
+      if (rateEl) rateEl.textContent = formatMoney(bookingState.station.perMileRate);
+    }
     const chosen = bookingState.station.selectedId;
     if (!chosen || !data.stations.some((s) => s.id === chosen)) {
       applyStationSelection(data.stations[0]);
@@ -1717,16 +1723,16 @@ async function searchStations(panel) {
     if (!data.ok || !Array.isArray(data.stations) || !data.stations.length) {
       setStatus("No matching stations found near your address."); return;
     }
-    const existing = new Set(bookingState.station.options.map((s) => s.id));
-    const added = data.stations.filter((s) => !existing.has(s.id));
-    bookingState.station.options = bookingState.station.options
-      .concat(added)
-      .sort((a, b) => a.surcharge - b.surcharge);
+    const matchIds = new Set(data.stations.map((s) => s.id));
+    // Put the searched stations on top, then the original nearby list (minus any
+    // that were also in the search results, so nothing repeats).
+    const rest = bookingState.station.options.filter((s) => !matchIds.has(s.id));
+    bookingState.station.options = [...data.stations, ...rest];
     applyStationSelection(data.stations[0]);
     renderStationList(panel);
     refreshTotalsUI(panel);
     invalidatePaymentAuthorization();
-    setStatus(added.length ? `Added ${added.length} result${added.length > 1 ? "s" : ""} — selected your pick.` : "That station is already in the list — selected it.");
+    setStatus(`Showing ${data.stations.length} match${data.stations.length > 1 ? "es" : ""} on top — selected your pick.`);
   } catch (err) {
     setStatus("Search failed. Please try again.");
   }
