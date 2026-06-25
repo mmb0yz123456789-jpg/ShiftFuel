@@ -2138,7 +2138,8 @@ font-size: 0.85rem;
   font-weight: 700; color: var(--brand-dark, #1a3a2a); cursor: pointer;
 }
 .payroll-range-btn.active { background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,.12); }
-.payroll-summary-grid { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 14px; margin: 16px 0; }
+.payroll-summary-grid { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: 14px; margin: 16px 0; }
+@media (max-width: 900px) { .payroll-summary-grid { grid-template-columns: repeat(2, minmax(0,1fr)); } }
 .payroll-summary-card {
   display: flex; flex-direction: column; gap: 6px; padding: 16px 18px;
   border: 1px solid #e2e9e5; border-radius: 12px; background: #fff;

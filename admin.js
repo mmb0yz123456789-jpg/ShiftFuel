@@ -5715,17 +5715,24 @@ function renderPayroll() {
   const serviceFeeRevenue = (allRequests || [])
     .filter((r) => r.payment_status === 'captured' && inRange(r))
     .reduce((s, r) => s + Number(r.displayed_fuel_service_fee || 0) + Number(r.displayed_car_wash_service_fee || 0) + Number(r.displayed_inspection_fee || 0), 0);
+  // Cancellation fees the company actually collected (e.g. cancel-after-keys).
+  // Those jobs aren't "captured", so without this their income would be missing
+  // while the worker's cut is still subtracted below — understating company net.
+  const cancellationRevenue = (allRequests || [])
+    .filter((r) => r.payment_status === 'cancellation_fee_paid' && inRange(r))
+    .reduce((s, r) => s + Number(r.cancellation_fee ?? r.cancellation_fee_amount ?? 0), 0);
   const workerPayouts = rows.reduce((s, e) => s + e.total, 0);
-  const companyNet = roundMoneyValue(serviceFeeRevenue - workerPayouts);
+  const companyNet = roundMoneyValue(serviceFeeRevenue + cancellationRevenue - workerPayouts);
   const rangeLabel = dashboardRangeLabel(payrollRange);
 
   container.innerHTML = `
     <div class="payroll-summary-grid">
       <div class="payroll-summary-card"><span class="payroll-summary-label">Service fee revenue</span><span class="payroll-summary-value">${money(roundMoneyValue(serviceFeeRevenue))}</span></div>
+      <div class="payroll-summary-card"><span class="payroll-summary-label">Cancellation fees</span><span class="payroll-summary-value">${money(roundMoneyValue(cancellationRevenue))}</span></div>
       <div class="payroll-summary-card"><span class="payroll-summary-label">Worker payouts</span><span class="payroll-summary-value">− ${money(roundMoneyValue(workerPayouts))}</span></div>
       <div class="payroll-summary-card payroll-summary-card--net"><span class="payroll-summary-label">Company net · ${escapeHtml(rangeLabel)}</span><span class="payroll-summary-value">${money(companyNet)}</span></div>
     </div>
-    <p class="field-help">Company net = service fees − worker payouts. Shown before Stripe processing fees; excludes fuel/wash cost (pass-through to the customer) and the per-mile surcharge margin.</p>
+    <p class="field-help">Company net = service fees + cancellation fees − worker payouts. Shown before Stripe processing fees; excludes fuel/wash cost (pass-through to the customer) and the per-mile surcharge margin.</p>
     ${rows.length ? `
       <table class="payroll-table">
         <thead><tr><th>Worker</th><th>Jobs</th><th>Station mileage</th><th>Earnings</th></tr></thead>
