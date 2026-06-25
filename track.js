@@ -2646,6 +2646,10 @@ function renderGpsTracking(request) {
   const vehicleReturned = isStepDone('vehicle_returned', request) || isFinalRequestComplete(request);
 
   if (!keysReceived) {
+    // Worker is driving to the vehicle (tapped Start, GPS on) — show a live ETA.
+    if (workerEnRouteToVehicle(request)) {
+      return etaBannerHtml(request);
+    }
     return `<div class="tk-gps-state tk-gps-off"><span class="tk-gps-dot" aria-hidden="true"></span>GPS is not currently on — keys not received</div>`;
   }
   if (vehicleReturned) {
