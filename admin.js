@@ -812,6 +812,49 @@ function roundMoneyValue(value) {
   return Math.round((Number(value) || 0) * 100) / 100;
 }
 
+// ── Worker payout (must mirror workerNetPayout in worker.js) ─────────────────
+const WORKER_SERVICE_FEE_SHARE = 0.5;   // 50% of service fees, net of card processing
+const WORKER_MILEAGE_RATE = 0.725;      // IRS rate for chosen-station detours
+
+// Did the customer cancel after the worker already had the keys? Those workers
+// are still owed half the service fee (no mileage — they never drove).
+function isCanceledAfterKeys(request) {
+  const canceled = !!request.canceled_at || /cancel/i.test(String(request.status || ''));
+  return canceled && !!request.key_received_at;
+}
+
+function workerMileagePay(request) {
+  const miles = Number(request.gas_station_extra_miles) || 0;
+  return miles > 0 ? roundMoneyValue(miles * WORKER_MILEAGE_RATE) : 0;
+}
+
+// What a worker earned on a single request. Completed/captured jobs pay 50% of
+// service fees (net of Stripe) plus station mileage; a customer-cancel-after-keys
+// pays 50% of the base service fee (net of Stripe), no mileage; anything else
+// hasn't earned yet.
+function workerPayoutForRequest(request) {
+  let gross = 0;
+  let mileage = 0;
+  if (request.status === 'complete' || request.payment_status === 'captured') {
+    const receipts = receiptTotalsFromNotes(request);
+    const hasReceipts = Number(receipts.fuel || 0) > 0 || Number(receipts.wash || 0) > 0;
+    const fees = hasReceipts ? feeSummary(request, receipts) : feeSummary(request);
+    gross = Number(fees.fuel || 0) + Number(fees.wash || 0) + Number(fees.inspection || 0);
+    mileage = workerMileagePay(request);
+  } else if (isCanceledAfterKeys(request)) {
+    const fees = feeSummary(request); // base service fees only (no receipts)
+    gross = Number(fees.fuel || 0) + Number(fees.wash || 0) + Number(fees.inspection || 0);
+  } else {
+    return 0;
+  }
+  let payout = mileage;
+  if (gross > 0) {
+    const stripe = roundMoneyValue(gross * RETURN_RECOVERY_RATE + RETURN_RECOVERY_FIXED);
+    payout += Math.max(0, gross - stripe) * WORKER_SERVICE_FEE_SHARE;
+  }
+  return roundMoneyValue(Math.max(0, payout));
+}
+
 function estimatePricingSummary({ needsFuel, needsWash, fuelAmount = 0, washAmount = 0, quickInspection = false }) {
   const fuelBase = needsFuel ? BASE_FUEL_SERVICE_FEE : 0;
   const washBase = needsWash ? BASE_WASH_SERVICE_FEE : 0;
@@ -1996,7 +2039,7 @@ function updateDashboardStatCards() {
 
   const rangeLabel = dashboardRangeLabel(dashboardRange);
   if (statCompletedLabel) statCompletedLabel.textContent = `Completed ${rangeLabel}`;
-  if (statRevenueLabel) statRevenueLabel.textContent = `Net Revenue ${rangeLabel}`;
+  if (statRevenueLabel) statRevenueLabel.textContent = `Service Fee Revenue ${rangeLabel}`;
 
   if (statOpenRequests) statOpenRequests.textContent = openCount;
   if (statInProgress) statInProgress.textContent = inProgressCount;
@@ -5638,6 +5681,76 @@ filterClearBtn?.addEventListener('click', () => {
   dashboardFiltersBtn?.setAttribute('aria-expanded', 'false');
 });
 
+// ── Payroll tab ─────────────────────────────────────────────────────────────
+let payrollRange = 'week';
+
+function payrollRequestDate(request) {
+  return new Date(request.completed_at || request.canceled_at || request.updated_at || request.created_at);
+}
+
+function renderPayroll() {
+  const container = document.getElementById('payroll-content');
+  if (!container) return;
+  const { start, end } = dashboardRangeBounds(payrollRange);
+  const inRange = (r) => {
+    const d = payrollRequestDate(r);
+    if (start && d < start) return false;
+    if (end && d > end) return false;
+    return true;
+  };
+
+  // Requests that earned a worker something this period.
+  const earning = (allRequests || []).filter((r) => inRange(r) && workerPayoutForRequest(r) > 0);
+
+  const byWorker = new Map();
+  for (const r of earning) {
+    const key = r.assigned_employee_id || r.assigned_worker_name;
+    if (!key) continue;
+    const name = r.assigned_worker_name
+      || (allEmployees || []).find((e) => e.id === r.assigned_employee_id)?.full_name
+      || (allEmployees || []).find((e) => e.id === r.assigned_employee_id)?.name
+      || 'Unknown worker';
+    const entry = byWorker.get(key) || { name, jobs: 0, mileage: 0, total: 0 };
+    entry.jobs += 1;
+    entry.mileage += workerMileagePay(r);
+    entry.total += workerPayoutForRequest(r);
+    byWorker.set(key, entry);
+  }
+  const rows = [...byWorker.values()].sort((a, b) => b.total - a.total);
+
+  const serviceFeeRevenue = (allRequests || [])
+    .filter((r) => r.payment_status === 'captured' && inRange(r))
+    .reduce((s, r) => s + Number(r.displayed_fuel_service_fee || 0) + Number(r.displayed_car_wash_service_fee || 0) + Number(r.displayed_inspection_fee || 0), 0);
+  const workerPayouts = rows.reduce((s, e) => s + e.total, 0);
+  const companyNet = roundMoneyValue(serviceFeeRevenue - workerPayouts);
+  const rangeLabel = dashboardRangeLabel(payrollRange);
+
+  container.innerHTML = `
+    <div class="payroll-summary-grid">
+      <div class="payroll-summary-card"><span class="payroll-summary-label">Service fee revenue</span><span class="payroll-summary-value">${money(roundMoneyValue(serviceFeeRevenue))}</span></div>
+      <div class="payroll-summary-card"><span class="payroll-summary-label">Worker payouts</span><span class="payroll-summary-value">− ${money(roundMoneyValue(workerPayouts))}</span></div>
+      <div class="payroll-summary-card payroll-summary-card--net"><span class="payroll-summary-label">Company net · ${escapeHtml(rangeLabel)}</span><span class="payroll-summary-value">${money(companyNet)}</span></div>
+    </div>
+    <p class="field-help">Company net = service fees − worker payouts. Shown before Stripe processing fees; excludes fuel/wash cost (pass-through to the customer) and the per-mile surcharge margin.</p>
+    ${rows.length ? `
+      <table class="payroll-table">
+        <thead><tr><th>Worker</th><th>Jobs</th><th>Station mileage</th><th>Earnings</th></tr></thead>
+        <tbody>
+          ${rows.map((e) => `<tr><td>${escapeHtml(e.name)}</td><td>${e.jobs}</td><td>${money(roundMoneyValue(e.mileage))}</td><td><strong>${money(roundMoneyValue(e.total))}</strong></td></tr>`).join('')}
+        </tbody>
+      </table>
+    ` : `<div class="worker-state-card"><p>No worker earnings in this period yet.</p></div>`}
+  `;
+}
+
+document.addEventListener('click', (event) => {
+  const btn = event.target.closest('[data-payroll-range]');
+  if (!btn) return;
+  payrollRange = btn.dataset.payrollRange;
+  document.querySelectorAll('[data-payroll-range]').forEach((b) => b.classList.toggle('active', b === btn));
+  renderPayroll();
+});
+
 function switchPageTab(page) {
   currentPageTab = page;
   // Expose the active page so CSS can hide the dashboard-only sidebar/shortcuts
@@ -5684,6 +5797,9 @@ function switchPageTab(page) {
   }
   if (page === 'settings') {
     setTimeout(() => window._saOpenEditor?.(), 80);
+  }
+  if (page === 'payroll') {
+    renderPayroll();
   }
   renderRequests();
 }
@@ -5840,7 +5956,7 @@ function openRevenueBreakdown() {
       </table>`;
   }
 
-  if (requestQueueHeading) requestQueueHeading.textContent = `Net Revenue — ${rangeLabel}`;
+  if (requestQueueHeading) requestQueueHeading.textContent = `Service Fee Revenue — ${rangeLabel}`;
   if (requestQueueEyebrow) requestQueueEyebrow.textContent = 'Revenue';
   if (showAllTimeBtn) showAllTimeBtn.style.display = 'none';
   requestList?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });

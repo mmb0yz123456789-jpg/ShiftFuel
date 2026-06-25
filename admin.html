@@ -116,6 +116,7 @@
 		<button class="admin-page-tab active" data-page="dashboard">Dashboard</button>
 		<button class="admin-page-tab" data-page="requests">Requests</button>
 		<button class="admin-page-tab" data-page="workers">Workers <span id="worker-count-badge" class="page-tab-badge">0</span></button>
+		<button class="admin-page-tab" data-page="payroll">Payroll</button>
 		<button class="admin-page-tab" data-page="services">Services</button>
 		<button class="admin-page-tab" data-page="settings">Settings</button>
 	  </nav>
@@ -150,6 +151,7 @@
 		  <a href="#" data-page="dashboard" class="admin-menu-item">Dashboard</a>
 		  <a href="#" data-page="requests" class="admin-menu-item">Requests</a>
 		  <a href="#" data-page="workers" class="admin-menu-item">Workers</a>
+		  <a href="#" data-page="payroll" class="admin-menu-item">Payroll</a>
 		  <a href="#" data-page="services" class="admin-menu-item">Services</a>
 		  <a href="#" data-page="settings" class="admin-menu-item">Settings</a>
 		  
@@ -207,7 +209,7 @@
           </div>
           <div class="admin-stat-card admin-stat-card--clickable" id="stat-card-revenue" role="button" tabindex="0" title="View revenue breakdown">
             <div>
-              <span class="admin-stat-label" id="stat-revenue-label">Net Revenue Today</span>
+              <span class="admin-stat-label" id="stat-revenue-label">Service Fee Revenue Today</span>
               <span class="admin-stat-value" id="stat-net-revenue">$0</span>
             </div>
             <span class="admin-stat-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="8.5"/><path d="M12 7v10M9.5 9.5a2.5 2 0 0 1 2.5-1.5c1.4 0 2.5.7 2.5 1.8 0 2.4-5 1.4-5 4 0 1.1 1.1 1.8 2.5 1.8s2.5-.7 2.5-1.7"/></svg></span>
@@ -422,6 +424,21 @@
           </div>
         </div>
         <div id="admin-worker-profile-list" class="worker-profile-list"></div>
+      </section>
+
+      <section class="section admin-section" data-tab-panel="payroll" data-page-section="payroll" hidden>
+        <div class="admin-toolbar">
+          <div>
+            <p class="eyebrow">Team</p>
+            <h2>Payroll</h2>
+            <p class="field-help">What each worker earned, plus the company's true take after worker pay and Stripe fees.</p>
+          </div>
+          <div class="payroll-range-toggle" role="group" aria-label="Payroll period">
+            <button type="button" class="payroll-range-btn active" data-payroll-range="week">This Week</button>
+            <button type="button" class="payroll-range-btn" data-payroll-range="month">This Month</button>
+          </div>
+        </div>
+        <div id="payroll-content"></div>
       </section>
 
       <section class="section admin-section" data-tab-panel="settings" data-page-section="settings" hidden>

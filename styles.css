@@ -2131,6 +2131,29 @@ font-size: 0.85rem;
 }
 .station-search .button { flex: 0 0 auto; }
 
+/* ── Admin Payroll tab ─────────────────────────────────────────────────────── */
+.payroll-range-toggle { display: inline-flex; gap: 4px; background: #eef2ef; padding: 4px; border-radius: 10px; }
+.payroll-range-btn {
+  border: none; background: transparent; padding: 8px 16px; border-radius: 7px;
+  font-weight: 700; color: var(--brand-dark, #1a3a2a); cursor: pointer;
+}
+.payroll-range-btn.active { background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,.12); }
+.payroll-summary-grid { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 14px; margin: 16px 0; }
+.payroll-summary-card {
+  display: flex; flex-direction: column; gap: 6px; padding: 16px 18px;
+  border: 1px solid #e2e9e5; border-radius: 12px; background: #fff;
+}
+.payroll-summary-card--net { background: #f1f8f3; border-color: #cfe6d8; }
+.payroll-summary-label { font-size: .82rem; color: #6b7280; font-weight: 600; }
+.payroll-summary-value { font-size: 1.4rem; font-weight: 800; color: var(--brand-dark, #1a3a2a); }
+.payroll-table { width: 100%; border-collapse: collapse; margin-top: 12px; }
+.payroll-table th, .payroll-table td { text-align: left; padding: 12px 14px; border-bottom: 1px solid #eef2ef; }
+.payroll-table th { font-size: .78rem; text-transform: uppercase; letter-spacing: .03em; color: #6b7280; }
+.payroll-table td:last-child, .payroll-table th:last-child { text-align: right; }
+.payroll-table td:nth-child(2), .payroll-table th:nth-child(2),
+.payroll-table td:nth-child(3), .payroll-table th:nth-child(3) { text-align: center; }
+@media (max-width: 640px) { .payroll-summary-grid { grid-template-columns: 1fr; } }
+
 .booking-field-grid .span-2 {
   grid-column: span 2;
 }

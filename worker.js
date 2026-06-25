@@ -629,17 +629,26 @@ function workerMileagePay(request) {
   return extraMiles > 0 ? roundMoneyValue(extraMiles * WORKER_MILEAGE_RATE) : 0;
 }
 
+// Did the customer cancel after the worker already had the keys? Those workers
+// are still owed half the service fee (no mileage — they never drove).
+function isCanceledAfterKeys(request) {
+  const canceled = !!request.canceled_at || /cancel/i.test(String(request.status || ''));
+  return canceled && !!request.key_received_at;
+}
+
 // Worker's estimated take-home for a job: 50% of the service fees (fuel + wash +
 // inspection) net of Stripe processing (2.9% + $0.30), plus full mileage pay for
-// any extra driving to a chosen station. Never negative.
+// any extra driving to a chosen station. A customer-cancel-after-keys still pays
+// the 50% service-fee share (no mileage). Never negative.
 function workerNetPayout(request) {
   const fees = feeSummary(request);
   const gross = fees.fuel + fees.wash + fees.inspection;
-  let payout = workerMileagePay(request);
-  if (gross > 0) {
+  const completed = request.status === 'complete' || request.payment_status === 'captured';
+  // Mileage only on completed jobs — a cancel-after-keys never drove to the station.
+  let payout = completed ? workerMileagePay(request) : 0;
+  if (gross > 0 && (completed || isCanceledAfterKeys(request))) {
     const stripe = roundMoneyValue(gross * PAYMENT_RECOVERY_RATE + PAYMENT_RECOVERY_FIXED);
-    const netServiceFees = Math.max(0, gross - stripe);
-    payout += netServiceFees * WORKER_SERVICE_FEE_SHARE;
+    payout += Math.max(0, gross - stripe) * WORKER_SERVICE_FEE_SHARE;
   }
   return roundMoneyValue(Math.max(0, payout));
 }
