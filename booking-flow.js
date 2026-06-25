@@ -129,6 +129,7 @@ const stepCopy = {
     title: "Service Address",
     intro: "Add the workplace or approved service location where the vehicle will be serviced.",
     fields: `
+      <div data-booknow-saved-addresses></div>
       <div class="booking-field-grid">
         <label class="span-2"><span>Street address <span class="required-mark">Required</span></span><span class="address-autocomplete"><input data-required data-address-field data-address-autocomplete name="street" type="text" autocomplete="off" placeholder="Start typing your address…"><ul class="address-suggest" data-address-suggest hidden></ul></span></label>
         <label><span>Unit/suite/apartment</span><input data-address-field name="unit" type="text" autocomplete="address-line2" placeholder="Optional"></label>
@@ -165,6 +166,7 @@ const stepCopy = {
     title: "Vehicle Details",
     intro: "Enter the vehicle details for this booking.",
     fields: `
+      <div data-booknow-saved-vehicles></div>
       <div class="booking-field-grid">
         <label><span>Year <span class="required-mark">Required</span></span><select data-required name="vehicleYear"><option value="">Select year</option></select></label>
         <label><span>Make <span class="required-mark">Required</span></span><select data-required name="vehicleMake"><option value="">Select make</option></select></label>
@@ -1452,6 +1454,73 @@ function renderReturningVehicles(panel) {
   `;
 }
 
+// Book Now: silently detect a returning customer once the Customer step is done,
+// and load their saved addresses/vehicles so the next steps offer them.
+async function detectReturningCustomer() {
+  const phone = String(bookingState.values.customerPhone || "").replace(/\D/g, "");
+  const email = String(bookingState.values.customerEmail || "").trim();
+  if (!phone || !email || !window.ShiftFuelSupabase) return false;
+  try {
+    const { data, error } = await window.ShiftFuelSupabase.rpc("public_track_request", {
+      p_request_id: null, p_phone: phone, p_email: email,
+    });
+    if (error) return false;
+    const requests = Array.isArray(data) ? data : [];
+    // Need a confident, single-customer match before we auto-load anything.
+    if (!requests.length || uniqueCustomerKeys(requests).size > 1) return false;
+
+    bookingState.returning.requests = requests;
+    applyVerifiedCustomer(requests);
+    let options = requestsToReturningOptions(requests);
+    const saved = await window.ShiftFuelSupabase
+      .rpc("public_returning_customer_options", { p_phone: phone, p_email: email })
+      .catch(() => ({ data: null, error: true }));
+    if (!saved.error && saved.data) {
+      const savedOptions = savedOptionsToReturningOptions(saved.data);
+      if (savedOptions.addresses.length || savedOptions.vehicles.length) options = savedOptions;
+    }
+    bookingState.returning.addresses = options.addresses;
+    bookingState.returning.vehicles = options.vehicles;
+    bookingState.returning.verified = true;
+    bookingState.returning.detectedOnBookNow = true;
+    bookingState.returning.customerName = bookingState.values.firstName || "";
+    return true;
+  } catch (error) {
+    console.warn("Returning-customer detection failed:", error);
+    return false;
+  }
+}
+
+function renderBookNowSavedAddresses(panel) {
+  const container = panel.querySelector("[data-booknow-saved-addresses]");
+  if (!container) return;
+  if (!bookingState.returning.detectedOnBookNow || !bookingState.returning.addresses.length) {
+    container.innerHTML = "";
+    return;
+  }
+  container.innerHTML = `
+    <div class="booknow-saved-block">
+      <p class="booknow-welcome">Welcome back${bookingState.returning.customerName ? `, ${escapeHtml(bookingState.returning.customerName)}` : ""}! Pick a saved service address, or enter a new one below.</p>
+      <div class="returning-option-grid">${bookingState.returning.addresses.map(addressCard).join("")}</div>
+    </div>
+  `;
+}
+
+function renderBookNowSavedVehicles(panel) {
+  const container = panel.querySelector("[data-booknow-saved-vehicles]");
+  if (!container) return;
+  if (!bookingState.returning.detectedOnBookNow || !bookingState.returning.vehicles.length) {
+    container.innerHTML = "";
+    return;
+  }
+  container.innerHTML = `
+    <div class="booknow-saved-block">
+      <p class="booknow-welcome">Your saved vehicles — pick one, or enter a new one below.</p>
+      <div class="returning-option-grid">${bookingState.returning.vehicles.map(vehicleCard).join("")}</div>
+    </div>
+  `;
+}
+
 function populateVehicleYearOptions(select) {
   const maxYear = new Date().getFullYear() + 1;
   let html = `<option value="">Select year</option>`;
@@ -2417,6 +2486,8 @@ function renderFlow(root) {
       restorePanelValues(panel);
       renderReturningServiceArea(panel);
       renderReturningVehicles(panel);
+      renderBookNowSavedAddresses(panel);
+      renderBookNowSavedVehicles(panel);
       renderVehicleFields(panel);
       renderReturningVehicleFields(panel);
       renderServiceDetails(panel);
@@ -2690,8 +2761,16 @@ function renderFlow(root) {
     const selectAddress = event.target.closest("[data-select-returning-address]");
     if (selectAddress) {
       const address = bookingState.returning.addresses.find((item) => item.id === selectAddress.dataset.selectReturningAddress);
-      if (address) applySelectedAddress(address);
-      renderReturningServiceArea(panel);
+      if (address) {
+        applySelectedAddress(address);
+        renderReturningServiceArea(panel);
+        renderBookNowSavedAddresses(panel);
+        // Book Now: re-check the saved address against the current service area.
+        if (panel.dataset.currentStep === "Address") {
+          restorePanelValues(panel);
+          await validateAddress(panel);
+        }
+      }
       updateContinue();
       return;
     }
@@ -2713,8 +2792,16 @@ function renderFlow(root) {
     const selectVehicle = event.target.closest("[data-select-returning-vehicle]");
     if (selectVehicle) {
       const vehicle = bookingState.returning.vehicles.find((item) => item.id === selectVehicle.dataset.selectReturningVehicle);
-      if (vehicle) applySelectedVehicle(vehicle);
-      renderReturningVehicles(panel);
+      if (vehicle) {
+        applySelectedVehicle(vehicle);
+        renderReturningVehicles(panel);
+        renderBookNowSavedVehicles(panel);
+        // Book Now: fill the typed vehicle fields from the saved vehicle.
+        if (panel.dataset.currentStep === "Vehicle") {
+          restorePanelValues(panel);
+          renderVehicleFields(panel);
+        }
+      }
       updateContinue();
       return;
     }
@@ -2745,6 +2832,14 @@ function renderFlow(root) {
     if (event.target.closest("[data-continue]")) {
       savePanelValues(panel);
       if (!stepIsComplete(panel)) return;
+      // Book Now: after the Customer step, check (once) whether this is a
+      // returning customer and pre-load their saved addresses/vehicles.
+      if (panel.dataset.currentStep === "Customer" && !bookingState.returning.detectedOnBookNow) {
+        const btn = event.target.closest("[data-continue]");
+        if (btn) { btn.disabled = true; btn.textContent = "Checking…"; }
+        await detectReturningCustomer();
+        if (btn) { btn.disabled = false; btn.textContent = "Continue"; }
+      }
       unlockedIndex = Math.max(unlockedIndex, openIndex + 1);
       goToStep(unlockedIndex);
     }

@@ -2066,6 +2066,19 @@ font-size: 0.85rem;
   gap: 14px;
 }
 
+/* Book Now: returning-customer saved address/vehicle pickers */
+.booknow-saved-block { margin-bottom: 18px; }
+.booknow-welcome {
+  margin: 0 0 10px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  background: #e6f4ea;
+  border: 1px solid #cfe6d8;
+  color: #15803d;
+  font-weight: 700;
+  font-size: .9rem;
+}
+
 /* "Customer choice" gas-station picker (Service Details step) */
 .station-picker {
   margin-top: 18px;
