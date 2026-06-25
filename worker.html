@@ -12,6 +12,30 @@
     <link rel="apple-touch-icon" href="icon-worker.svg">
     <link rel="stylesheet" href="styles.css">
     <link rel="stylesheet" href="worker-app.css">
+    <style>
+      .worker-profile-panel {
+        position: fixed;
+        top: 0; left: 0; right: 0;
+        z-index: 300;
+        background: #fff;
+        box-shadow: 0 4px 24px rgba(0,0,0,.15);
+        transform: translateY(-100%);
+        transition: transform .25s ease;
+        max-height: 92vh;
+        overflow-y: auto;
+      }
+      .worker-profile-panel:not([hidden]) { transform: translateY(0); }
+      .worker-profile-panel[hidden] { display: block !important; }
+      .worker-profile-panel-inner { padding: 1rem 1.1rem 1.5rem; }
+      .worker-profile-panel-actions { display: flex; flex-direction: column; gap: .5rem; }
+      .worker-profile-panel-actions .button { width: 100%; }
+      /* Overlay behind panel */
+      .worker-profile-panel-overlay {
+        display: none; position: fixed; inset: 0; z-index: 299;
+        background: rgba(0,0,0,.35);
+      }
+      .worker-profile-panel-overlay.active { display: block; }
+    </style>
   </head>
 
   <body class="worker-portal-page">
@@ -70,6 +94,43 @@
         </button>
       </div>
     </header>
+
+    <div class="worker-profile-panel-overlay" id="worker-profile-panel-overlay"></div>
+    <!-- Mobile profile panel (slides down from avatar button) -->
+    <div id="worker-profile-panel" class="worker-profile-panel" hidden>
+      <div class="worker-profile-panel-inner">
+        <div class="worker-profile-mini" style="margin-bottom:1rem">
+          <div class="worker-profile-photo-frame worker-profile-photo-frame--mini">
+            <img id="worker-panel-photo" class="worker-profile-photo" alt="" hidden>
+            <div id="worker-panel-photo-placeholder" class="worker-profile-photo-placeholder">No photo</div>
+          </div>
+          <div class="worker-profile-id">
+            <h2 id="worker-panel-name" style="font-size:1.1rem;margin:0">Worker</h2>
+            <div class="worker-profile-rating" id="worker-panel-rating-row" hidden>
+              <span class="worker-rating-star" aria-hidden="true">&#9733;</span>
+              <strong id="worker-panel-rating">-</strong>
+              <span class="worker-rating-count" id="worker-panel-review-count"></span>
+            </div>
+            <span class="worker-active-badge" id="worker-panel-status-badge" hidden><span class="worker-active-dot"></span>Active worker</span>
+          </div>
+        </div>
+        <div class="worker-profile-panel-actions">
+          <button class="button secondary" id="panel-enable-alerts" type="button">Enable alerts</button>
+          <button class="button secondary" id="panel-break-toggle" type="button" hidden>Take a break</button>
+          <button class="button secondary" id="panel-change-password" type="button">Change password</button>
+          <button class="button secondary" id="panel-edit-profile" type="button">Edit profile</button>
+          <button class="button danger" id="panel-signout" type="button">Sign out</button>
+        </div>
+        <div class="worker-contact-row" style="margin-top:.75rem">
+          <span class="worker-fact-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s7-5.6 7-11a7 7 0 1 0-14 0c0 5.4 7 11 7 11z"/><circle cx="12" cy="10" r="2.5"/></svg></span>
+          <span class="worker-fact-value" id="worker-panel-location" style="font-size:.9rem">—</span>
+        </div>
+        <div class="worker-contact-row">
+          <span class="worker-fact-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M6.5 3.5h3l1.5 4-2 1.3a11 11 0 0 0 5 5l1.3-2 4 1.5v3a2 2 0 0 1-2.2 2A16.5 16.5 0 0 1 4.5 5.7 2 2 0 0 1 6.5 3.5z"/></svg></span>
+          <span class="worker-fact-value" id="worker-panel-phone" style="font-size:.9rem">Not provided</span>
+        </div>
+      </div>
+    </div>
 
     <main>
 

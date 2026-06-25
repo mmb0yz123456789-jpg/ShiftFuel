@@ -7091,6 +7091,25 @@ if (accountModal) accountModal.addEventListener('click', (e) => {
   if (e.target === accountModal) _closeAccountModal();
 });
 
+// Accordion toggles
+function setupAccordion(toggleId, bodyId) {
+  const btn = document.getElementById(toggleId);
+  const body = document.getElementById(bodyId);
+  if (!btn || !body) return;
+  btn.addEventListener('click', () => {
+    const open = !body.hidden;
+    body.hidden = open;
+    btn.setAttribute('aria-expanded', String(!open));
+  });
+}
+setupAccordion('acc-username-toggle', 'acc-username-body');
+setupAccordion('acc-password-toggle', 'acc-password-body');
+
+document.getElementById('account-modal-logout')?.addEventListener('click', () => {
+  _closeAccountModal();
+  adminSignOut();
+});
+
 document.querySelector('#account-username-form')?.addEventListener('submit', async (e) => {
   e.preventDefault();
   const statusEl = document.getElementById('account-username-status');

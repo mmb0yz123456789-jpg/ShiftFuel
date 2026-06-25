@@ -28,6 +28,20 @@
       #sa-status { font-size: .85rem; min-height: 1.2em; margin-top: .5rem; }
       .sa-summary { font-size: .8rem; color: var(--text-2,#888); margin-top: .25rem; }
 
+      /* Account modal accordion */
+      .account-accordion-item { border-bottom: 1px solid var(--border,#e5e7eb); }
+      .account-accordion-item:last-child { border-bottom: none; }
+      .account-accordion-btn {
+        width: 100%; display: flex; align-items: center; justify-content: space-between;
+        padding: 1rem 1.25rem; background: none; border: none; cursor: pointer;
+        font-size: .95rem; font-weight: 500; color: inherit; text-align: left;
+      }
+      .account-accordion-btn:hover { background: var(--surface-1,#f9fafb); }
+      .account-logout-btn { color: #dc2626; }
+      .account-accordion-body { padding: .25rem 1.25rem 1.25rem; }
+      .acc-chevron { transition: transform .2s; flex-shrink: 0; }
+      .account-accordion-btn[aria-expanded="true"] .acc-chevron { transform: rotate(180deg); }
+
       /* Mobile header: full-width bar flush to top, logo left, avatar right. */
       @media (max-width: 760px) {
         html, body.admin-portal-page {
@@ -730,37 +744,58 @@
           <h2 id="account-modal-title">Account</h2>
           <button id="close-account-modal" class="modal-close" aria-label="Close">&times;</button>
         </div>
-        <div class="modal-body">
+        <div class="modal-body" style="padding:0">
 
-          <h3 style="margin:0 0 .75rem;font-size:1rem">Change Admin Name</h3>
-          <form id="account-username-form" autocomplete="off">
-            <div class="form-group">
-              <label for="account-current-pw-name">Current password</label>
-              <input id="account-current-pw-name" type="password" class="form-input" autocomplete="current-password" required>
+          <!-- Change Username accordion -->
+          <div class="account-accordion-item">
+            <button type="button" class="account-accordion-btn" id="acc-username-toggle">
+              Change Admin Username
+              <svg class="acc-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><path d="M6 9l6 6 6-6"/></svg>
+            </button>
+            <div class="account-accordion-body" id="acc-username-body" hidden>
+              <form id="account-username-form" autocomplete="off">
+                <div class="form-group">
+                  <label for="account-current-pw-name">Current password</label>
+                  <input id="account-current-pw-name" type="password" class="form-input" autocomplete="current-password" required>
+                </div>
+                <div class="form-group">
+                  <label for="account-new-name">New username</label>
+                  <input id="account-new-name" type="text" class="form-input" autocomplete="off" autocapitalize="none" spellcheck="false" required>
+                </div>
+                <p id="account-username-status" class="form-status" style="min-height:1.2em"></p>
+                <button type="submit" class="button primary" style="width:100%">Update username</button>
+              </form>
             </div>
-            <div class="form-group">
-              <label for="account-new-name">New name</label>
-              <input id="account-new-name" type="text" class="form-input" autocomplete="off" required>
-            </div>
-            <p id="account-username-status" class="form-status" style="min-height:1.2em"></p>
-            <button type="submit" class="button primary" style="width:100%">Update name</button>
-          </form>
+          </div>
 
-          <hr style="margin:1.5rem 0;border:none;border-top:1px solid var(--border,#e5e7eb)">
+          <!-- Change Password accordion -->
+          <div class="account-accordion-item">
+            <button type="button" class="account-accordion-btn" id="acc-password-toggle">
+              Change Admin Password
+              <svg class="acc-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><path d="M6 9l6 6 6-6"/></svg>
+            </button>
+            <div class="account-accordion-body" id="acc-password-body" hidden>
+              <form id="account-password-form" autocomplete="off">
+                <div class="form-group">
+                  <label for="account-current-pw">Current password</label>
+                  <input id="account-current-pw" type="password" class="form-input" autocomplete="current-password" required>
+                </div>
+                <div class="form-group">
+                  <label for="account-new-pw">New password</label>
+                  <input id="account-new-pw" type="password" class="form-input" autocomplete="new-password" required>
+                </div>
+                <p id="account-password-status" class="form-status" style="min-height:1.2em"></p>
+                <button type="submit" class="button primary" style="width:100%">Update password</button>
+              </form>
+            </div>
+          </div>
 
-          <h3 style="margin:0 0 .75rem;font-size:1rem">Change Admin Password</h3>
-          <form id="account-password-form" autocomplete="off">
-            <div class="form-group">
-              <label for="account-current-pw">Current password</label>
-              <input id="account-current-pw" type="password" class="form-input" autocomplete="current-password" required>
-            </div>
-            <div class="form-group">
-              <label for="account-new-pw">New password</label>
-              <input id="account-new-pw" type="password" class="form-input" autocomplete="new-password" required>
-            </div>
-            <p id="account-password-status" class="form-status" style="min-height:1.2em"></p>
-            <button type="submit" class="button primary" style="width:100%">Update password</button>
-          </form>
+          <!-- Log out -->
+          <div class="account-accordion-item">
+            <button type="button" class="account-accordion-btn account-logout-btn" id="account-modal-logout">
+              Log out
+            </button>
+          </div>
 
         </div>
       </div>

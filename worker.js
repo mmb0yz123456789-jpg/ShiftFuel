@@ -173,8 +173,47 @@ document.querySelector('#worker-header-signout')?.addEventListener('click', () =
   document.querySelector('#worker-signout-btn')?.click();
 });
 
-document.querySelector('#worker-mobile-avatar-btn')?.addEventListener('click', () => {
-  document.querySelector('[data-tab-view="profile"]')?.click();
+// Profile panel (mobile avatar button)
+const workerProfilePanel = document.getElementById('worker-profile-panel');
+const workerProfilePanelOverlay = document.getElementById('worker-profile-panel-overlay');
+
+function openWorkerProfilePanel() {
+  if (!workerProfilePanel) return;
+  workerProfilePanel.removeAttribute('hidden');
+  workerProfilePanelOverlay?.classList.add('active');
+  document.body.style.overflow = 'hidden';
+}
+function closeWorkerProfilePanel() {
+  if (!workerProfilePanel) return;
+  workerProfilePanel.setAttribute('hidden', '');
+  workerProfilePanelOverlay?.classList.remove('active');
+  document.body.style.overflow = '';
+}
+
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && workerProfilePanel && !workerProfilePanel.hasAttribute('hidden')) closeWorkerProfilePanel();
+});
+document.querySelector('#worker-mobile-avatar-btn')?.addEventListener('click', openWorkerProfilePanel);
+workerProfilePanelOverlay?.addEventListener('click', closeWorkerProfilePanel);
+document.querySelector('#panel-signout')?.addEventListener('click', () => {
+  closeWorkerProfilePanel();
+  document.querySelector('#worker-signout-btn')?.click();
+});
+document.querySelector('#panel-change-password')?.addEventListener('click', () => {
+  closeWorkerProfilePanel();
+  document.querySelector('#open-change-password-btn')?.click();
+});
+document.querySelector('#panel-edit-profile')?.addEventListener('click', () => {
+  closeWorkerProfilePanel();
+  document.querySelector('#open-edit-profile-btn')?.click();
+});
+document.querySelector('#panel-enable-alerts')?.addEventListener('click', () => {
+  closeWorkerProfilePanel();
+  document.querySelector('#worker-enable-alerts')?.click();
+});
+document.querySelector('#panel-break-toggle')?.addEventListener('click', () => {
+  closeWorkerProfilePanel();
+  document.querySelector('#worker-break-toggle')?.click();
 });
 
 document.querySelector('#worker-progress-job-label')?.addEventListener('click', async () => {
@@ -1147,6 +1186,12 @@ async function loadWorkerProfile() {
     if (headerAvatar) headerAvatar.textContent = (workerName.trim().charAt(0) || 'W').toUpperCase();
     const mobileAvatar = document.querySelector('#worker-mobile-avatar-initial');
     if (mobileAvatar) mobileAvatar.textContent = (workerName.trim().charAt(0) || 'W').toUpperCase();
+    const panelName = document.getElementById('worker-panel-name');
+    if (panelName) panelName.textContent = workerName;
+    const panelLocation = document.getElementById('worker-panel-location');
+    if (panelLocation) panelLocation.textContent = currentEmployee.home_location || '—';
+    const panelPhone = document.getElementById('worker-panel-phone');
+    if (panelPhone) panelPhone.textContent = currentEmployee.phone ? formatPhone(currentEmployee.phone) : 'Not provided';
     if (workerProfileName) workerProfileName.value = workerName;
     if (workerProfileUsername) workerProfileUsername.value = currentEmployee.username || '';
     if (workerProfilePhone) workerProfilePhone.value = formatPhone(currentEmployee.phone || '');
