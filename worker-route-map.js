@@ -150,6 +150,7 @@
           </button>
         </div>
         <div class="wrm-actions">
+          <button class="button primary wrm-start-service" type="button" hidden>Start service</button>
           <a class="button secondary wrm-open-native" target="_blank" rel="noopener noreferrer">Open in Maps (turn-by-turn)</a>
         </div>
       </div>`;
@@ -159,6 +160,13 @@
     modal.querySelector('.wrm-recenter').addEventListener('click', () => {
       if (nav) { nav.follow = true; if (nav.lastLoc) applyNavCamera(nav.lastLoc, nav.lastBearing); }
       toggleRecenter(false);
+    });
+    // Manual "I'm here, start" — closes the map and advances to service (same guarded
+    // hook the auto-arrival uses, so it's a no-op if service already started).
+    modal.querySelector('.wrm-start-service').addEventListener('click', () => {
+      const rid = nav?.requestId;
+      closeModal();
+      if (rid && typeof window.ShiftFuelOnNavArrive === 'function') window.ShiftFuelOnNavArrive(rid, 'station');
     });
     return modal;
   }
@@ -413,9 +421,11 @@
     const etaEl = modal.querySelector('.wrm-eta');
     const nativeBtn = modal.querySelector('.wrm-open-native');
     const banner = modal.querySelector('.wrm-banner');
+    const startBtn = modal.querySelector('.wrm-start-service');
     titleEl.textContent = isStation ? 'Drive to gas station' : 'Directions to service address';
     etaEl.textContent = 'Loading map…';
     banner.hidden = true;
+    if (startBtn) startBtn.hidden = true;
     toggleRecenter(false);
     stopNavWatch();
     nav = null;
@@ -480,6 +490,7 @@
       // hasn't started yet). Reopening nav later won't auto-close on arrival.
       nav.autoArriveStart = isStation && request.status === 'vehicle_picked_up';
       nav.arrived = false;
+      if (startBtn) startBtn.hidden = !nav.autoArriveStart;
       updateBanner(workerLoc);
 
       // Enter the follow-camera facing the start of the route.
@@ -497,13 +508,12 @@
     const style = document.createElement('style');
     style.id = 'worker-route-map-style';
     style.textContent = `
-      .wrm-overlay { position: fixed; inset: 0; z-index: 1000; background: rgba(0,0,0,.55);
-        display: flex; align-items: center; justify-content: center; padding: 12px; }
+      .wrm-overlay { position: fixed; inset: 0; z-index: 1000; background: #fff; display: flex; }
       .wrm-overlay[hidden] { display: none; }
-      .wrm-dialog { background: #fff; border-radius: 16px; width: min(680px, 96vw);
-        max-height: 94vh; display: flex; flex-direction: column; overflow: hidden; }
+      .wrm-dialog { background: #fff; width: 100%; height: 100%; display: flex;
+        flex-direction: column; overflow: hidden; }
       .wrm-header { display: flex; align-items: center; justify-content: space-between;
-        padding: 14px 16px; border-bottom: 1px solid #eef2ef; }
+        padding: calc(14px + env(safe-area-inset-top)) 16px 14px; border-bottom: 1px solid #eef2ef; }
       .wrm-title { display: block; color: #0d3b3b; }
       .wrm-eta { font-size: .85rem; color: #1f7a45; font-weight: 700; }
       .wrm-close { border: none; background: none; font-size: 1.8rem; line-height: 1; cursor: pointer; color: #6b7280; }
@@ -512,8 +522,8 @@
       .wrm-banner[hidden] { display: none; }
       .wrm-banner-instruction { font-weight: 800; font-size: 1.02rem; line-height: 1.3; }
       .wrm-banner-distance { font-weight: 800; font-size: .95rem; color: #bfe3cf; white-space: nowrap; }
-      .wrm-map-wrap { position: relative; }
-      .wrm-map { width: 100%; height: min(72vh, 620px); background: #1a1a2e; }
+      .wrm-map-wrap { position: relative; flex: 1; min-height: 0; }
+      .wrm-map { width: 100%; height: 100%; background: #1a1a2e; }
       .wrm-puck { width: 36px; height: 36px; }
       .wrm-recenter { position: absolute; right: 12px; bottom: 12px; z-index: 2;
         display: inline-flex; align-items: center; gap: 6px;
@@ -521,8 +531,10 @@
         background: #fff; color: #0d3b3b; font-weight: 800; font-size: .85rem;
         box-shadow: 0 4px 14px rgba(6,39,39,.18); cursor: pointer; }
       .wrm-recenter[hidden] { display: none; }
-      .wrm-actions { padding: 12px 16px; }
+      .wrm-actions { padding: 12px 16px calc(12px + env(safe-area-inset-bottom));
+        display: grid; gap: 8px; border-top: 1px solid #eef2ef; }
       .wrm-actions .button { display: block; width: 100%; text-align: center; text-decoration: none; }
+      .wrm-start-service[hidden] { display: none; }
     `;
     document.head.appendChild(style);
   }
