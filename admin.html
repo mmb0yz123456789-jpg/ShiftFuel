@@ -748,18 +748,18 @@
 
           <!-- Change Username accordion -->
           <div class="account-accordion-item">
-            <button type="button" class="account-accordion-btn" id="acc-username-toggle">
+            <button type="button" class="account-accordion-btn" id="acc-username-toggle" aria-expanded="false">
               Change Admin Username
               <svg class="acc-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><path d="M6 9l6 6 6-6"/></svg>
             </button>
             <div class="account-accordion-body" id="acc-username-body" hidden>
               <form id="account-username-form" autocomplete="off">
                 <div class="form-group">
-                  <label for="account-current-pw-name">Current password</label>
-                  <input id="account-current-pw-name" type="password" class="form-input" autocomplete="current-password" required>
+                  <label for="account-current-pw-name">Current Username</label>
+                  <input id="account-current-pw-name" type="text" class="form-input" autocomplete="username" autocapitalize="none" spellcheck="false" required>
                 </div>
                 <div class="form-group">
-                  <label for="account-new-name">New username</label>
+                  <label for="account-new-name">New Username</label>
                   <input id="account-new-name" type="text" class="form-input" autocomplete="off" autocapitalize="none" spellcheck="false" required>
                 </div>
                 <p id="account-username-status" class="form-status" style="min-height:1.2em"></p>
@@ -770,18 +770,18 @@
 
           <!-- Change Password accordion -->
           <div class="account-accordion-item">
-            <button type="button" class="account-accordion-btn" id="acc-password-toggle">
+            <button type="button" class="account-accordion-btn" id="acc-password-toggle" aria-expanded="false">
               Change Admin Password
               <svg class="acc-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><path d="M6 9l6 6 6-6"/></svg>
             </button>
             <div class="account-accordion-body" id="acc-password-body" hidden>
               <form id="account-password-form" autocomplete="off">
                 <div class="form-group">
-                  <label for="account-current-pw">Current password</label>
+                  <label for="account-current-pw">Current Password</label>
                   <input id="account-current-pw" type="password" class="form-input" autocomplete="current-password" required>
                 </div>
                 <div class="form-group">
-                  <label for="account-new-pw">New password</label>
+                  <label for="account-new-pw">New Password</label>
                   <input id="account-new-pw" type="password" class="form-input" autocomplete="new-password" required>
                 </div>
                 <p id="account-password-status" class="form-status" style="min-height:1.2em"></p>
@@ -791,8 +791,8 @@
           </div>
 
           <!-- Log out -->
-          <div class="account-accordion-item">
-            <button type="button" class="account-accordion-btn account-logout-btn" id="account-modal-logout">
+          <div class="account-accordion-item" style="padding:1rem 1.25rem">
+            <button type="button" class="button danger" id="account-modal-logout" style="width:100%">
               Log out
             </button>
           </div>
