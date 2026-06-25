@@ -2128,11 +2128,12 @@ font-size: 0.85rem;
 .station-badge--fee { background: #fef3e2; color: #b45309; }
 .station-search {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
   margin-top: 12px;
 }
 .station-search input {
-  flex: 1 1 auto;
+  flex: 1 1 200px;
   min-width: 0;
   min-height: 44px;
   padding: 10px 13px;
@@ -2143,6 +2144,10 @@ font-size: 0.85rem;
   font: inherit;
 }
 .station-search .button { flex: 0 0 auto; }
+@media (max-width: 560px) {
+  .station-search input { flex: 1 1 100%; }
+  .station-search .button { flex: 1 1 100%; }
+}
 
 /* ── Admin Payroll tab ─────────────────────────────────────────────────────── */
 .payroll-range-toggle { display: inline-flex; gap: 4px; background: #eef2ef; padding: 4px; border-radius: 10px; }

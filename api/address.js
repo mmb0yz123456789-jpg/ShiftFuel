@@ -96,6 +96,37 @@ async function nominatimSearch(query) {
   return results?.length ? results[0] : null;
 }
 
+// Geocode via the Mapbox Geocoding API — the same accurate provider as the
+// address autocomplete. Used for service-area validation so a saved address
+// resolves to its true location (Nominatim sometimes fell back to the city
+// centroid, which made "nearby" gas stations cluster miles from the address).
+async function mapboxGeocode(query) {
+  const params = new URLSearchParams({
+    q: query,
+    access_token: MAPBOX_TOKEN,
+    country: 'us',
+    types: 'address',
+    limit: '1',
+    proximity: `${SERVICE_ANCHOR_LON},${SERVICE_ANCHOR_LAT}`,
+  });
+  try {
+    const r = await fetch(`https://api.mapbox.com/search/geocode/v6/forward?${params.toString()}`, { headers: MAPBOX_FETCH_HEADERS });
+    if (!r.ok) return null;
+    const data = await r.json();
+    const f = data.features?.[0];
+    if (!f) return null;
+    const props = f.properties || {};
+    const coords = f.geometry?.coordinates || [];
+    const lon = props.coordinates?.longitude ?? coords[0];
+    const lat = props.coordinates?.latitude ?? coords[1];
+    if (!Number.isFinite(Number(lat)) || !Number.isFinite(Number(lon))) return null;
+    return { lat: Number(lat), lon: Number(lon), full_address: props.full_address || '' };
+  } catch (err) {
+    console.error('[address/mapboxGeocode] Error:', err.message);
+    return null;
+  }
+}
+
 // Run the service-area check against a known lat/lon and return the standard
 // valid/invalid response. Shared by the geocode path and the Mapbox-coords
 // fast path (which skips geocoding entirely).
@@ -142,21 +173,21 @@ async function handleValidateServiceArea(body, res) {
   }
 
   try {
-    let result = await nominatimSearch(query);
+    let geo = await mapboxGeocode(query);
 
-    if (!result) {
+    if (!geo) {
       const fallback = [city, state, zip].filter(Boolean).join(', ');
-      if (fallback && fallback !== query) result = await nominatimSearch(fallback);
+      if (fallback && fallback !== query) geo = await mapboxGeocode(fallback);
     }
 
-    if (!result) {
+    if (!geo) {
       return res.status(200).json({
         valid: false,
         message: 'We could not verify this address. Please check your address and try again.',
       });
     }
 
-    const { inArea, distanceMiles } = await checkServiceArea(Number(result.lat), Number(result.lon));
+    const { inArea, distanceMiles } = await checkServiceArea(geo.lat, geo.lon);
 
     if (!inArea) {
       return res.status(200).json({
@@ -166,21 +197,13 @@ async function handleValidateServiceArea(body, res) {
       });
     }
 
-    const a = result.address || {};
-    const canonicalAddress = [
-      [a.house_number, a.road].filter(Boolean).join(' '),
-      a.city || a.town || a.village || a.county,
-      a.state,
-      a.postcode,
-    ].filter(Boolean).join(', ');
-
     return res.status(200).json({
       valid: true,
       message: 'Address verified.',
-      canonicalAddress,
+      canonicalAddress: geo.full_address || query,
       distanceMiles,
-      lat: Number(result.lat),
-      lon: Number(result.lon),
+      lat: geo.lat,
+      lon: geo.lon,
     });
   } catch (err) {
     console.error('[address/validate_service_area] Error:', err.message);
@@ -441,13 +464,13 @@ async function handleGeocode(body, res) {
   const query = [body.street, body.city, body.state, body.zip].map((v) => String(v || '').trim()).filter(Boolean).join(', ');
   if (!query) return res.status(400).json({ ok: false, message: 'Missing address.' });
   try {
-    let result = await nominatimSearch(query);
-    if (!result) {
+    let geo = await mapboxGeocode(query);
+    if (!geo) {
       const fallback = [body.city, body.state, body.zip].map((v) => String(v || '').trim()).filter(Boolean).join(', ');
-      if (fallback && fallback !== query) result = await nominatimSearch(fallback);
+      if (fallback && fallback !== query) geo = await mapboxGeocode(fallback);
     }
-    if (!result) return res.status(200).json({ ok: false, message: 'Could not locate address.' });
-    return res.status(200).json({ ok: true, lat: Number(result.lat), lon: Number(result.lon) });
+    if (!geo) return res.status(200).json({ ok: false, message: 'Could not locate address.' });
+    return res.status(200).json({ ok: true, lat: geo.lat, lon: geo.lon });
   } catch (err) {
     console.error('[address/geocode] Error:', err.message);
     return res.status(200).json({ ok: false, message: 'Could not locate address.' });
