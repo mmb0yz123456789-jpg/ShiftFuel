@@ -213,7 +213,7 @@ const stepCopy = {
     intro: "Pick the service date and desired return time.",
     fields: `
       <div class="booking-field-grid">
-        <label><span>Service date <span class="required-mark">Required</span></span><input data-required name="serviceDate" type="date"></label>
+        <label><span>Service date <span class="required-mark">Required</span></span><span class="sfp-field-host" data-date-host><input type="hidden" data-required name="serviceDate"></span></label>
         <label><span>Desired return time <span class="required-mark">Required</span></span><select data-required name="returnTime" data-return-time>
           <option value="">Select return time</option>
         </select></label>
@@ -1996,12 +1996,24 @@ function refreshTotalsUI(panel) {
 }
 
 function renderScheduleFields(panel) {
-  const dateInput = panel.querySelector('[name="serviceDate"]');
+  const host = panel.querySelector("[data-date-host]");
   const timeSelect = panel.querySelector("[data-return-time]");
-  if (!dateInput || !timeSelect) return;
-  dateInput.min = todayValue();
-  dateInput.max = maxDateValue();
-  if (bookingState.values.serviceDate) dateInput.value = bookingState.values.serviceDate;
+  if (!host || !timeSelect) return;
+
+  // Custom date picker: greys out past/out-of-range dates and uses an inline
+  // popup instead of iOS's off-screen native overlay. Attach once per render
+  // (the host is rebuilt fresh on every full re-render); the change handler that
+  // refreshes return times keeps the flag, so it never double-attaches.
+  if (!host.dataset.sfpAttached && window.ShiftFuelDatePicker) {
+    host.dataset.sfpAttached = "1";
+    const hidden = host.querySelector('input[name="serviceDate"]');
+    if (hidden) hidden.value = bookingState.values.serviceDate || "";
+    ShiftFuelDatePicker.attach(host, {
+      min: todayValue(),
+      max: maxDateValue(),
+      value: bookingState.values.serviceDate || "",
+    });
+  }
 
   const selectedTime = bookingState.values.returnTime || "";
   const options = availableTimeOptions();
@@ -2584,6 +2596,15 @@ async function submitBooking(panel) {
     const actions = panel.querySelector(".booking-step-actions");
     if (actions) actions.hidden = true;
     if (button) button.hidden = true;
+    // Scroll the "Request received" confirmation into view (below the sticky
+    // header) so the customer clearly sees it worked + their request number.
+    const successEl = fields?.querySelector(".submission-success");
+    if (successEl) {
+      const header = document.querySelector(".site-header");
+      const headerHeight = header ? header.getBoundingClientRect().height : 0;
+      const top = successEl.getBoundingClientRect().top + window.scrollY - headerHeight - 18;
+      window.scrollTo({ top: Math.max(top, 0), behavior: "smooth" });
+    }
   } catch (error) {
     console.error("Booking submit failed:", error);
     setStatus("error", error.message || "Could not submit booking. Please try again.");

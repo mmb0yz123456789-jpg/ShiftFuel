@@ -7406,6 +7406,12 @@ width: 100%;
 flex-direction: column;
 }
 
+/* In a flex column, flex-grow:1 (from the desktop "share the row" rule) makes
+   buttons balloon vertically. Pin booking buttons to their natural height. */
+.booking-accordion-card .admin-button-row .button {
+flex: 0 0 auto;
+}
+
 .track-search-heading,
 .returning-step-heading,
 .final-cta-main {
