@@ -3197,26 +3197,30 @@ function renderRequestCard(request, photos = [], review = null, { expanded = fal
           ${renderTrackHero(request)}
 
           <div class="tk-detail-grid">
-          ${tkSubAcc('Vehicle & Service Details', `
-            <section class="tk-card tk-vehicle">${renderVehicleCard(request)}</section>
-          `, { open: detailsOpen })}
+          <div class="tk-detail-col">
+            ${tkSubAcc('Vehicle & Service Details', `
+              <section class="tk-card tk-vehicle">${renderVehicleCard(request)}</section>
+            `, { open: detailsOpen })}
 
-          ${tkSubAcc('Live Updates', `
-            <section class="tk-card tk-updates"><p class="tk-eyebrow">Live GPS tracking</p>${renderGpsTracking(request)}</section>
-          `, { open: detailsOpen })}
+            ${tkSubAcc('Photos', `
+              <div class="tk-photos-lazy"><p class="tk-empty">Loading photos…</p></div>
+            `, { open: detailsOpen })}
+          </div>
 
-          ${tkSubAcc('Photos', `
-            <div class="tk-photos-lazy"><p class="tk-empty">Loading photos…</p></div>
-          `, { open: detailsOpen })}
+          <div class="tk-detail-col">
+            ${tkSubAcc('Live Updates', `
+              <section class="tk-card tk-updates"><p class="tk-eyebrow">Live GPS tracking</p>${renderGpsTracking(request)}</section>
+            `, { open: detailsOpen })}
 
-          ${tkSubAcc('Service Details', [
-            isReturned ? renderReturnDetails(request) : '',
-            serviceTimingFromNotes(request),
-            inspectionSummaryFromNotes(request),
-            request.status === 'complete' ? serviceSummaryFromRequest(request) : '',
-          ].filter(Boolean).join(''), { open: detailsOpen })}
+            ${tkSubAcc('Service Details', [
+              isReturned ? renderReturnDetails(request) : '',
+              serviceTimingFromNotes(request),
+              inspectionSummaryFromNotes(request),
+              request.status === 'complete' ? serviceSummaryFromRequest(request) : '',
+            ].filter(Boolean).join(''), { open: detailsOpen })}
 
-          ${tkSubAcc('Help', `<section class="tk-card tk-help">${renderHelpCard()}</section>`, { open: detailsOpen })}
+            ${tkSubAcc('Help', `<section class="tk-card tk-help">${renderHelpCard()}</section>`, { open: detailsOpen })}
+          </div>
           </div>
 
           ${renderReviewPrompt(request, review)}

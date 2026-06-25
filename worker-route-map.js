@@ -1,11 +1,12 @@
 // In-app route + live turn-by-turn navigation for worker jobs.
 //
-// Opening the map shows the worker's live position, the destination, the driving
-// route, a live ETA, and a next-turn banner that advances as they drive — all
-// INSIDE the installed PWA. That's deliberate: handing off to Apple/Google Maps
-// backgrounds the app, which pauses the customer's live GPS tracking and drops the
-// screen wake lock. Navigating in-app keeps both alive. "Open in Maps" stays as a
-// fallback for anyone who prefers native turn-by-turn (accepting the tracking pause).
+// Opening the map shows a follow-the-car navigation view (Uber/Lyft style): the
+// worker's live position as a direction arrow, a close zoomed + tilted camera that
+// rotates to their heading, the route, a live ETA, and a next-turn banner that
+// advances as they drive — all INSIDE the installed PWA. That's deliberate: handing
+// off to Apple/Google Maps backgrounds the app, which pauses the customer's live
+// GPS tracking and drops the screen wake lock. Navigating in-app keeps both alive.
+// "Open in Maps" stays as a fallback for anyone who prefers native turn-by-turn.
 //
 // Cost control (Mapbox is billed per request): we call the Directions API once per
 // leg and again ONLY when the worker strays off-route (rate-limited), never on every
@@ -18,6 +19,9 @@
   const OFF_ROUTE_METERS = 60;            // re-route once the worker strays this far from the line
   const ADVANCE_STEP_METERS = 28;         // advance the next-turn banner within this radius of a maneuver
   const REROUTE_MIN_INTERVAL_MS = 12000;  // never re-request Directions more often than this
+  const NAV_ZOOM = 16.2;                  // close, street-level follow zoom
+  const NAV_PITCH = 55;                   // 3D tilt for the driving view
+  const ARRIVE_METERS = 45;               // auto "arrived" radius at the destination
 
   let assetsPromise = null;
   let map = null;
@@ -25,8 +29,8 @@
   let workerMarker = null;
   let navWatchId = null;
   // Active navigation state for the open map: destination, the route's turn steps,
-  // which step is next, the route polyline (for off-route detection), and the last
-  // time we re-requested directions.
+  // which step is next, the route polyline (off-route detection), whether the camera
+  // is following the worker, and the last known position/heading.
   let nav = null;
 
   function getJobs() {
@@ -58,6 +62,17 @@
     const lat2 = toRad(b.lat);
     const h = Math.sin(dLat / 2) ** 2 + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLon / 2) ** 2;
     return 2 * earth * Math.asin(Math.sqrt(h));
+  }
+
+  // Compass bearing in degrees from point a to point b (0 = north, 90 = east).
+  function bearing(a, b) {
+    if (!a || !b) return NaN;
+    const toRad = (d) => d * Math.PI / 180;
+    const toDeg = (r) => r * 180 / Math.PI;
+    const y = Math.sin(toRad(b.lon - a.lon)) * Math.cos(toRad(b.lat));
+    const x = Math.cos(toRad(a.lat)) * Math.sin(toRad(b.lat))
+      - Math.sin(toRad(a.lat)) * Math.cos(toRad(b.lat)) * Math.cos(toRad(b.lon - a.lon));
+    return (toDeg(Math.atan2(y, x)) + 360) % 360;
   }
 
   function formatDistance(metres) {
@@ -95,6 +110,17 @@
     return assetsPromise;
   }
 
+  // Direction-arrow "puck" element for the worker's live position.
+  function makePuckElement() {
+    const el = document.createElement('div');
+    el.className = 'wrm-puck';
+    el.innerHTML = `<svg viewBox="0 0 24 24" width="36" height="36" aria-hidden="true">
+      <circle cx="12" cy="12" r="11" fill="#1f7a45" opacity="0.18"/>
+      <path d="M12 3 L19 20 L12 15.5 L5 20 Z" fill="#1f7a45" stroke="#ffffff" stroke-width="1.4" stroke-linejoin="round"/>
+    </svg>`;
+    return el;
+  }
+
   function ensureModal() {
     let modal = document.getElementById('worker-route-modal');
     if (modal) return modal;
@@ -116,7 +142,13 @@
           <span class="wrm-banner-instruction"></span>
           <span class="wrm-banner-distance"></span>
         </div>
-        <div class="wrm-map"></div>
+        <div class="wrm-map-wrap">
+          <div class="wrm-map"></div>
+          <button class="wrm-recenter" type="button" hidden>
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg>
+            Re-center
+          </button>
+        </div>
         <div class="wrm-actions">
           <a class="button secondary wrm-open-native" target="_blank" rel="noopener noreferrer">Open in Maps (turn-by-turn)</a>
         </div>
@@ -124,7 +156,16 @@
     document.body.appendChild(modal);
     modal.querySelector('.wrm-close').addEventListener('click', closeModal);
     modal.addEventListener('click', (e) => { if (e.target === modal) closeModal(); });
+    modal.querySelector('.wrm-recenter').addEventListener('click', () => {
+      if (nav) { nav.follow = true; if (nav.lastLoc) applyNavCamera(nav.lastLoc, nav.lastBearing); }
+      toggleRecenter(false);
+    });
     return modal;
+  }
+
+  function toggleRecenter(show) {
+    const btn = document.querySelector('#worker-route-modal .wrm-recenter');
+    if (btn) btn.hidden = !show;
   }
 
   function closeModal() {
@@ -222,7 +263,7 @@
       map.addLayer({
         id: 'wrm-route', type: 'line', source: 'wrm-route',
         layout: { 'line-join': 'round', 'line-cap': 'round' },
-        paint: { 'line-color': '#1f7a45', 'line-width': 6, 'line-opacity': 0.85 },
+        paint: { 'line-color': '#1f7a45', 'line-width': 7, 'line-opacity': 0.9 },
       });
     }
   }
@@ -236,13 +277,27 @@
   }
 
   function adoptRoute(route, dest) {
-    nav = {
-      dest,
-      steps: (route.legs && route.legs[0] && route.legs[0].steps) || [],
-      stepIndex: 0,
-      routeCoords: (route.geometry.coordinates || []).map((c) => ({ lon: c[0], lat: c[1] })),
-      lastReroute: Date.now(),
-    };
+    nav = nav || {};
+    nav.dest = dest;
+    nav.steps = (route.legs && route.legs[0] && route.legs[0].steps) || [];
+    nav.stepIndex = 0;
+    nav.routeCoords = (route.geometry.coordinates || []).map((c) => ({ lon: c[0], lat: c[1] }));
+    nav.lastReroute = Date.now();
+    if (nav.follow === undefined) nav.follow = true;
+  }
+
+  // Follow-camera: center on the worker, zoom in, tilt, and rotate the map so the
+  // direction of travel points up — the Uber/Lyft driving view.
+  function applyNavCamera(loc, bearingDeg) {
+    if (!map || !loc) return;
+    map.easeTo({
+      center: [loc.lon, loc.lat],
+      zoom: NAV_ZOOM,
+      pitch: NAV_PITCH,
+      bearing: Number.isFinite(bearingDeg) ? bearingDeg : map.getBearing(),
+      duration: 700,
+      essential: true,
+    });
   }
 
   // Update the next-turn banner: advance past any maneuver we've reached, then show
@@ -253,7 +308,7 @@
     const banner = modal.querySelector('.wrm-banner');
     const instrEl = modal.querySelector('.wrm-banner-instruction');
     const distEl = modal.querySelector('.wrm-banner-distance');
-    if (!nav || !nav.steps.length) { banner.hidden = true; return; }
+    if (!nav || !nav.steps || !nav.steps.length) { banner.hidden = true; return; }
     banner.hidden = false;
 
     if (workerLoc) {
@@ -302,7 +357,22 @@
     navWatchId = navigator.geolocation.watchPosition((pos) => {
       const loc = { lat: pos.coords.latitude, lon: pos.coords.longitude };
       if (workerMarker) workerMarker.setLngLat([loc.lon, loc.lat]);
-      if (map) map.easeTo({ center: [loc.lon, loc.lat], duration: 600 });
+
+      // Auto-arrival: reached the station on the "drive to station" step → start service.
+      if (nav && nav.autoArriveStart && !nav.arrived && nav.dest && haversine(loc, nav.dest) <= ARRIVE_METERS) {
+        nav.arrived = true;
+        handleArrival();
+        return;
+      }
+
+      // Heading from the device when moving, else inferred from the last position.
+      let heading = Number.isFinite(pos.coords.heading) ? pos.coords.heading : NaN;
+      if (!Number.isFinite(heading) && nav?.lastLoc) heading = bearing(nav.lastLoc, loc);
+      if (nav) {
+        if (Number.isFinite(heading)) nav.lastBearing = heading;
+        nav.lastLoc = loc;
+        if (nav.follow) applyNavCamera(loc, nav.lastBearing);
+      }
       updateBanner(loc);
       maybeReroute(loc);
     }, () => {}, { enableHighAccuracy: true, maximumAge: 5000, timeout: 15000 });
@@ -311,6 +381,27 @@
   function stopNavWatch() {
     if (navWatchId != null && navigator.geolocation) navigator.geolocation.clearWatch(navWatchId);
     navWatchId = null;
+  }
+
+  // Reached the gas station on the "drive to station" step: show a brief arrival
+  // note, then close the map and hand off to the worker portal to auto-advance the
+  // job to "service in progress" (so they don't tap Start service — they're here).
+  function handleArrival() {
+    const requestId = nav?.requestId;
+    const modal = document.getElementById('worker-route-modal');
+    if (modal) {
+      const banner = modal.querySelector('.wrm-banner');
+      const instrEl = modal.querySelector('.wrm-banner-instruction');
+      const distEl = modal.querySelector('.wrm-banner-distance');
+      if (banner) banner.hidden = false;
+      if (instrEl) instrEl.textContent = 'Arrived at the gas station — starting service…';
+      if (distEl) distEl.textContent = '';
+    }
+    stopNavWatch();
+    setTimeout(() => {
+      closeModal();
+      if (requestId && typeof window.ShiftFuelOnNavArrive === 'function') window.ShiftFuelOnNavArrive(requestId, 'station');
+    }, 1600);
   }
 
   // ── Open the map for a job ────────────────────────────────────────────────────
@@ -325,6 +416,7 @@
     titleEl.textContent = isStation ? 'Drive to gas station' : 'Directions to service address';
     etaEl.textContent = 'Loading map…';
     banner.hidden = true;
+    toggleRecenter(false);
     stopNavWatch();
     nav = null;
     modal.hidden = false;
@@ -354,8 +446,11 @@
       style: 'mapbox://styles/mapbox/streets-v12',
       center: [dest.lon, dest.lat],
       zoom: 13,
+      pitch: 0,
     });
-    map.addControl(new mapboxgl.NavigationControl(), 'top-right');
+    map.addControl(new mapboxgl.NavigationControl({ showCompass: true }), 'top-right');
+    // Pause auto-follow when the worker pans the map; show a Re-center button.
+    map.on('dragstart', () => { if (nav) { nav.follow = false; toggleRecenter(true); } });
 
     map.on('load', async () => {
       map.resize();
@@ -368,24 +463,32 @@
         return;
       }
 
-      workerMarker = new mapboxgl.Marker({ color: '#1f7a45' }).setLngLat([workerLoc.lon, workerLoc.lat]).addTo(map);
+      workerMarker = new mapboxgl.Marker({ element: makePuckElement() }).setLngLat([workerLoc.lon, workerLoc.lat]).addTo(map);
       const route = await fetchDirections(workerLoc, dest);
       if (!route) {
         etaEl.textContent = 'On the way — directions unavailable right now.';
-        map.flyTo({ center: [workerLoc.lon, workerLoc.lat], zoom: 13 });
+        map.flyTo({ center: [workerLoc.lon, workerLoc.lat], zoom: NAV_ZOOM });
         return;
       }
 
       setRouteOnMap(route);
       setEta(route);
       adoptRoute(route, dest);
+      nav.requestId = request.id;
+      nav.destType = destType;
+      // Only auto-start service when this is the "drive to station" step (the worker
+      // hasn't started yet). Reopening nav later won't auto-close on arrival.
+      nav.autoArriveStart = isStation && request.status === 'vehicle_picked_up';
+      nav.arrived = false;
       updateBanner(workerLoc);
 
-      const bounds = new mapboxgl.LngLatBounds();
-      route.geometry.coordinates.forEach((c) => bounds.extend(c));
-      map.fitBounds(bounds, { padding: 60, duration: 500 });
+      // Enter the follow-camera facing the start of the route.
+      const ahead = nav.routeCoords[1] || nav.routeCoords[0];
+      nav.lastLoc = workerLoc;
+      nav.lastBearing = ahead ? bearing(workerLoc, ahead) : 0;
+      applyNavCamera(workerLoc, nav.lastBearing);
 
-      startNavWatch(); // live position + banner advance + off-route reroute
+      startNavWatch(); // live position + heading follow + banner advance + off-route reroute
     });
   }
 
@@ -395,10 +498,10 @@
     style.id = 'worker-route-map-style';
     style.textContent = `
       .wrm-overlay { position: fixed; inset: 0; z-index: 1000; background: rgba(0,0,0,.55);
-        display: flex; align-items: center; justify-content: center; padding: 16px; }
+        display: flex; align-items: center; justify-content: center; padding: 12px; }
       .wrm-overlay[hidden] { display: none; }
       .wrm-dialog { background: #fff; border-radius: 16px; width: min(680px, 96vw);
-        max-height: 92vh; display: flex; flex-direction: column; overflow: hidden; }
+        max-height: 94vh; display: flex; flex-direction: column; overflow: hidden; }
       .wrm-header { display: flex; align-items: center; justify-content: space-between;
         padding: 14px 16px; border-bottom: 1px solid #eef2ef; }
       .wrm-title { display: block; color: #0d3b3b; }
@@ -409,8 +512,16 @@
       .wrm-banner[hidden] { display: none; }
       .wrm-banner-instruction { font-weight: 800; font-size: 1.02rem; line-height: 1.3; }
       .wrm-banner-distance { font-weight: 800; font-size: .95rem; color: #bfe3cf; white-space: nowrap; }
-      .wrm-map { width: 100%; height: min(60vh, 460px); background: #1a1a2e; }
-      .wrm-actions { padding: 14px 16px; }
+      .wrm-map-wrap { position: relative; }
+      .wrm-map { width: 100%; height: min(72vh, 620px); background: #1a1a2e; }
+      .wrm-puck { width: 36px; height: 36px; }
+      .wrm-recenter { position: absolute; right: 12px; bottom: 12px; z-index: 2;
+        display: inline-flex; align-items: center; gap: 6px;
+        padding: 9px 14px; border-radius: 999px; border: 1px solid #d7e3de;
+        background: #fff; color: #0d3b3b; font-weight: 800; font-size: .85rem;
+        box-shadow: 0 4px 14px rgba(6,39,39,.18); cursor: pointer; }
+      .wrm-recenter[hidden] { display: none; }
+      .wrm-actions { padding: 12px 16px; }
       .wrm-actions .button { display: block; width: 100%; text-align: center; text-decoration: none; }
     `;
     document.head.appendChild(style);
@@ -423,4 +534,8 @@
     const request = findRequest(btn.dataset.id);
     if (request) openRouteMap(request, btn.dataset.routeDest || 'address');
   });
+
+  // Let the worker portal open navigation programmatically (e.g. straight after the
+  // pickup photos upload, to send the worker to the gas station).
+  window.ShiftFuelRouteMap = { open: openRouteMap };
 })();

@@ -2195,8 +2195,8 @@ function workerPrimaryStatusButton(request, label, status) {
 // In-app navigation to the gas station for the fuel service drive. No
 // worker-start-nav class here — that's the en-route gate; this only opens the map
 // (data-route-map), so it never re-runs the "started"/GPS-start logic.
-function workerNavStationButton(request) {
-  return `<button class="button secondary" data-route-map data-route-dest="station" data-id="${escapeHtml(request.id)}" type="button">Navigate to gas station</button>`;
+function workerNavStationButton(request, primary = false) {
+  return `<button class="button ${primary ? 'primary' : 'secondary'}" data-route-map data-route-dest="station" data-id="${escapeHtml(request.id)}" type="button">Navigate to gas station</button>`;
 }
 
 function workerBackStatusFor(request) {
@@ -2301,9 +2301,16 @@ function renderWorkerJobActions(request) {
   } else if (request.status === 'vehicle_picked_up') {
     // Gateway: worker confirms they are beginning the service.
     // The customer tracker advances to "Service in progress" after this click.
-    nextAction = 'Start the requested service.';
-    actions.push(workerPrimaryStatusButton(request, 'Start service', 'service_in_progress'));
-    if (serviceNeedsFuel(request)) actions.push(workerNavStationButton(request));
+    if (serviceNeedsFuel(request)) {
+      // Fuel job: the next move is driving to the station. Lead with navigation;
+      // service auto-starts on arrival. Manual "Start service" stays as a fallback.
+      nextAction = 'Drive to the gas station — service starts automatically when you arrive.';
+      actions.push(workerNavStationButton(request, true));
+      actions.push(`<button class="button secondary worker-update-status" data-id="${escapeHtml(request.id)}" data-status="service_in_progress" type="button">Start service</button>`);
+    } else {
+      nextAction = 'Start the requested service.';
+      actions.push(workerPrimaryStatusButton(request, 'Start service', 'service_in_progress'));
+    }
   } else if (request.status === 'service_in_progress') {
     // Worker performs the actual service. Show fuel/wash action buttons.
     nextAction = 'Complete the requested fuel or cleaning service.';
@@ -2997,6 +3004,17 @@ async function updateWorkerJobStatus(id, status) {
   await loadWorkerJobs();
 }
 
+// Called by the in-app navigator when the worker reaches the gas station on the
+// "drive to station" step — auto-advances to service_in_progress so they don't have
+// to tap "Start service" once they're already there. Guarded to the right status so
+// reopening the map later can't mis-fire.
+window.ShiftFuelOnNavArrive = function (requestId, destType) {
+  if (destType !== 'station') return;
+  const job = allWorkerJobs.find((j) => j.id === requestId);
+  if (!job || job.status !== 'vehicle_picked_up') return;
+  updateWorkerJobStatus(requestId, 'service_in_progress').catch((err) => console.warn('Auto-start service failed:', err));
+};
+
 async function saveWorkerServiceUnable(button) {
   const id = button.dataset.id;
   const panel = button.closest('.service-unable-panel');
@@ -3122,6 +3140,13 @@ async function uploadWorkerPhotoSet(button) {
 
   if (error) throw error;
   await loadWorkerJobs();
+
+  // Pickup photos done on a fuel job → take the worker straight into navigation to
+  // the gas station. Arriving there auto-starts the service (see ShiftFuelOnNavArrive).
+  if (panel.dataset.photoStage === 'pickup' && serviceNeedsFuel(request) && window.ShiftFuelRouteMap?.open) {
+    const updated = allWorkerJobs.find((item) => item.id === id) || request;
+    window.ShiftFuelRouteMap.open(updated, 'station');
+  }
 }
 
 async function saveWorkerFinalTotal(button) {
