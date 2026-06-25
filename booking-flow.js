@@ -1712,6 +1712,72 @@ const STATION_PER_MILE_RATE = 0.75;
 
 // Fetch nearby gas stations for the verified service address and render them.
 // Closest is auto-selected (free); the customer can upgrade to a farther one.
+// Does a past request belong to the vehicle the customer just selected? Prefer
+// an exact license-plate match; fall back to make+model when no plate is known.
+function requestMatchesSelectedVehicle(r) {
+  const plate = String(bookingState.values.licensePlate || "").replace(/\s/g, "").toUpperCase();
+  if (plate) return String(r.license_plate || "").replace(/\s/g, "").toUpperCase() === plate;
+  const make = String(bookingState.values.vehicleMake || "").toLowerCase();
+  const model = String(bookingState.values.vehicleModel || "").toLowerCase();
+  return Boolean(make && model
+    && String(r.vehicle_make || "").toLowerCase() === make
+    && String(r.vehicle_model || "").toLowerCase() === model);
+}
+
+// The customer's go-to station brand for the selected vehicle: the station name
+// they PAID a surcharge for most often across their paid history. Returns null
+// when they have no consistent paid preference (e.g. they always take the free
+// closest), so nothing gets auto-selected in that case.
+function getPreferredStationBrand() {
+  const reqs = Array.isArray(bookingState.returning.requests) ? bookingState.returning.requests : [];
+  const paid = reqs.filter((r) =>
+    (r.payment_status === "captured" || r.status === "complete")
+    && Number(r.gas_station_surcharge) > 0
+    && r.gas_station_name
+    && requestMatchesSelectedVehicle(r));
+  if (!paid.length) return null;
+  const tally = new Map();
+  for (const r of paid) {
+    const key = String(r.gas_station_name).trim();
+    if (key) tally.set(key, (tally.get(key) || 0) + 1);
+  }
+  let best = null;
+  let bestCount = 0;
+  for (const [name, count] of tally) {
+    if (count > bestCount) { best = name; bestCount = count; }
+  }
+  return best;
+}
+
+// If the customer has a usual paid station for this vehicle, find the closest one
+// of that brand near the new address and auto-select it.
+async function applyPreferredStation(panel) {
+  const brand = getPreferredStationBrand();
+  if (!brand) return;
+  const lat = Number(bookingState.values.address_lat);
+  const lon = Number(bookingState.values.address_lon);
+  if (!Number.isFinite(lat) || !Number.isFinite(lon)) return;
+  try {
+    const res = await fetch("/api/address", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "gas_station_search", lat, lon, q: brand }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!data.ok || !Array.isArray(data.stations) || !data.stations.length) return;
+    const matchIds = new Set(data.stations.map((s) => s.id));
+    const rest = bookingState.station.options.filter((s) => !matchIds.has(s.id));
+    bookingState.station.options = [...data.stations, ...rest];
+    applyStationSelection(data.stations[0]); // closest of their usual brand
+    renderStationList(panel);
+    refreshTotalsUI(panel);
+    const statusEl = panel.querySelector("[data-station-search-status]");
+    if (statusEl) statusEl.textContent = `Auto-selected your usual: ${data.stations[0].name}. Change it anytime below.`;
+  } catch (_) {
+    // Non-fatal — the closest station stays selected.
+  }
+}
+
 async function loadStationOptions(panel) {
   const list = panel.querySelector("[data-station-list]");
   if (!list) return;
@@ -1749,11 +1815,16 @@ async function loadStationOptions(panel) {
       if (rateEl) rateEl.textContent = formatMoney(bookingState.station.perMileRate);
     }
     const chosen = bookingState.station.selectedId;
+    let justDefaulted = false;
     if (!chosen || !data.stations.some((s) => s.id === chosen)) {
       applyStationSelection(data.stations[0]);
+      justDefaulted = true;
     }
     renderStationList(panel);
     refreshTotalsUI(panel);
+    // Only override the default closest with the customer's usual brand — never a
+    // station they've already manually chosen.
+    if (justDefaulted) await applyPreferredStation(panel);
   } catch (err) {
     list.innerHTML = `<p class="field-help">We couldn't load nearby stations right now — we'll fuel at the closest one (no extra charge).</p>`;
   }
