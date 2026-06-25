@@ -57,9 +57,16 @@
     if (wakeLock || !('wakeLock' in navigator) || document.visibilityState !== 'visible') return;
     try {
       wakeLock = await navigator.wakeLock.request('screen');
-      // The OS can drop the lock on its own (e.g. tab hidden). Clear our handle so
-      // a later visibility change re-acquires it instead of assuming we still hold one.
-      wakeLock.addEventListener('release', () => { wakeLock = null; });
+      // The OS can drop the lock on its own (e.g. tab hidden, or iOS releasing it
+      // while idle). Clear our handle and immediately re-acquire if the worker still
+      // holds the key/vehicle and the app is visible — otherwise the screen sleeps
+      // mid-job. A short delay avoids a hot loop if the request keeps getting dropped.
+      wakeLock.addEventListener('release', () => {
+        wakeLock = null;
+        if (document.visibilityState === 'visible' && shouldHoldWakeLock()) {
+          setTimeout(acquireWakeLock, 1000);
+        }
+      });
     } catch (err) {
       // Not fatal — tracking still works, the screen just isn't pinned on.
       console.warn('Screen wake lock unavailable:', err && err.message ? err.message : err);
@@ -280,8 +287,11 @@
   }
 
   function refreshGpsPanels() {
-    document.querySelectorAll('.worker-job-card:not(.worker-job-available)').forEach((card) => {
-      const requestId = card.querySelector('[data-id]')?.dataset.id;
+    // Include the dashboard's active-job card (.worker-current-job-card) — not just
+    // the Jobs-tab cards — so GPS auto-resumes (and the screen wake lock comes back)
+    // on the screen the worker actually lives on, even after a reload.
+    document.querySelectorAll('.worker-job-card:not(.worker-job-available), .worker-current-job-card').forEach((card) => {
+      const requestId = card.dataset.currentJobId || card.querySelector('[data-id]')?.dataset.id;
       const request = requestId ? findRequest(requestId) : null;
       const existing = card.querySelector('.gps-tracking-panel');
 
@@ -441,8 +451,12 @@
   function start() {
     ensureStyles();
     refreshGpsPanels();
-    const list = document.querySelector('#worker-job-list');
-    if (list) new MutationObserver(() => setTimeout(refreshGpsPanels, 0)).observe(list, { childList: true, subtree: true });
+    // Watch both the Jobs-tab list and the Today's Job dashboard list, so a
+    // re-render on either surface re-attaches GPS and re-arms the wake lock.
+    ['#worker-job-list', '#worker-dashboard-today'].forEach((sel) => {
+      const list = document.querySelector(sel);
+      if (list) new MutationObserver(() => setTimeout(refreshGpsPanels, 0)).observe(list, { childList: true, subtree: true });
+    });
   }
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start);
@@ -453,6 +467,13 @@
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible' && shouldHoldWakeLock()) acquireWakeLock();
   });
+
+  // Safety net: while the worker holds the key/vehicle and the app is visible, make
+  // sure the screen lock is held. Covers cases where iOS quietly dropped it and no
+  // tap/visibility event fired to re-arm it, so the screen never sleeps mid-job.
+  setInterval(() => {
+    if (!wakeLock && document.visibilityState === 'visible' && shouldHoldWakeLock()) acquireWakeLock();
+  }, 12000);
 
   window.addEventListener('beforeunload', () => {
     for (const requestId of Array.from(activeWatches.keys())) {
