@@ -1,0 +1,228 @@
+/* ============================================================
+   ShiftFuel Admin — Dashboard visual polish layer
+   Loaded AFTER styles.css. Refines the existing --admin-* design
+   toward the reference dashboard mock. Additive overrides only:
+   no structural HTML or JS changes, no invented metrics.
+   ============================================================ */
+
+/* ---- Top bar: identity block (name + role + avatar) ------- */
+.admin-top-nav .portal-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+/* The avatar button becomes a pill that wraps the name/role + circle. */
+.admin-identity-btn.admin-avatar-btn {
+  width: auto;
+  height: auto;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  padding: 5px 7px 5px 16px;
+  gap: 12px;
+}
+.admin-identity-btn.admin-avatar-btn:hover,
+.admin-identity-btn.admin-avatar-btn:focus-visible {
+  background: rgba(255, 255, 255, 0.18);
+  outline: none;
+}
+
+.admin-identity-meta {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  line-height: 1.15;
+}
+.admin-identity-name {
+  color: #fff;
+  font-weight: 800;
+  font-size: 0.92rem;
+}
+.admin-identity-role {
+  color: rgba(255, 255, 255, 0.66);
+  font-size: 0.72rem;
+  font-weight: 600;
+}
+.admin-identity-avatar {
+  width: 38px;
+  height: 38px;
+  font-size: 0.9rem;
+}
+
+@media (max-width: 760px) {
+  .admin-identity-meta { display: none; }
+  .admin-identity-btn.admin-avatar-btn { padding: 0; background: transparent; }
+}
+
+/* ---- Top bar: nav tabs --------------------------------- */
+.admin-top-nav .admin-page-tab {
+  opacity: 0.78;
+  transition: opacity 0.15s ease, border-color 0.15s ease;
+}
+.admin-top-nav .admin-page-tab:hover {
+  opacity: 1;
+}
+.admin-top-nav .admin-page-tab.active {
+  border-bottom-color: #7cc99a;   /* fresh mint underline, matching the mock */
+  opacity: 1;
+}
+
+/* ---- Stat cards: icon-left, softer surface, hover lift --- */
+.admin-stat-grid {
+  gap: 14px;
+}
+.admin-stat-card {
+  justify-content: flex-start;
+  gap: 14px;
+  min-height: 96px;
+  padding: 18px;
+  border-radius: 16px;
+  border-color: rgba(6, 47, 45, 0.08);
+  box-shadow: 0 1px 2px rgba(11, 35, 33, 0.04), 0 10px 30px rgba(11, 35, 33, 0.05);
+  transition: transform 0.16s ease, box-shadow 0.16s ease, border-color 0.16s ease;
+}
+.admin-stat-card > div {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+/* Move the icon to the left of the label/value, as in the mock. */
+.admin-stat-card .admin-stat-icon {
+  order: -1;
+  flex: 0 0 46px;
+  width: 46px;
+  height: 46px;
+}
+.admin-stat-card .admin-stat-icon svg {
+  width: 24px;
+  height: 24px;
+}
+.admin-stat-label {
+  font-size: 0.74rem;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: #5b6f6b;
+}
+.admin-stat-value {
+  font-size: clamp(1.55rem, 2.4vw, 1.95rem);
+  letter-spacing: -0.01em;
+}
+.admin-stat-card--clickable:hover {
+  transform: translateY(-2px);
+  border-color: rgba(6, 47, 45, 0.16);
+  box-shadow: 0 2px 4px rgba(11, 35, 33, 0.05), 0 16px 38px rgba(11, 35, 33, 0.1);
+}
+
+/* ---- Sidebar cards: shared surface polish --------------- */
+.admin-side-card {
+  border-radius: 16px;
+  border-color: rgba(6, 47, 45, 0.08);
+  box-shadow: 0 1px 2px rgba(11, 35, 33, 0.04), 0 10px 30px rgba(11, 35, 33, 0.05);
+}
+.admin-side-card h2 {
+  font-size: 1rem;
+  letter-spacing: -0.01em;
+}
+
+/* ---- Worker snapshot: 2x2 stat tiles ------------------- */
+.worker-snapshot-list {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+.worker-snapshot-list li {
+  grid-template-columns: auto 1fr;
+  row-gap: 6px;
+  column-gap: 8px;
+  padding: 12px 14px;
+  border: 1px solid var(--admin-line);
+  border-radius: 12px;
+  background: #fbfdfc;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #5b6f6b;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+.worker-snapshot-list li:hover,
+.worker-snapshot-list li:focus-visible {
+  border-color: var(--admin-green);
+  background: var(--admin-mint);
+}
+.worker-snapshot-list li strong {
+  grid-column: 1 / -1;       /* big count drops to its own row */
+  font-size: 1.45rem;
+  font-weight: 900;
+  color: var(--admin-ink);
+}
+.worker-snapshot-list .dot {
+  width: 9px;
+  height: 9px;
+  align-self: center;
+}
+
+/* ---- Quick actions: row + chevron --------------------- */
+.admin-action-card {
+  position: relative;
+  padding-right: 40px;
+  transition: border-color 0.15s ease, background 0.15s ease, transform 0.15s ease;
+}
+.admin-action-card::after {
+  content: "";
+  position: absolute;
+  right: 17px;
+  top: 50%;
+  width: 8px;
+  height: 8px;
+  border-right: 2px solid #9bb0ab;
+  border-top: 2px solid #9bb0ab;
+  transform: translateY(-50%) rotate(45deg);
+  transition: border-color 0.15s ease, right 0.15s ease;
+}
+.admin-action-card:hover {
+  border-color: var(--admin-green);
+  background: var(--admin-mint);
+  transform: translateX(2px);
+}
+.admin-action-card:hover::after {
+  border-color: var(--admin-green);
+  right: 14px;
+}
+/* The Refresh action has no subtitle — keep the chevron from crowding it. */
+#admin-side-refresh-btn::after {
+  display: none;
+}
+
+/* ---- Business snapshot + summary metric tiles ---------- */
+.admin-hero-stats {
+  width: 100%;
+  justify-content: space-between;
+}
+.hero-stat-value {
+  font-size: 1.5rem;
+  font-weight: 900;
+  letter-spacing: -0.01em;
+}
+.admin-summary.compact .summary-card {
+  border-radius: 12px;
+  transition: border-color 0.15s ease, transform 0.15s ease;
+}
+.admin-summary.compact .summary-card:hover {
+  border-color: var(--admin-green);
+  transform: translateY(-1px);
+}
+
+/* ---- Bottom shortcut cards: hover lift ---------------- */
+.admin-shortcut-card {
+  border-radius: 16px;
+  transition: transform 0.16s ease, box-shadow 0.16s ease, border-color 0.16s ease;
+}
+.admin-shortcut-card:hover {
+  transform: translateY(-2px);
+  border-color: var(--admin-green);
+  box-shadow: 0 16px 38px rgba(11, 35, 33, 0.1);
+}
+
+/* ---- Request queue card: lift it onto the same surface - */
+.admin-queue-card {
+  border-radius: 16px;
+}

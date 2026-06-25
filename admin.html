@@ -92,6 +92,7 @@
         }
       }
     </style>
+    <link rel="stylesheet" href="admin-dashboard-polish.css">
   </head>
 
   <body class="admin-portal-page">
@@ -120,8 +121,12 @@
 	  </nav>
 
 	  <div class="portal-header-actions">
-		<button id="admin-avatar-btn" class="admin-avatar-btn" aria-label="Open admin menu" title="Menu">
-		  <span id="admin-avatar-initials">A</span>
+		<button id="admin-avatar-btn" class="admin-avatar-btn admin-identity-btn" aria-label="Open admin menu" title="Account menu">
+		  <span class="admin-identity-meta">
+			<span id="admin-header-name" class="admin-identity-name">Admin</span>
+			<span class="admin-identity-role">Administrator</span>
+		  </span>
+		  <span class="admin-avatar admin-identity-avatar"><span id="admin-avatar-initials">A</span></span>
 		</button>
 	  </div>
 	</header>

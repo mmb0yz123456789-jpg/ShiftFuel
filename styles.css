@@ -10123,3 +10123,222 @@ justify-self: start;
   }
   .staff-portal-btn-body strong { font-size: 0.95rem; }
 }
+
+/* ============================================================
+   Portal sign-in redesign (worker + admin login)
+   Full-bleed dark-green hero with a rounded card overlapping it,
+   pill badge, icon-leading inputs, shield divider, globe footer.
+   Scoped to .portal-login-page so the worker/admin dashboards are
+   untouched.
+   ============================================================ */
+
+.portal-login-page {
+  background:
+    linear-gradient(180deg, var(--sf-off-white), #ffffff);
+}
+
+.portal-login-page main {
+  min-height: auto;
+}
+
+/* ── Hero header (stacked, centered, edge-to-edge) ── */
+.portal-login-page .portal-login-hero {
+  display: grid;
+  justify-items: center;
+  gap: 14px;
+  width: 100%;
+  margin: 0;
+  padding: 44px 20px 84px;
+  text-align: center;
+  color: var(--sf-white);
+  background:
+    radial-gradient(120% 90% at 80% -10%, rgba(167, 191, 166, 0.18), transparent 60%),
+    linear-gradient(160deg, #0d3b3b 0%, #072a2a 72%);
+}
+
+.portal-login-page .portal-hero-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 14px;
+  color: var(--sf-white);
+  text-decoration: none;
+}
+
+.portal-hero-mark {
+  display: inline-grid;
+  place-items: center;
+  width: 46px;
+  height: 54px;
+  color: var(--sf-sage);
+  font-size: 2.7rem;
+  font-weight: 900;
+  font-style: italic;
+  line-height: 1;
+}
+
+.portal-hero-wordmark {
+  font-size: 1.62rem;
+  font-weight: 900;
+  line-height: 1.04;
+  letter-spacing: -0.01em;
+  text-align: left;
+}
+
+.portal-hero-role {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 1.28rem;
+  font-weight: 900;
+}
+
+.portal-hero-role svg {
+  width: 26px;
+  height: 26px;
+  color: var(--sf-sage);
+}
+
+.portal-hero-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--sf-sage);
+  font-size: 1rem;
+  font-weight: 800;
+  text-decoration: none;
+}
+
+.portal-hero-back svg { width: 18px; height: 18px; }
+.portal-hero-back:hover { color: #ffffff; }
+
+/* ── Card pulled up to overlap the hero ── */
+.portal-login-page .portal-login-shell {
+  width: 100%;
+  min-height: 0;
+  align-content: start;
+  justify-content: center;
+  place-items: start center;
+  padding: 0 18px 56px;
+  margin-inline: auto;
+}
+
+.portal-login-page .portal-login-card {
+  width: min(460px, 100%);
+  gap: 8px;
+  margin-top: -60px;
+  padding: clamp(26px, 5vw, 40px);
+  border-radius: 24px;
+  box-shadow: 0 26px 60px rgba(6, 39, 39, 0.20);
+}
+
+/* ── "Worker / Admin Access" pill badge ── */
+.portal-login-card .portal-login-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+  padding: 8px 18px;
+  color: var(--sf-teal-dark);
+  background: var(--sf-sage-light);
+  border-radius: 999px;
+  font-size: 0.95rem;
+  font-weight: 800;
+}
+
+.portal-login-card .portal-login-badge svg { width: 18px; height: 18px; }
+
+.portal-login-card h1 {
+  font-size: clamp(1.7rem, 4.6vw, 2.05rem);
+}
+
+/* ── Icon-leading inputs ── */
+.portal-login-card .booking-form label {
+  display: grid;
+  gap: 7px;
+}
+
+.portal-login-card .portal-input-group {
+  position: relative;
+  display: block;
+}
+
+.portal-login-card .portal-input-icon {
+  position: absolute;
+  left: 14px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 20px;
+  height: 20px;
+  color: #6f8b8a;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.portal-login-card .portal-input-group input {
+  padding-left: 44px;
+}
+
+/* ── Sign In button: deep concierge green ── */
+.portal-login-card .booking-form .button.primary {
+  min-height: 54px;
+  border-radius: 12px;
+  font-size: 1.05rem;
+  background: linear-gradient(135deg, #0d3b3b, #072a2a);
+  border-color: #072a2a;
+}
+
+.portal-login-card .booking-form .button.primary:hover {
+  background: linear-gradient(135deg, #134f4f, #0d3b3b);
+}
+
+/* ── Shield divider ── */
+.portal-login-card .portal-login-divider {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  width: 100%;
+  margin: 16px 0 2px;
+}
+
+.portal-login-card .portal-login-divider::before,
+.portal-login-card .portal-login-divider::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--sf-border);
+}
+
+.portal-login-card .portal-login-divider-icon {
+  display: grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  color: var(--sf-teal);
+  border: 1px solid var(--sf-border);
+  border-radius: 50%;
+}
+
+.portal-login-card .portal-login-divider-icon svg { width: 20px; height: 20px; }
+
+/* ── Globe "Back to customer site" ── */
+.portal-login-card .portal-login-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+  color: var(--sf-teal-dark);
+  font-size: 0.96rem;
+  font-weight: 800;
+}
+
+.portal-login-card .portal-login-back svg { width: 18px; height: 18px; }
+
+@media (max-width: 560px) {
+  .portal-login-page .portal-login-hero {
+    padding: 32px 18px 76px;
+    gap: 12px;
+  }
+  .portal-hero-wordmark { font-size: 1.42rem; }
+  .portal-hero-role { font-size: 1.14rem; }
+  .portal-login-page .portal-login-card { margin-top: -56px; }
+}

@@ -23,51 +23,84 @@
     })();
   </script>
 
-  <!-- Updated Header -->
-  <header class="portal-header unified-portal-header portal-login-header">
-    <a class="logo" href="index.html" aria-label="ShiftFuel Concierge home">
-      <span class="logo-mark">S</span>
-      <span>ShiftFuel Concierge</span>
+  <!-- Concierge sign-in hero -->
+  <header class="portal-login-hero">
+    <a class="portal-hero-brand" href="index.html" aria-label="ShiftFuel Concierge home">
+      <span class="portal-hero-mark">S</span>
+      <span class="portal-hero-wordmark">ShiftFuel<br>Concierge</span>
     </a>
-    <div class="portal-header-actions">
-      <span class="portal-header-label">Worker Portal</span>
-      <a class="portal-back-link" href="staff-access.html">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true">
-          <path d="M15 18l-6-6 6-6"/>
-        </svg>
-        <span>Back to Staff Access</span>
-      </a>
+    <div class="portal-hero-role">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true">
+        <path d="M12 2.6 5 5.2v5.4c0 4.3 2.9 8.3 7 9.4 4.1-1.1 7-5.1 7-9.4V5.2L12 2.6z"/>
+        <circle cx="12" cy="10" r="2.3"/>
+        <path d="M8.4 16.4a3.8 3.8 0 0 1 7.2 0"/>
+      </svg>
+      <span>Worker Portal</span>
     </div>
+    <a class="portal-hero-back" href="staff-access.html">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+        <path d="M15 18l-6-6 6-6"/>
+      </svg>
+      <span>Back to Staff Access</span>
+    </a>
   </header>
 
   <main class="portal-login-shell">
     <section class="portal-login-card">
-      <span class="portal-login-icon">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6">
-          <circle cx="12" cy="8" r="3.4"/>
-          <path d="M5 20c0-3.3 3.1-6 7-6s7 2.7 7 6"/>
+      <span class="portal-login-badge">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true">
+          <circle cx="12" cy="8" r="3.2"/>
+          <path d="M5.5 19.5c0-3.2 2.9-5.6 6.5-5.6s6.5 2.4 6.5 5.6"/>
         </svg>
+        Worker Access
       </span>
-      <p class="eyebrow">Worker Access</p>
       <h1>ShiftFuel Worker Portal</h1>
       <p class="portal-login-intro">Sign in to view jobs, update requests, and complete services.</p>
 
       <form id="worker-login-form" class="booking-form">
         <label>
-          Username or phone
-          <input id="worker-login-name" type="text" placeholder="Username or phone" autocomplete="username" autocapitalize="none" spellcheck="false" required>
+          Worker name, phone, or email
+          <span class="portal-input-group">
+            <svg class="portal-input-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true">
+              <circle cx="12" cy="8" r="3.2"/>
+              <path d="M5.5 19.5c0-3.2 2.9-5.6 6.5-5.6s6.5 2.4 6.5 5.6"/>
+            </svg>
+            <input id="worker-login-name" type="text" placeholder="Name, phone, or email" autocomplete="username" autocapitalize="none" spellcheck="false" required>
+          </span>
         </label>
 
         <label>
           Password
-          <input id="worker-password" type="password" placeholder="Enter worker password" required>
+          <span class="portal-input-group">
+            <svg class="portal-input-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true">
+              <rect x="5" y="10.5" width="14" height="9.5" rx="2.2"/>
+              <path d="M8 10.5V7.6a4 4 0 0 1 8 0v2.9"/>
+            </svg>
+            <input id="worker-password" type="password" placeholder="Enter your password" required>
+          </span>
         </label>
 
         <button class="button primary" type="submit">Sign In</button>
       </form>
 
       <p id="worker-login-message" class="form-status"></p>
-      <a class="portal-login-back" href="index.html">Back to customer site</a>
+
+      <div class="portal-login-divider" aria-hidden="true">
+        <span class="portal-login-divider-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true">
+            <path d="M12 2.6 5 5.2v5.4c0 4.3 2.9 8.3 7 9.4 4.1-1.1 7-5.1 7-9.4V5.2L12 2.6z"/>
+            <path d="M9.2 11.7l2 2 3.6-3.9"/>
+          </svg>
+        </span>
+      </div>
+
+      <a class="portal-login-back" href="index.html">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true">
+          <circle cx="12" cy="12" r="9"/>
+          <path d="M3 12h18M12 3c2.5 2.4 3.9 5.7 3.9 9s-1.4 6.6-3.9 9c-2.5-2.4-3.9-5.7-3.9-9S9.5 5.4 12 3z"/>
+        </svg>
+        <span>Back to customer site</span>
+      </a>
     </section>
   </main>
 

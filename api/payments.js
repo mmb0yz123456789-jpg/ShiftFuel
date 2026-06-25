@@ -24,6 +24,7 @@ const { setCorsHeaders, getSupabaseAdmin, verifyAdminToken, verifyWorkerToken, v
 const { notifyRequest } = require('./_push');
 const { placeScheduledHold } = require('./_scheduled-auth');
 const { verifyServiceArea } = require('./_service-area');
+const { computeSurchargeForChosen, PER_MILE_RATE } = require('./_gas-stations');
 
 // Actions that should fire a push once the handler has updated the DB. The event
 // is self-validating against the request's real status, so a failed action that
@@ -88,7 +89,7 @@ function bookingNeedsWash(serviceType) {
   return ['wash', 'wash-only', 'car-wash', 'car-wash-fuel'].includes(serviceType);
 }
 
-function calculateBookingAuthorization(row) {
+function calculateBookingAuthorization(row, opts = {}) {
   const needsFuel = bookingNeedsFuel(row.service_type);
   const needsWash = bookingNeedsWash(row.service_type);
   const fuelGallons = needsFuel ? BOOKING_FUEL_AUTHORIZATION_GALLONS[row.estimated_fuel_range] || 0 : 0;
@@ -99,7 +100,11 @@ function calculateBookingAuthorization(row) {
   const fuelBaseFee = needsFuel ? BOOKING_FUEL_SERVICE_FEE : 0;
   const washBaseFee = needsWash ? BOOKING_CAR_WASH_SERVICE_FEE : 0;
   const quickFee = row.quick_inspection ? BOOKING_QUICK_CARE_FEE : 0;
-  const netTarget = roundMoney(fuelEstimate + washAmount + fuelBaseFee + washBaseFee + quickFee);
+  // "Customer choice" gas-station distance surcharge — server-authoritative,
+  // never trusted from the client. Folded into the net so it grosses up like
+  // every other line item.
+  const stationSurcharge = roundMoney(opts.stationSurcharge || 0);
+  const netTarget = roundMoney(fuelEstimate + washAmount + fuelBaseFee + washBaseFee + quickFee + stationSurcharge);
 
   if ((needsFuel && !fuelGallons) || (needsWash && !washPackage) || !netTarget) {
     return { valid: false, error: 'Service pricing details are incomplete. Please review the booking.' };
@@ -366,6 +371,9 @@ const ALLOWED_BOOKING_FIELDS = [
   'vehicle_id',
   'hospital', 'address_street', 'address_apt', 'address_city', 'address_state', 'address_zip',
   'address_validation_status',
+  // Chosen gas station (descriptive fields are safe to persist from the client;
+  // the surcharge itself is recomputed server-side, never trusted here).
+  'gas_station_name', 'gas_station_address', 'gas_station_lat', 'gas_station_lon',
   'parking_location', 'parking_spot', 'parking_map_url', 'key_handoff_details',
   'special_instructions',
   'service_type', 'service_label', 'service_date', 'desired_return_time',
@@ -570,6 +578,33 @@ function assignServerPricingFields(row, serverPricing) {
   row.key_handoff_method = row.key_handoff_method || row.key_handoff_details || 'See key handoff details';
 }
 
+// Resolve the authoritative gas-station distance surcharge for a booking. The
+// chosen station's coords come from the client; we recompute the dollar amount
+// server-side from real driving distances so it can't be understated. If Mapbox
+// is unreachable at booking time we fall back to the client's quoted figure but
+// clamp it to a sane ceiling so the fallback can't be abused.
+async function resolveStationSurcharge(body) {
+  const chosenLat = Number(body.gas_station_lat);
+  const chosenLon = Number(body.gas_station_lon);
+  const hasChosen = Number.isFinite(chosenLat) && Number.isFinite(chosenLon) && (chosenLat !== 0 || chosenLon !== 0);
+  if (!hasChosen) return { surcharge: 0, extra_round_trip_miles: 0 };
+
+  try {
+    const result = await computeSurchargeForChosen({
+      serviceLat: Number(body.address_lat),
+      serviceLon: Number(body.address_lon),
+      chosenLat,
+      chosenLon,
+    });
+    return { surcharge: roundMoney(result.surcharge), extra_round_trip_miles: roundMoney(result.extra_round_trip_miles || 0) };
+  } catch (err) {
+    const clientSurcharge = roundMoney(body.gas_station_surcharge || 0);
+    const clamped = Math.min(clientSurcharge, PER_MILE_RATE * 200); // ≤ $150
+    console.warn('[payments] station surcharge recompute failed; using clamped client value:', clamped, err.message);
+    return { surcharge: roundMoney(clamped), extra_round_trip_miles: 0 };
+  }
+}
+
 // Insert a service_requests row, retrying once per optional column that a given
 // deployment hasn't migrated yet. Returns the inserted row, or throws an Error
 // whose .userMessage is safe to surface to the client. Shared by both booking paths.
@@ -670,7 +705,8 @@ async function handleCreateAuthorizedBooking(body, res) {
     return res.status(400).json({ error: 'Amount must be at least $0.50' });
   }
 
-  const serverPricing = calculateBookingAuthorization(row);
+  const station = await resolveStationSurcharge(body);
+  const serverPricing = calculateBookingAuthorization(row, { stationSurcharge: station.surcharge });
   if (!serverPricing.valid) {
     return res.status(400).json({ error: serverPricing.error });
   }
@@ -680,9 +716,12 @@ async function handleCreateAuthorizedBooking(body, res) {
       estimated_fuel_range: row.estimated_fuel_range,
       wash_package: row.wash_package,
       quick_inspection: row.quick_inspection,
+      station_surcharge: station.surcharge,
     });
     return res.status(400).json({ error: 'Payment total changed. Please review the payment authorization and try again.' });
   }
+  row.gas_station_surcharge = station.surcharge;
+  row.gas_station_extra_miles = station.extra_round_trip_miles;
 
   // ── Verify the PaymentIntent before activating the booking ────────────────
   let intent;
@@ -817,12 +856,15 @@ async function handleCreateScheduledBooking(body, res) {
   const expectedCents = Math.round(Number(amount_cents));
   if (!expectedCents || expectedCents < 50) return res.status(400).json({ error: 'Amount must be at least $0.50' });
 
-  const serverPricing = calculateBookingAuthorization(row);
+  const station = await resolveStationSurcharge(body);
+  const serverPricing = calculateBookingAuthorization(row, { stationSurcharge: station.surcharge });
   if (!serverPricing.valid) return res.status(400).json({ error: serverPricing.error });
   if (serverPricing.amount_cents !== expectedCents) {
-    console.error('[payments/create_scheduled_booking] Server total mismatch:', serverPricing.amount_cents, 'vs client', expectedCents);
+    console.error('[payments/create_scheduled_booking] Server total mismatch:', serverPricing.amount_cents, 'vs client', expectedCents, { station_surcharge: station.surcharge });
     return res.status(400).json({ error: 'Payment total changed. Please review the booking and try again.' });
   }
+  row.gas_station_surcharge = station.surcharge;
+  row.gas_station_extra_miles = station.extra_round_trip_miles;
 
   // Verify the SetupIntent succeeded and pull the saved payment method.
   let setupIntent;

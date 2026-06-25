@@ -24,6 +24,7 @@ const {
   SERVICE_ANCHOR_LAT,
   SERVICE_ANCHOR_LON,
 } = require('./_service-area');
+const { computeStationOptions } = require('./_gas-stations');
 
 // Public Mapbox token. Prefer an env var; fall back to the same public pk.*
 // token the live-tracking map already ships in the browser. Search Box API
@@ -328,10 +329,29 @@ async function handleSaveServiceArea(body, res) {
   }
 }
 
+// Return nearby gas stations + the choose-this surcharge for each, so the
+// booking flow can offer "customer choice" station selection. The closest
+// station is the free default; farther ones cost $0.75/extra round-trip mile.
+async function handleNearbyGasStations(body, res) {
+  const lat = Number(body.lat);
+  const lon = Number(body.lon);
+  if (!Number.isFinite(lat) || !Number.isFinite(lon) || (lat === 0 && lon === 0)) {
+    return res.status(400).json({ ok: false, message: 'Missing service address coordinates.' });
+  }
+  try {
+    const { stations, closest } = await computeStationOptions(lat, lon);
+    return res.status(200).json({ ok: true, stations, closest });
+  } catch (err) {
+    console.error('[address/nearby_gas_stations] Error:', err.message);
+    return res.status(200).json({ ok: false, message: 'Could not load nearby stations.', stations: [] });
+  }
+}
+
 const HANDLERS = {
   validate_service_area: handleValidateServiceArea,
   address_suggest: handleAddressSuggest,
   address_retrieve: handleAddressRetrieve,
+  nearby_gas_stations: handleNearbyGasStations,
   isochrone: handleIsochrone,
   get_service_area: handleGetServiceArea,
   save_service_area: handleSaveServiceArea,
