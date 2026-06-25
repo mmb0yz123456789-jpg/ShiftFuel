@@ -23,6 +23,7 @@ const Stripe = require('stripe');
 const { setCorsHeaders, getSupabaseAdmin, verifyAdminToken, verifyWorkerToken, verifyAnyStaffToken } = require('./_auth');
 const { notifyRequest } = require('./_push');
 const { placeScheduledHold } = require('./_scheduled-auth');
+const { verifyServiceArea } = require('./_service-area');
 
 // Actions that should fire a push once the handler has updated the DB. The event
 // is self-validating against the request's real status, so a failed action that
@@ -652,6 +653,18 @@ async function handleCreateAuthorizedBooking(body, res) {
     return res.status(400).json({ error: 'Invalid service type' });
   }
 
+  // Server-side service-area guard (defense-in-depth — the browser validator can
+  // be bypassed). Fail-open only when coordinates can't be resolved at all, so a
+  // transient geocode outage never blocks an otherwise-valid booking.
+  const areaVerdict = await verifyServiceArea({
+    lat: body.address_lat, lon: body.address_lon,
+    street: row.address_street, city: row.address_city, state: row.address_state, zip: row.address_zip,
+  });
+  if (areaVerdict.checked && !areaVerdict.inArea) {
+    console.warn('[payments/create_authorized_booking] Rejected out-of-area booking:', areaVerdict.distanceMiles, 'mi via', areaVerdict.method);
+    return res.status(400).json({ error: 'We currently do not serve this area.' });
+  }
+
   const expectedCents = Math.round(Number(amount_cents));
   if (!expectedCents || expectedCents < 50) {
     return res.status(400).json({ error: 'Amount must be at least $0.50' });
@@ -790,6 +803,16 @@ async function handleCreateScheduledBooking(body, res) {
   if (!row.customer_email || !String(row.customer_email).trim()) return res.status(400).json({ error: 'Customer email is required' });
   if (!ALLOWED_SERVICE_TYPES.includes(row.service_type)) return res.status(400).json({ error: 'Invalid service type' });
   if (!row.service_date || !String(row.service_date).trim()) return res.status(400).json({ error: 'Service date is required' });
+
+  // Server-side service-area guard (see immediate-booking path for rationale).
+  const areaVerdict = await verifyServiceArea({
+    lat: body.address_lat, lon: body.address_lon,
+    street: row.address_street, city: row.address_city, state: row.address_state, zip: row.address_zip,
+  });
+  if (areaVerdict.checked && !areaVerdict.inArea) {
+    console.warn('[payments/create_scheduled_booking] Rejected out-of-area booking:', areaVerdict.distanceMiles, 'mi via', areaVerdict.method);
+    return res.status(400).json({ error: 'We currently do not serve this area.' });
+  }
 
   const expectedCents = Math.round(Number(amount_cents));
   if (!expectedCents || expectedCents < 50) return res.status(400).json({ error: 'Amount must be at least $0.50' });

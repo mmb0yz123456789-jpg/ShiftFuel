@@ -2045,6 +2045,10 @@ function buildBookingPayload() {
     address_city: bookingState.values.city || "",
     address_state: bookingState.values.state || "",
     address_zip: bookingState.values.zip || "",
+    // Coordinates power the server-side service-area re-check in /api/payments.
+    // They are read from the request body, not persisted as booking columns.
+    address_lat: bookingState.values.address_lat || "",
+    address_lon: bookingState.values.address_lon || "",
     address_validation_status: bookingState.address.validated ? "validated" : "not_validated",
     parking_location: bookingState.values.parking || "",
     key_handoff_details: bookingState.values.handoff || "",

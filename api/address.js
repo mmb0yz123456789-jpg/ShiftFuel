@@ -19,10 +19,11 @@
 const fs = require('fs');
 const path = require('path');
 const { setCorsHeaders } = require('./_auth');
-
-const SERVICE_ANCHOR_LAT = 39.6789; // 132 Christiana Mall, Newark DE 19702
-const SERVICE_ANCHOR_LON = -75.6653;
-const SERVICE_MAX_MILES = 20;
+const {
+  checkServiceArea,
+  SERVICE_ANCHOR_LAT,
+  SERVICE_ANCHOR_LON,
+} = require('./_service-area');
 
 // Public Mapbox token. Prefer an env var; fall back to the same public pk.*
 // token the live-tracking map already ships in the browser. Search Box API
@@ -42,71 +43,14 @@ const SEARCHBOX_BASE = 'https://api.mapbox.com/search/searchbox/v1';
 const MAPBOX_REFERER = process.env.MAPBOX_REFERER || 'https://shift-fuel.vercel.app/';
 const MAPBOX_FETCH_HEADERS = { Referer: MAPBOX_REFERER };
 
-function haversineMiles(lat1, lon1, lat2, lon2) {
-  const R = 3958.8;
-  const toRad = (d) => (d * Math.PI) / 180;
-  const dLat = toRad(lat2 - lat1);
-  const dLon = toRad(lon2 - lon1);
-  const a =
-    Math.sin(dLat / 2) ** 2 +
-    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
-  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-}
-
-// Drive-distance service-area polygon, precomputed from the Mapbox Isochrone API
-// (driving profile, 20-mile contour). Checking a point against this polygon is
-// far more accurate than a straight-line radius near water/state lines — e.g. a
-// crow-flies 20-mile circle reaches into NJ across the Delaware, but no one can
-// actually drive there in 20 miles, so the polygon correctly excludes it.
-// Regenerate with: node api/generate-service-area.js  (see that file).
+// Bundled fallback polygon, kept here only so the local service-area editor's
+// get_service_area / save_service_area handlers can read and rewrite the file.
+// The actual coverage check lives in ./_service-area (DB → this file → radius).
 let SERVICE_AREA = null;
 try {
   SERVICE_AREA = require('./service-area.json');
 } catch (e) {
   console.warn('[address] service-area.json missing — falling back to radius check.');
-}
-
-// Ray-casting point-in-ring test. ring = array of [lon, lat] pairs.
-function pointInRing(lon, lat, ring) {
-  let inside = false;
-  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
-    const xi = ring[i][0], yi = ring[i][1];
-    const xj = ring[j][0], yj = ring[j][1];
-    const intersects = (yi > lat) !== (yj > lat) &&
-      lon < ((xj - xi) * (lat - yi)) / (yj - yi) + xi;
-    if (intersects) inside = !inside;
-  }
-  return inside;
-}
-
-// polygon = array of rings: [0] is the outer ring, any others are holes.
-function pointInPolygon(lon, lat, polygon) {
-  if (!polygon.length || !pointInRing(lon, lat, polygon[0])) return false;
-  for (let i = 1; i < polygon.length; i++) {
-    if (pointInRing(lon, lat, polygon[i])) return false; // inside a hole = outside
-  }
-  return true;
-}
-
-// Returns true/false if the polygon is available, or null if it isn't (so the
-// caller can fall back to the straight-line radius check).
-function pointInServiceArea(lat, lon) {
-  const geom = SERVICE_AREA?.geometry;
-  if (!geom) return null;
-  if (geom.type === 'Polygon') return pointInPolygon(lon, lat, geom.coordinates);
-  if (geom.type === 'MultiPolygon') return geom.coordinates.some((poly) => pointInPolygon(lon, lat, poly));
-  return null;
-}
-
-// Single source of truth for "do we serve this point?": prefers the drive-time
-// polygon, falls back to the straight-line radius if the polygon isn't loaded.
-function checkServiceArea(lat, lon) {
-  const distanceMiles = Math.round(haversineMiles(SERVICE_ANCHOR_LAT, SERVICE_ANCHOR_LON, lat, lon) * 10) / 10;
-  const inPolygon = pointInServiceArea(lat, lon);
-  if (inPolygon === null) {
-    return { inArea: distanceMiles <= SERVICE_MAX_MILES, distanceMiles, method: 'radius' };
-  }
-  return { inArea: inPolygon, distanceMiles, method: 'drive' };
 }
 
 async function nominatimSearch(query) {
@@ -122,8 +66,8 @@ async function nominatimSearch(query) {
 // Run the service-area check against a known lat/lon and return the standard
 // valid/invalid response. Shared by the geocode path and the Mapbox-coords
 // fast path (which skips geocoding entirely).
-function respondForCoords(res, lat, lon, canonicalAddress) {
-  const { inArea, distanceMiles } = checkServiceArea(lat, lon);
+async function respondForCoords(res, lat, lon, canonicalAddress) {
+  const { inArea, distanceMiles } = await checkServiceArea(lat, lon);
   if (!inArea) {
     return res.status(200).json({
       valid: false,
@@ -154,7 +98,7 @@ async function handleValidateServiceArea(body, res) {
   const lon = Number(body.lon);
   if (Number.isFinite(lat) && Number.isFinite(lon) && (lat !== 0 || lon !== 0)) {
     const canonicalAddress = [street, city, state, zip].filter(Boolean).join(', ');
-    return respondForCoords(res, lat, lon, canonicalAddress);
+    return await respondForCoords(res, lat, lon, canonicalAddress);
   }
 
   const query = [street, city, state, zip].filter(Boolean).join(', ');
@@ -177,7 +121,7 @@ async function handleValidateServiceArea(body, res) {
       });
     }
 
-    const { inArea, distanceMiles } = checkServiceArea(Number(result.lat), Number(result.lon));
+    const { inArea, distanceMiles } = await checkServiceArea(Number(result.lat), Number(result.lon));
 
     if (!inArea) {
       return res.status(200).json({
