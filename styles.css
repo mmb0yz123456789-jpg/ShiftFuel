@@ -2113,6 +2113,23 @@ font-size: 0.85rem;
 }
 .station-badge--free { background: #e6f4ea; color: #15803d; }
 .station-badge--fee { background: #fef3e2; color: #b45309; }
+.station-search {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+}
+.station-search input {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 44px;
+  padding: 10px 13px;
+  color: var(--ink);
+  background: #ffffff;
+  border: 1px solid #d8e1dc;
+  border-radius: 8px;
+  font: inherit;
+}
+.station-search .button { flex: 0 0 auto; }
 
 .booking-field-grid .span-2 {
   grid-column: span 2;

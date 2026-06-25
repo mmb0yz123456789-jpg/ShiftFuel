@@ -39,6 +39,63 @@ function isFiniteCoord(v) {
   return Number.isFinite(v) && v !== 0;
 }
 
+// Recognizable fuel brands. When two listings share an address but have
+// different names, we keep the more recognizable brand.
+const MAJOR_BRANDS = [
+  'shell', 'exxon', 'mobil', 'wawa', 'bp', 'sunoco', 'gulf', 'citgo', 'speedway',
+  'valero', 'chevron', 'marathon', 'royal farms', 'sheetz', '7-eleven', '7 eleven',
+  'costco', "sam's", 'sams club', 'circle k', 'qt', 'quiktrip', 'racetrac', 'phillips 66',
+  'conoco', 'texaco', 'getgo', 'cumberland farms', 'pilot', "love's", 'flying j',
+];
+
+function normalizeName(name) {
+  return String(name || '').trim().toLowerCase().replace(/\s+/g, ' ');
+}
+
+function isNameBrand(name) {
+  const n = normalizeName(name);
+  return MAJOR_BRANDS.some((b) => n.includes(b));
+}
+
+// Collapse an address to a comparison key so "414 Main Street, …" and
+// "414 Main St, …" are treated as the same place.
+function normalizeAddressKey(address) {
+  let s = String(address || '').toLowerCase();
+  s = s.replace(/,?\s*united states$/, '').replace(/[.,]/g, ' ');
+  const suffixes = {
+    street: 'st', avenue: 'ave', boulevard: 'blvd', highway: 'hwy', road: 'rd',
+    drive: 'dr', lane: 'ln', court: 'ct', place: 'pl', parkway: 'pkwy', terrace: 'ter',
+  };
+  s = s.replace(/\b(street|avenue|boulevard|highway|road|drive|lane|court|place|parkway|terrace)\b/g,
+    (m) => suffixes[m] || m);
+  return s.replace(/\s+/g, ' ').trim();
+}
+
+// Pick the winner between two listings at the same address:
+//   same name        → the closer (cheaper) one
+//   different names   → the more recognizable brand, else the closer one
+function preferStation(a, b) {
+  if (normalizeName(a.name) === normalizeName(b.name)) {
+    return a.one_way_miles <= b.one_way_miles ? a : b;
+  }
+  const aBrand = isNameBrand(a.name);
+  const bBrand = isNameBrand(b.name);
+  if (aBrand !== bBrand) return aBrand ? a : b;
+  return a.one_way_miles <= b.one_way_miles ? a : b;
+}
+
+// Collapse duplicate listings that share an address. Stations with no address
+// fall back to their id so distinct places aren't merged.
+function dedupeStations(list) {
+  const groups = new Map();
+  for (const s of list) {
+    const key = normalizeAddressKey(s.address) || `id:${s.id}`;
+    const existing = groups.get(key);
+    groups.set(key, existing ? preferStation(existing, s) : s);
+  }
+  return [...groups.values()];
+}
+
 // Find nearby gas stations around a point via Mapbox Category Search.
 // Returns [{ id, name, address, lat, lon }], nearest-biased by proximity.
 async function findNearbyStations(lat, lon, limit = STATION_SEARCH_LIMIT) {
@@ -116,10 +173,11 @@ async function computeStationOptions(lat, lon) {
   if (!stations.length) return { stations: [], closest: null };
 
   const miles = await drivingMilesFromOrigin(lat, lon, stations);
-  const withMiles = stations
-    .map((s, i) => ({ ...s, one_way_miles: miles[i] }))
-    .filter((s) => Number.isFinite(s.one_way_miles))
-    .sort((a, b) => a.one_way_miles - b.one_way_miles);
+  const withMiles = dedupeStations(
+    stations
+      .map((s, i) => ({ ...s, one_way_miles: miles[i] }))
+      .filter((s) => Number.isFinite(s.one_way_miles))
+  ).sort((a, b) => a.one_way_miles - b.one_way_miles);
 
   if (!withMiles.length) return { stations: [], closest: null };
   const closestMiles = withMiles[0].one_way_miles;
@@ -139,6 +197,92 @@ async function computeStationOptions(lat, lon) {
     };
   });
   return { stations: options, closest: options[0] };
+}
+
+// Free-text search for a specific station the customer has in mind (Mapbox
+// Search Box forward search, biased to the service address).
+async function searchStationsByText(lat, lon, query) {
+  const q = String(query || '').trim();
+  if (q.length < 2) return [];
+  const params = new URLSearchParams({
+    q,
+    access_token: MAPBOX_TOKEN,
+    proximity: `${lon},${lat}`,
+    limit: '6',
+    country: 'us',
+    language: 'en',
+    types: 'poi',
+  });
+  const url = `https://api.mapbox.com/search/searchbox/v1/forward?${params.toString()}`;
+  const r = await fetch(url, { headers: MAPBOX_FETCH_HEADERS });
+  if (!r.ok) throw new Error(`Mapbox forward search ${r.status}`);
+  const data = await r.json();
+  const feats = Array.isArray(data.features) ? data.features : [];
+  const mapped = feats
+    .map((f) => {
+      const props = f.properties || {};
+      const coords = f.geometry?.coordinates || [];
+      const sLon = props.coordinates?.longitude ?? coords[0];
+      const sLat = props.coordinates?.latitude ?? coords[1];
+      if (!Number.isFinite(Number(sLat)) || !Number.isFinite(Number(sLon))) return null;
+      const categories = props.poi_category || [];
+      const looksLikeStation = (Array.isArray(categories) && categories.some((c) => /gas|fuel|petrol/i.test(String(c))))
+        || props.maki === 'fuel' || isNameBrand(props.name);
+      return {
+        id: props.mapbox_id || `${sLat},${sLon}`,
+        name: props.name || 'Gas station',
+        address: props.full_address || props.place_formatted || props.address || '',
+        lat: Number(sLat),
+        lon: Number(sLon),
+        looksLikeStation,
+      };
+    })
+    .filter(Boolean);
+  // Prefer entries that look like fuel stations, but never return an empty list
+  // just because Mapbox didn't tag categories.
+  const stations = mapped.filter((m) => m.looksLikeStation);
+  return (stations.length ? stations : mapped).map(({ looksLikeStation, ...s }) => s);
+}
+
+// Resolve a typed station search into selectable options with a surcharge,
+// using the same closest-station baseline as the main list so prices line up.
+async function computeTypedStationOptions(lat, lon, query) {
+  const [areaStations, matches] = await Promise.all([
+    findNearbyStations(lat, lon).catch(() => []),
+    searchStationsByText(lat, lon, query),
+  ]);
+  if (!matches.length) return { stations: [] };
+
+  const deduped = dedupeStations(matches.map((s) => ({ ...s, one_way_miles: 0 })));
+  const dests = [...areaStations, ...deduped];
+  const miles = await drivingMilesFromOrigin(lat, lon, dests);
+
+  const areaMiles = miles.slice(0, areaStations.length).filter((m) => Number.isFinite(m));
+  const matchMiles = miles.slice(areaStations.length);
+  const baseline = areaMiles.length ? Math.min(...areaMiles) : null;
+
+  const options = deduped
+    .map((s, i) => {
+      const oneWay = matchMiles[i];
+      if (!Number.isFinite(oneWay)) return null;
+      const closestMiles = baseline == null ? oneWay : baseline;
+      const { extra_round_trip_miles, surcharge } = surchargeFromMiles(oneWay, closestMiles);
+      return {
+        id: s.id,
+        name: s.name,
+        address: s.address,
+        lat: s.lat,
+        lon: s.lon,
+        one_way_miles: roundMoney(oneWay),
+        extra_round_trip_miles,
+        surcharge,
+        is_closest: surcharge === 0,
+      };
+    })
+    .filter(Boolean)
+    .sort((a, b) => a.surcharge - b.surcharge);
+
+  return { stations: options };
 }
 
 // Authoritative surcharge for a chosen station at booking time. Recomputes the
@@ -175,5 +319,6 @@ module.exports = {
   drivingMilesFromOrigin,
   surchargeFromMiles,
   computeStationOptions,
+  computeTypedStationOptions,
   computeSurchargeForChosen,
 };

@@ -24,7 +24,7 @@ const {
   SERVICE_ANCHOR_LAT,
   SERVICE_ANCHOR_LON,
 } = require('./_service-area');
-const { computeStationOptions } = require('./_gas-stations');
+const { computeStationOptions, computeTypedStationOptions } = require('./_gas-stations');
 
 // Public Mapbox token. Prefer an env var; fall back to the same public pk.*
 // token the live-tracking map already ships in the browser. Search Box API
@@ -347,11 +347,33 @@ async function handleNearbyGasStations(body, res) {
   }
 }
 
+// Free-text station search for the "don't see your station?" box. Returns the
+// same option shape as nearby_gas_stations, with surcharges on the same scale.
+async function handleGasStationSearch(body, res) {
+  const lat = Number(body.lat);
+  const lon = Number(body.lon);
+  const q = String(body.q || '').trim();
+  if (!Number.isFinite(lat) || !Number.isFinite(lon) || (lat === 0 && lon === 0)) {
+    return res.status(400).json({ ok: false, message: 'Missing service address coordinates.' });
+  }
+  if (q.length < 2) {
+    return res.status(200).json({ ok: true, stations: [] });
+  }
+  try {
+    const { stations } = await computeTypedStationOptions(lat, lon, q);
+    return res.status(200).json({ ok: true, stations });
+  } catch (err) {
+    console.error('[address/gas_station_search] Error:', err.message);
+    return res.status(200).json({ ok: false, message: 'Could not search stations.', stations: [] });
+  }
+}
+
 const HANDLERS = {
   validate_service_area: handleValidateServiceArea,
   address_suggest: handleAddressSuggest,
   address_retrieve: handleAddressRetrieve,
   nearby_gas_stations: handleNearbyGasStations,
+  gas_station_search: handleGasStationSearch,
   isochrone: handleIsochrone,
   get_service_area: handleGetServiceArea,
   save_service_area: handleSaveServiceArea,

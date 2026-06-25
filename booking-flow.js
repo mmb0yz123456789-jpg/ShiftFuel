@@ -1624,6 +1624,11 @@ function renderServiceDetails(panel) {
         <p class="field-help">We fuel up at the closest station by default — no extra charge. Prefer a specific station? Every extra mile to and from it adds ${formatMoney(STATION_PER_MILE_RATE)}.</p>
       </div>
       <div data-station-list><p class="field-help">Verify your service address to see nearby stations.</p></div>
+      <div class="station-search">
+        <input type="text" data-station-search placeholder="Don't see it? Search a station by name or address">
+        <button type="button" class="button secondary" data-station-search-btn>Search</button>
+      </div>
+      <p class="field-help" data-station-search-status></p>
     </div>
   ` : "";
 
@@ -1684,6 +1689,46 @@ async function loadStationOptions(panel) {
     refreshTotalsUI(panel);
   } catch (err) {
     list.innerHTML = `<p class="field-help">We couldn't load nearby stations right now — we'll fuel at the closest one (no extra charge).</p>`;
+  }
+}
+
+// Free-text station search ("don't see your station?"). Merges matches into the
+// list (deduped by id), keeps it sorted by price, and selects the top match.
+async function searchStations(panel) {
+  const input = panel.querySelector("[data-station-search]");
+  const statusEl = panel.querySelector("[data-station-search-status]");
+  if (!input) return;
+  const q = input.value.trim();
+  const lat = Number(bookingState.values.address_lat);
+  const lon = Number(bookingState.values.address_lon);
+  const setStatus = (msg) => { if (statusEl) statusEl.textContent = msg; };
+  if (q.length < 2) { setStatus("Type at least 2 characters to search."); return; }
+  if (!Number.isFinite(lat) || !Number.isFinite(lon) || (lat === 0 && lon === 0)) {
+    setStatus("Verify your service address first."); return;
+  }
+  setStatus("Searching…");
+  try {
+    const res = await fetch("/api/address", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "gas_station_search", lat, lon, q }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!data.ok || !Array.isArray(data.stations) || !data.stations.length) {
+      setStatus("No matching stations found near your address."); return;
+    }
+    const existing = new Set(bookingState.station.options.map((s) => s.id));
+    const added = data.stations.filter((s) => !existing.has(s.id));
+    bookingState.station.options = bookingState.station.options
+      .concat(added)
+      .sort((a, b) => a.surcharge - b.surcharge);
+    applyStationSelection(data.stations[0]);
+    renderStationList(panel);
+    refreshTotalsUI(panel);
+    invalidatePaymentAuthorization();
+    setStatus(added.length ? `Added ${added.length} result${added.length > 1 ? "s" : ""} — selected your pick.` : "That station is already in the list — selected it.");
+  } catch (err) {
+    setStatus("Search failed. Please try again.");
   }
 }
 
@@ -2507,6 +2552,21 @@ function renderFlow(root) {
       }
     }
     updateContinue();
+  });
+
+  root.addEventListener("click", (event) => {
+    if (event.target.closest("[data-station-search-btn]")) {
+      const panel = event.target.closest(".booking-accordion-card");
+      if (panel) searchStations(panel);
+    }
+  });
+
+  root.addEventListener("keydown", (event) => {
+    if (event.key === "Enter" && event.target.matches("[data-station-search]")) {
+      event.preventDefault();
+      const panel = event.target.closest(".booking-accordion-card");
+      if (panel) searchStations(panel);
+    }
   });
 
   root.addEventListener("focusout", (event) => {
