@@ -609,19 +609,39 @@ const BASE_FUEL_SERVICE_FEE = 15;
 const BASE_WASH_SERVICE_FEE = 15;
 const BASE_QUICK_INSPECTION_FEE = 5;
 
+// Worker pay model:
+//   - 50% of the service fees (fuel + wash + inspection), net of card processing.
+//   - $0.725 per extra round-trip mile driven to a customer-chosen gas station
+//     (IRS standard mileage rate); the company keeps the remaining $0.025/mile
+//     of the $0.75/mile customer surcharge.
+const WORKER_SERVICE_FEE_SHARE = 0.5;
+const WORKER_MILEAGE_RATE = 0.725;
+
 function roundMoneyValue(value) {
   return Math.round((Number(value) || 0) * 100) / 100;
 }
 
-// Worker's estimated take-home for a job: the service fees (fuel + wash +
-// inspection) minus the Stripe processing fee (2.9% + $0.30 per transaction).
-// Never negative.
+// Mileage pay for the extra driving to a customer-selected (non-closest) gas
+// station. `gas_station_extra_miles` is the extra round-trip miles beyond the
+// closest station; 0 (or absent) for the default station. Never negative.
+function workerMileagePay(request) {
+  const extraMiles = Number(request.gas_station_extra_miles) || 0;
+  return extraMiles > 0 ? roundMoneyValue(extraMiles * WORKER_MILEAGE_RATE) : 0;
+}
+
+// Worker's estimated take-home for a job: 50% of the service fees (fuel + wash +
+// inspection) net of Stripe processing (2.9% + $0.30), plus full mileage pay for
+// any extra driving to a chosen station. Never negative.
 function workerNetPayout(request) {
   const fees = feeSummary(request);
   const gross = fees.fuel + fees.wash + fees.inspection;
-  if (gross <= 0) return 0;
-  const stripe = roundMoneyValue(gross * PAYMENT_RECOVERY_RATE + PAYMENT_RECOVERY_FIXED);
-  return roundMoneyValue(Math.max(0, gross - stripe));
+  let payout = workerMileagePay(request);
+  if (gross > 0) {
+    const stripe = roundMoneyValue(gross * PAYMENT_RECOVERY_RATE + PAYMENT_RECOVERY_FIXED);
+    const netServiceFees = Math.max(0, gross - stripe);
+    payout += netServiceFees * WORKER_SERVICE_FEE_SHARE;
+  }
+  return roundMoneyValue(Math.max(0, payout));
 }
 
 function transactionPricingSummary(request, receiptTotals = { fuel: 0, wash: 0 }) {
@@ -1822,6 +1842,7 @@ function renderWorkerEarnings(completed) {
           <div class="worker-card-summary-main">
             <strong>${escapeHtml(job.customer_name || 'Customer')}</strong>
             <span class="worker-card-sub">${escapeHtml(job.service_label || job.service_type || '')}${job.updated_at ? ` &middot; ${escapeHtml(workerFormatClockTime(job.updated_at))}` : ''}</span>
+            ${workerMileagePay(job) > 0 ? `<span class="worker-card-sub worker-mileage-note">Includes ${money(workerMileagePay(job))} station mileage</span>` : ''}
           </div>
           <span class="worker-earnings-amount">${money(workerNetPayout(job))}</span>
         </article>
