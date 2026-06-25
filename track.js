@@ -751,7 +751,7 @@ function etaBannerHtml(request) {
   if (!workerEnRouteToVehicle(request)) return '';
   const addr = [request.address_street, request.address_city, request.address_state, request.address_zip]
     .filter(Boolean).join(', ');
-  return `<div class="worker-eta-banner" data-eta
+  return `<div class="worker-eta-banner" data-eta data-req="${escapeHtml(request.id)}"
     data-olat="${request.last_latitude}" data-olon="${request.last_longitude}"
     data-dlat="${request.address_lat || ''}" data-dlon="${request.address_lon || ''}"
     data-addr="${escapeHtml(addr)}">
@@ -797,17 +797,13 @@ async function updateEtaBanners() {
   }
 }
 
-// Poll for a fresh worker location + ETA while anyone is en route to a vehicle.
-let _etaPollTimer = null;
-function manageEtaPolling(requests) {
-  const anyEnRoute = Array.isArray(requests) && requests.some(workerEnRouteToVehicle);
-  if (anyEnRoute && !_etaPollTimer) {
-    _etaPollTimer = setInterval(() => { refreshTrackedRequestsAfterAction(); }, 30000);
-  } else if (!anyEnRoute && _etaPollTimer) {
-    clearInterval(_etaPollTimer);
-    _etaPollTimer = null;
-  }
-}
+// NOTE: The en-route ETA is a one-time snapshot, NOT a live feed. When the
+// worker taps "Start — open maps" their location is captured once and we compute
+// the drive time to the customer's address from that point. We deliberately do
+// NOT poll it here — live, continuously-updating GPS only begins once the keys
+// are in hand (the worker keeps their app open), which the live-location map
+// mount handles separately. Showing a ticking ETA before keys would imply a live
+// drive we aren't actually tracking.
 
 function renderAssignedWorker(request) {
   if (!request.assigned_worker_name) return '';
@@ -2703,6 +2699,15 @@ function renderPartnerCard(request) {
   `;
 }
 
+// The gas station the customer chose at booking (only for fuel services, and
+// only once a station was actually selected). Shown so the customer can confirm
+// where their vehicle is being fueled — mirrors the worker + admin views.
+function gasStationMetaRow(request) {
+  if (!requestNeedsFuel(request) || !request.gas_station_name) return '';
+  const addr = request.gas_station_address ? ` — ${escapeHtml(request.gas_station_address)}` : '';
+  return `<div><dt>Gas station</dt><dd>${escapeHtml(request.gas_station_name)}${addr}</dd></div>`;
+}
+
 function renderVehicleCard(request) {
   const vehicle = [request.vehicle_year, request.vehicle_make, request.vehicle_model].filter(Boolean).join(' ') || 'Your vehicle';
   const serviceDate = request.service_date
@@ -2724,6 +2729,7 @@ function renderVehicleCard(request) {
     <dl class="tk-vehicle-meta">
       ${service ? `<div><dt>Service</dt><dd>${escapeHtml(service)}</dd></div>` : ''}
       ${requestNeedsFuel(request) && request.fuel_type ? `<div><dt>Fuel type</dt><dd>${escapeHtml(request.fuel_type)}</dd></div>` : ''}
+      ${gasStationMetaRow(request)}
       ${requestNeedsWash(request) && request.wash_package ? `<div><dt>Car wash package</dt><dd>${escapeHtml(washLabelFromValue(request.wash_package))}</dd></div>` : ''}
       ${serviceArea ? `<div><dt>Location</dt><dd>${escapeHtml(serviceArea)}</dd></div>` : ''}
       ${parking ? `<div><dt>Parking</dt><dd>${escapeHtml(parking)}</dd></div>` : ''}
@@ -2952,6 +2958,7 @@ function renderCanceledCard(request, photos = [], { expanded = false } = {}) {
               <dl class="tk-vehicle-meta">
                 ${service ? `<div><dt>Service</dt><dd>${escapeHtml(service)}</dd></div>` : ''}
                 ${requestNeedsFuel(request) && request.fuel_type ? `<div><dt>Fuel type</dt><dd>${escapeHtml(request.fuel_type)}</dd></div>` : ''}
+                ${gasStationMetaRow(request)}
                 ${requestNeedsWash(request) && request.wash_package ? `<div><dt>Car wash package</dt><dd>${escapeHtml(washLabelFromValue(request.wash_package))}</dd></div>` : ''}
                 <div><dt>Vehicle</dt><dd>${escapeHtml(vehicle)}${request.vehicle_color ? ', ' + escapeHtml(request.vehicle_color) : ''}</dd></div>
                 ${returnTime ? `<div><dt>Return window</dt><dd>${escapeHtml(serviceDate ? serviceDate + ', ' : '')}${escapeHtml(returnTime)}</dd></div>` : ''}
@@ -2967,7 +2974,7 @@ function renderCanceledCard(request, photos = [], { expanded = false } = {}) {
           <!-- Live location mounts here (only while a key/vehicle return is active). -->
           <div class="track-live-location-mount"></div>
 
-          <section class="tk-card tk-help">${renderHelpCard()}</section>
+          ${tkSubAcc('Help', `<section class="tk-card tk-help">${renderHelpCard()}</section>`)}
         </div>
       </details>
     </article>
@@ -3046,6 +3053,7 @@ function renderCompletedCard(request, photos = [], review = null, { expanded = f
             <dl class="tk-vehicle-meta tk-completed-meta">
               <div><dt>Vehicle</dt><dd>${escapeHtml(vehicle)}${request.vehicle_color ? ', ' + escapeHtml(request.vehicle_color) : ''}</dd></div>
               ${service ? `<div><dt>Service</dt><dd>${escapeHtml(service)}</dd></div>` : ''}
+              ${gasStationMetaRow(request)}
               ${completedStr ? `<div><dt>Completed</dt><dd>${escapeHtml(completedStr)}</dd></div>` : ''}
               ${request.assigned_worker_name ? `<div><dt>Service partner</dt><dd>${escapeHtml(request.assigned_worker_name)}</dd></div>` : ''}
             </dl>
@@ -3122,10 +3130,6 @@ function renderRequestCard(request, photos = [], review = null, { expanded = fal
           ${renderTrackHero(request)}
 
           <div class="tk-detail-grid">
-          ${tkSubAcc('Full Timeline', `
-            <section class="tk-card tk-status">${renderStatusStepper(request)}</section>
-          `, { open: detailsOpen })}
-
           ${tkSubAcc('Vehicle & Service Details', `
             <section class="tk-card tk-vehicle">${renderVehicleCard(request)}</section>
           `, { open: detailsOpen })}
@@ -3269,9 +3273,9 @@ async function renderAllRequests(requests, phone, email) {
   html += `</div>`;
   trackingResult.innerHTML = html;
 
-  // Live "how far out is my specialist" ETA + polling while en route.
+  // Snapshot "how far out is my specialist" ETA (computed once, when the worker
+  // hit Start). Not polled — live GPS only starts after keys are received.
   updateEtaBanners();
-  manageEtaPolling(requests);
 
   // After a successful lookup, condense the search form to a slim bar so the
   // result cards get the space. Tapping the bar re-expands it for a new search.

@@ -886,6 +886,13 @@
     width: 100%;
     max-width: 100%;
     min-width: 0;
+    /* The sections above are pinned to 100vw − 2×gutter and centered. Any
+       horizontal padding here makes the main's content box narrower than those
+       sections, so margin:auto can't center them — they collapse to the left
+       padding edge and the whole page leans right. Keep the vertical padding,
+       drop the horizontal so the viewport-based centering stays symmetric. */
+    padding-left: 0 !important;
+    padding-right: 0 !important;
   }
 
   /* Dashboard-only rail: the Quick Actions / Worker Snapshot / Reviews sidebar
