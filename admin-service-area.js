@@ -176,6 +176,12 @@
 
   // ── map init (once) ───────────────────────────────────────────────────────
   function initMap() {
+    // Reveal the map container BEFORE constructing the map. Mapbox GL can't
+    // measure a display:none element, so its 'load' event never fires if the
+    // container is still hidden — which leaves the placeholder stuck forever.
+    $('sa-map-placeholder').style.display = 'none';
+    $('sa-map').style.display = '';
+
     mapboxgl.accessToken = SA_TOKEN;
     map = new mapboxgl.Map({
       container: 'sa-map',
@@ -206,9 +212,7 @@
     $('sa-save').addEventListener('click', save);
 
     map.on('load', () => {
-      $('sa-map-placeholder').style.display = 'none';
-      $('sa-map').style.display = '';
-      setTimeout(() => map.resize(), 0);
+      map.resize();
       loadCurrent();
     });
   }
