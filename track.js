@@ -5,7 +5,6 @@ const trackingEmail = document.querySelector("#tracking-email");
 const trackMessage = document.querySelector("#track-message");
 const trackingResult = document.querySelector("#tracking-result");
 const refreshStatusBtn = document.querySelector("#refresh-status-btn");
-const trackEnableAlertsBtn = document.querySelector("#track-enable-alerts");
 
 const shiftFuelDb = window.ShiftFuelSupabase;
 const TRACK_LOCK_KEY = "shiftfuel_track_locked_until";
@@ -3486,7 +3485,6 @@ trackForm.addEventListener("submit", async (event) => {
     window._trackingContact = verifiedTrackingContact;
     trackMessage.textContent = "";
     if (refreshStatusBtn) refreshStatusBtn.hidden = false;
-    if (trackEnableAlertsBtn) trackEnableAlertsBtn.hidden = false;
     window._trackingRequests = matchedRequests;
     await renderAllRequests(matchedRequests, phone, email);
     startTrackingPoll();
@@ -3523,31 +3521,6 @@ trackingResult.addEventListener("click", (event) => {
       full.hidden = !show;
       viewAll.textContent = show ? 'Hide photos' : 'View all';
     }
-  }
-});
-
-// Customer opt-in for push notifications (status updates, completion).
-trackEnableAlertsBtn?.addEventListener("click", async () => {
-  if (!window.ShiftFuelPush) return;
-  const original = trackEnableAlertsBtn.textContent;
-  trackEnableAlertsBtn.disabled = true;
-  trackEnableAlertsBtn.textContent = "Enabling…";
-  const result = await window.ShiftFuelPush.enablePush({
-    type: "customer",
-    phone: verifiedTrackingContact.phone,
-    email: verifiedTrackingContact.email,
-  });
-  if (result.ok) {
-    trackEnableAlertsBtn.textContent = "Alerts on ✓ (tap to test)";
-    trackEnableAlertsBtn.disabled = false;
-    const test = await window.ShiftFuelPush.sendTest(result.endpoint);
-    if (test && test.ok === false) {
-      alert("Notifications are on, but the test push could not be delivered:\n\n" + (test.error || "unknown"));
-    }
-  } else {
-    alert(window.ShiftFuelPush.friendlyReason(result.reason));
-    trackEnableAlertsBtn.disabled = false;
-    trackEnableAlertsBtn.textContent = original;
   }
 });
 
