@@ -796,13 +796,23 @@ async function updateEtaBanners() {
   }
 }
 
-// NOTE: The en-route ETA is a one-time snapshot, NOT a live feed. When the
-// worker taps "Start — open maps" their location is captured once and we compute
-// the drive time to the customer's address from that point. We deliberately do
-// NOT poll it here — live, continuously-updating GPS only begins once the keys
-// are in hand (the worker keeps their app open), which the live-location map
-// mount handles separately. Showing a ticking ETA before keys would imply a live
-// drive we aren't actually tracking.
+// Live en-route ETA. The worker now navigates to the service address inside the
+// app (turn-by-turn, screen kept on), so their GPS streams the whole drive. Each
+// status poll brings fresh worker coords; when the status itself hasn't changed
+// (so the page isn't re-rendered), we push the new origin into the existing ETA
+// banner and recompute — so "your specialist is X min away" ticks down for real.
+function refreshEnRouteEta(requests) {
+  let any = false;
+  (requests || []).forEach((request) => {
+    if (!workerEnRouteToVehicle(request)) return;
+    const banner = document.querySelector(`.worker-eta-banner[data-req="${request.id}"]`);
+    if (!banner) return;
+    banner.dataset.olat = request.last_latitude;
+    banner.dataset.olon = request.last_longitude;
+    any = true;
+  });
+  if (any) updateEtaBanners();
+}
 
 function renderAssignedWorker(request) {
   if (!request.assigned_worker_name) return '';
@@ -3619,7 +3629,13 @@ async function pollTrackingStatus() {
     });
     if (error || !Array.isArray(data)) return;
     const next = sortTrackedRequests(data);
-    if (trackedStatusSignature(next) === trackedStatusSignature(window._trackingRequests)) return;
+    if (trackedStatusSignature(next) === trackedStatusSignature(window._trackingRequests)) {
+      // Status unchanged, but the worker may have moved — keep the live ETA ticking
+      // without a disruptive full re-render of the page.
+      window._trackingRequests = next;
+      refreshEnRouteEta(next);
+      return;
+    }
     window._trackingRequests = next;
     await renderAllRequests(next, contact.phone || "", contact.email || "");
   } catch (err) {

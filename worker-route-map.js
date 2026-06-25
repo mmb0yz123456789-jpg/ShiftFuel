@@ -33,6 +33,24 @@
   // is following the worker, and the last known position/heading.
   let nav = null;
 
+  // Screen wake lock held WHILE THE NAV MAP IS OPEN (any leg). The worker is actively
+  // driving with directions up, so the screen must stay on — this also keeps the app
+  // foregrounded so GPS keeps streaming, which powers the customer's live ETA on the
+  // drive to them (separate from the key-in-hand tracking lock).
+  let navWakeLock = null;
+  async function acquireNavWakeLock() {
+    if (navWakeLock || !('wakeLock' in navigator) || document.visibilityState !== 'visible') return;
+    try {
+      navWakeLock = await navigator.wakeLock.request('screen');
+      navWakeLock.addEventListener('release', () => { navWakeLock = null; });
+    } catch (_) { navWakeLock = null; }
+  }
+  async function releaseNavWakeLock() {
+    if (!navWakeLock) return;
+    try { await navWakeLock.release(); } catch (_) {}
+    navWakeLock = null;
+  }
+
   function getJobs() {
     try { if (typeof allWorkerJobs !== 'undefined' && Array.isArray(allWorkerJobs)) return allWorkerJobs; } catch (_) {}
     return [];
@@ -179,6 +197,7 @@
 
   function closeModal() {
     stopNavWatch();
+    releaseNavWakeLock();
     nav = null;
     const modal = document.getElementById('worker-route-modal');
     if (modal) modal.hidden = true;
@@ -436,6 +455,7 @@
     toggleRecenter(false);
     stopNavWatch();
     nav = null;
+    acquireNavWakeLock(); // keep the screen on while navigating (within this tap)
     modal.hidden = false;
 
     try {
@@ -557,6 +577,13 @@
     event.preventDefault();
     const request = findRequest(btn.dataset.id);
     if (request) openRouteMap(request, btn.dataset.routeDest || 'address');
+  });
+
+  // iOS drops the wake lock when the app backgrounds — re-acquire it when the worker
+  // returns while the nav map is still open.
+  document.addEventListener('visibilitychange', () => {
+    const modal = document.getElementById('worker-route-modal');
+    if (document.visibilityState === 'visible' && modal && !modal.hidden) acquireNavWakeLock();
   });
 
   // Let the worker portal open navigation programmatically (e.g. straight after the

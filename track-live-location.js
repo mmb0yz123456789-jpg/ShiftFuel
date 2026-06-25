@@ -104,6 +104,7 @@
           </div>
         </div>
         <div class="track-live-location-body">
+          <p class="track-live-eta" hidden></p>
           <p class="track-live-location-status">${activeAllowed ? 'Checking for live location...' : 'Live location is not currently available. Status updates will still appear here.'}</p>
           <div class="track-live-location-map" hidden>
             <div class="track-live-map-canvas" aria-label="Approximate live vehicle service location"></div>
@@ -266,6 +267,56 @@
     }
   }
 
+  function isReal(v) {
+    const n = Number(v);
+    return Number.isFinite(n) && n !== 0;
+  }
+  function needsFuel(request) {
+    return /fuel/.test(String(request.service_type || ''));
+  }
+
+  // Which destination (if any) the worker is currently driving toward, so we can
+  // show the customer a live ETA for that leg. Returns null while the car is parked
+  // (fueling/washing in place, in the lot, inspection) — then we show no ETA, just
+  // the live position.
+  function legDestination(request) {
+    const s = request.status;
+    const drivingToStation = needsFuel(request)
+      && ['vehicle_picked_up', 'service_in_progress', 'fueling_in_progress'].includes(s)
+      && isReal(request.gas_station_lat) && isReal(request.gas_station_lon);
+    if (drivingToStation) {
+      return { lat: Number(request.gas_station_lat), lon: Number(request.gas_station_lon), label: 'Heading to the gas station' };
+    }
+    const drivingBack = ['receipts_recorded', 'returned_location_pending', 'return_location_recorded', 'return_photos_needed'].includes(s)
+      && isReal(request.address_lat) && isReal(request.address_lon);
+    if (drivingBack) {
+      return { lat: Number(request.address_lat), lon: Number(request.address_lon), label: 'Bringing your car back', back: true };
+    }
+    return null;
+  }
+
+  // Live ETA for the current driving leg, computed from the worker's live position
+  // to that leg's destination (reuses the server's Mapbox route_eta).
+  async function updateLegEta(panel, request, lat, lng) {
+    const etaEl = panel.querySelector('.track-live-eta');
+    if (!etaEl) return;
+    const dest = legDestination(request);
+    if (!dest) { etaEl.hidden = true; return; }
+    try {
+      const res = await fetch('/api/address', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'route_eta', origin_lat: lat, origin_lon: lng, dest_lat: dest.lat, dest_lon: dest.lon }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (data.ok) {
+        etaEl.hidden = false;
+        etaEl.innerHTML = `🚗 ${dest.label} — about <strong>${data.minutes} min</strong> away${dest.back ? ' from your location' : ''}`;
+      } else {
+        etaEl.hidden = true;
+      }
+    } catch (_) { etaEl.hidden = true; }
+  }
+
   async function setLocation(panel, location) {
     // The panel can be momentarily absent if the card re-rendered between the
     // RPC call and this callback — bail rather than throw on a null element.
@@ -325,6 +376,16 @@
         links.dataset.coords = `${lat},${lng}`;
       }
       links.hidden = false;
+    }
+
+    // Live ETA for the current driving leg (to the station / back to the customer).
+    // Only when the position is fresh — a stale dot shouldn't imply live movement.
+    const request = requestById(requestId);
+    if (isFresh && request) {
+      updateLegEta(panel, request, lat, lng);
+    } else {
+      const etaEl = panel.querySelector('.track-live-eta');
+      if (etaEl) etaEl.hidden = true;
     }
   }
 
@@ -496,6 +557,8 @@
       .track-live-location-panel.is-stale .track-live-marker-dot { background: #d97706; }
       .track-live-location-panel.is-stale .track-live-marker-pulse { animation: none; opacity: 0; }
       .track-live-location-body { display: grid; gap: 12px; margin-top: 12px; }
+      .track-live-eta { margin: 0; font-weight: 800; font-size: 1.02rem; color: var(--sf-teal-dark, #0d3b3b); }
+      .track-live-eta[hidden] { display: none; }
       .track-live-location-map { position: relative; }
       .track-live-map-canvas {
         width: 100%;
