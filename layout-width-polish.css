@@ -43,8 +43,8 @@
 
 .track-page .site-header .nav-cta {
   color: var(--sf-white) !important;
-  background: linear-gradient(135deg, var(--sf-coral), var(--sf-coral-dark)) !important;
-  border-color: var(--sf-coral) !important;
+  background: linear-gradient(135deg, var(--sf-green), var(--sf-green-dark)) !important;
+  border-color: var(--sf-green-dark) !important;
 }
 
 .track-page .site-header .nav-returning {
