@@ -2618,8 +2618,16 @@ function renderFlow(root) {
     }
   };
 
+  // Land the active step just below the sticky header. Matches the calc in the
+  // merged scrollActiveStepIntoView() so the two scroll passes agree instead of
+  // fighting (the fight caused the desktop "jump"). Works on both flows + sizes.
   const scrollToActive = () => {
-    root.querySelector(".booking-accordion-card.is-active")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    const active = root.querySelector(".booking-accordion-card.is-active");
+    if (!active) return;
+    const header = document.querySelector(".site-header");
+    const headerHeight = header ? header.getBoundingClientRect().height : 0;
+    const top = active.getBoundingClientRect().top + window.scrollY - headerHeight - 18;
+    window.scrollTo({ top: Math.max(top, 0), behavior: "smooth" });
   };
 
   const render = () => {
