@@ -2703,7 +2703,13 @@ function renderPartnerCard(request) {
 // only once a station was actually selected). Shown so the customer can confirm
 // where their vehicle is being fueled — mirrors the worker + admin views.
 function gasStationMetaRow(request) {
-  if (!requestNeedsFuel(request) || !request.gas_station_name) return '';
+  if (!requestNeedsFuel(request)) return '';
+  // Fallback when no station was recorded (the nearby-station lookup can fail, or
+  // the booking predates station capture): we still fuel at the closest one, so
+  // show that rather than a blank.
+  if (!request.gas_station_name) {
+    return `<div><dt>Gas station</dt><dd>Closest available station</dd></div>`;
+  }
   const addr = request.gas_station_address ? ` — ${escapeHtml(request.gas_station_address)}` : '';
   return `<div><dt>Gas station</dt><dd>${escapeHtml(request.gas_station_name)}${addr}</dd></div>`;
 }
