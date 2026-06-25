@@ -2194,9 +2194,8 @@ function workerPrimaryStatusButton(request, label, status) {
 
 function workerBackStatusFor(request) {
   const map = {
-    // 'accepted' deliberately has no Back — "Send back to open pool" is the
-    // correct way to undo an accept, and Back to request_received was confusing.
-    key_received:            'accepted',
+    // No Back once the job is underway: 'accepted' (use "Send back to open pool")
+    // and 'key_received' (keys are in hand — there's no going back).
     vehicle_picked_up:       'key_received',
     service_in_progress:     'vehicle_picked_up',
     fueling_complete:        'service_in_progress',
@@ -2440,27 +2439,66 @@ function renderWorkerPhotoPanel(request, stage = 'pickup') {
   const isDropoff = stage === 'dropoff';
   const heading = isDropoff ? 'Upload return photos' : 'Upload pickup photos';
   const help = isDropoff
-    ? 'Upload all four sides after return plus the return odometer and ending fuel gauge. Do not reuse pickup photos.'
-    : 'Upload all four sides at pickup plus the pickup odometer and pickup fuel gauge before moving the vehicle.';
+    ? 'Take each photo as prompted — all four sides after return, then the odometer and ending fuel gauge. Do not reuse pickup photos.'
+    : 'Take each photo as prompted — all four sides at pickup, then the odometer and fuel gauge — before moving the vehicle.';
   const nextStatus = isDropoff ? 'vehicle_returned' : 'vehicle_picked_up';
   const prefix = isDropoff ? 'dropoff' : 'pickup';
 
+  // One tile at a time, walking around the vehicle: front-driver → front-passenger
+  // → rear-passenger → rear-driver, then odometer and fuel gauge.
+  const steps = [
+    { label: 'Driver side front',    type: `${prefix}_driver_front` },
+    { label: 'Passenger side front', type: `${prefix}_passenger_front` },
+    { label: 'Passenger side rear',  type: `${prefix}_passenger_rear` },
+    { label: 'Driver side rear',     type: `${prefix}_driver_rear` },
+    { label: `${isDropoff ? 'Return' : 'Pickup'} odometer`,   type: `${prefix}_odometer` },
+    { label: `${isDropoff ? 'Ending' : 'Pickup'} fuel gauge`, type: isDropoff ? 'dropoff_fuel_gauge' : 'pickup_fuel_gauge' },
+  ];
+
+  const stepsHtml = steps.map((s, i) => `
+    <div class="photo-wizard-step${i === 0 ? ' is-current' : ''}" data-step="${i}" data-step-label="${escapeHtml(s.label)}">
+      <p class="photo-wizard-step-label"><span class="photo-wizard-num">${i + 1}</span>${escapeHtml(s.label)}</p>
+      ${filePicker(s.label, 'photo-file required-photo', `data-photo-type="${s.type}"`)}
+      <span class="photo-wizard-done-tag">Photo added &#10003; <button type="button" class="photo-wizard-retake">Retake</button></span>
+    </div>`).join('');
+
   return `
-    <div class="photo-panel" data-panel-for="${escapeHtml(request.id)}" data-next-status="${nextStatus}" data-photo-stage="${stage}">
+    <div class="photo-panel photo-wizard" data-panel-for="${escapeHtml(request.id)}" data-next-status="${nextStatus}" data-photo-stage="${stage}">
       <h4>${heading}</h4>
       <p class="field-help">${help}</p>
-      <div class="field-grid">
-        ${filePicker('Driver side front', 'photo-file required-photo', `data-photo-type="${prefix}_driver_front"`)}
-        ${filePicker('Passenger side front', 'photo-file required-photo', `data-photo-type="${prefix}_passenger_front"`)}
-        ${filePicker('Driver side rear', 'photo-file required-photo', `data-photo-type="${prefix}_driver_rear"`)}
-        ${filePicker('Passenger side rear', 'photo-file required-photo', `data-photo-type="${prefix}_passenger_rear"`)}
-        ${filePicker(`${isDropoff ? 'Return' : 'Pickup'} odometer photo`, 'photo-file required-photo', `data-photo-type="${prefix}_odometer"`)}
-        ${filePicker(`${isDropoff ? 'Ending' : 'Pickup'} fuel gauge photo`, 'photo-file required-photo', `data-photo-type="${isDropoff ? 'dropoff_fuel_gauge' : 'pickup_fuel_gauge'}"`, )}
+      <p class="photo-wizard-progress" data-photo-progress>Photo 1 of ${steps.length} &middot; ${escapeHtml(steps[0].label)}</p>
+      <div class="photo-wizard-steps">
+        ${stepsHtml}
       </div>
       <p class="field-help duplicate-photo-warning" data-warning-for="${escapeHtml(request.id)}"></p>
-      <button class="button primary upload-action-button upload-photo-set" data-id="${escapeHtml(request.id)}" type="button">Upload photo set</button>
+      <button class="button primary upload-action-button upload-photo-set" data-id="${escapeHtml(request.id)}" type="button" hidden>Upload all photos</button>
     </div>
   `;
+}
+
+// Advance the photo wizard: mark each tile with a chosen file as done, surface the
+// first still-empty tile as current, and reveal the Upload button only once every
+// tile has a photo. Files stay staged until that final batch upload.
+function advanceWorkerPhotoWizard(panel) {
+  const steps = Array.from(panel.querySelectorAll('.photo-wizard-step'));
+  if (!steps.length) return;
+  const total = steps.length;
+  const hasFile = (step) => !!step.querySelector('.required-photo')?.files?.[0];
+  steps.forEach((step) => {
+    step.classList.toggle('is-done', hasFile(step));
+    step.classList.remove('is-current');
+  });
+  const nextStep = steps.find((step) => !hasFile(step));
+  const progress = panel.querySelector('[data-photo-progress]');
+  const uploadBtn = panel.querySelector('.upload-photo-set');
+  if (nextStep) {
+    nextStep.classList.add('is-current');
+    if (progress) progress.textContent = `Photo ${steps.indexOf(nextStep) + 1} of ${total} · ${nextStep.dataset.stepLabel || ''}`;
+    if (uploadBtn) uploadBtn.hidden = true;
+  } else {
+    if (progress) progress.textContent = `All ${total} photos added — tap Upload to continue.`;
+    if (uploadBtn) uploadBtn.hidden = false;
+  }
 }
 
 function renderWorkerPickupBypassPanel(request) {
@@ -3508,6 +3546,12 @@ document.addEventListener('click', async (event) => {
       return;
     }
 
+    // Retake a photo already added in the wizard — reopen that tile's file picker.
+    if (button.classList.contains('photo-wizard-retake')) {
+      button.closest('.photo-wizard-step')?.querySelector('.required-photo')?.click();
+      return;
+    }
+
     // Today's Schedule tiles: jump to the matching content. (Zero-count tiles are
     // rendered as inert divs, so only the tappable ones reach here.)
     if (button.classList.contains('worker-count-cell')) {
@@ -3702,6 +3746,13 @@ document.addEventListener('change', (event) => {
     if (label) {
       label.textContent = event.target.files?.[0]?.name || 'No file chosen';
     }
+  }
+
+  // One-at-a-time photo wizard: when a required photo is added, advance to the
+  // next tile (and reveal Upload once they're all in).
+  if (event.target.matches('.required-photo')) {
+    const wizard = event.target.closest('.photo-wizard');
+    if (wizard) advanceWorkerPhotoWizard(wizard);
   }
 
   if (event.target.matches('.service-unable-reason')) {
