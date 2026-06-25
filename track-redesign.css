@@ -1075,25 +1075,12 @@
 .track-page .tk-partner-action { width: 100%; min-height: 44px; }
 
 /* Photos strip */
-.track-page .tk-photos-head { display: flex; align-items: center; justify-content: space-between; }
-
-.track-page .tk-viewall {
-  padding: 4px;
-  color: var(--sf-teal-dark);
-  background: none;
-  border: 0;
-  font-size: 0.85rem;
-  font-weight: 850;
-  cursor: pointer;
-}
-
-.track-page .tk-photo-strip {
+/* One responsive photo grid: wraps to fill the width (full window on desktop
+   where Photos spans both columns), 2 across on phones. No horizontal scroll. */
+.track-page .tk-photo-grid {
   display: grid;
-  grid-auto-flow: column;
-  grid-auto-columns: minmax(120px, 1fr);
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
   gap: 12px;
-  overflow-x: auto;
-  padding-bottom: 4px;
 }
 
 .track-page .tk-photo-tile {
@@ -1116,7 +1103,6 @@
 
 .track-page .tk-photo-label { color: var(--sf-teal-dark); font-size: 0.8rem; font-weight: 800; }
 .track-page .tk-photo-time { color: var(--sf-muted); font-size: 0.72rem; }
-.track-page .tk-photos-full { margin-top: 16px; }
 
 /* Help card */
 .track-page .tk-help-text { margin: 0 0 14px; color: var(--sf-muted); }
@@ -1170,7 +1156,7 @@
   .track-page .tk-update-desc,
   .track-page .tk-vehicle-meta dd { font-size: 0.95rem; }
 
-  .track-page .tk-photo-strip { grid-auto-columns: minmax(46%, 1fr); }
+  .track-page .tk-photo-grid { grid-template-columns: 1fr 1fr; }
 }
 
 /* ─────────────────────────────────────────────────────────────────────────
@@ -1684,7 +1670,9 @@
     align-items: start;
   }
   .track-page .track-completed-body > .tk-completed-summary,
-  .track-page .track-completed-body > .review-panel {
+  .track-page .track-completed-body > .review-panel,
+  .track-page .track-completed-body > .service-issue-banner,
+  .track-page .track-completed-body > .tk-sub-acc--full {
     grid-column: 1 / -1;
   }
   .track-page .track-completed-body > .tk-sub-acc > .tk-sub-acc-head {

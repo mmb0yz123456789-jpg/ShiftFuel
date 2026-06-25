@@ -122,11 +122,10 @@ function openPhotoLightbox(src, label) {
   showLightboxAt(0);
 }
 
-// Open from a tapped thumbnail and page through the photos in the SAME gallery
-// the user tapped — the recent strip or the full grouped grid, not both (photos
-// appear in both, and the full grid may be hidden). Skip hidden thumbnails.
+// Open from a tapped thumbnail and page through the photos in the same grid the
+// user tapped. Skip hidden thumbnails.
 function openLightboxFromCard(card) {
-  const scope = card.closest('.tk-photo-strip, .tk-photos-full')
+  const scope = card.closest('.tk-photo-grid')
     || card.closest('.track-request-card')
     || document;
   const thumbs = Array.from(scope.querySelectorAll('[data-lightbox-src]'))
@@ -2778,14 +2777,10 @@ function renderPhotoStrip(request, photos) {
         ${time ? `<span class="tk-photo-time">${escapeHtml(time)}</span>` : ''}
       </button>`;
   }).join('');
-  return `
-    <div class="tk-photos-head">
-      <p class="tk-eyebrow">Photos</p>
-      <button class="tk-viewall" type="button" data-track-viewall>View all</button>
-    </div>
-    <div class="tk-photo-strip">${tiles}</div>
-    <div class="tk-photos-full" hidden>${renderPhotos(request, photos)}</div>
-  `;
+  // One responsive grid showing every photo at once (no horizontal scroll strip
+  // and no "View all" toggle — they showed the same photos twice). Tapping a tile
+  // opens the full-screen lightbox.
+  return `<div class="tk-photo-grid">${tiles}</div>`;
 }
 
 function renderHelpCard() {
@@ -2802,11 +2797,11 @@ function renderHelpCard() {
 
 // ── Sub-accordion helper ─────────────────────────────────────────────────────
 // Wraps content in a collapsible <details> section inside an expanded request.
-function tkSubAcc(title, content, { open = false } = {}) {
+function tkSubAcc(title, content, { open = false, className = '' } = {}) {
   const trimmed = (content || '').trim();
   if (!trimmed) return '';
   return `
-    <details class="tk-sub-acc"${open ? ' open' : ''}>
+    <details class="tk-sub-acc${className ? ' ' + className : ''}"${open ? ' open' : ''}>
       <summary class="tk-sub-acc-head">
         <span>${escapeHtml(title)}</span>
         <svg class="tk-sub-acc-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
@@ -3051,6 +3046,8 @@ function renderCompletedCard(request, photos = [], review = null, { expanded = f
         ${requestSummaryHtml(request, { statusLabel: 'Complete', statusClass: 'status-pill-complete' })}
         <div class="track-request-body track-completed-body">
 
+          ${renderServiceIssueBanner(request)}
+
           <section class="tk-card tk-completed-summary">
             <div class="tk-completed-head">
               <div>
@@ -3071,8 +3068,7 @@ function renderCompletedCard(request, photos = [], review = null, { expanded = f
 
           ${reviewHtml}
 
-          ${tkSubAcc('Photos', `<div class="tk-photos-lazy"><p class="tk-empty">Loading photos…</p></div>`, { open: detailsOpen })}
-          ${tkSubAcc('Timeline', `<div class="tk-completed-updates">${renderLiveUpdatesFeed(request)}</div>`, { open: detailsOpen })}
+          ${tkSubAcc('Photos', `<div class="tk-photos-lazy"><p class="tk-empty">Loading photos…</p></div>`, { open: detailsOpen, className: 'tk-sub-acc--full' })}
           ${tkSubAcc('Vehicle inspection', inspection, { open: detailsOpen })}
           ${tkSubAcc('Service timing', timing, { open: detailsOpen })}
           ${tkSubAcc('Service details', details, { open: detailsOpen })}
@@ -3525,16 +3521,6 @@ trackingResult.addEventListener("click", (event) => {
     event.preventDefault();
     refreshStatusBtn?.click();
     return;
-  }
-  const viewAll = event.target.closest('[data-track-viewall]');
-  if (viewAll) {
-    event.preventDefault();
-    const full = viewAll.closest('.tk-photos')?.querySelector('.tk-photos-full');
-    if (full) {
-      const show = full.hidden;
-      full.hidden = !show;
-      viewAll.textContent = show ? 'Hide photos' : 'View all';
-    }
   }
 });
 

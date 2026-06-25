@@ -1734,6 +1734,50 @@ function workerFactRow(icon, label, value) {
     </div>`;
 }
 
+// The six high-level phases every job passes through, shown as a pinned
+// progress rail at the top of the wizard card. Short labels keep the rail
+// readable on a phone; the active phase's full name is shown above it.
+const WORKER_WIZARD_PHASES = [
+  { short: 'Accept', full: 'Request accepted' },
+  { short: 'Key', full: 'Key received' },
+  { short: 'Pickup', full: 'Vehicle picked up' },
+  { short: 'Service', full: 'Service in progress' },
+  { short: 'Return', full: 'Vehicle returned' },
+  { short: 'Done', full: 'Complete' },
+];
+
+// Horizontal "Step N of 6" progress rail pinned at the top of the wizard so the
+// worker always sees where they are without scrolling. Reuses the same phase
+// math as the vertical stepper (workerProgressStepForStatus).
+function renderWorkerHorizontalStepper(request) {
+  let current = workerProgressStepForStatus(request.status);
+  if (current < 1) current = 1; // request_received → about to become step 1
+  const phase = WORKER_WIZARD_PHASES[Math.min(current, 6) - 1];
+  return `
+    <div class="worker-wizard-progress">
+      <div class="worker-wizard-progress-head">
+        <span class="worker-wizard-step-count">Step ${current} of 6</span>
+        <span class="worker-wizard-step-phase">${escapeHtml(phase.full)}</span>
+      </div>
+      <ol class="worker-hstepper" aria-label="Job progress">
+        ${WORKER_WIZARD_PHASES.map((p, index) => {
+          const stepNumber = index + 1;
+          const state = stepNumber < current ? 'done' : stepNumber === current ? 'active' : 'upcoming';
+          return `
+            <li class="worker-hstep is-${state}">
+              <span class="worker-hstep-dot">${state === 'done' ? '&#10003;' : stepNumber}</span>
+              <span class="worker-hstep-label">${escapeHtml(p.short)}</span>
+            </li>`;
+        }).join('')}
+      </ol>
+    </div>`;
+}
+
+// One-step-at-a-time wizard card for an active job. The screen is dominated by
+// the single current step (renderWorkerJobActions). The job's reference facts —
+// address, parking, key handoff, vehicle, etc. — are tucked behind "Job details"
+// so nothing competes with "what to do right now". The status/action engine and
+// every action panel are reused unchanged; only the presentation is the wizard.
 function renderWorkerCurrentJobCard(request) {
   const keyHandoff = request.key_handoff_details ? escapeHtml(request.key_handoff_details) : 'Not provided';
   const parking = [request.parking_location, request.parking_spot ? `spot ${request.parking_spot}` : ''].filter(Boolean).map(escapeHtml).join(', ') || 'Not provided';
@@ -1743,31 +1787,36 @@ function renderWorkerCurrentJobCard(request) {
   const initial = escapeHtml((name.trim().charAt(0) || 'C').toUpperCase());
   const vehicleLine = [workerVehicleSummary(request) || 'Vehicle on file', request.service_label || request.service_type]
     .filter(Boolean).map(escapeHtml).join(' &middot; ');
+  const isExpanded = expandedWorkerJobId === request.id;
   return `
-    <article class="worker-card worker-current-job-card" data-current-job-id="${escapeHtml(request.id)}">
-      <div class="worker-job-statusrow">${workerStatusBadge(request)}</div>
-      <div class="worker-job-grid">
-        <div class="worker-job-identity">
-          <span class="worker-avatar" aria-hidden="true">${initial}</span>
-          <div class="worker-job-head-main">
-            <h3 class="worker-current-job-name">${escapeHtml(name)}</h3>
-            <p class="worker-card-vehicle">${vehicleLine}</p>
-          </div>
+    <article class="worker-card worker-current-job-card worker-wizard-card" data-current-job-id="${escapeHtml(request.id)}">
+      <header class="worker-wizard-head">
+        <span class="worker-avatar" aria-hidden="true">${initial}</span>
+        <div class="worker-wizard-head-main">
+          <h3 class="worker-current-job-name">${escapeHtml(name)}</h3>
+          <p class="worker-card-vehicle">${vehicleLine}</p>
         </div>
-        <div class="worker-job-facts">
-          ${workerFactRow(WK_ICONS.pin, 'Service address', `<span class="worker-job-address-value">${escapeHtml(workerFormatAddress(request))}</span>`)}
-          ${workerFactRow(WK_ICONS.car, 'Parking', parking)}
-          ${workerFactRow(WK_ICONS.key, 'Key handoff', keyHandoff)}
-          ${returnBy ? workerFactRow(WK_ICONS.clock, 'Desired return', escapeHtml(returnBy)) : ''}
-        </div>
+        ${workerStatusBadge(request)}
+      </header>
+
+      ${renderWorkerHorizontalStepper(request)}
+
+      <div class="worker-wizard-step">
+        ${renderWorkerJobActions(request)}
       </div>
-      ${renderWorkerJobActions(request)}
+
       <div class="worker-secondary-actions">
         ${phone ? `<a class="button secondary worker-secondary-btn" href="tel:${escapeHtml(phone)}">Call customer</a>` : ''}
-        <button class="button secondary worker-secondary-btn worker-row-toggle" data-id="${escapeHtml(request.id)}" type="button">${expandedWorkerJobId === request.id ? 'Hide full details' : 'View full details'}</button>
+        <button class="button secondary worker-secondary-btn worker-row-toggle" data-id="${escapeHtml(request.id)}" type="button" aria-expanded="${isExpanded}">${isExpanded ? 'Hide job details' : 'View job details'}</button>
       </div>
-      ${expandedWorkerJobId === request.id ? `
+      ${isExpanded ? `
         <div class="worker-card-expanded">
+          <div class="worker-job-facts worker-wizard-facts">
+            ${workerFactRow(WK_ICONS.pin, 'Service address', `<span class="worker-job-address-value">${escapeHtml(workerFormatAddress(request))}</span>`)}
+            ${workerFactRow(WK_ICONS.car, 'Parking', parking)}
+            ${workerFactRow(WK_ICONS.key, 'Key handoff', keyHandoff)}
+            ${returnBy ? workerFactRow(WK_ICONS.clock, 'Desired return', escapeHtml(returnBy)) : ''}
+          </div>
           ${renderWorkerVerticalStepper(request)}
           ${renderWorkerJobInfoBlock(request, 'mine')}
         </div>

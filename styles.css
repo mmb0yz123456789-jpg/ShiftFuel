@@ -3530,9 +3530,24 @@ font-size: 0.85rem;
   transform: scale(1.34);
 }
 
-/* Desktop: brighten + lift the hovered star. */
+/* Desktop: live hover-preview so the rating responds as you move across the row.
+   Hovering a star fills + grows it and every star before it (the hovered one is
+   the peak); stars after it fall back to empty — overriding any current
+   selection so you see exactly what you'd pick. Touch devices have no hover, so
+   they keep the tap-to-grow (.filled) behavior above. */
 @media (hover: hover) {
-  .star-btn:hover { color: #fbbf24; transform: scale(1.28); }
+  .star-rating:has(.star-btn:hover) .star-btn:hover,
+  .star-rating:has(.star-btn:hover) .star-btn:has(~ .star-btn:hover) {
+    color: #fbbf24;
+    transform: scale(1.18);
+  }
+  .star-rating:has(.star-btn:hover) .star-btn:hover {
+    transform: scale(1.4);
+  }
+  .star-rating:has(.star-btn:hover) .star-btn:hover ~ .star-btn {
+    color: #d1d5db;
+    transform: scale(1);
+  }
 }
 
 .star-rating-label {

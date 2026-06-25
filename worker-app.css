@@ -797,3 +797,183 @@
     margin: 18px auto 0 !important;
   }
 }
+
+/* ──────────────────────────────────────────────────────────────────────────
+   ACTIVE-JOB WIZARD — one baby step at a time.
+   The current step fills the card; the customer/vehicle reference facts and the
+   full vertical tracker live behind "View job details" so nothing competes with
+   "what to do right now." The status/action engine is reused unchanged; this is
+   purely the presentation layer.
+   ────────────────────────────────────────────────────────────────────────── */
+.worker-portal-page .worker-wizard-card { padding: 16px !important; }
+
+/* Compact header: who + what, status pill trailing. */
+.worker-portal-page .worker-wizard-head {
+  display: flex !important;
+  align-items: center !important;
+  gap: 12px !important;
+  margin-bottom: 14px !important;
+}
+.worker-portal-page .worker-wizard-head-main { flex: 1 1 auto; min-width: 0; }
+.worker-portal-page .worker-wizard-head .worker-current-job-name {
+  font-size: 1.15rem !important;
+  margin: 0 !important;
+}
+.worker-portal-page .worker-wizard-head .worker-card-vehicle {
+  margin: 2px 0 0 !important;
+  color: #4e5f5b !important;
+  font-size: 0.9rem !important;
+}
+.worker-portal-page .worker-wizard-head .status-pill { flex-shrink: 0; }
+
+/* Pinned progress rail: "Step N of 6" + a 6-dot horizontal tracker. */
+.worker-portal-page .worker-wizard-progress {
+  background: var(--sf-sage-light, #eaf2ea) !important;
+  border-radius: 14px !important;
+  padding: 12px 14px 14px !important;
+  margin-bottom: 16px !important;
+}
+.worker-portal-page .worker-wizard-progress-head {
+  display: flex !important;
+  align-items: baseline !important;
+  justify-content: space-between !important;
+  gap: 10px !important;
+  margin-bottom: 14px !important;
+}
+.worker-portal-page .worker-wizard-step-count {
+  font-size: 0.7rem !important;
+  font-weight: 800 !important;
+  letter-spacing: 0.05em !important;
+  text-transform: uppercase !important;
+  color: #60716d !important;
+}
+.worker-portal-page .worker-wizard-step-phase {
+  font-size: 0.98rem !important;
+  font-weight: 800 !important;
+  color: var(--sf-teal, #0d3b3b) !important;
+  text-align: right !important;
+}
+.worker-portal-page .worker-hstepper {
+  list-style: none !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  display: grid !important;
+  grid-template-columns: repeat(6, 1fr) !important;
+}
+.worker-portal-page .worker-hstep {
+  position: relative !important;
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
+  gap: 5px !important;
+  text-align: center !important;
+}
+.worker-portal-page .worker-hstep::before {
+  content: "" !important;
+  position: absolute !important;
+  top: 13px !important;
+  left: -50% !important;
+  width: 100% !important;
+  height: 2px !important;
+  background: rgba(13, 59, 59, 0.16) !important;
+  z-index: 0 !important;
+}
+.worker-portal-page .worker-hstep:first-child::before { display: none !important; }
+.worker-portal-page .worker-hstep.is-done::before,
+.worker-portal-page .worker-hstep.is-active::before { background: var(--sf-teal, #0d3b3b) !important; }
+.worker-portal-page .worker-hstep-dot {
+  position: relative !important;
+  z-index: 1 !important;
+  display: grid !important;
+  place-items: center !important;
+  width: 26px !important;
+  height: 26px !important;
+  border-radius: 50% !important;
+  background: #fff !important;
+  border: 2px solid rgba(13, 59, 59, 0.18) !important;
+  color: #7c8b87 !important;
+  font-size: 0.74rem !important;
+  font-weight: 800 !important;
+}
+.worker-portal-page .worker-hstep-label {
+  font-size: 0.62rem !important;
+  font-weight: 700 !important;
+  color: #7c8b87 !important;
+}
+.worker-portal-page .worker-hstep.is-done .worker-hstep-dot {
+  background: var(--sf-teal, #0d3b3b) !important;
+  border-color: var(--sf-teal, #0d3b3b) !important;
+  color: #fff !important;
+}
+.worker-portal-page .worker-hstep.is-active .worker-hstep-dot {
+  border-color: var(--sf-teal, #0d3b3b) !important;
+  color: var(--sf-teal, #0d3b3b) !important;
+  box-shadow: 0 0 0 4px rgba(13, 59, 59, 0.12) !important;
+}
+.worker-portal-page .worker-hstep.is-done .worker-hstep-label,
+.worker-portal-page .worker-hstep.is-active .worker-hstep-label { color: var(--sf-teal, #0d3b3b) !important; }
+
+/* The focal step: one clear instruction + big, obvious tap targets. */
+.worker-portal-page .worker-wizard-step .guided-step {
+  background: transparent !important;
+  border: 0 !important;
+  padding: 0 !important;
+  margin: 0 !important;
+}
+.worker-portal-page .worker-wizard-step .guided-step .eyebrow {
+  font-size: 0.68rem !important;
+  letter-spacing: 0.06em !important;
+  text-transform: uppercase !important;
+  color: #60716d !important;
+}
+.worker-portal-page .worker-wizard-step .guided-step h4 {
+  font-size: 1.28rem !important;
+  margin: 2px 0 12px !important;
+  color: var(--sf-teal, #0d3b3b) !important;
+  letter-spacing: -0.01em !important;
+}
+.worker-portal-page .worker-wizard-step .next-action-label {
+  font-size: 1rem !important;
+  line-height: 1.5 !important;
+  color: #2f413d !important;
+  background: var(--sf-sage-light, #eaf2ea) !important;
+  border-radius: 12px !important;
+  padding: 12px 14px !important;
+  margin: 0 0 16px !important;
+}
+.worker-portal-page .worker-wizard-step .next-action-label strong { color: var(--sf-teal, #0d3b3b) !important; }
+
+/* Big stacked tap targets — both the action buttons and any in-step panel. */
+.worker-portal-page .worker-wizard-step .admin-button-row {
+  display: grid !important;
+  gap: 10px !important;
+}
+.worker-portal-page .worker-wizard-step .button.primary {
+  width: 100% !important;
+  min-height: 54px !important;
+  font-size: 1.02rem !important;
+  border-radius: 14px !important;
+}
+.worker-portal-page .worker-wizard-step .admin-button-row .button {
+  width: 100% !important;
+  min-height: 50px !important;
+  border-radius: 14px !important;
+}
+
+/* Reference facts shown inside the "View job details" drawer. */
+.worker-portal-page .worker-wizard-facts { margin-bottom: 14px !important; }
+
+/* Desktop: keep the single step a calm, centered column instead of stretching
+   it across the whole dashboard main area. */
+@media (min-width: 761px) {
+  .worker-portal-page .worker-wizard-card { padding: 26px !important; }
+  .worker-portal-page .worker-wizard-head,
+  .worker-portal-page .worker-wizard-progress,
+  .worker-portal-page .worker-wizard-step,
+  .worker-portal-page .worker-wizard-card .worker-secondary-actions,
+  .worker-portal-page .worker-wizard-card .worker-card-expanded {
+    max-width: 620px !important;
+    margin-left: auto !important;
+    margin-right: auto !important;
+  }
+}
