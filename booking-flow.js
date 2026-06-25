@@ -1053,21 +1053,17 @@ async function validateAddress(panel) {
 
 // ---------------------------------------------------------------------------
 // Mapbox address autocomplete. We proxy through /api/address so the browser
-// never carries a token. A session_token groups suggest calls + one retrieve
-// into a single Mapbox billable session; we mint a fresh one after each pick.
+// never carries a token. The server uses the Geocoding API (request-billed,
+// large free tier) and returns full structured fields + coordinates with each
+// suggestion, so picking one needs no second call — no Search Box "sessions".
 // ---------------------------------------------------------------------------
 
-let addressSessionToken = newAddressSession();
+let lastAddressSuggestions = [];
 let addressSuggestTimer = null;
 let addressSuggestSeq = 0;
 // Set on suggestion mousedown (fires before the input's blur) so the blur-driven
-// fallback validation doesn't race the Mapbox retrieve+validate of a pick.
+// fallback validation doesn't race the validate of a pick.
 let addressPickInProgress = false;
-
-function newAddressSession() {
-  if (window.crypto?.randomUUID) return window.crypto.randomUUID();
-  return `sf-${Date.now()}-${Math.random().toString(16).slice(2)}`;
-}
 
 function closeAddressSuggest(listEl) {
   if (!listEl) return;
@@ -1081,11 +1077,12 @@ async function fetchAddressSuggestions(query, listEl) {
     const res = await fetch("/api/address", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "address_suggest", q: query, session_token: addressSessionToken }),
+      body: JSON.stringify({ action: "address_suggest", q: query }),
     });
     const data = await res.json().catch(() => ({}));
     if (seq !== addressSuggestSeq) return; // a newer keystroke superseded this one
-    renderAddressSuggestions(listEl, data.suggestions || []);
+    lastAddressSuggestions = Array.isArray(data.suggestions) ? data.suggestions : [];
+    renderAddressSuggestions(listEl, lastAddressSuggestions);
   } catch (error) {
     closeAddressSuggest(listEl);
   }
@@ -1101,7 +1098,7 @@ function renderAddressSuggestions(listEl, suggestions) {
     .map(
       (s) => `
       <li>
-        <button type="button" class="address-suggest-item" data-suggest-id="${escapeHtml(s.mapbox_id)}">
+        <button type="button" class="address-suggest-item" data-suggest-id="${escapeHtml(s.id)}">
           <span class="address-suggest-name">${escapeHtml(s.name)}</span>
           <span class="address-suggest-place">${escapeHtml(s.place)}</span>
         </button>
@@ -1111,20 +1108,15 @@ function renderAddressSuggestions(listEl, suggestions) {
   listEl.hidden = false;
 }
 
-async function selectAddressSuggestion(panel, mapboxId) {
+async function selectAddressSuggestion(panel, suggestId) {
   const listEl = panel.querySelector("[data-address-suggest]");
   closeAddressSuggest(listEl);
   try {
-    const res = await fetch("/api/address", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "address_retrieve", mapbox_id: mapboxId, session_token: addressSessionToken }),
-    });
-    const data = await res.json().catch(() => ({}));
-    addressSessionToken = newAddressSession(); // session spent on this retrieve
-    if (!data.ok || !data.address) return;
+    // The suggestion already carries the structured fields + coordinates from the
+    // Geocoding response, so there's no second lookup — just apply them.
+    const a = lastAddressSuggestions.find((s) => String(s.id) === String(suggestId));
+    if (!a) return;
 
-    const a = data.address;
     const setField = (name, value) => {
       const input = panel.querySelector(`[name="${name}"]`);
       if (input && value) input.value = value;
@@ -1142,7 +1134,7 @@ async function selectAddressSuggestion(panel, mapboxId) {
     await validateAddress(panel);
     panel.dispatchEvent(new Event("booking-address-picked", { bubbles: true }));
   } catch (error) {
-    console.error("Address retrieve failed:", error);
+    console.error("Address selection failed:", error);
   } finally {
     addressPickInProgress = false;
   }

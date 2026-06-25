@@ -196,15 +196,18 @@ async function handleValidateServiceArea(body, res) {
 
 async function handleAddressSuggest(body, res) {
   const q = String(body.q || body.query || '').trim();
-  const sessionToken = String(body.session_token || '').trim();
-  if (q.length < 3 || !sessionToken) {
+  if (q.length < 3) {
     return res.status(200).json({ suggestions: [] });
   }
 
+  // Geocoding API (forward) rather than the Search Box /suggest endpoint: it
+  // bills per request under the much larger Geocoding free tier instead of the
+  // small Search Box "sessions" tier, and returns full structured fields +
+  // coordinates up front so the client never needs a second /retrieve call.
   const params = new URLSearchParams({
     q,
     access_token: MAPBOX_TOKEN,
-    session_token: sessionToken,
+    autocomplete: 'true',
     country: 'us',
     types: 'address',
     language: 'en',
@@ -213,14 +216,32 @@ async function handleAddressSuggest(body, res) {
   });
 
   try {
-    const response = await fetch(`${SEARCHBOX_BASE}/suggest?${params.toString()}`, { headers: MAPBOX_FETCH_HEADERS });
+    const response = await fetch(`https://api.mapbox.com/search/geocode/v6/forward?${params.toString()}`, { headers: MAPBOX_FETCH_HEADERS });
     if (!response.ok) return res.status(200).json({ suggestions: [] });
     const data = await response.json();
-    const suggestions = (data.suggestions || []).map((s) => ({
-      mapbox_id: s.mapbox_id,
-      name: s.name || s.address || '',
-      place: s.place_formatted || s.full_address || '',
-    }));
+    const suggestions = (data.features || []).map((f, i) => {
+      const props = f.properties || {};
+      const ctx = props.context || {};
+      const coords = f.geometry?.coordinates || [];
+      const lon = props.coordinates?.longitude ?? coords[0];
+      const lat = props.coordinates?.latitude ?? coords[1];
+      const street = props.name || ctx.address?.name || '';
+      const city = ctx.place?.name || '';
+      const state = ctx.region?.region_code || ctx.region?.name || '';
+      const zip = ctx.postcode?.name || '';
+      return {
+        id: props.mapbox_id || `sg-${i}`,
+        name: street,
+        place: props.place_formatted || [city, state, zip].filter(Boolean).join(', '),
+        street,
+        city,
+        state,
+        zip,
+        lat: Number.isFinite(Number(lat)) ? Number(lat) : null,
+        lon: Number.isFinite(Number(lon)) ? Number(lon) : null,
+        full_address: props.full_address || '',
+      };
+    });
     return res.status(200).json({ suggestions });
   } catch (err) {
     console.error('[address/address_suggest] Error:', err.message);
