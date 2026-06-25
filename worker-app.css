@@ -326,6 +326,14 @@
   white-space: nowrap;
 }
 .worker-portal-page .worker-nav-link:hover { filter: brightness(1.08); }
+
+/* "Start — open directions" action button (anchor styled as a primary button) */
+.worker-portal-page .worker-start-nav {
+  display: block;
+  width: 100%;
+  text-align: center;
+  text-decoration: none;
+}
 .worker-portal-page .worker-station-pref {
   font-size: 0.8rem;
   font-weight: 700;
