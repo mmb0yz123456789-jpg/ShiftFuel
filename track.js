@@ -732,6 +732,60 @@ async function loadVerifiedWorkers(requests) {
   }
 }
 
+// The worker is driving to the vehicle: accepted, live GPS on, and we have both
+// the worker's last location and the service-address destination.
+function workerEnRouteToVehicle(request) {
+  return request.status === 'accepted'
+    && request.live_tracking_enabled
+    && Number.isFinite(Number(request.last_latitude))
+    && Number.isFinite(Number(request.last_longitude))
+    && Number.isFinite(Number(request.address_lat))
+    && Number.isFinite(Number(request.address_lon));
+}
+
+function etaBannerHtml(request) {
+  if (!workerEnRouteToVehicle(request)) return '';
+  return `<div class="worker-eta-banner" data-eta
+    data-olat="${request.last_latitude}" data-olon="${request.last_longitude}"
+    data-dlat="${request.address_lat}" data-dlon="${request.address_lon}">
+    <span class="worker-eta-text">Locating your specialist…</span></div>`;
+}
+
+// Fill each en-route banner with a live driving ETA (worker → service address).
+async function updateEtaBanners() {
+  const els = document.querySelectorAll('.worker-eta-banner[data-eta]');
+  for (const el of els) {
+    const text = el.querySelector('.worker-eta-text');
+    try {
+      const res = await fetch('/api/address', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'route_eta',
+          origin_lat: el.dataset.olat, origin_lon: el.dataset.olon,
+          dest_lat: el.dataset.dlat, dest_lon: el.dataset.dlon,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (data.ok && text) text.innerHTML = `🚗 Your specialist is about <strong>${data.minutes} min</strong> away · ${data.miles} mi`;
+      else if (text) text.textContent = 'Your specialist is on the way.';
+    } catch (_) {
+      if (text) text.textContent = 'Your specialist is on the way.';
+    }
+  }
+}
+
+// Poll for a fresh worker location + ETA while anyone is en route to a vehicle.
+let _etaPollTimer = null;
+function manageEtaPolling(requests) {
+  const anyEnRoute = Array.isArray(requests) && requests.some(workerEnRouteToVehicle);
+  if (anyEnRoute && !_etaPollTimer) {
+    _etaPollTimer = setInterval(() => { refreshTrackedRequestsAfterAction(); }, 30000);
+  } else if (!anyEnRoute && _etaPollTimer) {
+    clearInterval(_etaPollTimer);
+    _etaPollTimer = null;
+  }
+}
+
 function renderAssignedWorker(request) {
   if (!request.assigned_worker_name) return '';
 
@@ -755,6 +809,7 @@ function renderAssignedWorker(request) {
         ${request.assigned_worker_phone ? `<p class="worker-phone">${escapeHtml(formatPhone(request.assigned_worker_phone))}</p>` : ''}
         ${isVerified ? '<span class="worker-verified-badge">✓ Verified ShiftFuel Employee</span>' : ''}
       </div>
+      ${etaBannerHtml(request)}
     </section>
   `;
 }
@@ -3186,6 +3241,10 @@ async function renderAllRequests(requests, phone, email) {
 
   html += `</div>`;
   trackingResult.innerHTML = html;
+
+  // Live "how far out is my specialist" ETA + polling while en route.
+  updateEtaBanners();
+  manageEtaPolling(requests);
 
   // After a successful lookup, condense the search form to a slim bar so the
   // result cards get the space. Tapping the bar re-expands it for a new search.

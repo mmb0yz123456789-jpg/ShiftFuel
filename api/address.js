@@ -38,6 +38,7 @@ const RATE_LIMITS = {
   gas_station_search:    { limit: 20, windowSeconds: 60 },
   isochrone:             { limit: 20, windowSeconds: 60 },
   geocode:               { limit: 40, windowSeconds: 60 },
+  route_eta:             { limit: 40, windowSeconds: 60 },
 };
 
 // Short-lived in-memory cache for station lookups, keyed by rounded coords (and
@@ -428,6 +429,32 @@ async function handleGeocode(body, res) {
   }
 }
 
+// Driving ETA between two points (worker → service address) for the customer's
+// "how far out is my specialist" banner. Returns minutes + miles.
+async function handleRouteEta(body, res) {
+  const oLat = Number(body.origin_lat), oLon = Number(body.origin_lon);
+  const dLat = Number(body.dest_lat), dLon = Number(body.dest_lon);
+  if (![oLat, oLon, dLat, dLon].every(Number.isFinite)) {
+    return res.status(400).json({ ok: false, message: 'Missing coordinates.' });
+  }
+  try {
+    const url = `https://api.mapbox.com/directions/v5/mapbox/driving/${oLon},${oLat};${dLon},${dLat}?access_token=${MAPBOX_TOKEN}&overview=false`;
+    const r = await fetch(url, { headers: MAPBOX_FETCH_HEADERS });
+    if (!r.ok) return res.status(200).json({ ok: false });
+    const data = await r.json();
+    const route = data.routes && data.routes[0];
+    if (!route) return res.status(200).json({ ok: false });
+    return res.status(200).json({
+      ok: true,
+      minutes: Math.max(1, Math.round(route.duration / 60)),
+      miles: Math.round((route.distance / 1609.34) * 10) / 10,
+    });
+  } catch (err) {
+    console.error('[address/route_eta] Error:', err.message);
+    return res.status(200).json({ ok: false });
+  }
+}
+
 const HANDLERS = {
   validate_service_area: handleValidateServiceArea,
   address_suggest: handleAddressSuggest,
@@ -435,6 +462,7 @@ const HANDLERS = {
   nearby_gas_stations: handleNearbyGasStations,
   gas_station_search: handleGasStationSearch,
   geocode: handleGeocode,
+  route_eta: handleRouteEta,
   isochrone: handleIsochrone,
   get_service_area: handleGetServiceArea,
   save_service_area: handleSaveServiceArea,

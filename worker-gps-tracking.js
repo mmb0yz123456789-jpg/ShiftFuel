@@ -317,6 +317,17 @@
     // while a job is being tracked. acquireWakeLock() is a no-op if already held.
     if (activeWatches.size > 0) acquireWakeLock();
 
+    // Begin sharing location the moment the worker taps "Start" (within the tap
+    // gesture, so the permission prompt is allowed) — this powers the customer's
+    // "how far out is my specialist" ETA while the worker drives to the vehicle.
+    // 'accepted' is eligible for GPS, so this starts the watch; it does not block
+    // the route map from opening (no preventDefault / return here).
+    const startNav = event.target.closest('.worker-start-nav');
+    if (startNav && startNav.dataset.id && !activeWatches.has(startNav.dataset.id)) {
+      blockedRequests.delete(startNav.dataset.id);
+      startGps(startNav.dataset.id);
+    }
+
     const start = event.target.closest('.start-gps-tracking');
     if (start) {
       event.preventDefault();

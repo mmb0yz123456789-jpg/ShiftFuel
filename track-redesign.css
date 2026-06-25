@@ -1777,3 +1777,17 @@
     padding: 14px;
   }
 }
+
+/* Live "how far out is my specialist" ETA banner (worker en route to vehicle) */
+.worker-eta-banner {
+  margin-top: 12px;
+  padding: 10px 14px;
+  border-radius: 12px;
+  background: #e6f4ea;
+  border: 1px solid #cfe6d8;
+  color: #15803d;
+  font-weight: 700;
+  font-size: 0.92rem;
+  text-align: center;
+}
+.worker-eta-banner strong { color: #0d3b3b; }
