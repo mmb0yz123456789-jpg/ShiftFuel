@@ -767,7 +767,7 @@ function stepIsComplete(panel) {
   }
 
   if (step === "Verify") return bookingState.returning.verified;
-  if (step === "Service Address") return Boolean(bookingState.returning.selectedAddressId || bookingState.returning.stagedAddress);
+  if (step === "Service Address") return Boolean(bookingState.returning.selectedAddressId && bookingState.returning.addressValidated);
   if (step === "Vehicle" && flowName === "returning") {
     return Boolean(bookingState.returning.selectedVehicleId || bookingState.returning.stagedVehicle);
   }
@@ -1436,6 +1436,9 @@ function renderReturningServiceArea(panel) {
         : `<p class="field-help">No saved validated service addresses were found. Add a new service address below.</p>`}
     </div>
     <button class="button secondary" type="button" data-add-returning-address>Add new service address</button>
+    ${!bookingState.returning.addressMode && bookingState.returning.selectedAddressId
+      ? `<p class="booking-validation-message" data-returning-area-status data-status="${escapeHtml(bookingState.returning.addressStatusType || "warning")}">${escapeHtml(bookingState.returning.addressStatus || "Select your address to confirm it's still in our service area.")}</p>`
+      : ""}
     ${bookingState.returning.addressMode ? returningAddressForm(modeAddress) : ""}
   `;
 }
@@ -2202,6 +2205,35 @@ async function cancelPaymentAuthorization(panel) {
   }
 }
 
+// Re-check a saved address (selected from the cards) against the CURRENT service
+// area, so a returning customer can't book a previously-valid address that now
+// falls outside coverage. Gates the "Service Address" step via addressValidated.
+async function recheckReturningSavedAddress(panel, address) {
+  bookingState.returning.addressValidated = false;
+  bookingState.returning.addressStatusType = "warning";
+  bookingState.returning.addressStatus = "Checking this address is still in our service area…";
+  renderReturningServiceArea(panel);
+  try {
+    const { ok, data } = await callAddressValidator({
+      street: address.street, unit: address.unit, city: address.city,
+      state: address.state, zip: address.zip, lat: address.lat, lon: address.lon,
+    });
+    if (!ok || !data.valid) {
+      bookingState.returning.addressStatusType = "error";
+      bookingState.returning.addressStatus = data.message || "We currently do not serve this area.";
+    } else {
+      bookingState.returning.addressValidated = true;
+      bookingState.returning.addressStatusType = "success";
+      bookingState.returning.addressStatus = "Address verified — in your service area.";
+    }
+  } catch (error) {
+    console.error("Returning saved-address re-check failed:", error);
+    bookingState.returning.addressStatusType = "error";
+    bookingState.returning.addressStatus = "We could not verify this address. Please try again.";
+  }
+  renderReturningServiceArea(panel);
+}
+
 async function validateReturningAddress(panel) {
   const address = {
     id: bookingState.returning.addressMode && bookingState.returning.addressMode !== "add" ? bookingState.returning.addressMode : `new-address-${Date.now()}`,
@@ -2233,6 +2265,7 @@ async function validateReturningAddress(panel) {
   }
   setStatus("warning", "Validating service address...");
 
+  bookingState.returning.addressValidated = false;
   try {
     const { ok, data } = await callAddressValidator(address);
     if (!ok || !data.valid) {
@@ -2248,6 +2281,7 @@ async function validateReturningAddress(panel) {
     }
     applySelectedAddress(address);
     bookingState.returning.addressMode = "";
+    bookingState.returning.addressValidated = true;
     setStatus("success", "Address verified.");
   } catch (error) {
     console.error("Returning address validation failed:", error);
@@ -2834,12 +2868,15 @@ function renderFlow(root) {
       const address = bookingState.returning.addresses.find((item) => item.id === selectAddress.dataset.selectReturningAddress);
       if (address) {
         applySelectedAddress(address);
-        renderReturningServiceArea(panel);
         renderBookNowSavedAddresses(panel);
-        // Book Now: re-check the saved address against the current service area.
         if (panel.dataset.currentStep === "Address") {
+          // Book Now: re-check the saved address against the current service area.
+          renderReturningServiceArea(panel);
           restorePanelValues(panel);
           await validateAddress(panel);
+        } else {
+          // Returning flow: same service-area re-check (renders internally).
+          await recheckReturningSavedAddress(panel, address);
         }
       }
       updateContinue();
