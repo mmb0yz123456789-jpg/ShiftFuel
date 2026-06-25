@@ -655,6 +655,74 @@ function workerMileagePay(request) {
   return extraMiles > 0 ? roundMoneyValue(extraMiles * WORKER_MILEAGE_RATE) : 0;
 }
 
+// ── Time-based compensation ───────────────────────────────────────────────────
+// Service time (the worker "sitting" while fueling / at the wash) is paid by the
+// minute, and the car-wash detour is paid by the mile beyond a free allowance —
+// mirroring the gas-station mileage. Company defaults below; the per-employee rate
+// (what THAT worker earns out of the company rate) comes from the employee record.
+const TIME_COMP = {
+  companyRatePerMin: 0.50,   // also what's baked into the customer fee (settings)
+  fuelBaseMin: 3,
+  fuelPerGallonMin: 0.5,
+  washMin: 20,
+  washDetourFreeMiles: 5,
+  washDetourRate: 0.725,
+};
+
+function parseNoteCoords(request, tag) {
+  const m = String(request?.notes || '').match(new RegExp('\\[' + tag + ' (-?\\d+(?:\\.\\d+)?),(-?\\d+(?:\\.\\d+)?)\\]'));
+  if (!m) return null;
+  const lat = Number(m[1]), lon = Number(m[2]);
+  return (Number.isFinite(lat) && Number.isFinite(lon)) ? { lat, lon } : null;
+}
+
+function haversineMiles(a, b) {
+  if (!a || !b) return 0;
+  const R = 3958.8, toRad = (d) => d * Math.PI / 180;
+  const dLat = toRad(b.lat - a.lat), dLon = toRad(b.lon - a.lon);
+  const x = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(a.lat)) * Math.cos(toRad(b.lat)) * Math.sin(dLon / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(x));
+}
+
+function workerJobGallons(request) {
+  return Number(request.selected_fuel_gallons || request.estimated_gallons || request.authorization_fuel_gallons || 0);
+}
+
+// Paid service minutes: fuel (base + per-gallon) and/or a flat wash.
+function workerServiceMinutes(request) {
+  let m = 0;
+  if (serviceNeedsFuel(request)) m += TIME_COMP.fuelBaseMin + TIME_COMP.fuelPerGallonMin * workerJobGallons(request);
+  if (serviceNeedsWash(request)) m += TIME_COMP.washMin;
+  return m;
+}
+
+// The worker's per-minute rate: their own (out of the company rate) or the company
+// rate as the default. Capped at the company rate — a worker can never earn more
+// per minute than the company charges.
+function workerTimeRate() {
+  const company = TIME_COMP.companyRatePerMin;
+  const r = Number(currentEmployee?.time_rate_per_min);
+  return Number.isFinite(r) && r > 0 ? Math.min(r, company) : company;
+}
+function workerTimePay(request) {
+  return roundMoneyValue(workerServiceMinutes(request) * workerTimeRate());
+}
+
+// Car-wash detour: round trip from the car's spot to the wash, miles beyond the
+// free allowance, paid like the gas detour. Uses the captured spot coords; 0 until
+// both are known (so it never guesses).
+function workerWashDetourMiles(request) {
+  if (!serviceNeedsWash(request)) return 0;
+  const car = parseNoteCoords(request, 'pickup_coords');
+  const wash = parseNoteCoords(request, 'wash_dest_coords');
+  if (!car || !wash) return 0;
+  return haversineMiles(car, wash) * 2 * 1.3; // round trip, ~1.3x road factor
+}
+function workerWashDetourPay(request) {
+  const billable = Math.max(0, workerWashDetourMiles(request) - TIME_COMP.washDetourFreeMiles);
+  return roundMoneyValue(billable * TIME_COMP.washDetourRate);
+}
+
 // Did the customer cancel after the worker already had the keys? Those workers
 // are owed half the cancellation fee actually collected (no mileage — they never
 // drove to a station).
@@ -679,11 +747,44 @@ function workerNetPayout(request) {
     gross = Number(request.cancellation_fee ?? request.cancellation_fee_amount ?? 0);
   }
   let payout = mileage;
+  if (completed) {
+    // Time pay (minutes at the worker's rate) + car-wash detour mileage.
+    payout += workerTimePay(request) + workerWashDetourPay(request);
+  }
   if (gross > 0) {
     const stripe = roundMoneyValue(gross * PAYMENT_RECOVERY_RATE + PAYMENT_RECOVERY_FIXED);
     payout += Math.max(0, gross - stripe) * WORKER_SERVICE_FEE_SHARE;
   }
   return roundMoneyValue(Math.max(0, payout));
+}
+
+// Estimated take-home for an OPEN/upcoming job (workerNetPayout only pays out once
+// completed). Same components, computed from the job's expected fees + time + miles,
+// for the "you'll make ~$X" line in the Jobs tab.
+function workerEstimatedPayout(request) {
+  const fees = feeSummary(request);
+  const gross = fees.fuel + fees.wash + fees.inspection;
+  const stripe = roundMoneyValue(gross * PAYMENT_RECOVERY_RATE + PAYMENT_RECOVERY_FIXED);
+  let payout = Math.max(0, gross - stripe) * WORKER_SERVICE_FEE_SHARE;
+  payout += workerMileagePay(request) + workerTimePay(request) + workerWashDetourPay(request);
+  return roundMoneyValue(Math.max(0, payout));
+}
+
+// Rough total minutes to complete, for the Jobs-tab time estimate: paid service
+// minutes + a drive allowance (base + any extra detour miles at ~30 mph).
+function workerEstimatedMinutes(request) {
+  const service = workerServiceMinutes(request);
+  const detourMiles = (Number(request.gas_station_extra_miles) || 0) + workerWashDetourMiles(request);
+  const drive = 25 + (detourMiles / 30) * 60; // ~25 min base round trip + detours
+  return Math.round(service + drive);
+}
+
+// The customer's time charge, FROZEN at booking ([time_charge X.XX] in notes). Used
+// at completion so the customer pays the locked amount — never recomputed, so later
+// company/employee rate changes don't move the customer's price.
+function frozenTimeCharge(request) {
+  const m = String(request?.notes || '').match(/\[time_charge (\d+(?:\.\d+)?)\]/);
+  return m ? Number(m[1]) : 0;
 }
 
 function transactionPricingSummary(request, receiptTotals = { fuel: 0, wash: 0 }) {
@@ -693,7 +794,9 @@ function transactionPricingSummary(request, receiptTotals = { fuel: 0, wash: 0 }
   const fuelBase = serviceNeedsFuel(request) && (Number(receiptTotals.fuel || 0) > 0 || serviceUnableFeeCharged(request, 'fuel')) ? BASE_FUEL_SERVICE_FEE : 0;
   const washBase = serviceNeedsWash(request) && (Number(receiptTotals.wash || 0) > 0 || serviceUnableFeeCharged(request, 'wash')) ? BASE_WASH_SERVICE_FEE : 0;
   const inspection = request.quick_inspection ? BASE_QUICK_INSPECTION_FEE : 0;
-  const netTarget = roundMoneyValue(Number(receiptTotals.fuel || 0) + Number(receiptTotals.wash || 0) + fuelBase + washBase + inspection);
+  // Carry the locked time charge only when a service was actually performed.
+  const timeCharge = (fuelBase || washBase) ? frozenTimeCharge(request) : 0;
+  const netTarget = roundMoneyValue(Number(receiptTotals.fuel || 0) + Number(receiptTotals.wash || 0) + fuelBase + washBase + inspection + timeCharge);
   const roundedTotal = netTarget > 0
     ? Math.ceil((netTarget + PAYMENT_RECOVERY_FIXED) / (1 - PAYMENT_RECOVERY_RATE))
     : 0;
@@ -730,7 +833,10 @@ function transactionPricingSummary(request, receiptTotals = { fuel: 0, wash: 0 }
 }
 
 function finalTotalFromSavedReceipts(request, receiptTotals = receiptTotalsFromNotes(request)) {
-  return transactionPricingSummary(request, receiptTotals).total;
+  const total = transactionPricingSummary(request, receiptTotals).total;
+  // Apply any promo discount (service-fees only, computed + stored at booking).
+  const discount = Math.max(0, Number(request.promo_discount) || 0);
+  return Math.max(0, Math.round((total - discount) * 100) / 100);
 }
 
 // Builds the internal pricing-audit fields (admin/internal only â€” never
@@ -1691,7 +1797,8 @@ function workerReturnByLabel(request) {
 // Available request card (spec: cards, not a table). Shows service, vehicle,
 // location, return time, estimated fee, status badge, and a single Accept button.
 function renderWorkerAvailableCard(request) {
-  const estPayout = workerNetPayout(request);
+  const estPayout = workerEstimatedPayout(request);
+  const estMinutes = workerEstimatedMinutes(request);
   const returnBy = workerReturnByLabel(request);
   const service = request.service_label || request.service_type || 'Service';
   const initial = escapeHtml((service.trim().charAt(0) || 'S').toUpperCase());
@@ -1705,7 +1812,16 @@ function renderWorkerAvailableCard(request) {
         </div>
         <div class="worker-job-head-meta">
           <span class="worker-open-flag"><span class="worker-open-badge-dot"></span>Open</span>
-          ${estPayout > 0 ? `<span class="worker-est-fee">${money(estPayout)}</span>` : ''}
+        </div>
+      </div>
+      <div class="worker-job-estrow">
+        <div class="worker-est-stat">
+          <span class="worker-est-stat-label">You'll earn (est.)</span>
+          <span class="worker-est-stat-value">${money(estPayout)}</span>
+        </div>
+        <div class="worker-est-stat">
+          <span class="worker-est-stat-label">Time to complete</span>
+          <span class="worker-est-stat-value">~${estMinutes} min</span>
         </div>
       </div>
       <div class="worker-job-facts">
@@ -2206,6 +2322,12 @@ function workerNavReturnButton(request, primary = false) {
   return `<button class="button ${primary ? 'primary' : 'secondary'}" data-route-map data-route-dest="return" data-id="${escapeHtml(request.id)}" type="button">Navigate back to drop the car</button>`;
 }
 
+// In-app navigation to the car wash (DECarSpa). data-route-dest="wash" → arriving
+// auto-starts the service, same as the gas-station leg.
+function workerNavWashButton(request, primary = false) {
+  return `<button class="button ${primary ? 'primary' : 'secondary'}" data-route-map data-route-dest="wash" data-id="${escapeHtml(request.id)}" type="button">Navigate to car wash</button>`;
+}
+
 // Navigation back to where the worker met the customer (handoff_coords), so they can
 // return the keys at the same spot. Only shown once that spot was captured.
 function workerNavHandoffButton(request) {
@@ -2289,9 +2411,14 @@ function renderWorkerJobActions(request) {
   } else if (request.status === 'vehicle_picked_up') {
     // Gateway: worker confirms they are beginning the service.
     // The customer tracker advances to "Service in progress" after this click.
-    if (serviceNeedsFuel(request)) {
-      // Fuel job: the next move is driving to the station. Lead with navigation;
-      // service auto-starts on arrival. Manual "Start service" stays as a fallback.
+    if (serviceNeedsWash(request)) {
+      // Wash first (covers wash-only AND fuel+wash combos): drive to the car wash.
+      // Service auto-starts on arrival; manual "Start service" stays as a fallback.
+      nextAction = 'Drive to the car wash — service starts automatically when you arrive.';
+      actions.push(workerNavWashButton(request, true));
+      actions.push(`<button class="button secondary worker-update-status" data-id="${escapeHtml(request.id)}" data-status="service_in_progress" type="button">Start service</button>`);
+    } else if (serviceNeedsFuel(request)) {
+      // Fuel-only job: drive to the gas station.
       nextAction = 'Drive to the gas station — service starts automatically when you arrive.';
       actions.push(workerNavStationButton(request, true));
       actions.push(`<button class="button secondary worker-update-status" data-id="${escapeHtml(request.id)}" data-status="service_in_progress" type="button">Start service</button>`);
@@ -2300,17 +2427,19 @@ function renderWorkerJobActions(request) {
       actions.push(workerPrimaryStatusButton(request, 'Start service', 'service_in_progress'));
     }
   } else if (request.status === 'service_in_progress') {
-    // Worker performs the actual service. Show fuel/wash action buttons.
-    nextAction = 'Complete the requested fuel or cleaning service.';
-    if (serviceNeedsFuel(request) && !serviceDoneOrUnable(request, 'fuel')) {
-      actions.push(workerPrimaryStatusButton(request, `Fuel complete â€” ${request.fuel_type || 'fuel'}`, 'fueling_complete'));
-      actions.push(workerServiceUnableButton(request, 'fuel'));
-      // Keep navigation available, but below "Fuel unable" as a just-in-case fallback.
-      actions.push(workerNavStationButton(request));
-    }
+    // One service at a time — car wash FIRST, then fuel. A combo job runs wash →
+    // fuel: the wash leg shows here, and once it's recorded the fuel leg appears
+    // (via the wash_receipt_uploaded step). Nav for each leg sits below "unable".
     if (serviceNeedsWash(request) && !serviceDoneOrUnable(request, 'wash')) {
+      nextAction = 'Complete the car wash.';
       actions.push(workerPrimaryStatusButton(request, `Wash complete â€” ${request.wash_package_label || 'selected wash'}`, 'car_wash_complete'));
       actions.push(workerServiceUnableButton(request, 'wash'));
+      actions.push(workerNavWashButton(request));
+    } else if (serviceNeedsFuel(request) && !serviceDoneOrUnable(request, 'fuel')) {
+      nextAction = 'Complete the fuel service.';
+      actions.push(workerPrimaryStatusButton(request, `Fuel complete â€” ${request.fuel_type || 'fuel'}`, 'fueling_complete'));
+      actions.push(workerServiceUnableButton(request, 'fuel'));
+      actions.push(workerNavStationButton(request));
     }
   } else if (request.status === 'fueling_complete') {
     nextAction = `Upload the fuel receipt and enter the total for ${request.fuel_type || 'the selected fuel type'}.`;
@@ -2321,13 +2450,15 @@ function renderWorkerJobActions(request) {
     activePanel = renderWorkerReceiptPanel(request, 'wash');
     actions.push(workerServiceUnableButton(request, 'wash'));
   } else if (request.status === 'fuel_receipt_uploaded' && serviceNeedsWash(request) && !serviceDoneOrUnable(request, 'wash')) {
-    nextAction = 'Complete the car wash service.';
+    nextAction = 'Drive to the car wash and complete it.';
     actions.push(workerPrimaryStatusButton(request, `Wash complete â€” ${request.wash_package_label || 'selected wash'}`, 'car_wash_complete'));
     actions.push(workerServiceUnableButton(request, 'wash'));
+    actions.push(workerNavWashButton(request));
   } else if (request.status === 'wash_receipt_uploaded' && serviceNeedsFuel(request) && !serviceDoneOrUnable(request, 'fuel')) {
-    nextAction = 'Complete the fuel service.';
+    nextAction = 'Drive to the gas station and complete the fuel service.';
     actions.push(workerPrimaryStatusButton(request, `Fuel complete â€” ${request.fuel_type || 'fuel'}`, 'fueling_complete'));
     actions.push(workerServiceUnableButton(request, 'fuel'));
+    actions.push(workerNavStationButton(request));
   } else if (request.status === 'service_complete') {
     // All service and receipt entry done. Worker reviews totals and confirms before returning vehicle.
     nextAction = 'Review the receipt totals below, then confirm to continue.';
@@ -2763,8 +2894,11 @@ function isWorkerInteracting() {
 // silent re-render won't wipe the worker's in-progress entry even if they've
 // tapped away from the field (blurred) without saving.
 function hasUnsavedWorkerInput() {
-  if (!workerJobList) return false;
-  const fields = workerJobList.querySelectorAll('input, textarea, select');
+  // Check both surfaces a job card can render on — the Jobs-tab list and the
+  // Today's Job dashboard — so the poll never wipes in-progress input on either.
+  const containers = [workerJobList, document.querySelector('#worker-dashboard-today')].filter(Boolean);
+  if (!containers.length) return false;
+  const fields = containers.flatMap((c) => Array.from(c.querySelectorAll('input, textarea, select')));
   for (const el of fields) {
     if (el.type === 'file') {
       if (el.files && el.files.length) return true;
@@ -3024,6 +3158,25 @@ async function workerSaveSpotNote(request, tag) {
   } catch (err) { console.warn('Could not save spot note:', err); }
 }
 
+// Persist an explicit destination coordinate onto the request notes once (e.g. the
+// gas station the in-app navigator resolved — including the nearest one for "closest
+// station" jobs — so the customer's "heading to the station" ETA has a target).
+async function workerSaveCoordsNote(requestId, tag, lat, lon) {
+  lat = Number(lat); lon = Number(lon);
+  if (!(Number.isFinite(lat) && Number.isFinite(lon) && (lat || lon))) return;
+  const request = allWorkerJobs.find((j) => j.id === requestId);
+  if (!request || String(request.notes || '').includes(`[${tag} `)) return;
+  const note = `[${tag} ${lat.toFixed(6)},${lon.toFixed(6)}]`;
+  const notes = request.notes ? `${request.notes}\n${note}` : note;
+  try {
+    await workerDb.rpc('worker_update_request', { p_token: SESSION_WORKER_TOKEN, p_request_id: requestId, p_data: { notes } });
+    request.notes = notes; // keep the local copy in sync so we don't re-save
+  } catch (err) { console.warn('Could not save destination note:', err); }
+}
+window.ShiftFuelSaveDest = function (requestId, tag, dest) {
+  if (dest) workerSaveCoordsNote(requestId, tag, dest.lat, dest.lon);
+};
+
 async function updateWorkerJobStatus(id, status) {
   const { error } = await workerDb.rpc('worker_update_request', {
     p_token: SESSION_WORKER_TOKEN,
@@ -3051,7 +3204,7 @@ async function updateWorkerJobStatus(id, status) {
 window.ShiftFuelOnNavArrive = function (requestId, destType) {
   const job = allWorkerJobs.find((j) => j.id === requestId);
   if (!job) return;
-  if (destType === 'station' && job.status === 'vehicle_picked_up') {
+  if ((destType === 'station' || destType === 'wash') && job.status === 'vehicle_picked_up') {
     updateWorkerJobStatus(requestId, 'service_in_progress').catch((err) => console.warn('Auto-start service failed:', err));
   } else if (destType === 'return' && job.status === 'receipts_recorded') {
     updateWorkerJobStatus(requestId, 'returned_location_pending').catch((err) => console.warn('Auto-mark returned failed:', err));
@@ -3194,11 +3347,14 @@ async function uploadWorkerPhotoSet(button) {
   if (error) throw error;
   await loadWorkerJobs();
 
-  // Pickup photos done on a fuel job → take the worker straight into navigation to
-  // the gas station. Arriving there auto-starts the service (see ShiftFuelOnNavArrive).
-  if (panel.dataset.photoStage === 'pickup' && serviceNeedsFuel(request) && window.ShiftFuelRouteMap?.open) {
+  // Pickup photos done → take the worker straight into navigation to the first
+  // service destination (gas station, or car wash for wash-only). Arriving there
+  // auto-starts the service (see ShiftFuelOnNavArrive).
+  if (panel.dataset.photoStage === 'pickup' && window.ShiftFuelRouteMap?.open) {
     const updated = allWorkerJobs.find((item) => item.id === id) || request;
-    window.ShiftFuelRouteMap.open(updated, 'station');
+    // Car wash first (covers combos); fall back to the gas station for fuel-only.
+    if (serviceNeedsWash(request)) window.ShiftFuelRouteMap.open(updated, 'wash');
+    else if (serviceNeedsFuel(request)) window.ShiftFuelRouteMap.open(updated, 'station');
   }
 }
 
@@ -3284,13 +3440,14 @@ async function saveWorkerReturnLocation(button) {
       return_parking_location: returnParkingLocation,
       return_parking_spot: null,
       return_parking_map_url: null,
-      status: 'return_location_recorded',
+      // Skip the old "Return photos" gateway tap — go straight into the photo wizard.
+      status: 'return_photos_needed',
     },
   });
 
   if (error) throw error;
 
-  console.log('Vehicle Returned clicked â€” location saved, advancing workflow only. No payment capture here.');
+  console.log('Return location saved — advancing straight to the return-photo wizard.');
   await loadWorkerJobs();
 }
 
@@ -3758,8 +3915,12 @@ document.addEventListener('click', async (event) => {
 
     if (button.classList.contains('show-total-edit')) {
       const request = allWorkerJobs.find((item) => item.id === button.dataset.id);
-      const panel = workerJobList.querySelector(`[data-total-edit-for="${button.dataset.id}"]`);
-      const checkbox = button.closest('.complete-panel')?.querySelector('.confirm-complete-totals');
+      // Scope to the button's own panel so it works on the dashboard card too (not
+      // just the Jobs-tab list) — the edit panel is a sibling inside .complete-panel.
+      const completePanel = button.closest('.complete-panel');
+      const panel = completePanel?.querySelector(`[data-total-edit-for="${button.dataset.id}"]`)
+        || document.querySelector(`[data-total-edit-for="${button.dataset.id}"]`);
+      const checkbox = completePanel?.querySelector('.confirm-complete-totals');
 
       if (checkbox) checkbox.checked = false;
       if (panel && request) {
@@ -3775,7 +3936,7 @@ document.addEventListener('click', async (event) => {
     }
 
     if (button.classList.contains('show-service-unable')) {
-      const panel = workerJobList.querySelector(`[data-service-unable-for="${button.dataset.id}"]`);
+      const panel = document.querySelector(`[data-service-unable-for="${button.dataset.id}"]`);
       if (panel) {
         const serviceType = button.dataset.serviceType;
         panel.dataset.serviceType = serviceType;

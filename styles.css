@@ -1937,6 +1937,68 @@ font-size: 0.85rem;
   cursor: pointer;
 }
 
+/* Promo code control + applied discount in the Booking Summary. */
+.summary-promo {
+  margin: 12px 0;
+  padding-top: 12px;
+  border-top: 1px solid var(--line, #e5e7eb);
+}
+.summary-promo-input {
+  display: flex;
+  gap: 8px;
+}
+.summary-promo-input input {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--line, #d1d5db);
+  border-radius: 8px;
+  font: inherit;
+  font-size: 0.95rem;
+  text-transform: uppercase;
+}
+.summary-promo-input .button {
+  flex: 0 0 auto;
+  padding: 10px 16px;
+}
+.summary-promo-msg {
+  margin: 6px 0 0;
+  min-height: 1em;
+  font-size: 0.82rem;
+  color: var(--danger, #dc2626);
+}
+.summary-promo.is-applied {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.summary-promo-chip {
+  font-weight: 800;
+  font-size: 0.9rem;
+  color: var(--sf-green, #1f9d57);
+}
+.summary-promo-remove {
+  background: none;
+  border: 0;
+  padding: 4px;
+  color: var(--muted, #6b7280);
+  font-size: 0.82rem;
+  font-weight: 700;
+  cursor: pointer;
+  text-decoration: underline;
+}
+.summary-discount-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 2px 0;
+  font-size: 0.92rem;
+  font-weight: 700;
+  color: var(--sf-green, #1f9d57);
+}
+
 .summary-total-row {
   display: flex;
   align-items: center;

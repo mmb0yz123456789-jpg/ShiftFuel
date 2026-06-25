@@ -117,6 +117,7 @@
 		<button class="admin-page-tab" data-page="requests">Requests</button>
 		<button class="admin-page-tab" data-page="workers">Workers <span id="worker-count-badge" class="page-tab-badge">0</span></button>
 		<button class="admin-page-tab" data-page="payroll">Payroll</button>
+		<button class="admin-page-tab" data-page="promos">Promos</button>
 		<button class="admin-page-tab" data-page="services">Services</button>
 		<button class="admin-page-tab" data-page="settings">Settings</button>
 	  </nav>
@@ -152,6 +153,7 @@
 		  <a href="#" data-page="requests" class="admin-menu-item">Requests</a>
 		  <a href="#" data-page="workers" class="admin-menu-item">Workers</a>
 		  <a href="#" data-page="payroll" class="admin-menu-item">Payroll</a>
+		  <a href="#" data-page="promos" class="admin-menu-item">Promos</a>
 		  <a href="#" data-page="services" class="admin-menu-item">Services</a>
 		  <a href="#" data-page="settings" class="admin-menu-item">Settings</a>
 		  
@@ -439,6 +441,67 @@
           </div>
         </div>
         <div id="payroll-content"></div>
+      </section>
+
+      <section class="section admin-section" data-tab-panel="promos" data-page-section="promos" hidden>
+        <div class="admin-toolbar">
+          <div>
+            <p class="eyebrow">Marketing</p>
+            <h2>Promo codes</h2>
+            <p class="field-help">Discounts on service fees at booking. Target everyone, first-time, or returning customers — validated server-side so they can't be faked.</p>
+          </div>
+          <button type="button" class="button primary" id="promo-new-btn">+ New code</button>
+        </div>
+
+        <form id="promo-form" class="admin-card promo-form" hidden>
+          <input type="hidden" id="promo-id">
+          <div class="promo-form-grid">
+            <label>Code
+              <input type="text" id="promo-code" placeholder="NEW20" autocapitalize="characters" autocomplete="off" maxlength="32" required>
+            </label>
+            <label>Description (optional)
+              <input type="text" id="promo-description" placeholder="20% off for first-timers" maxlength="120">
+            </label>
+            <label>Discount type
+              <select id="promo-discount-type">
+                <option value="percent">Percent (%)</option>
+                <option value="fixed">Fixed ($)</option>
+              </select>
+            </label>
+            <label>Value
+              <input type="number" id="promo-discount-value" min="0" step="0.01" placeholder="20" required>
+            </label>
+            <label>Who can use it
+              <select id="promo-audience">
+                <option value="all">All customers</option>
+                <option value="new">New customers only</option>
+                <option value="returning">Returning customers only</option>
+              </select>
+            </label>
+            <label>Minimum order ($)
+              <input type="number" id="promo-min-order" min="0" step="0.01" placeholder="0">
+            </label>
+            <label>Uses per customer
+              <input type="number" id="promo-per-customer" min="0" step="1" placeholder="1">
+            </label>
+            <label>Total redemption cap
+              <input type="number" id="promo-max-redemptions" min="1" step="1" placeholder="Unlimited">
+            </label>
+            <label>Expires (optional)
+              <input type="date" id="promo-expires">
+            </label>
+            <label class="promo-active-label">
+              <input type="checkbox" id="promo-active" checked> Active
+            </label>
+          </div>
+          <p id="promo-form-status" class="form-status" role="status"></p>
+          <div class="admin-button-row">
+            <button type="submit" class="button primary" id="promo-save-btn">Save code</button>
+            <button type="button" class="button secondary" id="promo-cancel-btn">Cancel</button>
+          </div>
+        </form>
+
+        <div id="promos-list"></div>
       </section>
 
       <section class="section admin-section" data-tab-panel="settings" data-page-section="settings" hidden>

@@ -19,6 +19,8 @@
   const OFF_ROUTE_METERS = 60;            // re-route once the worker strays this far from the line
   const ADVANCE_STEP_METERS = 28;         // advance the next-turn banner within this radius of a maneuver
   const REROUTE_MIN_INTERVAL_MS = 12000;  // never re-request Directions more often than this
+  // The car wash we currently use — geocoded on demand for the wash service leg.
+  const CAR_WASH = { name: 'DECarSpa', address: '602 Main St, Wilmington, DE 19804' };
   const NAV_ZOOM = 16.2;                  // close, street-level follow zoom
   const NAV_PITCH = 55;                   // 3D tilt for the driving view
   const ARRIVE_METERS = 45;               // auto "arrived" radius at the destination
@@ -279,6 +281,19 @@
     return null;
   }
 
+  // The car wash facility (DECarSpa) — geocode its address once per open.
+  async function resolveWashDest() {
+    try {
+      const res = await fetch('/api/address', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'geocode', street: CAR_WASH.address }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (data.ok && isRealCoord(data.lat)) return { lat: Number(data.lat), lon: Number(data.lon), label: CAR_WASH.name };
+    } catch (_) {}
+    return null;
+  }
+
   // ── Directions + route drawing ───────────────────────────────────────────────
   async function fetchDirections(origin, dest) {
     const coords = `${origin.lon},${origin.lat};${dest.lon},${dest.lat}`;
@@ -435,8 +450,8 @@
       const distEl = modal.querySelector('.wrm-banner-distance');
       if (banner) banner.hidden = false;
       if (instrEl) instrEl.textContent = isReturn
-        ? 'Back at the service address — marking the vehicle returned…'
-        : 'Arrived at the gas station — starting service…';
+        ? "Back at the car's spot — marking the vehicle returned…"
+        : `Arrived at ${destType === 'wash' ? 'the car wash' : 'the gas station'} — starting service…`;
       if (distEl) distEl.textContent = '';
     }
     stopNavWatch();
@@ -450,6 +465,7 @@
   // destType: 'address' (pickup / return) or 'station' (fuel service drive).
   async function openRouteMap(request, destType) {
     const isStation = destType === 'station';
+    const isWash = destType === 'wash';
     const isReturn = destType === 'return';
     const isHandoff = destType === 'handoff';
     const modal = ensureModal();
@@ -459,6 +475,7 @@
     const banner = modal.querySelector('.wrm-banner');
     const startBtn = modal.querySelector('.wrm-start-service');
     titleEl.textContent = isStation ? 'Drive to gas station'
+      : isWash ? 'Drive to the car wash'
       : isReturn ? 'Drive the car back to its spot'
       : isHandoff ? 'Meet the customer for keys'
       : 'Directions to service address';
@@ -483,6 +500,8 @@
     let dest;
     if (isStation) {
       dest = await resolveStationDest(request, workerLoc);
+    } else if (isWash) {
+      dest = await resolveWashDest();
     } else if (isReturn) {
       const spot = parseSpotCoords(request, 'pickup_coords');
       dest = spot ? { ...spot, label: "Vehicle's spot" } : await resolveAddressDest(request);
@@ -498,6 +517,15 @@
       return;
     }
     nativeBtn.href = navUrl(dest, dest.label);
+
+    // Remember the resolved service destination so the customer's "heading to the
+    // station / car wash" ETA has a target (covers "closest station" jobs and the
+    // geocoded car wash).
+    if (isStation && typeof window.ShiftFuelSaveDest === 'function') {
+      window.ShiftFuelSaveDest(request.id, 'fuel_dest_coords', dest);
+    } else if (isWash && typeof window.ShiftFuelSaveDest === 'function') {
+      window.ShiftFuelSaveDest(request.id, 'wash_dest_coords', dest);
+    }
 
     mapboxgl.accessToken = MAPBOX_TOKEN;
     const mapEl = modal.querySelector('.wrm-map');
@@ -540,7 +568,7 @@
       // Auto-action only on the leg where the worker hasn't done the step yet:
       // station drive at vehicle_picked_up → start service; return drive at
       // receipts_recorded → vehicle returned. Reopening later won't auto-fire.
-      nav.autoArrive = (isStation && request.status === 'vehicle_picked_up')
+      nav.autoArrive = ((isStation || isWash) && request.status === 'vehicle_picked_up')
         || (isReturn && request.status === 'receipts_recorded');
       nav.arrived = false;
       if (startBtn) {

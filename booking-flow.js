@@ -105,6 +105,7 @@ const bookingState = {
     extraMiles: 0,
     perMileRate: 0.75,
   },
+  promo: { code: "", discount: 0 },
   submitted: false,
   submitting: false,
   submittedRequestNumber: "",
@@ -280,6 +281,16 @@ let PRICE_PER_GALLON = 3.799;
 let FUEL_SERVICE_FEE = 15;
 let CAR_WASH_SERVICE_FEE = 15;
 let QUICK_CARE_FEE = 5;
+// Time-comp rates (from public_get_service_pricing). timeRatePerMin defaults to 0
+// so the customer fee is unchanged until the admin sets it — safe to deploy first.
+const TIME_COMP_RATES = {
+  timeRatePerMin: 0,
+  fuelBaseMin: 3,
+  fuelPerGallonMin: 0.5,
+  washMin: 20,
+  washDetourFreeMiles: 5,
+  washDetourRate: 0.725,
+};
 let WASH_PACKAGES = [
   {
     value: "buff-shine", label: "Buff & Shine", price: 27,
@@ -323,6 +334,13 @@ async function loadLivePricing() {
       FUEL_SERVICE_FEE = Number(serviceData.fuel_service_fee);
       CAR_WASH_SERVICE_FEE = Number(serviceData.wash_service_fee);
       QUICK_CARE_FEE = Number(serviceData.quick_inspection_fee);
+      // Time-comp rates. timeRatePerMin stays 0 (off) unless the column exists + is set.
+      TIME_COMP_RATES.timeRatePerMin = Number(serviceData.time_rate_per_min) || 0;
+      if (serviceData.fuel_time_base_min != null) TIME_COMP_RATES.fuelBaseMin = Number(serviceData.fuel_time_base_min);
+      if (serviceData.fuel_time_per_gallon_min != null) TIME_COMP_RATES.fuelPerGallonMin = Number(serviceData.fuel_time_per_gallon_min);
+      if (serviceData.wash_time_min != null) TIME_COMP_RATES.washMin = Number(serviceData.wash_time_min);
+      if (serviceData.wash_detour_free_miles != null) TIME_COMP_RATES.washDetourFreeMiles = Number(serviceData.wash_detour_free_miles);
+      if (serviceData.wash_detour_rate != null) TIME_COMP_RATES.washDetourRate = Number(serviceData.wash_detour_rate);
       WASH_PACKAGES = [
         { value: "buff-shine", label: "Buff & Shine", price: Number(serviceData.wash_buff_shine_price), includes: WASH_PACKAGE_INCLUDES["buff-shine"] },
         { value: "shine-protect", label: "Shine & Protect", price: Number(serviceData.wash_shine_protect_price), includes: WASH_PACKAGE_INCLUDES["shine-protect"] },
@@ -436,7 +454,12 @@ function calculateTotals() {
   // (non-closest) station. The server is authoritative; this mirrors it so the
   // authorized total matches.
   const stationSurcharge = serviceNeedsFuel() ? (Number(bookingState.station.surcharge) || 0) : 0;
-  const netTarget = fuelEstimate + washAmount + fuelBaseFee + washBaseFee + quickFee + stationSurcharge;
+  // Service-time cost, baked invisibly into the fee (uniform per job). 0 until the
+  // admin sets the company time rate, so this is a no-op until then.
+  const serviceTimeMinutes = (serviceNeedsFuel() ? TIME_COMP_RATES.fuelBaseMin + TIME_COMP_RATES.fuelPerGallonMin * selectedFuelGallons : 0)
+    + (serviceNeedsWash() ? TIME_COMP_RATES.washMin : 0);
+  const timeCost = Math.round(serviceTimeMinutes * (TIME_COMP_RATES.timeRatePerMin || 0) * 100) / 100;
+  const netTarget = fuelEstimate + washAmount + fuelBaseFee + washBaseFee + quickFee + stationSurcharge + timeCost;
   const grossBeforeRounding = netTarget ? (netTarget + 0.30) / (1 - 0.029) : 0;
   const estimatedTotal = netTarget ? Math.ceil(grossBeforeRounding) : 0;
   const recovery = Math.round((estimatedTotal - netTarget) * 100) / 100;
@@ -462,6 +485,14 @@ function calculateTotals() {
   const fuelFee = Math.round((fuelBaseFee + fuelRecovery) * 100) / 100;
   const washFee = Math.round((washBaseFee + washRecovery) * 100) / 100;
 
+  // Promo discount applies to SERVICE FEES only (never the at-cost fuel). The
+  // server re-validates + recomputes this at booking; this mirrors it so the
+  // authorized total + summary match what they'll be charged.
+  const serviceFees = Math.round((fuelFee + washFee + quickFee) * 100) / 100;
+  const promoDiscount = Math.min(Math.max(0, Number(bookingState.promo && bookingState.promo.discount) || 0), serviceFees);
+  const subtotal = estimatedTotal; // pre-discount gross total
+  const discountedTotal = Math.max(0, Math.round((estimatedTotal - promoDiscount) * 100) / 100);
+
   return {
     fuelGallons,
     selectedFuelGallons,
@@ -473,7 +504,11 @@ function calculateTotals() {
     washFee,
     quickFee,
     stationSurcharge,
-    estimatedTotal,
+    timeCost,
+    serviceFees,
+    subtotal,
+    promoDiscount,
+    estimatedTotal: discountedTotal,
     fuelBaseFee,
     washBaseFee,
     recovery,
@@ -899,6 +934,37 @@ function summaryRow({ label, stepName, content, unlockedIndex, steps }) {
 // top. Persisted across re-renders so toggling doesn't reset on every step change.
 let summaryMobileOpen = false;
 
+// A promo change moves the total, so any prior payment authorization is stale —
+// clear it so the customer re-authorizes at the new amount (no-op if they
+// haven't authorized yet).
+function resetPaymentAuthForPromo() {
+  bookingState.payment.authorized = false;
+  bookingState.payment.authorizedAmountCents = 0;
+  bookingState.payment.paymentIntentId = "";
+  bookingState.payment.setupIntentId = "";
+}
+
+// Promo-code control inside the Booking Summary. Shows an input + Apply, or an
+// "applied" chip with Remove once a valid code is in bookingState.promo.
+function renderPromoBlock() {
+  const p = bookingState.promo;
+  if (p && p.code && p.discount > 0) {
+    return `
+      <div class="summary-promo is-applied">
+        <span class="summary-promo-chip">&#10003; ${escapeHtml(p.code)} applied</span>
+        <button type="button" class="summary-promo-remove" data-promo-remove>Remove</button>
+      </div>`;
+  }
+  return `
+    <div class="summary-promo">
+      <div class="summary-promo-input">
+        <input type="text" data-promo-input placeholder="Promo code" autocomplete="off" autocapitalize="characters" spellcheck="false" maxlength="32">
+        <button type="button" class="button secondary" data-promo-apply>Apply</button>
+      </div>
+      <p class="summary-promo-msg" data-promo-msg role="status"></p>
+    </div>`;
+}
+
 function renderSummarySidebar(steps, flowName, unlockedIndex) {
   const v = bookingState.values;
   const totals = calculateTotals();
@@ -944,6 +1010,12 @@ function renderSummarySidebar(steps, flowName, unlockedIndex) {
         <h3>Booking Summary</h3>
         <p class="field-help">Review your details before continuing.</p>
         <div class="summary-rows">${rows}</div>
+        ${totals.subtotal > 0 ? renderPromoBlock(totals) : ""}
+        ${totals.promoDiscount > 0 ? `
+        <div class="summary-discount-row">
+          <span>Promo ${escapeHtml(bookingState.promo.code)}</span>
+          <span class="summary-discount-amount">&minus;${formatMoney(totals.promoDiscount)}</span>
+        </div>` : ""}
         <div class="summary-total-row">
           <span>
             <strong>Estimated Total</strong>
@@ -1757,6 +1829,7 @@ function renderServiceDetails(panel) {
         <p class="field-help">We fuel up at the closest station by default — no extra charge. Prefer a specific station? Every extra mile to and from it adds <span data-station-rate>${formatMoney(bookingState.station.perMileRate || STATION_PER_MILE_RATE)}</span>.</p>
       </div>
       <div data-station-list><p class="field-help">Verify your service address to see nearby stations.</p></div>
+      <p class="field-help station-combo-note" data-station-combo-note hidden></p>
       <div class="station-search">
         <input type="text" data-station-search placeholder="Don't see it? Search a station by name or address">
         <button type="button" class="button secondary" data-station-search-btn>Search</button>
@@ -1961,6 +2034,22 @@ function renderStationList(panel) {
         ${badge}
       </label>`;
   }).join("");
+
+  // Soft flag for fuel + wash combos: a non-closest station is an extra stop on top
+  // of the car wash trip. We don't block it — just surface the detour + cost. Order
+  // stays wash → fuel → back, so the station falls on the way home.
+  const note = panel.querySelector("[data-station-combo-note]");
+  if (note) {
+    const sel = opts.find((s) => s.id === bookingState.station.selectedId);
+    if (serviceNeedsFuel() && serviceNeedsWash() && sel && !sel.is_closest) {
+      const miles = Number(sel.extra_round_trip_miles) || 0;
+      note.hidden = false;
+      note.textContent = `Heads up: with a car wash too, ${sel.name} is an extra stop — about ${miles ? `${miles.toFixed(1)} mi of` : "extra"} driving (+${formatMoney(Number(sel.surcharge) || 0)}) vs. the closest station. You can still pick it; we route wash → fuel → back so it's on the way home.`;
+    } else {
+      note.hidden = true;
+      note.textContent = "";
+    }
+  }
 }
 
 function applyStationSelection(s) {
@@ -2463,6 +2552,9 @@ function buildBookingPayload() {
   const notes = [
     bookingState.values.specialInstructions ? `[special_instructions] ${bookingState.values.specialInstructions}` : "",
     "[booking_source shared_flow]",
+    // Freeze the time charge at the booking-time company rate so the customer's
+    // price is locked — later company/employee rate changes never move it.
+    Number(totals.timeCost) > 0 ? `[time_charge ${Number(totals.timeCost).toFixed(2)}]` : "",
   ].filter(Boolean).join(" ");
 
   return {
@@ -2495,6 +2587,10 @@ function buildBookingPayload() {
     gas_station_lat: serviceNeedsFuel() ? bookingState.station.lat || "" : "",
     gas_station_lon: serviceNeedsFuel() ? bookingState.station.lon || "" : "",
     gas_station_surcharge: serviceNeedsFuel() ? bookingState.station.surcharge || 0 : 0,
+    // Promo code: the server re-validates + recomputes the discount authoritatively;
+    // promo_order_total is the pre-discount subtotal for the minimum-order check.
+    promo_code: bookingState.promo && bookingState.promo.code ? bookingState.promo.code : "",
+    promo_order_total: totals.subtotal || totals.estimatedTotal || 0,
     address_validation_status: bookingState.address.validated ? "validated" : "not_validated",
     parking_location: bookingState.values.parking || "",
     key_handoff_details: bookingState.values.handoff || "",
@@ -2910,6 +3006,49 @@ function renderFlow(root) {
     if (stepHeader && !stepHeader.disabled && Number(stepHeader.dataset.stepHeader) <= unlockedIndex) {
       const index = Number(stepHeader.dataset.stepHeader);
       if (index !== openIndex) goToStep(index);
+      return;
+    }
+
+    // Promo code (lives in the always-visible summary sidebar, not a step panel).
+    const promoApply = event.target.closest("[data-promo-apply]");
+    if (promoApply) {
+      const sidebar = promoApply.closest(".booking-summary-sidebar");
+      const input = sidebar?.querySelector("[data-promo-input]");
+      const msg = sidebar?.querySelector("[data-promo-msg]");
+      const code = String(input?.value || "").trim();
+      const v = bookingState.values;
+      if (msg) msg.textContent = "";
+      if (!code) { if (msg) msg.textContent = "Enter a promo code."; return; }
+      if (!v.customerPhone || !v.customerEmail) {
+        if (msg) msg.textContent = "Add your phone and email first, then apply your code.";
+        return;
+      }
+      const t = calculateTotals();
+      promoApply.disabled = true; promoApply.textContent = "Checking…";
+      try {
+        const r = await fetch("/api/promos", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "validate", code, phone: v.customerPhone, email: v.customerEmail, service_fees: t.serviceFees, order_total: t.subtotal }),
+        });
+        const data = await r.json().catch(() => ({}));
+        if (data && data.valid) {
+          bookingState.promo = { code: data.code, discount: Number(data.discount) || 0 };
+          resetPaymentAuthForPromo();
+          render();
+        } else {
+          if (msg) msg.textContent = (data && data.reason) || "That code isn't valid.";
+          promoApply.disabled = false; promoApply.textContent = "Apply";
+        }
+      } catch (_) {
+        if (msg) msg.textContent = "Could not check that code right now. Try again.";
+        promoApply.disabled = false; promoApply.textContent = "Apply";
+      }
+      return;
+    }
+    if (event.target.closest("[data-promo-remove]")) {
+      bookingState.promo = { code: "", discount: 0 };
+      resetPaymentAuthForPromo();
+      render();
       return;
     }
 

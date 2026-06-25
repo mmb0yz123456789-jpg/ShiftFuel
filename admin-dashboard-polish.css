@@ -226,3 +226,78 @@
 .admin-queue-card {
   border-radius: 16px;
 }
+
+/* ---- Promo codes (Promos tab) ---------------------------- */
+.promo-form {
+  padding: 20px;
+  margin-bottom: 16px;
+  background: #fff;
+  border: 1px solid var(--admin-line, #e5e7eb);
+  border-radius: 14px;
+}
+.promo-form-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 14px;
+}
+.promo-form-grid label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--admin-ink, #1f2937);
+}
+.promo-form-grid input,
+.promo-form-grid select {
+  padding: 9px 11px;
+  border: 1px solid var(--border, #d1d5db);
+  border-radius: 8px;
+  font: inherit;
+  font-size: 0.92rem;
+  font-weight: 400;
+}
+.promo-form-grid input#promo-code { text-transform: uppercase; font-weight: 800; }
+.promo-active-label {
+  flex-direction: row !important;
+  align-items: center;
+  gap: 8px !important;
+}
+.promo-active-label input { width: auto; }
+
+.promo-card {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  padding: 16px;
+  margin-bottom: 12px;
+  background: #fff;
+  border: 1px solid var(--admin-line, #e5e7eb);
+  border-radius: 14px;
+  box-shadow: 0 1px 2px rgba(11, 35, 33, 0.04);
+}
+.promo-card.is-inactive { opacity: 0.6; }
+.promo-card-tags { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.promo-card-code { font-size: 1.05rem; font-weight: 900; letter-spacing: 0.03em; color: var(--admin-ink, #0b2321); }
+.promo-card-badge {
+  display: inline-flex;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: var(--admin-mint, #e9f5ef);
+  color: var(--admin-green, #1f9d57);
+  font-size: 0.74rem;
+  font-weight: 800;
+}
+.promo-card-audience { background: rgba(13, 59, 59, 0.08); color: var(--admin-ink, #0b2321); }
+.promo-card-off { background: #fde8e8; color: #b91c1c; }
+.promo-card-desc { margin: 8px 0 2px; color: var(--text-2, #5b6f6b); font-size: 0.9rem; }
+.promo-card-meta { margin: 6px 0 0; color: var(--text-2, #6b7280); font-size: 0.8rem; }
+.promo-card-actions { display: flex; gap: 8px; flex-shrink: 0; }
+.promo-card-actions .button { padding: 7px 12px; font-size: 0.82rem; }
+
+@media (max-width: 640px) {
+  .promo-card-actions { width: 100%; }
+  .promo-card-actions .button { flex: 1; }
+}

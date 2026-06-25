@@ -8,6 +8,7 @@
 const Stripe = require('stripe');
 const { setCorsHeaders, getSupabaseAdmin } = require('./_auth');
 const { notifyWorkersNewJob } = require('./_push');
+const { serviceFeesFromRow, validatePromoForCustomer, recordPromoRedemption } = require('./_promos');
 
 function getStripe() {
   if (!process.env.STRIPE_SECRET_KEY) throw new Error('STRIPE_SECRET_KEY not configured');
@@ -424,7 +425,32 @@ module.exports = async function handler(req, res) {
       return res.status(200).json({ id: existing.id, status: existing.status, payment_status: existing.payment_status, existing: true });
     }
 
+    // Promo code: re-validate server-side (audience, caps, dates, min order) and
+    // stamp the AUTHORITATIVE discount. The client already applied it to the
+    // authorized amount; if it's no longer valid we reject so they re-check out
+    // at the correct price rather than getting an unearned discount.
+    let promoContext = null;
+    if (body.promo_code) {
+      try {
+        const preDiscountTotal = Number(body.promo_order_total) || (intent.amount / 100);
+        const result = await validatePromoForCustomer({
+          db, code: body.promo_code, phone: body.customer_phone, email: body.customer_email,
+          serviceFees: serviceFeesFromRow(body), orderTotal: preDiscountTotal,
+        });
+        if (!result.ok) {
+          return res.status(409).json({ error: `Promo code ${String(body.promo_code).toUpperCase()}: ${result.reason} Please re-check your total before booking.` });
+        }
+        promoContext = result;
+      } catch (promoErr) {
+        console.warn('[create-authorized-booking] promo validation skipped:', promoErr.message);
+      }
+    }
+
     const row = buildBookingRow(body, intent);
+    if (promoContext) {
+      row.promo_code = promoContext.promo.code;
+      row.promo_discount = promoContext.discount;
+    }
     console.log('[create-authorized-booking] Supabase insert started for PI', intent.id, 'fields', Object.keys(row));
     const data = await insertBookingRow(db, row);
     console.log('[create-authorized-booking] Supabase insert succeeded', data?.id);
@@ -433,6 +459,13 @@ module.exports = async function handler(req, res) {
       await saveReusableBookingSnapshots(db, row);
     } catch (error) {
       console.warn('[create-authorized-booking] reusable snapshot skipped:', error.message);
+    }
+
+    if (promoContext && data?.id) {
+      await recordPromoRedemption({
+        db, promo: promoContext.promo, requestId: data.id,
+        phone: body.customer_phone, email: body.customer_email, discount: promoContext.discount,
+      });
     }
 
     await markAuthorizationBooked(db, intent.id);

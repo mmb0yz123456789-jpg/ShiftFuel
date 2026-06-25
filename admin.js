@@ -1016,7 +1016,10 @@ function photoTimestampNote(stage, timestamp) {
 }
 
 function finalTotalFromSavedReceipts(request, receiptTotals = receiptTotalsFromNotes(request)) {
-  return transactionPricingSummary(request, receiptTotals).total;
+  const total = transactionPricingSummary(request, receiptTotals).total;
+  // Apply any promo discount (service-fees only, computed + stored at booking).
+  const discount = Math.max(0, Number(request.promo_discount) || 0);
+  return Math.max(0, Math.round((total - discount) * 100) / 100);
 }
 
 // Builds the internal pricing-audit fields (admin/internal only — never
@@ -2570,6 +2573,9 @@ function renderWorkerProfileCard(employee) {
         <label>Started
           <input class="admin-worker-started" type="date" value="${escapeHtml(employee.started_at || '')}">
         </label>
+        <label>Time pay rate ($/min)
+          <input class="admin-worker-time-rate" type="number" step="0.01" min="0" placeholder="Company rate" value="${employee.time_rate_per_min != null ? Number(employee.time_rate_per_min) : ''}">
+        </label>
       </div>
       <div class="admin-button-row">
         <button class="button primary save-worker-profile" data-id="${escapeHtml(employee.id)}" type="button" ${isLocal ? 'disabled' : ''}>Save worker profile</button>
@@ -2944,6 +2950,24 @@ async function saveAdminWorkerProfile(button) {
   if (error) {
     console.warn(`saveAdminWorkerProfile: DB update failed for employee ${employeeId}:`, error);
     throw error;
+  }
+
+  // Per-employee time pay rate (blank = use the company rate). Saved via its own RPC
+  // so it works regardless of admin_update_employee's field whitelist.
+  const timeRateRaw = card?.querySelector('.admin-worker-time-rate')?.value;
+  let timeRate = timeRateRaw != null && String(timeRateRaw).trim() !== '' ? Number(timeRateRaw) : null;
+  // Cap the per-employee rate at the company rate — a worker can't earn more per
+  // minute than the company charges.
+  if (Number.isFinite(timeRate) && timeRate > adminCompanyTimeRatePerMin) {
+    timeRate = adminCompanyTimeRatePerMin;
+    const rateInput = card?.querySelector('.admin-worker-time-rate');
+    if (rateInput) rateInput.value = adminCompanyTimeRatePerMin;
+    if (status) status.textContent = `Time rate capped at the company rate ($${adminCompanyTimeRatePerMin.toFixed(2)}/min).`;
+  }
+  try {
+    await db.rpc('admin_set_employee_time_rate', { p_token: adminToken(), p_employee_id: employeeId, p_rate: Number.isFinite(timeRate) ? timeRate : null });
+  } catch (rateErr) {
+    console.warn('Could not save employee time rate:', rateErr);
   }
 
   // admin_update_employee also syncs employee_availability.work_location when
@@ -5814,6 +5838,9 @@ function switchPageTab(page) {
   if (page === 'payroll') {
     renderPayroll();
   }
+  if (page === 'promos') {
+    loadPromos();
+  }
   renderRequests();
 }
 
@@ -6900,6 +6927,21 @@ function renderServicesSettingsList() {
       <p class="pricing-effective-hint">Applies to new and in-progress bookings immediately. Already-booked tickets keep their original surcharge.</p>
     </div>
 
+    <div class="pricing-group">
+      <div class="pricing-group-card">
+        <p class="pricing-group-label">Time-Based Pay</p>
+        <div class="pricing-group-grid">
+          <label>Company time rate ($/min)<input id="sp-time-rate" type="number" step="0.01" min="0"></label>
+          <label>Fuel time — base (min)<input id="sp-fuel-time-base" type="number" step="0.1" min="0"></label>
+          <label>Fuel time — per gallon (min)<input id="sp-fuel-time-per-gal" type="number" step="0.1" min="0"></label>
+          <label>Car wash time (min)<input id="sp-wash-time" type="number" step="1" min="0"></label>
+          <label>Wash detour free miles<input id="sp-wash-detour-free" type="number" step="0.5" min="0"></label>
+          <label>Wash detour ($/mile)<input id="sp-wash-detour-rate" type="number" step="0.01" min="0"></label>
+        </div>
+      </div>
+      <p class="pricing-effective-hint">Service time is baked into the customer's fee at the company rate (set $0 to turn it off). Each worker's actual per-minute pay is set on the Employees tab.</p>
+    </div>
+
     <div class="pricing-effective-date-row">
       <div id="pricing-pending-banner" class="pricing-pending-banner" hidden></div>
       <label class="pricing-effective-label">
@@ -6910,6 +6952,21 @@ function renderServicesSettingsList() {
     </div>
   `;
   list.dataset.rendered = '1';
+}
+
+// Gather the time-comp pricing params for admin_update_service_pricing. Falls back
+// to your defaults so a blank field never zeroes a rate by accident.
+function timeCompPricingParams() {
+  const num = (id) => Number(document.getElementById(id)?.value);
+  const v = (id, dflt) => (Number.isFinite(num(id)) ? num(id) : dflt);
+  return {
+    p_time_rate_per_min: v('sp-time-rate', 0),
+    p_fuel_time_base_min: v('sp-fuel-time-base', 3),
+    p_fuel_time_per_gallon_min: v('sp-fuel-time-per-gal', 0.5),
+    p_wash_time_min: v('sp-wash-time', 20),
+    p_wash_detour_free_miles: v('sp-wash-detour-free', 5),
+    p_wash_detour_rate: v('sp-wash-detour-rate', 0.725),
+  };
 }
 
 function showPricingPendingBanner(fuelData, pricingData) {
@@ -6957,6 +7014,7 @@ function showPricingPendingBanner(fuelData, pricingData) {
           p_wash_double_wash_price: Number(document.getElementById('sp-wash-double')?.value || 0),
           p_effective_at: null,
           p_per_mile_rate: Number(document.getElementById('sp-per-mile-rate')?.value || 0.75),
+          ...timeCompPricingParams(),
         }),
       ]);
       banner.hidden = true;
@@ -6984,11 +7042,13 @@ async function loadFuelPricesForAdmin() {
   }
 }
 
+let adminCompanyTimeRatePerMin = 0.50; // company $/min cap for employee rates
 function applyServicePricing(data) {
   if (!data) return;
   BASE_FUEL_SERVICE_FEE = Number(data.fuel_service_fee);
   BASE_WASH_SERVICE_FEE = Number(data.wash_service_fee);
   BASE_QUICK_INSPECTION_FEE = Number(data.quick_inspection_fee);
+  if (data.time_rate_per_min != null) adminCompanyTimeRatePerMin = Number(data.time_rate_per_min);
   CR_FEES = {
     fuelConvenience: Number(data.fuel_service_fee),
     washConvenience: Number(data.wash_service_fee),
@@ -7014,6 +7074,12 @@ async function loadServicePricing() {
     if (v('sp-wash-fee')) v('sp-wash-fee').value = Number(data.wash_service_fee).toFixed(2);
     if (v('sp-inspection-fee')) v('sp-inspection-fee').value = Number(data.quick_inspection_fee).toFixed(2);
     if (v('sp-per-mile-rate')) v('sp-per-mile-rate').value = Number(data.per_mile_rate ?? 0.75).toFixed(2);
+    if (v('sp-time-rate')) v('sp-time-rate').value = Number(data.time_rate_per_min ?? 0.50).toFixed(2);
+    if (v('sp-fuel-time-base')) v('sp-fuel-time-base').value = Number(data.fuel_time_base_min ?? 3);
+    if (v('sp-fuel-time-per-gal')) v('sp-fuel-time-per-gal').value = Number(data.fuel_time_per_gallon_min ?? 0.5);
+    if (v('sp-wash-time')) v('sp-wash-time').value = Number(data.wash_time_min ?? 20);
+    if (v('sp-wash-detour-free')) v('sp-wash-detour-free').value = Number(data.wash_detour_free_miles ?? 5);
+    if (v('sp-wash-detour-rate')) v('sp-wash-detour-rate').value = Number(data.wash_detour_rate ?? 0.725).toFixed(3);
     if (v('sp-wash-buff-shine')) v('sp-wash-buff-shine').value = Number(data.wash_buff_shine_price).toFixed(2);
     if (v('sp-wash-shine-protect')) v('sp-wash-shine-protect').value = Number(data.wash_shine_protect_price).toFixed(2);
     if (v('sp-wash-shine')) v('sp-wash-shine').value = Number(data.wash_shine_price).toFixed(2);
@@ -7160,6 +7226,7 @@ document.querySelector('#services-settings-form')?.addEventListener('submit', as
         p_wash_double_wash_price: val('sp-wash-double'),
         p_effective_at: effectiveAt,
         p_per_mile_rate: val('sp-per-mile-rate'),
+        ...timeCompPricingParams(),
       }),
     ]);
 
@@ -7348,3 +7415,138 @@ document.addEventListener('keydown', (e) => {
 
 // Called here to avoid temporal dead zone
 loadServicePricing();
+
+// ── Promo codes (Promos tab) ─────────────────────────────────────────────────
+const promosList = document.querySelector('#promos-list');
+const promoForm = document.querySelector('#promo-form');
+const promoNewBtn = document.querySelector('#promo-new-btn');
+const promoCancelBtn = document.querySelector('#promo-cancel-btn');
+const promoFormStatus = document.querySelector('#promo-form-status');
+
+async function promoApi(payload) {
+  const res = await fetch('/api/promos', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ...payload, admin_token: adminToken() }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || 'Request failed');
+  return data;
+}
+
+function promoDiscountLabel(p) {
+  return p.discount_type === 'percent' ? `${Number(p.discount_value)}% off` : `${money(p.discount_value)} off`;
+}
+function promoAudienceLabel(a) {
+  return a === 'new' ? 'New customers' : a === 'returning' ? 'Returning customers' : 'All customers';
+}
+
+async function loadPromos() {
+  if (!promosList || !adminToken()) return;
+  promosList.innerHTML = '<div class="empty-state"><p>Loading promo codes…</p></div>';
+  try {
+    const data = await promoApi({ action: 'list' });
+    renderPromosList(data.promos || []);
+  } catch (err) {
+    promosList.innerHTML = `<div class="empty-state"><p>Could not load promo codes.</p><p class="field-help">Make sure the promo_codes migration has been run in Supabase. (${escapeHtml(err.message)})</p></div>`;
+  }
+}
+
+function renderPromosList(promos) {
+  if (!promos.length) {
+    promosList.innerHTML = '<div class="empty-state"><p>No promo codes yet. Create one with “+ New code”.</p></div>';
+    return;
+  }
+  promosList._promos = promos;
+  promosList.innerHTML = promos.map((p) => {
+    const limits = [];
+    if (Number(p.min_order_amount) > 0) limits.push(`min ${money(p.min_order_amount)}`);
+    if (Number(p.per_customer_limit) > 0) limits.push(`${p.per_customer_limit}/customer`);
+    limits.push(p.max_redemptions != null ? `${p.redemption_count}/${p.max_redemptions} used` : `${p.redemption_count} used`);
+    if (p.expires_at) limits.push(`exp ${new Date(p.expires_at).toLocaleDateString()}`);
+    return `
+      <div class="promo-card ${p.active ? '' : 'is-inactive'}" data-promo-id="${escapeHtml(p.id)}">
+        <div class="promo-card-main">
+          <div class="promo-card-tags">
+            <span class="promo-card-code">${escapeHtml(p.code)}</span>
+            <span class="promo-card-badge">${escapeHtml(promoDiscountLabel(p))}</span>
+            <span class="promo-card-badge promo-card-audience">${escapeHtml(promoAudienceLabel(p.audience))}</span>
+            ${p.active ? '' : '<span class="promo-card-badge promo-card-off">Inactive</span>'}
+          </div>
+          ${p.description ? `<p class="promo-card-desc">${escapeHtml(p.description)}</p>` : ''}
+          <p class="promo-card-meta">${escapeHtml(limits.join(' · '))}</p>
+        </div>
+        <div class="promo-card-actions">
+          <button type="button" class="button secondary" data-promo-edit>Edit</button>
+          <button type="button" class="button secondary" data-promo-toggle>${p.active ? 'Disable' : 'Enable'}</button>
+          <button type="button" class="button danger" data-promo-delete>Delete</button>
+        </div>
+      </div>`;
+  }).join('');
+}
+
+function openPromoForm(promo) {
+  if (!promoForm) return;
+  promoForm.hidden = false;
+  if (promoFormStatus) promoFormStatus.textContent = '';
+  const g = (id) => document.querySelector(id);
+  g('#promo-id').value = promo?.id || '';
+  g('#promo-code').value = promo?.code || '';
+  g('#promo-description').value = promo?.description || '';
+  g('#promo-discount-type').value = promo?.discount_type || 'percent';
+  g('#promo-discount-value').value = promo?.discount_value ?? '';
+  g('#promo-audience').value = promo?.audience || 'all';
+  g('#promo-min-order').value = promo?.min_order_amount || '';
+  g('#promo-per-customer').value = promo?.per_customer_limit ?? 1;
+  g('#promo-max-redemptions').value = promo?.max_redemptions ?? '';
+  g('#promo-expires').value = promo?.expires_at ? String(promo.expires_at).slice(0, 10) : '';
+  g('#promo-active').checked = promo ? !!promo.active : true;
+  promoForm.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+promoNewBtn?.addEventListener('click', () => openPromoForm(null));
+promoCancelBtn?.addEventListener('click', () => { if (promoForm) promoForm.hidden = true; });
+
+promoForm?.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const g = (id) => document.querySelector(id);
+  const promo = {
+    id: g('#promo-id').value || undefined,
+    code: g('#promo-code').value,
+    description: g('#promo-description').value,
+    discount_type: g('#promo-discount-type').value,
+    discount_value: g('#promo-discount-value').value,
+    audience: g('#promo-audience').value,
+    min_order_amount: g('#promo-min-order').value,
+    per_customer_limit: g('#promo-per-customer').value,
+    max_redemptions: g('#promo-max-redemptions').value,
+    expires_at: g('#promo-expires').value || null,
+    active: g('#promo-active').checked,
+  };
+  if (promoFormStatus) promoFormStatus.textContent = 'Saving…';
+  try {
+    await promoApi({ action: 'save', promo });
+    if (promoFormStatus) promoFormStatus.textContent = '';
+    promoForm.hidden = true;
+    loadPromos();
+  } catch (err) {
+    if (promoFormStatus) promoFormStatus.textContent = err.message;
+  }
+});
+
+promosList?.addEventListener('click', async (e) => {
+  const card = e.target.closest('[data-promo-id]');
+  if (!card) return;
+  const id = card.dataset.promoId;
+  const promo = (promosList._promos || []).find((p) => p.id === id);
+  if (e.target.closest('[data-promo-edit]')) { openPromoForm(promo); return; }
+  if (e.target.closest('[data-promo-toggle]')) {
+    try { await promoApi({ action: 'toggle', id, active: !(promo && promo.active) }); loadPromos(); } catch (err) { alert(err.message); }
+    return;
+  }
+  if (e.target.closest('[data-promo-delete]')) {
+    if (!confirm(`Delete promo code ${promo?.code || ''}? This cannot be undone.`)) return;
+    try { await promoApi({ action: 'delete', id }); loadPromos(); } catch (err) { alert(err.message); }
+    return;
+  }
+});

@@ -274,6 +274,15 @@
   function needsFuel(request) {
     return /fuel/.test(String(request.service_type || ''));
   }
+  function needsWash(request) {
+    return /wash/.test(String(request.service_type || ''));
+  }
+  // A service leg is "done" once its receipt total is recorded in the notes.
+  function receiptRecorded(request, which) {
+    const m = String(request.notes || '').match(/\[receipt_totals fuel=([0-9.]+) wash=([0-9.]+)\]/);
+    if (!m) return false;
+    return Number(which === 'fuel' ? m[1] : m[2]) > 0;
+  }
   // A spot captured into the request notes as [<tag> lat,lon].
   function parseSpotCoords(request, tag) {
     const m = String(request?.notes || '').match(new RegExp('\\[' + tag + ' (-?\\d+(?:\\.\\d+)?),(-?\\d+(?:\\.\\d+)?)\\]'));
@@ -288,11 +297,21 @@
   // the live position.
   function legDestination(request) {
     const s = request.status;
-    const drivingToStation = needsFuel(request)
-      && ['vehicle_picked_up', 'service_in_progress', 'fueling_in_progress'].includes(s)
-      && isReal(request.gas_station_lat) && isReal(request.gas_station_lon);
-    if (drivingToStation) {
-      return { lat: Number(request.gas_station_lat), lon: Number(request.gas_station_lon), label: 'Heading to the gas station' };
+    const driving = ['vehicle_picked_up', 'service_in_progress', 'car_wash_in_progress', 'fueling_in_progress', 'fuel_receipt_uploaded', 'wash_receipt_uploaded'];
+    if (driving.includes(s)) {
+      // Car wash first (matches the worker flow). Once a leg's receipt is recorded
+      // it's done, so the ETA moves to the next leg.
+      if (needsWash(request) && !receiptRecorded(request, 'wash')) {
+        const wash = parseSpotCoords(request, 'wash_dest_coords');
+        if (wash) return { lat: wash.lat, lon: wash.lon, label: 'Heading to the car wash' };
+      }
+      if (needsFuel(request) && !receiptRecorded(request, 'fuel')) {
+        // Chosen station has coords; "closest station" jobs use the saved fuel_dest_coords.
+        const station = (isReal(request.gas_station_lat) && isReal(request.gas_station_lon))
+          ? { lat: Number(request.gas_station_lat), lon: Number(request.gas_station_lon) }
+          : parseSpotCoords(request, 'fuel_dest_coords');
+        if (station) return { lat: station.lat, lon: station.lon, label: 'Heading to the gas station' };
+      }
     }
     if (['receipts_recorded', 'returned_location_pending', 'return_location_recorded', 'return_photos_needed'].includes(s)) {
       // Prefer the exact spot the car was picked up from; fall back to the address.

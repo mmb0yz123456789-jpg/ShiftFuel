@@ -26,6 +26,7 @@ const { placeScheduledHold } = require('./_scheduled-auth');
 const { verifyServiceArea } = require('./_service-area');
 const { computeSurchargeForChosen, PER_MILE_RATE } = require('./_gas-stations');
 const { enforceRateLimit } = require('./_rate-limit');
+const { serviceFeesFromRow, validatePromoForCustomer, recordPromoRedemption } = require('./_promos');
 
 // Per-IP caps on the actions that reach Mapbox before Stripe verification.
 const PAYMENTS_RATE_LIMITS = {
@@ -673,6 +674,22 @@ async function insertBookingWithColumnRetry(db, row, logTag) {
   throw Object.assign(new Error('DB_INSERT_RETRIES_EXHAUSTED'), { userMessage: 'We could not finish saving your booking. Please try again or contact ShiftFuel.' });
 }
 
+// Validate a promo (if the booking carries one) against the server-recomputed
+// service fees. Returns { error } to reject, or { discountCents, promoContext }
+// (discountCents 0 / promoContext null when there's no code).
+async function resolveBookingPromo(db, body, row, serverPricing) {
+  if (!body.promo_code) return { discountCents: 0, promoContext: null };
+  const result = await validatePromoForCustomer({
+    db, code: body.promo_code, phone: row.customer_phone, email: row.customer_email,
+    serviceFees: serviceFeesFromRow(row),
+    orderTotal: Number(body.promo_order_total) || (serverPricing.amount_cents / 100),
+  });
+  if (!result.ok) {
+    return { error: `Promo code ${String(body.promo_code).toUpperCase()}: ${result.reason} Please re-check your total before booking.` };
+  }
+  return { discountCents: Math.round(result.discount * 100), promoContext: result };
+}
+
 async function handleCreateAuthorizedBooking(body, res) {
   const { payment_intent_id, amount_cents, ...rawFields } = body;
 
@@ -720,13 +737,17 @@ async function handleCreateAuthorizedBooking(body, res) {
   if (!serverPricing.valid) {
     return res.status(400).json({ error: serverPricing.error });
   }
-  if (serverPricing.amount_cents !== expectedCents) {
-    console.error('[payments/create_authorized_booking] Server total mismatch:', serverPricing.amount_cents, 'vs client', expectedCents, {
+  const db = getSupabaseAdmin();
+  const promoResolve = await resolveBookingPromo(db, body, row, serverPricing);
+  if (promoResolve.error) return res.status(409).json({ error: promoResolve.error });
+  if (serverPricing.amount_cents - promoResolve.discountCents !== expectedCents) {
+    console.error('[payments/create_authorized_booking] Server total mismatch:', serverPricing.amount_cents - promoResolve.discountCents, 'vs client', expectedCents, {
       service_type: row.service_type,
       estimated_fuel_range: row.estimated_fuel_range,
       wash_package: row.wash_package,
       quick_inspection: row.quick_inspection,
       station_surcharge: station.surcharge,
+      promo_discount_cents: promoResolve.discountCents,
     });
     return res.status(400).json({ error: 'Payment total changed. Please review the payment authorization and try again.' });
   }
@@ -766,8 +787,11 @@ async function handleCreateAuthorizedBooking(body, res) {
   row.payment_status = 'authorized';
   row.payment_intent_id = intent.id;
   assignServerPricingFields(row, serverPricing);
+  if (promoResolve.promoContext) {
+    row.promo_code = promoResolve.promoContext.promo.code;
+    row.promo_discount = promoResolve.promoContext.discount;
+  }
 
-  const db = getSupabaseAdmin();
   let data;
   try {
     data = await insertBookingWithColumnRetry(db, row, 'create_authorized_booking');
@@ -776,6 +800,9 @@ async function handleCreateAuthorizedBooking(body, res) {
   }
 
   console.log('[payments/create_authorized_booking] Created request', data?.id, 'for PI', intent.id);
+  if (promoResolve.promoContext && data?.id) {
+    await recordPromoRedemption({ db, promo: promoResolve.promoContext.promo, requestId: data.id, phone: row.customer_phone, email: row.customer_email, discount: promoResolve.promoContext.discount });
+  }
   // Resolve the tracked hold to 'booked' so it drops off the admin "Incomplete
   // authorizations" card. Best-effort and self-swallowing.
   resolvePendingAuthorization(intent.id, 'booked', null).catch(() => {});
@@ -869,8 +896,11 @@ async function handleCreateScheduledBooking(body, res) {
   const station = await resolveStationSurcharge(body);
   const serverPricing = calculateBookingAuthorization(row, { stationSurcharge: station.surcharge });
   if (!serverPricing.valid) return res.status(400).json({ error: serverPricing.error });
-  if (serverPricing.amount_cents !== expectedCents) {
-    console.error('[payments/create_scheduled_booking] Server total mismatch:', serverPricing.amount_cents, 'vs client', expectedCents, { station_surcharge: station.surcharge });
+  const db = getSupabaseAdmin();
+  const promoResolve = await resolveBookingPromo(db, body, row, serverPricing);
+  if (promoResolve.error) return res.status(409).json({ error: promoResolve.error });
+  if (serverPricing.amount_cents - promoResolve.discountCents !== expectedCents) {
+    console.error('[payments/create_scheduled_booking] Server total mismatch:', serverPricing.amount_cents - promoResolve.discountCents, 'vs client', expectedCents, { station_surcharge: station.surcharge, promo_discount_cents: promoResolve.discountCents });
     return res.status(400).json({ error: 'Payment total changed. Please review the booking and try again.' });
   }
   row.gas_station_surcharge = station.surcharge;
@@ -916,13 +946,19 @@ async function handleCreateScheduledBooking(body, res) {
   row.status = 'request_received';
   row.payment_status = 'payment_scheduled';
   assignServerPricingFields(row, serverPricing);
+  if (promoResolve.promoContext) {
+    row.promo_code = promoResolve.promoContext.promo.code;
+    row.promo_discount = promoResolve.promoContext.discount;
+  }
 
-  const db = getSupabaseAdmin();
   let data;
   try {
     data = await insertBookingWithColumnRetry(db, row, 'create_scheduled_booking');
   } catch (err) {
     return res.status(500).json({ error: err.userMessage || 'We could not finish saving your booking. Please try again or contact ShiftFuel.' });
+  }
+  if (promoResolve.promoContext && data?.id) {
+    await recordPromoRedemption({ db, promo: promoResolve.promoContext.promo, requestId: data.id, phone: row.customer_phone, email: row.customer_email, discount: promoResolve.promoContext.discount });
   }
 
   // Persist the Stripe IDs in the service-role-only side table so the cron can

@@ -1016,6 +1016,33 @@
   }
 }
 
+/* ── Available-job estimate row (earnings + time) ── */
+.worker-portal-page .worker-job-estrow {
+  display: grid !important;
+  grid-template-columns: 1fr 1fr !important;
+  gap: 10px !important;
+  margin: 10px 0 4px !important;
+}
+.worker-portal-page .worker-est-stat {
+  display: grid !important;
+  gap: 2px !important;
+  padding: 10px 12px !important;
+  background: var(--sf-sage-light, #eaf2ea) !important;
+  border-radius: 12px !important;
+}
+.worker-portal-page .worker-est-stat-label {
+  font-size: 0.62rem !important;
+  font-weight: 800 !important;
+  letter-spacing: 0.05em !important;
+  text-transform: uppercase !important;
+  color: #60716d !important;
+}
+.worker-portal-page .worker-est-stat-value {
+  font-size: 1.15rem !important;
+  font-weight: 800 !important;
+  color: var(--sf-teal, #0d3b3b) !important;
+}
+
 /* ── Pickup / return photo wizard: one tile at a time ── */
 .worker-portal-page .photo-wizard-progress {
   font-weight: 800 !important;
