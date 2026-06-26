@@ -2012,7 +2012,7 @@ async function applyPreferredStation(panel) {
 }
 
 // ── Car-wash drive estimate ───────────────────────────────────────────────────
-// The wash facility is fixed (DECarSpa). The worker's "time to complete" needs the
+// The wash facility is fixed (The Car Spa). The worker's "time to complete" needs the
 // round-trip drive to it, but the real GPS coords aren't captured until mid-job, so
 // estimate it at booking from the service address. Geocoded once per session and
 // cached; straight-line distance ×1.3 road factor — display-only, so no routing

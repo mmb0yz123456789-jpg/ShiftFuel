@@ -7444,7 +7444,7 @@ function renderServicesSettingsList() {
           </select>
         </label>
         <label>Gas station round-trip miles<input id="sim-station-miles" type="number" min="0" step="0.1" value="0"><span class="tbp-hint">Extra round-trip distance to the customer's chosen (non-nearest) station. Drives the customer surcharge AND worker mileage pay.</span></label>
-        <label>Car wash round-trip miles<input id="sim-wash-miles" type="number" min="0" step="0.1" value="0"><span class="tbp-hint">Round-trip distance to the wash. Worker earns mileage only past the free allowance below; not billed to the customer.</span></label>
+        <label>Car wash round-trip miles<input id="sim-wash-miles" type="number" min="0" step="0.1" value="0"><span class="tbp-hint">Round-trip wash detour. Worker is paid on ALL of it; the customer is billed (at the surcharge rate) only for miles past the free allowance below.</span></label>
         <label class="sim-check"><input id="sim-quick" type="checkbox"> Quick vehicle care</label>
       </div>
       <p class="field-help" style="margin:.6rem 0 .2rem"><strong>Rates</strong> — pre-filled from your saved settings. Change them here to test "what-if" scenarios; this sandbox never touches your saved pricing.</p>
@@ -7454,7 +7454,7 @@ function renderServicesSettingsList() {
         <label>Quick care fee ($)<input id="sim-insp-fee" type="number" min="0" step="0.01"></label>
         <label>Company rate ($/min)<input id="sim-company-rate" type="number" min="0" step="0.01"></label>
         <label>Worker pay rate ($/min)<input id="sim-worker-rate" type="number" min="0" step="0.01" value="0.50"></label>
-        <label>Gas station surcharge — customer ($/mile)<input id="sim-per-mile" type="number" min="0" step="0.01"></label>
+        <label>Distance surcharge — customer ($/mile)<input id="sim-per-mile" type="number" min="0" step="0.01"><span class="tbp-hint">Charged to the customer for gas-station choice AND wash detour past the free miles.</span></label>
         <label>Worker mileage pay ($/mile)<input id="sim-worker-mile" type="number" min="0" step="0.001"></label>
       </div>
       <div class="pricing-sim-output" id="sim-output"></div>
@@ -7491,7 +7491,7 @@ function runPricingSimulator() {
   setSimVis('sim-gallons', needsFuel);
   setSimVis('sim-fuel-price', needsFuel);
   setSimVis('sim-station-miles', needsFuel);
-  setSimVis('sim-per-mile', needsFuel);
+  setSimVis('sim-per-mile', needsFuel || needsWash); // surcharge rate now drives gas AND wash distance
   setSimVis('sim-fuel-fee', needsFuel);
   setSimVis('sim-wash-pkg', needsWash);
   setSimVis('sim-wash-miles', needsWash);
@@ -7525,8 +7525,12 @@ function runPricingSimulator() {
   const fuelCost = needsFuel ? roundMoneyValue(gallons * pricePerGallon) : 0;
   const serviceMin = (needsFuel ? fuelBaseMin + fuelPerGalMin * gallons : 0) + (needsWash ? washTimeMin : 0);
   const timeCharge = roundMoneyValue(serviceMin * companyRate);
-  const stationSurcharge = roundMoneyValue(stationMiles * perMileRate);
-  const netTarget = roundMoneyValue(fuelCost + washPrice + fuelFee + washFee + inspFee + stationSurcharge + timeCharge);
+  // Customer distance charges — both at the same surcharge rate (S). Gas: extra
+  // round-trip miles for a farther-than-nearest station. Wash: the wash detour
+  // beyond the first 5 free miles (the company eats the first 5).
+  const stationSurcharge = needsFuel ? roundMoneyValue(stationMiles * perMileRate) : 0;
+  const washSurcharge = needsWash ? roundMoneyValue(Math.max(0, washMiles - washDetourFree) * perMileRate) : 0;
+  const netTarget = roundMoneyValue(fuelCost + washPrice + fuelFee + washFee + inspFee + stationSurcharge + washSurcharge + timeCharge);
   const customerTotal = netTarget > 0 ? Math.ceil((netTarget + RETURN_RECOVERY_FIXED) / (1 - RETURN_RECOVERY_RATE)) : 0;
   const cardRecovery = roundMoneyValue(customerTotal - netTarget);
 
@@ -7535,20 +7539,22 @@ function runPricingSimulator() {
   const feeGross = fuelFee + washFee + inspFee;
   const feeStripe = roundMoneyValue(feeGross * RETURN_RECOVERY_RATE + RETURN_RECOVERY_FIXED);
   const feeShare = feeGross > 0 ? roundMoneyValue(Math.max(0, feeGross - feeStripe) * WORKER_SERVICE_FEE_SHARE) : 0;
-  const mileagePay = roundMoneyValue(stationMiles * washDetourRate);
+  const mileagePay = needsFuel ? roundMoneyValue(stationMiles * washDetourRate) : 0;
   const timePay = roundMoneyValue(serviceMin * workerRate);
-  const washDetourPay = roundMoneyValue(Math.max(0, washMiles - washDetourFree) * washDetourRate);
+  // Worker is paid on EVERY wash detour mile (incl. the customer's free 5) — the
+  // free allowance is a customer discount the company absorbs, not unpaid driving.
+  const washDetourPay = needsWash ? roundMoneyValue(washMiles * washDetourRate) : 0;
   const workerPay = roundMoneyValue(feeShare + mileagePay + timePay + washDetourPay);
 
   // ── Company keeps (service revenue minus worker pay; fuel/wash cost is pass-through) ──
-  const companyNet = roundMoneyValue(fuelFee + washFee + inspFee + timeCharge + stationSurcharge - workerPay);
+  const companyNet = roundMoneyValue(fuelFee + washFee + inspFee + timeCharge + stationSurcharge + washSurcharge - workerPay);
 
   // ── Time to complete ──
   const minutes = Math.round(10 + 5 + ((stationMiles + washMiles) / 30) * 60 + (quick ? 10 : 0));
 
   const row = (label, val, strong) => `<div class="sim-row${strong ? ' sim-row-total' : ''}"><span>${label}</span><span>${money(val)}</span></div>`;
   const note = (txt) => `<p class="sim-note">${txt}</p>`;
-  const serviceRevenue = roundMoneyValue(fuelFee + washFee + inspFee + timeCharge + stationSurcharge);
+  const serviceRevenue = roundMoneyValue(fuelFee + washFee + inspFee + timeCharge + stationSurcharge + washSurcharge);
   const feeParts = [
     needsFuel ? `fuel ${money(fuelFee)}` : '',
     needsWash ? `wash ${money(washFee)}` : '',
@@ -7566,6 +7572,7 @@ function runPricingSimulator() {
         ${quick ? row('Quick vehicle care', inspFee) : ''}
         ${timeCharge > 0 ? row(`Service time (${serviceMin.toFixed(1)} min × ${money(companyRate)})`, timeCharge) : ''}
         ${stationSurcharge > 0 ? row('Gas station distance', stationSurcharge) : ''}
+        ${washSurcharge > 0 ? row(`Car wash distance (past ${washDetourFree} free mi)`, washSurcharge) : ''}
         ${row('Card processing recovery', cardRecovery)}
         ${row('Total', customerTotal, true)}
       </div>
@@ -7575,7 +7582,7 @@ function runPricingSimulator() {
         ${feeShare > 0 ? row('Service fee share (50%, net card)', feeShare) + note(`Half of the service fees after card processing: (${feeParts || 'fees'} = ${money(feeGross)}) − card ${money(feeStripe)} = ${money(Math.max(0, feeGross - feeStripe))}, ÷ 2.`) : ''}
         ${timePay > 0 ? row('Service time', timePay) + note(`${serviceMin.toFixed(1)} service-minutes × ${money(workerRate)}/min (this driver's rate).`) : ''}
         ${mileagePay > 0 ? row('Station mileage', mileagePay) + note(`${stationMiles} extra round-trip mi × ${money(washDetourRate)}/mi.`) : ''}
-        ${washDetourPay > 0 ? row('Wash detour', washDetourPay) + note(`${Math.max(0, washMiles - washDetourFree)} mi past the ${washDetourFree}-mi free allowance × ${money(washDetourRate)}/mi.`) : ''}
+        ${washDetourPay > 0 ? row('Wash detour', washDetourPay) + note(`${washMiles} round-trip wash detour mi × ${money(washDetourRate)}/mi — paid on every mile (the customer's free ${washDetourFree} mi don't reduce the driver's pay).`) : ''}
         ${row('Take-home', workerPay, true)}
         ${workerRateRaw > companyRate && companyRate > 0 ? note(`Heads up: worker rate capped at the company rate (${money(companyRate)}/min).`) : ''}
       </div>
@@ -7583,7 +7590,7 @@ function runPricingSimulator() {
         <h5>Company keeps</h5>
         ${note('Your margin after paying the driver.')}
         ${row('Service revenue', serviceRevenue)}
-        ${note(`The fees + time charge + gas surcharge you collect (service fees${timeCharge > 0 ? ' + service time' : ''}${stationSurcharge > 0 ? ' + gas surcharge' : ''}). Fuel/wash cost isn't here — it's reimbursed, not revenue.`)}
+        ${note(`The fees + time charge + distance surcharges you collect (service fees${timeCharge > 0 ? ' + service time' : ''}${stationSurcharge > 0 ? ' + gas distance' : ''}${washSurcharge > 0 ? ' + wash distance' : ''}). Fuel/wash cost isn't here — it's reimbursed, not revenue.`)}
         ${row('Less worker pay', -workerPay)}
         ${row('Net margin', companyNet, true)}
         ${note(companyNet < 0 ? '⚠️ Negative — you would lose money on this job. Raise a fee or lower the pay rate.' : 'This is what the company keeps after the driver is paid.')}

@@ -20,7 +20,7 @@
   const ADVANCE_STEP_METERS = 28;         // advance the next-turn banner within this radius of a maneuver
   const REROUTE_MIN_INTERVAL_MS = 12000;  // never re-request Directions more often than this
   // The car wash we currently use — geocoded on demand for the wash service leg.
-  const CAR_WASH = { name: 'DECarSpa', address: '602 Main St, Wilmington, DE 19804' };
+  const CAR_WASH = { name: 'The Car Spa', address: '602 Main St, Wilmington, DE 19804' };
   const NAV_ZOOM = 16.7;                  // close, street-level follow zoom
   const NAV_PITCH = 62;                   // 3D tilt for the driving view
   const ARRIVE_METERS = 45;               // auto "arrived" radius at the destination
@@ -271,7 +271,7 @@
     return null;
   }
 
-  // The car wash facility (DECarSpa) — geocode its address once per open.
+  // The car wash facility (The Car Spa) — geocode its address once per open.
   async function resolveWashDest() {
     try {
       const res = await fetch('/api/address', {

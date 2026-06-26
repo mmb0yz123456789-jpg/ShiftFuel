@@ -979,8 +979,10 @@ function runWorkerPayCalc() {
   const serviceMin = (needsFuel ? TIME_COMP.fuelBaseMin + TIME_COMP.fuelPerGallonMin * gallons : 0) + (needsWash ? TIME_COMP.washMin : 0);
   const rate = workerTimeRate();
   const timePay = roundMoneyValue(serviceMin * rate);
-  const mileagePay = roundMoneyValue(stationMiles * WORKER_MILEAGE_RATE);
-  const washDetourPay = roundMoneyValue(Math.max(0, washMiles - TIME_COMP.washDetourFreeMiles) * TIME_COMP.washDetourRate);
+  const mileagePay = needsFuel ? roundMoneyValue(stationMiles * WORKER_MILEAGE_RATE) : 0;
+  // Driver is paid on EVERY wash detour mile — the customer's first 5 free miles
+  // are a customer discount the company absorbs, not unpaid driving.
+  const washDetourPay = needsWash ? roundMoneyValue(washMiles * TIME_COMP.washDetourRate) : 0;
   const payout = roundMoneyValue(feeShare + timePay + mileagePay + washDetourPay);
   const minutes = Math.round(EST_TO_DESTINATION_MIN + EST_FIND_CAR_MIN + ((stationMiles + washMiles) / 30) * 60 + (quick ? EST_QUICK_CARE_MIN : 0));
 
@@ -989,7 +991,7 @@ function runWorkerPayCalc() {
     ${feeShare > 0 ? row('Service fee share (50%, net card)', feeShare) : ''}
     ${mileagePay > 0 ? row(`Station mileage (${stationMiles} mi × ${money(WORKER_MILEAGE_RATE)})`, mileagePay) : ''}
     ${timePay > 0 ? row(`Service time (${serviceMin.toFixed(1)} min × ${money(rate)})`, timePay) : ''}
-    ${washDetourPay > 0 ? row('Wash detour', washDetourPay) : ''}
+    ${washDetourPay > 0 ? row(`Wash detour (${washMiles} mi × ${money(TIME_COMP.washDetourRate)})`, washDetourPay) : ''}
     ${row('Estimated take-home', payout, true)}
     <p class="wcalc-time"><strong>Time to complete:</strong> ~${minutes} min</p>
   `;
@@ -2856,7 +2858,7 @@ function workerNavReturnButton(request, primary = false) {
   return `<button class="button ${primary ? 'primary' : 'secondary'}" data-route-map data-route-dest="return" data-id="${escapeHtml(request.id)}" type="button">Navigate back to drop the car</button>`;
 }
 
-// In-app navigation to the car wash (DECarSpa). data-route-dest="wash" → arriving
+// In-app navigation to the car wash (The Car Spa). data-route-dest="wash" → arriving
 // auto-starts the service, same as the gas-station leg.
 function workerNavWashButton(request, primary = false) {
   return `<button class="button ${primary ? 'primary' : 'secondary'}" data-route-map data-route-dest="wash" data-id="${escapeHtml(request.id)}" type="button">Navigate to car wash</button>`;
