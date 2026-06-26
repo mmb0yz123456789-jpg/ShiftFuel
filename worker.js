@@ -263,6 +263,20 @@ workerRefreshJobsBtn?.addEventListener('click', async () => {
   }
 });
 
+// Change-request wiring: schedule form, job-change modal, and the per-job
+// "Request a change" buttons (delegated, since job cards re-render on poll).
+document.querySelector('#wcr-schedule-submit')?.addEventListener('click', submitWorkerScheduleChangeRequest);
+document.querySelector('#wcr-schedule-type')?.addEventListener('change', syncWorkerScheduleDateVisibility);
+syncWorkerScheduleDateVisibility();
+document.querySelector('#wcr-job-submit')?.addEventListener('click', submitWorkerJobChangeRequest);
+document.querySelector('#wcr-job-close')?.addEventListener('click', closeWorkerJobChangeModal);
+document.querySelector('#worker-jobchange-overlay')?.addEventListener('click', closeWorkerJobChangeModal);
+document.addEventListener('click', (event) => {
+  const btn = event.target.closest('.worker-request-job-change');
+  if (!btn) return;
+  openWorkerJobChangeModal(btn.dataset.id, btn.dataset.customer || '');
+});
+
 const SESSION_WORKER_NAME = sessionStorage.getItem('shiftfuel_worker') || 'Worker';
 const SESSION_WORKER_ID = sessionStorage.getItem('shiftfuel_worker_id') || '';
 const SESSION_WORKER_TOKEN = sessionStorage.getItem('shiftfuel_worker_token') || '';
@@ -506,17 +520,100 @@ function money(value) {
   return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(Number(value || 0));
 }
 
+// Common door-jamb PSI by make/model — a STARTING suggestion only (matched on
+// make+model, not year/trim). The worker confirms the real number off the door-jamb
+// sticker in the inspection panel, so these just pre-fill a sensible default.
 const fallbackPsiGuides = [
+  // Toyota
   { make: 'Toyota', model: 'Camry', front_psi: 35, rear_psi: 35 },
   { make: 'Toyota', model: 'Corolla', front_psi: 32, rear_psi: 32 },
+  { make: 'Toyota', model: 'RAV4', front_psi: 35, rear_psi: 35 },
+  { make: 'Toyota', model: 'Highlander', front_psi: 35, rear_psi: 35 },
+  { make: 'Toyota', model: 'Tacoma', front_psi: 30, rear_psi: 35 },
+  { make: 'Toyota', model: 'Tundra', front_psi: 35, rear_psi: 35 },
+  { make: 'Toyota', model: '4Runner', front_psi: 32, rear_psi: 32 },
+  { make: 'Toyota', model: 'Prius', front_psi: 35, rear_psi: 33 },
+  { make: 'Toyota', model: 'Sienna', front_psi: 36, rear_psi: 36 },
+  // Honda
   { make: 'Honda', model: 'Civic', front_psi: 32, rear_psi: 32 },
   { make: 'Honda', model: 'Accord', front_psi: 32, rear_psi: 32 },
-  { make: 'Nissan', model: 'Altima', front_psi: 33, rear_psi: 33 },
+  { make: 'Honda', model: 'CR-V', front_psi: 32, rear_psi: 32 },
+  { make: 'Honda', model: 'Pilot', front_psi: 35, rear_psi: 35 },
+  { make: 'Honda', model: 'Odyssey', front_psi: 35, rear_psi: 35 },
+  { make: 'Honda', model: 'HR-V', front_psi: 33, rear_psi: 33 },
+  { make: 'Honda', model: 'Passport', front_psi: 35, rear_psi: 35 },
+  // Nissan
+  { make: 'Nissan', model: 'Altima', front_psi: 32, rear_psi: 32 },
+  { make: 'Nissan', model: 'Rogue', front_psi: 33, rear_psi: 33 },
+  { make: 'Nissan', model: 'Sentra', front_psi: 33, rear_psi: 33 },
+  { make: 'Nissan', model: 'Murano', front_psi: 35, rear_psi: 35 },
+  { make: 'Nissan', model: 'Pathfinder', front_psi: 35, rear_psi: 35 },
+  { make: 'Nissan', model: 'Frontier', front_psi: 32, rear_psi: 32 },
+  { make: 'Nissan', model: 'Kicks', front_psi: 33, rear_psi: 33 },
+  // Hyundai / Kia
   { make: 'Hyundai', model: 'Elantra', front_psi: 33, rear_psi: 33 },
   { make: 'Hyundai', model: 'Sonata', front_psi: 34, rear_psi: 34 },
+  { make: 'Hyundai', model: 'Tucson', front_psi: 35, rear_psi: 33 },
+  { make: 'Hyundai', model: 'Santa Fe', front_psi: 35, rear_psi: 35 },
+  { make: 'Hyundai', model: 'Kona', front_psi: 33, rear_psi: 33 },
+  { make: 'Hyundai', model: 'Palisade', front_psi: 35, rear_psi: 35 },
+  { make: 'Kia', model: 'Forte', front_psi: 33, rear_psi: 33 },
+  { make: 'Kia', model: 'K5', front_psi: 35, rear_psi: 35 },
+  { make: 'Kia', model: 'Sportage', front_psi: 35, rear_psi: 33 },
+  { make: 'Kia', model: 'Sorento', front_psi: 35, rear_psi: 35 },
+  { make: 'Kia', model: 'Soul', front_psi: 33, rear_psi: 33 },
+  { make: 'Kia', model: 'Telluride', front_psi: 35, rear_psi: 35 },
+  // Ford
   { make: 'Ford', model: 'F-150', front_psi: 35, rear_psi: 35 },
+  { make: 'Ford', model: 'Escape', front_psi: 35, rear_psi: 35 },
+  { make: 'Ford', model: 'Explorer', front_psi: 35, rear_psi: 35 },
+  { make: 'Ford', model: 'Edge', front_psi: 34, rear_psi: 34 },
+  { make: 'Ford', model: 'Mustang', front_psi: 32, rear_psi: 30 },
+  { make: 'Ford', model: 'Ranger', front_psi: 35, rear_psi: 35 },
+  { make: 'Ford', model: 'Bronco', front_psi: 38, rear_psi: 38 },
+  // Chevrolet / GMC
   { make: 'Chevrolet', model: 'Silverado', front_psi: 35, rear_psi: 35 },
+  { make: 'Chevrolet', model: 'Equinox', front_psi: 35, rear_psi: 35 },
+  { make: 'Chevrolet', model: 'Malibu', front_psi: 35, rear_psi: 35 },
+  { make: 'Chevrolet', model: 'Traverse', front_psi: 35, rear_psi: 35 },
+  { make: 'Chevrolet', model: 'Tahoe', front_psi: 35, rear_psi: 35 },
+  { make: 'Chevrolet', model: 'Trailblazer', front_psi: 33, rear_psi: 33 },
+  { make: 'GMC', model: 'Sierra', front_psi: 35, rear_psi: 35 },
+  { make: 'GMC', model: 'Terrain', front_psi: 35, rear_psi: 35 },
+  { make: 'GMC', model: 'Acadia', front_psi: 35, rear_psi: 35 },
+  { make: 'GMC', model: 'Yukon', front_psi: 35, rear_psi: 35 },
+  // Jeep / Ram / Dodge / Chrysler
+  { make: 'Jeep', model: 'Wrangler', front_psi: 37, rear_psi: 37 },
+  { make: 'Jeep', model: 'Grand Cherokee', front_psi: 36, rear_psi: 36 },
+  { make: 'Jeep', model: 'Cherokee', front_psi: 34, rear_psi: 34 },
+  { make: 'Jeep', model: 'Compass', front_psi: 33, rear_psi: 33 },
+  { make: 'Jeep', model: 'Gladiator', front_psi: 37, rear_psi: 37 },
+  { make: 'Ram', model: '1500', front_psi: 35, rear_psi: 35 },
+  { make: 'Dodge', model: 'Charger', front_psi: 35, rear_psi: 32 },
+  { make: 'Dodge', model: 'Durango', front_psi: 36, rear_psi: 36 },
+  { make: 'Chrysler', model: 'Pacifica', front_psi: 36, rear_psi: 36 },
+  // Subaru
   { make: 'Subaru', model: 'Outback', front_psi: 35, rear_psi: 33 },
+  { make: 'Subaru', model: 'Forester', front_psi: 32, rear_psi: 30 },
+  { make: 'Subaru', model: 'Crosstrek', front_psi: 33, rear_psi: 32 },
+  { make: 'Subaru', model: 'Impreza', front_psi: 33, rear_psi: 32 },
+  { make: 'Subaru', model: 'Ascent', front_psi: 35, rear_psi: 35 },
+  // Mazda / VW
+  { make: 'Mazda', model: 'CX-5', front_psi: 34, rear_psi: 34 },
+  { make: 'Mazda', model: 'Mazda3', front_psi: 36, rear_psi: 35 },
+  { make: 'Mazda', model: 'CX-9', front_psi: 35, rear_psi: 35 },
+  { make: 'Mazda', model: 'CX-30', front_psi: 34, rear_psi: 34 },
+  { make: 'Volkswagen', model: 'Jetta', front_psi: 36, rear_psi: 36 },
+  { make: 'Volkswagen', model: 'Tiguan', front_psi: 33, rear_psi: 36 },
+  { make: 'Volkswagen', model: 'Atlas', front_psi: 38, rear_psi: 41 },
+  // Tesla / Lexus
+  { make: 'Tesla', model: 'Model 3', front_psi: 42, rear_psi: 42 },
+  { make: 'Tesla', model: 'Model Y', front_psi: 42, rear_psi: 42 },
+  { make: 'Tesla', model: 'Model S', front_psi: 42, rear_psi: 42 },
+  { make: 'Tesla', model: 'Model X', front_psi: 40, rear_psi: 40 },
+  { make: 'Lexus', model: 'RX', front_psi: 33, rear_psi: 33 },
+  { make: 'Lexus', model: 'ES', front_psi: 35, rear_psi: 35 },
+  { make: 'Lexus', model: 'NX', front_psi: 33, rear_psi: 33 },
 ];
 
 function normalizeVehicleText(value) {
@@ -815,6 +912,51 @@ function workerEstimatedMinutes(request) {
   const quickCare = request.quick_inspection ? EST_QUICK_CARE_MIN : 0;
   return Math.round(EST_TO_DESTINATION_MIN + EST_FIND_CAR_MIN + driveLegs + quickCare);
 }
+
+// ── Earnings calculator (Earnings tab) ────────────────────────────────────────
+// A what-if estimator: type a hypothetical job, see take-home + time. Pure math
+// against the same constants the real payout uses — no job, no network.
+function wcalcNum(id, dflt = 0) {
+  const n = Number(document.getElementById(id)?.value);
+  return Number.isFinite(n) ? n : dflt;
+}
+function runWorkerPayCalc() {
+  const out = document.getElementById('wcalc-output');
+  if (!out) return;
+  const service = document.getElementById('wcalc-service')?.value || 'fuel';
+  const needsFuel = service === 'fuel' || service === 'both';
+  const needsWash = service === 'wash' || service === 'both';
+  const quick = !!document.getElementById('wcalc-quick')?.checked;
+  const gallons = wcalcNum('wcalc-gallons');
+  const stationMiles = wcalcNum('wcalc-station-miles');
+  const washMiles = wcalcNum('wcalc-wash-miles');
+
+  const feeGross = (needsFuel ? BASE_FUEL_SERVICE_FEE : 0) + (needsWash ? BASE_WASH_SERVICE_FEE : 0) + (quick ? BASE_QUICK_INSPECTION_FEE : 0);
+  const feeStripe = roundMoneyValue(feeGross * PAYMENT_RECOVERY_RATE + PAYMENT_RECOVERY_FIXED);
+  const feeShare = feeGross > 0 ? roundMoneyValue(Math.max(0, feeGross - feeStripe) * WORKER_SERVICE_FEE_SHARE) : 0;
+  const serviceMin = (needsFuel ? TIME_COMP.fuelBaseMin + TIME_COMP.fuelPerGallonMin * gallons : 0) + (needsWash ? TIME_COMP.washMin : 0);
+  const rate = workerTimeRate();
+  const timePay = roundMoneyValue(serviceMin * rate);
+  const mileagePay = roundMoneyValue(stationMiles * WORKER_MILEAGE_RATE);
+  const washDetourPay = roundMoneyValue(Math.max(0, washMiles - TIME_COMP.washDetourFreeMiles) * TIME_COMP.washDetourRate);
+  const payout = roundMoneyValue(feeShare + timePay + mileagePay + washDetourPay);
+  const minutes = Math.round(EST_TO_DESTINATION_MIN + EST_FIND_CAR_MIN + ((stationMiles + washMiles) / 30) * 60 + (quick ? EST_QUICK_CARE_MIN : 0));
+
+  const row = (label, val, strong) => `<div class="wcalc-row${strong ? ' wcalc-row-total' : ''}"><span>${label}</span><span>${money(val)}</span></div>`;
+  out.innerHTML = `
+    ${feeShare > 0 ? row('Service fee share (50%, net card)', feeShare) : ''}
+    ${mileagePay > 0 ? row(`Station mileage (${stationMiles} mi × ${money(WORKER_MILEAGE_RATE)})`, mileagePay) : ''}
+    ${timePay > 0 ? row(`Service time (${serviceMin.toFixed(1)} min × ${money(rate)})`, timePay) : ''}
+    ${washDetourPay > 0 ? row('Wash detour', washDetourPay) : ''}
+    ${row('Estimated take-home', payout, true)}
+    <p class="wcalc-time"><strong>Time to complete:</strong> ~${minutes} min</p>
+  `;
+}
+['input', 'change'].forEach((evt) => document.addEventListener(evt, (event) => {
+  if ((event.target?.id || '').startsWith('wcalc-')) runWorkerPayCalc();
+}));
+if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', runWorkerPayCalc);
+else runWorkerPayCalc();
 
 // The customer's time charge, FROZEN at booking ([time_charge X.XX] in notes). Used
 // at completion so the customer pays the locked amount — never recomputed, so later
@@ -1403,6 +1545,148 @@ async function loadWorkerSchedule() {
   renderWorkerDaysOffCalendar();
 }
 
+// ── Worker change requests (schedule + job → admin approval) ──────────────────
+async function loadWorkerChangeRequests() {
+  const list = document.querySelector('#worker-change-requests-list');
+  if (!list) return;
+  const { data, error } = await workerDb.rpc('worker_list_change_requests', { p_token: SESSION_WORKER_TOKEN });
+  if (error) {
+    console.warn('Could not load change requests:', error);
+    list.innerHTML = '<p class="field-help">Could not load your requests. Make sure the change-request migration has run.</p>';
+    return;
+  }
+  renderWorkerChangeRequestsList(data || []);
+}
+
+function workerChangeStatusBadge(status) {
+  const cls = { pending: 'is-pending', approved: 'is-approved', rejected: 'is-rejected' }[status] || '';
+  const label = { pending: 'Pending', approved: 'Approved', rejected: 'Rejected' }[status] || status;
+  return `<span class="wcr-badge ${cls}">${escapeHtml(label)}</span>`;
+}
+
+function renderWorkerChangeRequestsList(requests) {
+  const list = document.querySelector('#worker-change-requests-list');
+  if (!list) return;
+  if (!requests.length) {
+    list.innerHTML = '<p class="field-help">No change requests yet.</p>';
+    return;
+  }
+  list.innerHTML = requests.map((r) => {
+    const when = r.created_at ? new Date(r.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '';
+    const kindLabel = r.kind === 'job' ? 'Job change' : 'Schedule change';
+    const sub = r.requested_changes && r.requested_changes.type
+      ? ` · ${escapeHtml(String(r.requested_changes.type).replace(/_/g, ' '))}` : '';
+    return `
+      <div class="wcr-item">
+        <div class="wcr-item-head">
+          <strong>${escapeHtml(kindLabel)}${sub}</strong>
+          ${workerChangeStatusBadge(r.status)}
+        </div>
+        ${r.details ? `<p class="wcr-item-details">${escapeHtml(r.details)}</p>` : ''}
+        ${r.admin_note ? `<p class="wcr-item-note"><strong>Admin:</strong> ${escapeHtml(r.admin_note)}</p>` : ''}
+        <p class="wcr-item-meta">${escapeHtml(when)}</p>
+      </div>`;
+  }).join('');
+}
+
+// Show the date picker only for time-off requests.
+function syncWorkerScheduleDateVisibility() {
+  const typeEl = document.querySelector('#wcr-schedule-type');
+  const dateRow = document.querySelector('#wcr-schedule-date-row');
+  if (dateRow) dateRow.hidden = (typeEl?.value || 'time_off') !== 'time_off';
+}
+
+async function submitWorkerScheduleChangeRequest() {
+  const typeEl = document.querySelector('#wcr-schedule-type');
+  const dateEl = document.querySelector('#wcr-schedule-date');
+  const detailsEl = document.querySelector('#wcr-schedule-details');
+  const status = document.querySelector('#wcr-schedule-status');
+  const submit = document.querySelector('#wcr-schedule-submit');
+  const details = (detailsEl?.value || '').trim();
+  if (!details) {
+    if (status) status.textContent = 'Add a few details about the change you need.';
+    return;
+  }
+  const requestedChanges = { type: typeEl?.value || 'other' };
+  if (requestedChanges.type === 'time_off' && dateEl?.value) requestedChanges.date = dateEl.value;
+  if (submit) submit.disabled = true;
+  try {
+    const { error } = await workerDb.rpc('worker_submit_change_request', {
+      p_token: SESSION_WORKER_TOKEN,
+      p_kind: 'schedule',
+      p_details: details,
+      p_service_request_id: null,
+      p_requested_changes: requestedChanges,
+    });
+    if (error) throw error;
+    if (detailsEl) detailsEl.value = '';
+    if (dateEl) dateEl.value = '';
+    if (status) status.textContent = 'Request sent to your admin.';
+    await loadWorkerChangeRequests();
+  } catch (err) {
+    console.error('Schedule change request failed:', err);
+    if (status) status.textContent = `Could not submit: ${err.message || 'try again.'}`;
+  } finally {
+    if (submit) submit.disabled = false;
+  }
+}
+
+function openWorkerJobChangeModal(requestId, customerName) {
+  const modal = document.querySelector('#worker-jobchange-modal');
+  const overlay = document.querySelector('#worker-jobchange-overlay');
+  if (!modal) return;
+  modal.dataset.requestId = requestId;
+  const subtitle = document.querySelector('#wcr-job-subtitle');
+  const status = document.querySelector('#wcr-job-status');
+  const details = document.querySelector('#wcr-job-details');
+  if (subtitle) subtitle.textContent = customerName ? `For ${customerName}` : '';
+  if (status) status.textContent = '';
+  if (details) details.value = '';
+  modal.hidden = false;
+  if (overlay) overlay.classList.add('active');
+}
+
+function closeWorkerJobChangeModal() {
+  const modal = document.querySelector('#worker-jobchange-modal');
+  const overlay = document.querySelector('#worker-jobchange-overlay');
+  if (modal) modal.hidden = true;
+  if (overlay) overlay.classList.remove('active');
+}
+
+async function submitWorkerJobChangeRequest() {
+  const modal = document.querySelector('#worker-jobchange-modal');
+  const typeEl = document.querySelector('#wcr-job-type');
+  const detailsEl = document.querySelector('#wcr-job-details');
+  const status = document.querySelector('#wcr-job-status');
+  const submit = document.querySelector('#wcr-job-submit');
+  const requestId = modal?.dataset.requestId;
+  const details = (detailsEl?.value || '').trim();
+  if (!requestId) return;
+  if (!details) {
+    if (status) status.textContent = 'Add a few details for your admin.';
+    return;
+  }
+  if (submit) submit.disabled = true;
+  try {
+    const { error } = await workerDb.rpc('worker_submit_change_request', {
+      p_token: SESSION_WORKER_TOKEN,
+      p_kind: 'job',
+      p_details: details,
+      p_service_request_id: requestId,
+      p_requested_changes: { type: typeEl?.value || 'other' },
+    });
+    if (error) throw error;
+    if (status) status.textContent = 'Sent to your admin.';
+    await loadWorkerChangeRequests();
+    setTimeout(closeWorkerJobChangeModal, 700);
+  } catch (err) {
+    console.error('Job change request failed:', err);
+    if (status) status.textContent = `Could not submit: ${err.message || 'try again.'}`;
+  } finally {
+    if (submit) submit.disabled = false;
+  }
+}
+
 async function loadWorkerProfile() {
   try {
     currentEmployee = await ensureWorkerProfile();
@@ -1455,6 +1739,7 @@ async function loadWorkerProfile() {
       openPasswordModal(true);
     }
     await loadWorkerSchedule();
+    loadWorkerChangeRequests();
     await loadWorkerJobs();
     startWorkerJobsPoll();
     startWorkerHeartbeat();
@@ -1773,28 +2058,6 @@ function workerFormatAddress(request) {
   return request.hospital || 'Not provided';
 }
 
-// Build a turn-by-turn directions URL that opens the driver's native maps app
-// (Apple Maps on iOS, Google Maps elsewhere). Prefers exact coordinates and
-// falls back to the address text.
-function mapsNavUrl({ lat, lon, address } = {}) {
-  const nLat = Number(lat);
-  const nLon = Number(lon);
-  const hasCoords = Number.isFinite(nLat) && Number.isFinite(nLon) && (nLat !== 0 || nLon !== 0);
-  const dest = hasCoords ? `${nLat},${nLon}` : String(address || '').trim();
-  if (!dest) return '';
-  const encoded = encodeURIComponent(dest);
-  const isIOS = /iPad|iPhone|iPod/.test((typeof navigator !== 'undefined' && navigator.userAgent) || '');
-  return isIOS
-    ? `https://maps.apple.com/?daddr=${encoded}`
-    : `https://www.google.com/maps/dir/?api=1&destination=${encoded}`;
-}
-
-// "Navigate ›" link markup, or empty string when there's no usable destination.
-function workerNavLink(dest, label = 'Navigate') {
-  const url = mapsNavUrl(dest);
-  return url ? ` <a class="worker-nav-link" href="${url}" target="_blank" rel="noopener noreferrer">${escapeHtml(label)} ›</a>` : '';
-}
-
 function workerFormatService(request) {
   const parts = [request.service_label || request.service_type];
   if (request.fuel_type) parts.push(`Fuel: ${request.fuel_type}`);
@@ -2006,6 +2269,17 @@ function workerReturnTimeOnly(request) {
   return `${hour12}:${String(m || 0).padStart(2, '0')} ${period}`;
 }
 
+// Earliest pickup/drop-off time as a friendly clock label, or '' when flexible.
+function workerPickupTimeOnly(request) {
+  const time = String(request.desired_pickup_time || '').slice(0, 5);
+  if (!time) return '';
+  const [h, m] = time.split(':').map(Number);
+  if (Number.isNaN(h)) return '';
+  const period = h >= 12 ? 'PM' : 'AM';
+  const hour12 = ((h + 11) % 12) + 1;
+  return `${hour12}:${String(m || 0).padStart(2, '0')} ${period}`;
+}
+
 // Clean, single-line job reference block shown on the active-job card. Each row is
 // a small uppercase label + value. The service shows as "Fuel — <type>" and/or
 // "Car wash — <package>", fuel and wash on their own lines when both apply.
@@ -2017,6 +2291,7 @@ function renderWorkerJobPlainDetails(request) {
   const vehicleLine = [vehicle, request.license_plate ? `Plate ${request.license_plate}` : '']
     .filter(Boolean).join(' · ');
   const returnTime = workerReturnTimeOnly(request);
+  const pickupTime = workerPickupTimeOnly(request);
   const serviceLines = [];
   if (serviceNeedsFuel(request)) serviceLines.push(`Fuel — ${request.fuel_type || 'Regular'}`);
   if (serviceNeedsWash(request)) serviceLines.push(`Car wash — ${request.wash_package_label || 'Selected wash'}`);
@@ -2044,7 +2319,8 @@ function renderWorkerJobPlainDetails(request) {
       ${row('Service address', escapeHtml(workerFormatAddress(request)))}
       ${row('Parking', escapeHtml(parking || 'Not provided'))}
       ${row('Key handoff', escapeHtml(request.key_handoff_details || 'Not provided'))}
-      ${row('Desired return', escapeHtml(returnTime))}
+      ${pickupTime ? row('Pickup time', escapeHtml(pickupTime)) : ''}
+      ${row('Return by', escapeHtml(returnTime))}
       ${row('Vehicle', escapeHtml(vehicleLine || 'On file'))}
       ${row('Service', serviceLines.map(escapeHtml).join('<br>') || escapeHtml(request.service_label || request.service_type || ''))}
       ${row('Gas station', escapeHtml(gasStation))}
@@ -2068,6 +2344,7 @@ function renderWorkerCurrentJobCard(request) {
 
       <div class="worker-secondary-actions">
         ${phone ? `<a class="button secondary worker-secondary-btn" href="tel:${escapeHtml(phone)}">Call customer</a>` : ''}
+        <button class="button secondary worker-secondary-btn worker-request-job-change" data-id="${escapeHtml(request.id)}" data-customer="${escapeHtml(request.customer_name || 'this job')}" type="button">Request a change</button>
       </div>
     </article>
   `;
@@ -2167,6 +2444,153 @@ function renderWorkerEarnings(completed) {
       `).join('')}
     </div>
   `;
+}
+
+// When a job finished, for the earnings/history buckets. Completion bumps
+// updated_at, so it's the reliable timestamp; service_date is the last resort.
+function workerJobCompletedAt(job) {
+  return job.completed_at || job.updated_at || job.service_date || null;
+}
+
+// Desktop-only earnings breakdown: today / this week / this month / all-time,
+// each summing the locked per-job payout. The phone keeps its lean Today card;
+// the computer view is where a worker reviews their money. `history` is every
+// completed job (loadWorkerCompletedHistory).
+function renderWorkerEarningsBreakdown(history) {
+  const container = document.querySelector('#worker-earnings-breakdown');
+  if (!container) return;
+
+  const now = new Date();
+  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const startOfWeek = new Date(startOfToday);
+  startOfWeek.setDate(startOfToday.getDate() - startOfToday.getDay()); // back to Sunday
+  const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+
+  const buckets = { today: { sum: 0, n: 0 }, week: { sum: 0, n: 0 }, month: { sum: 0, n: 0 }, all: { sum: 0, n: 0 } };
+  history.forEach((job) => {
+    const pay = workerNetPayout(job);
+    const stamp = workerJobCompletedAt(job);
+    const when = stamp ? new Date(stamp) : null;
+    buckets.all.sum += pay; buckets.all.n += 1;
+    if (when && when >= startOfMonth) { buckets.month.sum += pay; buckets.month.n += 1; }
+    if (when && when >= startOfWeek) { buckets.week.sum += pay; buckets.week.n += 1; }
+    if (when && when >= startOfToday) { buckets.today.sum += pay; buckets.today.n += 1; }
+  });
+
+  const tile = (label, b, lead) => `
+    <div class="worker-earn-tile${lead ? ' worker-earn-tile-lead' : ''}">
+      <span class="worker-earn-tile-label">${label}</span>
+      <span class="worker-earn-tile-value">${money(b.sum)}</span>
+      <span class="worker-earn-tile-sub">${b.n} job${b.n === 1 ? '' : 's'}</span>
+    </div>`;
+
+  container.innerHTML = `
+    <div class="worker-earn-tiles">
+      ${tile('Today', buckets.today, true)}
+      ${tile('This week', buckets.week)}
+      ${tile('This month', buckets.month)}
+      ${tile('All time', buckets.all)}
+    </div>
+    <p class="worker-earn-foot">Net of card processing &middot; each job's pay locks in when it completes.</p>
+  `;
+}
+
+// Desktop-only completed-job history table (read-only): date, customer/service,
+// and the locked payout for each finished job, most recent first.
+function renderWorkerJobHistory(history) {
+  const container = document.querySelector('#worker-job-history');
+  if (!container) return;
+  if (!history.length) {
+    container.innerHTML = '<div class="worker-state-card worker-state-empty"><p>No completed jobs yet.</p></div>';
+    return;
+  }
+  const LIMIT = 25;
+  const rows = history.slice(0, LIMIT).map((job) => {
+    const stamp = workerJobCompletedAt(job);
+    const dateStr = stamp ? new Date(stamp).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '—';
+    return `
+      <tr>
+        <td class="worker-hist-date">${escapeHtml(dateStr)}</td>
+        <td class="worker-hist-job">
+          <strong>${escapeHtml(job.customer_name || 'Customer')}</strong>
+          <span class="worker-hist-service">${escapeHtml(job.service_label || job.service_type || '')}</span>
+        </td>
+        <td class="worker-hist-pay">${money(workerNetPayout(job))}</td>
+      </tr>`;
+  }).join('');
+  container.innerHTML = `
+    <table class="worker-hist-table">
+      <thead><tr><th>Date</th><th>Job</th><th>Your pay</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table>
+    ${history.length > LIMIT ? `<p class="worker-earn-foot">Showing the ${LIMIT} most recent of ${history.length} completed jobs.</p>` : ''}
+  `;
+}
+
+// Desktop-only "Upcoming" agenda: claimed jobs dated AFTER today, grouped by
+// day, so the worker sees the week ahead. Today's work already lives in the
+// Today's Jobs card, so this is forward-only to avoid duplicating it. `jobs` is
+// the pendingAccepted list (claimed but not yet started).
+function renderWorkerUpcomingSchedule(jobs) {
+  const container = document.querySelector('#worker-upcoming-schedule');
+  if (!container) return;
+  const today = new Date().toISOString().slice(0, 10);
+  const future = (jobs || [])
+    .filter((job) => job.service_date && job.service_date > today)
+    .sort((a, b) => {
+      const aKey = `${a.service_date}T${String(a.desired_return_time || '').slice(0, 5)}`;
+      const bKey = `${b.service_date}T${String(b.desired_return_time || '').slice(0, 5)}`;
+      return aKey.localeCompare(bKey);
+    });
+  if (!future.length) {
+    container.innerHTML = '<div class="worker-state-card worker-state-empty"><p>No upcoming jobs scheduled.</p></div>';
+    return;
+  }
+
+  // Group by service_date, preserving the sorted order.
+  const groups = [];
+  future.forEach((job) => {
+    let group = groups.find((g) => g.date === job.service_date);
+    if (!group) { group = { date: job.service_date, jobs: [] }; groups.push(group); }
+    group.jobs.push(job);
+  });
+
+  container.innerHTML = groups.map((group) => {
+    const rows = group.jobs.map((job) => {
+      const vehicle = [job.vehicle_year, job.vehicle_make, job.vehicle_model].filter(Boolean).join(' ');
+      const time = job.desired_return_time ? workerFormatScheduleTime(job.desired_return_time) : '';
+      return `
+        <div class="worker-upcoming-row">
+          <span class="worker-upcoming-time">${escapeHtml(time || '—')}</span>
+          <div class="worker-upcoming-meta">
+            <strong>${escapeHtml(job.customer_name || 'Customer')}</strong>
+            <span class="worker-upcoming-sub">${escapeHtml(vehicle || job.service_label || job.service_type || '')}</span>
+          </div>
+        </div>`;
+    }).join('');
+    return `
+      <div class="worker-upcoming-group">
+        <h3 class="worker-upcoming-date">${escapeHtml(workerFormatScheduleDate(group.date))}</h3>
+        ${rows}
+      </div>`;
+  }).join('');
+}
+
+// "Tomorrow" / "Mon, Jun 30" header for an upcoming date (YYYY-MM-DD).
+function workerFormatScheduleDate(ymd) {
+  const d = new Date(`${ymd}T00:00:00`);
+  if (Number.isNaN(d.getTime())) return ymd;
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const diff = Math.round((d - today) / 86400000);
+  if (diff === 1) return 'Tomorrow';
+  return d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+}
+
+// "2:30 PM" from an HH:MM[:SS] time string.
+function workerFormatScheduleTime(hms) {
+  const d = new Date(`2000-01-01T${String(hms).slice(0, 8)}`);
+  if (Number.isNaN(d.getTime())) return String(hms).slice(0, 5);
+  return d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
 }
 
 // Completed-today summary card: customer, service, completed time, amount charged.
@@ -2321,11 +2745,11 @@ function renderWorkerJobInfoBlock(request, mode) {
     <div class="request-details">
       <p><strong>Customer:</strong> ${escapeHtml(request.customer_name || 'Customer')}</p>
       <p><strong>Phone:</strong> ${request.customer_phone ? escapeHtml(formatPhone(request.customer_phone)) : 'Not provided'}</p>
-      <p class="worker-job-address-line"><strong>Service address:</strong> <span class="worker-job-address-value">${escapeHtml(workerFormatAddress(request))}</span>${workerNavLink({ lat: request.address_lat, lon: request.address_lon, address: workerFormatAddress(request) })}</p>
+      <p class="worker-job-address-line"><strong>Service address:</strong> <span class="worker-job-address-value">${escapeHtml(workerFormatAddress(request))}</span></p>
       <p><strong>Parking:</strong> ${[request.parking_location, request.parking_spot ? `spot ${request.parking_spot}` : ''].filter(Boolean).map(escapeHtml).join(', ') || 'Not provided'}</p>
       ${(mode === 'mine' && request.key_handoff_details) ? `<p><strong>Key handoff:</strong> ${escapeHtml(request.key_handoff_details)}</p>` : ''}
       <p><strong>Service:</strong> ${escapeHtml(workerFormatService(request))}</p>
-      ${String(request.service_type || '').includes('fuel') ? `<p><strong>Gas station:</strong> ${request.gas_station_name ? `${escapeHtml(request.gas_station_name)}${request.gas_station_address ? ` — ${escapeHtml(request.gas_station_address)}` : ''}${Number(request.gas_station_surcharge) > 0 ? ' <span class="worker-station-pref">(customer preferred)</span>' : ''}${workerNavLink({ lat: request.gas_station_lat, lon: request.gas_station_lon, address: request.gas_station_address || request.gas_station_name })}` : 'Closest station to the vehicle'}</p>` : ''}
+      ${String(request.service_type || '').includes('fuel') ? `<p><strong>Gas station:</strong> ${request.gas_station_name ? `${escapeHtml(request.gas_station_name)}${request.gas_station_address ? ` — ${escapeHtml(request.gas_station_address)}` : ''}${Number(request.gas_station_surcharge) > 0 ? ' <span class="worker-station-pref">(customer preferred)</span>' : ''}` : 'Closest station to the vehicle'}</p>` : ''}
       <p><strong>Vehicle:</strong> ${escapeHtml([request.vehicle_year, request.vehicle_make, request.vehicle_model, request.vehicle_color].filter(Boolean).join(' '))}${request.license_plate ? ` | Plate: ${escapeHtml(request.license_plate)}` : ''}</p>
       ${request.return_parking_location ? `<p><strong>Car location:</strong> ${escapeHtml(request.return_parking_location)}</p>` : ''}
       ${(receiptTotals.fuel || receiptTotals.wash) ? `<p><strong>Receipts entered:</strong> Fuel ${money(receiptTotals.fuel)} | Car wash ${money(receiptTotals.wash)} | Total ${money(workerReceiptTotal)}</p>` : ''}
@@ -2527,11 +2951,10 @@ function renderWorkerJobActions(request) {
     actions.push(workerPrimaryStatusButton(request, `Fuel complete â€” ${request.fuel_type || 'fuel'}`, 'fueling_complete'));
     actions.push(workerServiceUnableButton(request, 'fuel'));
     actions.push(workerNavStationButton(request));
-  } else if (request.status === 'service_complete') {
-    // All service and receipt entry done. Worker reviews totals and confirms before returning vehicle.
-    nextAction = 'Review the receipt totals below, then confirm to continue.';
-    activePanel = renderWorkerReceiptConfirmPanel(request);
-  } else if (request.status === 'receipts_recorded') {
+  } else if (request.status === 'receipts_recorded' || request.status === 'service_complete') {
+    // Service + receipt entry done. No confirm gate here — drive the car back. The
+    // single receipt confirmation happens at the end (Complete & Capture Payment).
+    // ('service_complete' is only reachable by jobs created before this change.)
     if (serviceNeedsFuel(request)) {
       // Fuel job: drive the car back. Lead with navigation; it auto-marks returned
       // on arrival. Manual "Vehicle returned" stays as a fallback.
@@ -2585,13 +3008,17 @@ function renderWorkerJobActions(request) {
   // fallback message for passive statuses with nothing else to show, so a step is
   // never blank.
   const showNote = nextAction && !actions.length && !activePanel;
+  const hasAction = Boolean(activePanel) || actions.length > 0;
   return `
-    ${activePanel}
-    <div class="guided-step">
-      ${showNote ? `<p class="next-action-label">${escapeHtml(nextAction)}</p>` : ''}
-      ${actions.length ? `<div class="admin-button-row">${actions.join('')}</div>` : ''}
+    <div class="worker-job-actions-area">
+      ${activePanel}
+      <div class="guided-step">
+        ${showNote ? `<p class="next-action-label">${escapeHtml(nextAction)}</p>` : ''}
+        ${actions.length ? `<div class="admin-button-row">${actions.join('')}</div>` : ''}
+      </div>
+      ${renderWorkerServiceUnablePanel(request)}
     </div>
-    ${renderWorkerServiceUnablePanel(request)}
+    ${hasAction ? `<p class="worker-desktop-act-note"><span aria-hidden="true">&#128241;</span> Open the ShiftFuel app on your phone to act on this job — the computer view is read-only.</p>` : ''}
   `;
 }
 
@@ -2734,13 +3161,14 @@ function renderWorkerReceiptPanel(request, mode = 'all') {
   const isWashMode = mode === 'wash';
   const receiptTotals = receiptTotalsFromNotes(request);
   // If more services remain after this receipt, stage to the intermediate upload status.
-  // If this is the last service, advance to service_complete so the worker confirms totals
-  // before the request is marked receipts_recorded.
+  // If this is the last service, go straight to receipts_recorded (drive the car back).
+  // There is no separate "confirm receipts" gate here — the single confirmation happens
+  // once at the very end, together with Complete & Capture Payment.
   const nextStatus = isFuelMode
-    ? serviceNeedsWash(request) && !serviceDoneOrUnable(request, 'wash') ? 'fuel_receipt_uploaded' : 'service_complete'
+    ? serviceNeedsWash(request) && !serviceDoneOrUnable(request, 'wash') ? 'fuel_receipt_uploaded' : 'receipts_recorded'
     : isWashMode
-      ? serviceNeedsFuel(request) && !serviceDoneOrUnable(request, 'fuel') ? 'wash_receipt_uploaded' : 'service_complete'
-      : 'service_complete';
+      ? serviceNeedsFuel(request) && !serviceDoneOrUnable(request, 'fuel') ? 'wash_receipt_uploaded' : 'receipts_recorded'
+      : 'receipts_recorded';
 
   return `
     <div class="receipt-panel" data-receipt-for="${escapeHtml(request.id)}">
@@ -2787,42 +3215,39 @@ function renderWorkerInspectionPanel(request) {
     ? `Recommended PSI for ${request.vehicle_year || ''} ${request.vehicle_make || ''} ${request.vehicle_model || ''}: front ${frontPsi}, rear ${rearPsi}. Confirm against the door-jamb sticker if available.`
     : `No PSI guide found yet for ${request.vehicle_year || ''} ${request.vehicle_make || ''} ${request.vehicle_model || ''}. Enter the door-jamb sticker pressure if available.`;
 
+  const suggested = frontPsi !== '' ? String(frontPsi) : '';
+  const echoInit = suggested || '—';
+  // One tire row: the pressure the worker set + a live echo of the confirmed
+  // door-jamb number so they can match each tire to spec.
+  const tireRow = (label, cls) => `
+    <div class="inspection-tire-row">
+      <label>${label} — pressure set (PSI)
+        <input class="${cls}" type="number" min="0" step="1" placeholder="${escapeHtml(suggested || '35')}">
+      </label>
+      <p class="field-help inspection-doorjamb-ref">Door-jamb target: <strong class="doorjamb-echo">${escapeHtml(echoInit)}</strong> PSI</p>
+    </div>`;
+
   return `
     <div class="inspection-panel" data-inspection-for="${escapeHtml(request.id)}">
       <h4>Quick vehicle inspection</h4>
       <p class="field-help psi-guide-note">${escapeHtml(guideText.replace(/\s+/g, ' ').trim())}</p>
-      <div class="field-grid">
-        <label>Driver front PSI before
-          <input class="inspection-df-before" type="number" min="0" step="1" placeholder="32">
-        </label>
-        <label>Driver front PSI after
-          <input class="inspection-df-after" type="number" min="0" step="1" value="${escapeHtml(frontPsi)}" placeholder="35">
-        </label>
-        <label>Driver rear PSI before
-          <input class="inspection-dr-before" type="number" min="0" step="1" placeholder="32">
-        </label>
-        <label>Driver rear PSI after
-          <input class="inspection-dr-after" type="number" min="0" step="1" value="${escapeHtml(rearPsi)}" placeholder="35">
-        </label>
-        <label>Passenger front PSI before
-          <input class="inspection-pf-before" type="number" min="0" step="1" placeholder="32">
-        </label>
-        <label>Passenger front PSI after
-          <input class="inspection-pf-after" type="number" min="0" step="1" value="${escapeHtml(frontPsi)}" placeholder="35">
-        </label>
-        <label>Passenger rear PSI before
-          <input class="inspection-pr-before" type="number" min="0" step="1" placeholder="32">
-        </label>
-        <label>Passenger rear PSI after
-          <input class="inspection-pr-after" type="number" min="0" step="1" value="${escapeHtml(rearPsi)}" placeholder="35">
-        </label>
-      </div>
-      <label>Trouble code
+      <label>Confirm door-jamb PSI (read it off the driver-door sticker)
+        <input class="inspection-doorjamb" type="number" min="0" step="1" value="${escapeHtml(suggested)}" placeholder="35">
+      </label>
+      ${tireRow('Driver front tire', 'inspection-tire-df')}
+      ${tireRow('Passenger front tire', 'inspection-tire-pf')}
+      ${tireRow('Passenger rear tire', 'inspection-tire-pr')}
+      ${tireRow('Driver rear tire', 'inspection-tire-dr')}
+      <label>Diagnosis code
         <input class="inspection-trouble-code" type="text" placeholder="P0304">
       </label>
       <div class="trouble-code-output" aria-live="polite">
         <p class="field-help">Type a code to preview what the customer will see.</p>
       </div>
+      <label class="checkbox-label">
+        <input class="inspection-washer-fluid" type="checkbox">
+        <span>Checked / filled windshield washer fluid</span>
+      </label>
       <button class="button primary save-inspection" data-id="${escapeHtml(request.id)}" type="button">Save inspection details</button>
     </div>
   `;
@@ -3145,6 +3570,7 @@ async function loadWorkerJobs(silent = false) {
   `;
 
   renderWorkerDashboardToday(focusJobs, upcomingJobs);
+  renderWorkerUpcomingSchedule(pendingAccepted);
   renderWorkerEarnings(completedToday);
   renderWorkerTodayCounts({
     // The job you're handling now (the focus card) counts as Accepted — unless it's
@@ -3156,6 +3582,15 @@ async function loadWorkerJobs(silent = false) {
     cancelled: cancelledReturnJobs.length,
   });
   updateWorkerProgressTimeline(myJobs);
+
+  // Desktop-only earnings breakdown + job history. Skip the extra fetch on the
+  // phone, where these sections are hidden anyway.
+  if (window.matchMedia && window.matchMedia('(min-width: 761px)').matches) {
+    loadWorkerCompletedHistory().then((history) => {
+      renderWorkerEarningsBreakdown(history);
+      renderWorkerJobHistory(history);
+    });
+  }
 }
 
 // Completed-today jobs for this worker. Uses worker_list_my_requests (which
@@ -3172,6 +3607,24 @@ async function loadWorkerCompletedToday() {
   }
   return (data || [])
     .filter((r) => r.status === 'complete' && (String(r.updated_at || '').slice(0, 10) === today || r.service_date === today))
+    .sort((a, b) => new Date(b.updated_at || 0) - new Date(a.updated_at || 0));
+}
+
+// Every completed job for this worker (not just today), for the desktop earnings
+// breakdown + history table. Pulls `notes` so the locked [worker_payout] tag is
+// honored, plus the fee/mileage/gallon fields the live fallback needs for older
+// jobs that predate the lock.
+async function loadWorkerCompletedHistory() {
+  if (!currentEmployee) return [];
+  const { data, error } = await workerDb
+    .rpc('worker_list_my_requests', { p_token: SESSION_WORKER_TOKEN })
+    .select('id,customer_name,service_type,service_label,status,payment_status,final_total,updated_at,service_date,notes,fuel_convenience_fee,wash_convenience_fee,quick_inspection,quick_inspection_fee,gas_station_extra_miles,selected_fuel_gallons,estimated_gallons,authorization_fuel_gallons');
+  if (error) {
+    console.warn('Could not load worker job history:', error);
+    return [];
+  }
+  return (data || [])
+    .filter((r) => r.status === 'complete' || r.payment_status === 'captured')
     .sort((a, b) => new Date(b.updated_at || 0) - new Date(a.updated_at || 0));
 }
 
@@ -3562,23 +4015,21 @@ async function saveWorkerInspection(button) {
 
   if (!request) return;
 
-  const values = {
-    dfBefore: panel.querySelector('.inspection-df-before').value || 'not recorded',
-    dfAfter: panel.querySelector('.inspection-df-after').value || 'not recorded',
-    drBefore: panel.querySelector('.inspection-dr-before').value || 'not recorded',
-    drAfter: panel.querySelector('.inspection-dr-after').value || 'not recorded',
-    pfBefore: panel.querySelector('.inspection-pf-before').value || 'not recorded',
-    pfAfter: panel.querySelector('.inspection-pf-after').value || 'not recorded',
-    prBefore: panel.querySelector('.inspection-pr-before').value || 'not recorded',
-    prAfter: panel.querySelector('.inspection-pr-after').value || 'not recorded',
-  };
+  const doorjamb = panel.querySelector('.inspection-doorjamb')?.value || 'not recorded';
+  const tire = (cls) => panel.querySelector(cls)?.value || 'not recorded';
+  const df = tire('.inspection-tire-df');
+  const pf = tire('.inspection-tire-pf');
+  const pr = tire('.inspection-tire-pr');
+  const dr = tire('.inspection-tire-dr');
+  const washerDone = panel.querySelector('.inspection-washer-fluid')?.checked;
   const psiGuide = psiGuideForRequest(request);
   const guideNote = psiGuide
-    ? ` Recommended PSI used: front ${psiGuide.front}, rear ${psiGuide.rear}.`
+    ? ` Recommended: front ${psiGuide.front}, rear ${psiGuide.rear}.`
     : '';
   const note = [
     `Quick inspection recorded for ${request.vehicle_year || ''} ${request.vehicle_make || ''} ${request.vehicle_model || ''}.`.replace(/\s+/g, ' ').trim(),
-    `Tire PSI before/after: driver front ${values.dfBefore}/${values.dfAfter}, driver rear ${values.drBefore}/${values.drAfter}, passenger front ${values.pfBefore}/${values.pfAfter}, passenger rear ${values.prBefore}/${values.prAfter}.${guideNote}`,
+    `Tire pressure set (door-jamb ${doorjamb}): driver front ${df}, passenger front ${pf}, passenger rear ${pr}, driver rear ${dr}.${guideNote}`,
+    `Windshield washer fluid: ${washerDone ? 'checked/filled' : 'not topped off'}.`,
     `Trouble code ${code || 'none'}: ${codeDetails.summary} Possible fixes: ${codeDetails.fixes}`,
   ].join(' ');
   const notes = request.notes ? `${request.notes}\n${note}` : note;
@@ -4114,6 +4565,15 @@ document.addEventListener('input', (event) => {
       <p class="field-help">Possible fixes: ${escapeHtml(details.fixes)}</p>
     `;
   }
+});
+
+// Live-echo the confirmed door-jamb PSI next to every tire as the worker types it.
+document.addEventListener('input', (event) => {
+  if (!event.target.classList.contains('inspection-doorjamb')) return;
+  const panel = event.target.closest('.inspection-panel');
+  if (!panel) return;
+  const value = event.target.value.trim() || '—';
+  panel.querySelectorAll('.doorjamb-echo').forEach((el) => { el.textContent = value; });
 });
 
 workerProfileForm?.addEventListener('submit', async (event) => {

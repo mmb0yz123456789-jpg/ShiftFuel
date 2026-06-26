@@ -103,6 +103,16 @@ let allReviews = [];
 let allReviewRequestMap = new Map();
 let allApplicantsList = [];
 let selectedScheduleEmployeeId = '';
+// Per-employee weekly availability for the inline Workers-tab editor, keyed by
+// employee id. Populated when a worker row is expanded; the admin schedule grid
+// is rendered straight from it (the old #worker-days-grid form lives only in the
+// worker portal, so admin needs its own card-scoped copy).
+let adminCardAvailability = {};
+// Count of pending worker change requests, surfaced in "Needs your attention".
+let pendingChangeRequestCount = 0;
+// Last-loaded admin change requests, so the approve handler can read a request's
+// kind/date for auto-applying a day off.
+let adminChangeRequestsList = [];
 let currentView = 'unassigned';
 let currentAdminTab = 'requests';
 let currentPageTab = 'dashboard';
@@ -613,17 +623,90 @@ function formatTimestamp(iso) {
   return new Date(iso).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' });
 }
 
+// Common door-jamb PSI by make/model — a STARTING suggestion only (matched on
+// make+model, not year/trim); the worker/admin confirms the real number off the
+// door-jamb sticker. Keep in sync with worker.js.
 const fallbackPsiGuides = [
   { make: 'Toyota', model: 'Camry', front_psi: 35, rear_psi: 35 },
   { make: 'Toyota', model: 'Corolla', front_psi: 32, rear_psi: 32 },
+  { make: 'Toyota', model: 'RAV4', front_psi: 35, rear_psi: 35 },
+  { make: 'Toyota', model: 'Highlander', front_psi: 35, rear_psi: 35 },
+  { make: 'Toyota', model: 'Tacoma', front_psi: 30, rear_psi: 35 },
+  { make: 'Toyota', model: 'Tundra', front_psi: 35, rear_psi: 35 },
+  { make: 'Toyota', model: '4Runner', front_psi: 32, rear_psi: 32 },
+  { make: 'Toyota', model: 'Prius', front_psi: 35, rear_psi: 33 },
+  { make: 'Toyota', model: 'Sienna', front_psi: 36, rear_psi: 36 },
   { make: 'Honda', model: 'Civic', front_psi: 32, rear_psi: 32 },
   { make: 'Honda', model: 'Accord', front_psi: 32, rear_psi: 32 },
-  { make: 'Nissan', model: 'Altima', front_psi: 33, rear_psi: 33 },
+  { make: 'Honda', model: 'CR-V', front_psi: 32, rear_psi: 32 },
+  { make: 'Honda', model: 'Pilot', front_psi: 35, rear_psi: 35 },
+  { make: 'Honda', model: 'Odyssey', front_psi: 35, rear_psi: 35 },
+  { make: 'Honda', model: 'HR-V', front_psi: 33, rear_psi: 33 },
+  { make: 'Honda', model: 'Passport', front_psi: 35, rear_psi: 35 },
+  { make: 'Nissan', model: 'Altima', front_psi: 32, rear_psi: 32 },
+  { make: 'Nissan', model: 'Rogue', front_psi: 33, rear_psi: 33 },
+  { make: 'Nissan', model: 'Sentra', front_psi: 33, rear_psi: 33 },
+  { make: 'Nissan', model: 'Murano', front_psi: 35, rear_psi: 35 },
+  { make: 'Nissan', model: 'Pathfinder', front_psi: 35, rear_psi: 35 },
+  { make: 'Nissan', model: 'Frontier', front_psi: 32, rear_psi: 32 },
+  { make: 'Nissan', model: 'Kicks', front_psi: 33, rear_psi: 33 },
   { make: 'Hyundai', model: 'Elantra', front_psi: 33, rear_psi: 33 },
   { make: 'Hyundai', model: 'Sonata', front_psi: 34, rear_psi: 34 },
+  { make: 'Hyundai', model: 'Tucson', front_psi: 35, rear_psi: 33 },
+  { make: 'Hyundai', model: 'Santa Fe', front_psi: 35, rear_psi: 35 },
+  { make: 'Hyundai', model: 'Kona', front_psi: 33, rear_psi: 33 },
+  { make: 'Hyundai', model: 'Palisade', front_psi: 35, rear_psi: 35 },
+  { make: 'Kia', model: 'Forte', front_psi: 33, rear_psi: 33 },
+  { make: 'Kia', model: 'K5', front_psi: 35, rear_psi: 35 },
+  { make: 'Kia', model: 'Sportage', front_psi: 35, rear_psi: 33 },
+  { make: 'Kia', model: 'Sorento', front_psi: 35, rear_psi: 35 },
+  { make: 'Kia', model: 'Soul', front_psi: 33, rear_psi: 33 },
+  { make: 'Kia', model: 'Telluride', front_psi: 35, rear_psi: 35 },
   { make: 'Ford', model: 'F-150', front_psi: 35, rear_psi: 35 },
+  { make: 'Ford', model: 'Escape', front_psi: 35, rear_psi: 35 },
+  { make: 'Ford', model: 'Explorer', front_psi: 35, rear_psi: 35 },
+  { make: 'Ford', model: 'Edge', front_psi: 34, rear_psi: 34 },
+  { make: 'Ford', model: 'Mustang', front_psi: 32, rear_psi: 30 },
+  { make: 'Ford', model: 'Ranger', front_psi: 35, rear_psi: 35 },
+  { make: 'Ford', model: 'Bronco', front_psi: 38, rear_psi: 38 },
   { make: 'Chevrolet', model: 'Silverado', front_psi: 35, rear_psi: 35 },
+  { make: 'Chevrolet', model: 'Equinox', front_psi: 35, rear_psi: 35 },
+  { make: 'Chevrolet', model: 'Malibu', front_psi: 35, rear_psi: 35 },
+  { make: 'Chevrolet', model: 'Traverse', front_psi: 35, rear_psi: 35 },
+  { make: 'Chevrolet', model: 'Tahoe', front_psi: 35, rear_psi: 35 },
+  { make: 'Chevrolet', model: 'Trailblazer', front_psi: 33, rear_psi: 33 },
+  { make: 'GMC', model: 'Sierra', front_psi: 35, rear_psi: 35 },
+  { make: 'GMC', model: 'Terrain', front_psi: 35, rear_psi: 35 },
+  { make: 'GMC', model: 'Acadia', front_psi: 35, rear_psi: 35 },
+  { make: 'GMC', model: 'Yukon', front_psi: 35, rear_psi: 35 },
+  { make: 'Jeep', model: 'Wrangler', front_psi: 37, rear_psi: 37 },
+  { make: 'Jeep', model: 'Grand Cherokee', front_psi: 36, rear_psi: 36 },
+  { make: 'Jeep', model: 'Cherokee', front_psi: 34, rear_psi: 34 },
+  { make: 'Jeep', model: 'Compass', front_psi: 33, rear_psi: 33 },
+  { make: 'Jeep', model: 'Gladiator', front_psi: 37, rear_psi: 37 },
+  { make: 'Ram', model: '1500', front_psi: 35, rear_psi: 35 },
+  { make: 'Dodge', model: 'Charger', front_psi: 35, rear_psi: 32 },
+  { make: 'Dodge', model: 'Durango', front_psi: 36, rear_psi: 36 },
+  { make: 'Chrysler', model: 'Pacifica', front_psi: 36, rear_psi: 36 },
   { make: 'Subaru', model: 'Outback', front_psi: 35, rear_psi: 33 },
+  { make: 'Subaru', model: 'Forester', front_psi: 32, rear_psi: 30 },
+  { make: 'Subaru', model: 'Crosstrek', front_psi: 33, rear_psi: 32 },
+  { make: 'Subaru', model: 'Impreza', front_psi: 33, rear_psi: 32 },
+  { make: 'Subaru', model: 'Ascent', front_psi: 35, rear_psi: 35 },
+  { make: 'Mazda', model: 'CX-5', front_psi: 34, rear_psi: 34 },
+  { make: 'Mazda', model: 'Mazda3', front_psi: 36, rear_psi: 35 },
+  { make: 'Mazda', model: 'CX-9', front_psi: 35, rear_psi: 35 },
+  { make: 'Mazda', model: 'CX-30', front_psi: 34, rear_psi: 34 },
+  { make: 'Volkswagen', model: 'Jetta', front_psi: 36, rear_psi: 36 },
+  { make: 'Volkswagen', model: 'Tiguan', front_psi: 33, rear_psi: 36 },
+  { make: 'Volkswagen', model: 'Atlas', front_psi: 38, rear_psi: 41 },
+  { make: 'Tesla', model: 'Model 3', front_psi: 42, rear_psi: 42 },
+  { make: 'Tesla', model: 'Model Y', front_psi: 42, rear_psi: 42 },
+  { make: 'Tesla', model: 'Model S', front_psi: 42, rear_psi: 42 },
+  { make: 'Tesla', model: 'Model X', front_psi: 40, rear_psi: 40 },
+  { make: 'Lexus', model: 'RX', front_psi: 33, rear_psi: 33 },
+  { make: 'Lexus', model: 'ES', front_psi: 35, rear_psi: 35 },
+  { make: 'Lexus', model: 'NX', front_psi: 33, rear_psi: 33 },
 ];
 
 function normalizeVehicleText(value) {
@@ -1217,6 +1300,7 @@ function adminFormatService(request) {
   if (request.wash_package_label) parts.push(`Wash: ${request.wash_package_label}`);
   if (request.quick_inspection) parts.push('Quick inspection');
   if (request.service_date) parts.push(request.service_date);
+  if (request.desired_pickup_time) parts.push(`Available from: ${String(request.desired_pickup_time).slice(0, 5)}`);
   if (request.desired_return_time) parts.push(`Return by: ${request.desired_return_time}`);
   return parts.filter(Boolean).join(' | ');
 }
@@ -1756,43 +1840,38 @@ function renderInspectionPanel(request) {
     ? `Recommended PSI for ${request.vehicle_year || ''} ${request.vehicle_make || ''} ${request.vehicle_model || ''}: front ${frontPsi}, rear ${rearPsi}. Confirm against the door-jamb sticker if available.`
     : `No PSI guide found yet for ${request.vehicle_year || ''} ${request.vehicle_make || ''} ${request.vehicle_model || ''}. Enter the door-jamb sticker pressure if available.`;
 
+  const suggested = frontPsi !== '' ? String(frontPsi) : '';
+  const echoInit = suggested || '—';
+  const tireRow = (label, cls) => `
+    <div class="inspection-tire-row">
+      <label>${label} — pressure set (PSI)
+        <input class="${cls}" type="number" min="0" step="1" placeholder="${escapeHtml(suggested || '35')}">
+      </label>
+      <p class="field-help inspection-doorjamb-ref">Door-jamb target: <strong class="doorjamb-echo">${escapeHtml(echoInit)}</strong> PSI</p>
+    </div>`;
+
   return `
     <div class="inspection-panel" data-inspection-for="${request.id}">
       <h4>Quick inspection details</h4>
-      <p class="field-help">Record tire pressure before and after service. Trouble-code explanations are starter guidance and should be confirmed against the vehicle's year, make, model, and engine.</p>
+      <p class="field-help">Confirm the door-jamb PSI, set each tire to it, and note any trouble code. Trouble-code explanations are starter guidance and should be confirmed against the vehicle's year, make, model, and engine.</p>
       <p class="field-help psi-guide-note">${escapeHtml(guideText.replace(/\s+/g, ' ').trim())}</p>
-      <div class="admin-money-grid">
-        <label>Driver front PSI before
-          <input class="inspection-df-before" type="number" min="0" step="1">
-        </label>
-        <label>Driver front PSI after
-          <input class="inspection-df-after" type="number" min="0" step="1" value="${escapeHtml(frontPsi)}">
-        </label>
-        <label>Driver rear PSI before
-          <input class="inspection-dr-before" type="number" min="0" step="1">
-        </label>
-        <label>Driver rear PSI after
-          <input class="inspection-dr-after" type="number" min="0" step="1" value="${escapeHtml(rearPsi)}">
-        </label>
-        <label>Passenger front PSI before
-          <input class="inspection-pf-before" type="number" min="0" step="1">
-        </label>
-        <label>Passenger front PSI after
-          <input class="inspection-pf-after" type="number" min="0" step="1" value="${escapeHtml(frontPsi)}">
-        </label>
-        <label>Passenger rear PSI before
-          <input class="inspection-pr-before" type="number" min="0" step="1">
-        </label>
-        <label>Passenger rear PSI after
-          <input class="inspection-pr-after" type="number" min="0" step="1" value="${escapeHtml(rearPsi)}">
-        </label>
-      </div>
-      <label>Trouble code
+      <label>Confirm door-jamb PSI (read it off the driver-door sticker)
+        <input class="inspection-doorjamb" type="number" min="0" step="1" value="${escapeHtml(suggested)}" placeholder="35">
+      </label>
+      ${tireRow('Driver front tire', 'inspection-tire-df')}
+      ${tireRow('Passenger front tire', 'inspection-tire-pf')}
+      ${tireRow('Passenger rear tire', 'inspection-tire-pr')}
+      ${tireRow('Driver rear tire', 'inspection-tire-dr')}
+      <label>Diagnosis code
         <input class="inspection-trouble-code" type="text" placeholder="Example: P0304">
       </label>
       <div class="trouble-code-output" aria-live="polite">
         <p class="field-help">Type a code to preview what the customer will see.</p>
       </div>
+      <label class="checkbox-label">
+        <input class="inspection-washer-fluid" type="checkbox">
+        <span>Checked / filled windshield washer fluid</span>
+      </label>
       <button class="button primary save-inspection" data-id="${request.id}" type="button">Save inspection details</button>
     </div>
   `;
@@ -2117,13 +2196,13 @@ function updateDashboardStatCards() {
   const inProgressCount = allRequests.filter((r) => isOpen(r) && !UNASSIGNED_STATUSES.includes(r.status) && isInDashboardRange(r, dashboardRange)).length;
   const completedCount = allRequests.filter((r) => r.status === 'complete' && isInDashboardRange(r, dashboardRange)).length;
   const activeWorkerCount = allEmployees.filter((e) => e.active).length;
-  const netRevenue = allRequests
-    .filter((r) => r.payment_status === 'captured' && isInDashboardRange(r, dashboardRange))
-    .reduce((sum, r) => sum + Number(r.displayed_fuel_service_fee || 0) + Number(r.displayed_car_wash_service_fee || 0) + Number(r.displayed_inspection_fee || 0), 0);
+  // Company NET for the active range — the same formula as the Payroll tab so the
+  // tile and Payroll agree (service fees + cancellation fees − worker payouts).
+  const { companyNet } = companyNetBreakdown((r) => isInDashboardRange(r, dashboardRange));
 
   const rangeLabel = dashboardRangeLabel(dashboardRange);
   if (statCompletedLabel) statCompletedLabel.textContent = `Completed ${rangeLabel}`;
-  if (statRevenueLabel) statRevenueLabel.textContent = `Service Fee Revenue ${rangeLabel}`;
+  if (statRevenueLabel) statRevenueLabel.textContent = `Company Net ${rangeLabel}`;
 
   if (statOpenRequests) statOpenRequests.textContent = openCount;
   if (statInProgress) statInProgress.textContent = inProgressCount;
@@ -2460,6 +2539,7 @@ async function loadEmployees() {
     if (workerCountBadge) workerCountBadge.textContent = allEmployees.filter((e) => e.active).length;
     renderWorkerSelect();
     renderWorkerProfiles();
+    loadAdminChangeRequests();
     populateFilterWorkers();
     updateDashboardStatCards();
   } catch (error) {
@@ -2497,6 +2577,121 @@ function workerPresenceCategory(employee, busyKeys) {
   if (keys.has(employee.id) || keys.has(employee.full_name)) return 'busy';
   return 'online';
 }
+
+// ── Worker change requests (admin approval queue, in the Workers tab) ─────────
+async function loadAdminChangeRequests() {
+  const container = document.querySelector('#admin-change-requests');
+  if (!container) return;
+  const { data, error } = await db.rpc('admin_list_change_requests', { p_token: adminToken(), p_status: null });
+  if (error) {
+    if (!/does not exist/i.test(error.message || '')) {
+      console.warn('Could not load change requests:', error);
+    }
+    container.innerHTML = '';
+    pendingChangeRequestCount = 0;
+    if (typeof renderActionNeeded === 'function') renderActionNeeded();
+    return;
+  }
+  renderAdminChangeRequests(data || []);
+}
+
+function adminChangeStatusBadge(status) {
+  const cls = { pending: 'is-pending', approved: 'is-approved', rejected: 'is-rejected' }[status] || '';
+  const label = { pending: 'Pending', approved: 'Approved', rejected: 'Rejected' }[status] || status;
+  return `<span class="wcr-badge ${cls}">${escapeHtml(label)}</span>`;
+}
+
+function renderAdminChangeRequests(requests) {
+  const container = document.querySelector('#admin-change-requests');
+  adminChangeRequestsList = requests;
+  const pending = requests.filter((r) => r.status === 'pending');
+  // Keep the dashboard "Needs your attention" badge in sync with the queue.
+  pendingChangeRequestCount = pending.length;
+  if (typeof renderActionNeeded === 'function') renderActionNeeded();
+  if (!container) return;
+  if (!requests.length) { container.innerHTML = ''; return; }
+  container.innerHTML = `
+    <div class="admin-change-requests-card">
+      <div class="worker-card-heading">
+        <h3>Change requests${pending.length ? ` <span class="acr-count">${pending.length} pending</span>` : ''}</h3>
+      </div>
+      <div class="acr-list">
+        ${requests.map((r) => renderAdminChangeRequestRow(r)).join('')}
+      </div>
+    </div>`;
+}
+
+function renderAdminChangeRequestRow(r) {
+  const when = r.created_at ? new Date(r.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '';
+  const kindLabel = r.kind === 'job' ? 'Job change' : 'Schedule change';
+  const sub = r.requested_changes && r.requested_changes.type
+    ? ` · ${escapeHtml(String(r.requested_changes.type).replace(/_/g, ' '))}` : '';
+  const jobCtx = r.kind === 'job' && r.customer_name
+    ? `<p class="acr-ctx">${escapeHtml(r.customer_name)}${r.service_label ? ` · ${escapeHtml(r.service_label)}` : ''}${r.service_date ? ` · ${escapeHtml(r.service_date)}` : ''}${r.desired_return_time ? ` · back by ${escapeHtml(String(r.desired_return_time).slice(0, 5))}` : ''}</p>`
+    : '';
+  const isPending = r.status === 'pending';
+  return `
+    <div class="acr-item" data-request-id="${escapeHtml(r.id)}">
+      <div class="acr-item-head">
+        <div>
+          <strong>${escapeHtml(r.employee_name || 'Worker')}</strong>
+          <span class="acr-kind">${escapeHtml(kindLabel)}${sub}</span>
+        </div>
+        ${adminChangeStatusBadge(r.status)}
+      </div>
+      ${jobCtx}
+      ${r.details ? `<p class="acr-details">${escapeHtml(r.details)}</p>` : ''}
+      ${r.admin_note ? `<p class="acr-note"><strong>Note:</strong> ${escapeHtml(r.admin_note)}</p>` : ''}
+      <p class="acr-meta">${escapeHtml(when)}</p>
+      ${isPending ? `
+        <div class="acr-actions">
+          <input type="text" class="acr-note-input" placeholder="Optional note to the worker">
+          <button class="button primary acr-approve" data-id="${escapeHtml(r.id)}" type="button">Approve</button>
+          <button class="button danger acr-reject" data-id="${escapeHtml(r.id)}" type="button">Reject</button>
+        </div>` : ''}
+    </div>`;
+}
+
+async function resolveAdminChangeRequest(id, status, note) {
+  const { error } = await db.rpc('admin_resolve_change_request', {
+    p_token: adminToken(),
+    p_request_id: id,
+    p_status: status,
+    p_admin_note: note || null,
+  });
+  if (error) throw error;
+  await loadAdminChangeRequests();
+}
+
+document.querySelector('#admin-change-requests')?.addEventListener('click', async (event) => {
+  const approve = event.target.closest('.acr-approve');
+  const reject = event.target.closest('.acr-reject');
+  const btn = approve || reject;
+  if (!btn) return;
+  const item = btn.closest('.acr-item');
+  let note = item?.querySelector('.acr-note-input')?.value.trim() || '';
+  btn.disabled = true;
+  try {
+    // Auto-apply: approving a dated time-off request marks that day off for the
+    // worker. Fail-soft — if the RPC isn't deployed, the approval still proceeds.
+    if (approve) {
+      const req = adminChangeRequestsList.find((x) => x.id === btn.dataset.id);
+      const rc = req?.requested_changes || {};
+      if (req?.kind === 'schedule' && rc.type === 'time_off' && rc.date) {
+        const { error: dayErr } = await db.rpc('admin_add_day_off', {
+          p_token: adminToken(), p_employee_id: req.employee_id, p_day: rc.date,
+        });
+        if (dayErr) console.warn('Auto-apply day off failed:', dayErr);
+        else note = note ? `${note} (Day off ${rc.date} applied.)` : `Day off ${rc.date} applied.`;
+      }
+    }
+    await resolveAdminChangeRequest(btn.dataset.id, approve ? 'approved' : 'rejected', note);
+  } catch (err) {
+    console.error('Could not resolve change request:', err);
+    alert(`Could not update the request: ${err.message || 'try again.'}`);
+    btn.disabled = false;
+  }
+});
 
 function renderWorkerProfiles() {
   if (!workerProfileList) return;
@@ -2658,8 +2853,116 @@ function renderWorkerProfileCard(employee) {
         }
       </div>
       <p class="field-help admin-worker-status">${isLocal ? 'Run the Supabase worker upgrade before saving this worker.' : ''}</p>
+
+      <div class="admin-sched-block">
+        <h4 class="admin-sched-title">Weekly schedule</h4>
+        <p class="field-help">Set the days and hours this worker is available. The booking site uses this to decide who can cover a time slot.</p>
+        <div class="admin-sched-grid" data-worker-id="${escapeHtml(employee.id)}">
+          ${isLocal
+            ? '<p class="field-help">Run the Supabase worker upgrade before editing this worker\'s schedule.</p>'
+            : renderAdminCardScheduleRows(employee.id)}
+        </div>
+        ${isLocal ? '' : `<div class="admin-button-row"><button class="button primary save-worker-schedule" data-id="${escapeHtml(employee.id)}" type="button">Save schedule</button></div>`}
+        <p class="field-help admin-sched-status" data-worker-id="${escapeHtml(employee.id)}"></p>
+      </div>
     </article>
   `;
+}
+
+// 7 day rows (Sun–Sat) for the inline admin schedule editor, prefilled from the
+// employee's cached availability (adminCardAvailability). Days with no saved row
+// render unchecked at the 9–5 default.
+function renderAdminCardScheduleRows(employeeId) {
+  const saved = adminCardAvailability[employeeId];
+  const map = new Map((saved || []).map((day) => [Number(day.dayOfWeek), day]));
+  return workerDayOptions
+    .map(({ dayOfWeek, label }) => {
+      const day = map.get(dayOfWeek);
+      const enabled = day ? 'checked' : '';
+      const startsAt = day?.startsAt || '09:00';
+      const endsAt = day?.endsAt || '17:00';
+      return `
+        <div class="admin-sched-row" data-day-of-week="${dayOfWeek}">
+          <label class="checkbox-label admin-sched-toggle">
+            <input class="admin-sched-enabled" type="checkbox" data-day-of-week="${dayOfWeek}" ${enabled}>
+            <span>${label}</span>
+          </label>
+          <label class="admin-sched-time">Start
+            <input class="admin-sched-start" type="time" data-day-of-week="${dayOfWeek}" value="${startsAt}">
+          </label>
+          <label class="admin-sched-time">End
+            <input class="admin-sched-end" type="time" data-day-of-week="${dayOfWeek}" value="${endsAt}">
+          </label>
+        </div>`;
+    })
+    .join('');
+}
+
+// Fetch one employee's saved availability into the card cache, then re-render the
+// open card so the grid reflects it.
+async function loadAdminCardAvailability(employeeId) {
+  try {
+    const { data, error } = await db
+      .from('employee_availability')
+      .select('day_of_week,starts_at,ends_at')
+      .eq('employee_id', employeeId);
+    if (error) throw error;
+    adminCardAvailability[employeeId] = (data || []).map((row) => ({
+      dayOfWeek: Number(row.day_of_week),
+      startsAt: String(row.starts_at || '09:00').slice(0, 5),
+      endsAt: String(row.ends_at || '17:00').slice(0, 5),
+    }));
+  } catch (err) {
+    console.warn('Could not load worker availability for admin card:', err);
+    adminCardAvailability[employeeId] = adminCardAvailability[employeeId] || [];
+  }
+  if (selectedScheduleEmployeeId === employeeId) renderWorkerProfiles();
+}
+
+// Read the inline schedule grid and persist it via admin_save_availability.
+// Work location is no longer a UI field, so it silently rides on the employee's
+// stored home_location (see the work-location-removed decision).
+async function saveAdminCardSchedule(button) {
+  const employeeId = button.dataset.id;
+  const block = button.closest('.admin-sched-block');
+  const status = block?.querySelector('.admin-sched-status');
+  const grid = block?.querySelector('.admin-sched-grid');
+  if (!grid) return;
+
+  const workdays = Array.from(grid.querySelectorAll('.admin-sched-enabled:checked'))
+    .map((checkbox) => {
+      const dayOfWeek = Number(checkbox.dataset.dayOfWeek);
+      const row = grid.querySelector(`.admin-sched-row[data-day-of-week="${dayOfWeek}"]`);
+      return {
+        dayOfWeek,
+        startsAt: row?.querySelector('.admin-sched-start')?.value || '09:00',
+        endsAt: row?.querySelector('.admin-sched-end')?.value || '17:00',
+      };
+    })
+    .filter((day) => day.startsAt && day.endsAt);
+
+  const invalid = workdays.find((day) => day.startsAt >= day.endsAt);
+  if (invalid) {
+    if (status) status.textContent = 'Each working day needs an end time later than its start time.';
+    return;
+  }
+
+  const employee = allEmployees.find((e) => e.id === employeeId);
+  const location = employee?.home_location || DEFAULT_WORK_LOCATION;
+  const { error } = await db.rpc('admin_save_availability', {
+    p_token: adminToken(),
+    p_employee_id: employeeId,
+    p_workdays: workdays.map((day) => ({
+      day_of_week: day.dayOfWeek,
+      starts_at: day.startsAt,
+      ends_at: day.endsAt,
+    })),
+    p_location: location,
+  });
+  if (error) throw error;
+
+  adminCardAvailability[employeeId] = workdays;
+  if (status) status.textContent = `Schedule saved · ${workdays.length} working day${workdays.length === 1 ? '' : 's'}.`;
 }
 
 function applyAdminPhotoZoom() {
@@ -3698,8 +4001,28 @@ workerProfileList?.addEventListener('click', async (event) => {
   const toggleButton = event.target.closest('.worker-row-toggle');
   if (toggleButton) {
     const id = toggleButton.dataset.id;
-    selectedScheduleEmployeeId = selectedScheduleEmployeeId === id ? '' : id;
+    const opening = selectedScheduleEmployeeId !== id;
+    selectedScheduleEmployeeId = opening ? id : '';
     renderWorkerProfiles();
+    // Pull this worker's saved availability into the inline schedule grid.
+    if (opening && !String(id).startsWith('local-')) {
+      loadAdminCardAvailability(id);
+    }
+    return;
+  }
+
+  const saveScheduleButton = event.target.closest('.save-worker-schedule');
+  if (saveScheduleButton) {
+    saveScheduleButton.disabled = true;
+    try {
+      await saveAdminCardSchedule(saveScheduleButton);
+    } catch (error) {
+      console.error('Worker schedule save failed:', error);
+      const status = saveScheduleButton.closest('.admin-sched-block')?.querySelector('.admin-sched-status');
+      if (status) status.textContent = `Could not save schedule: ${error.message || 'Check Supabase setup.'}`;
+    } finally {
+      saveScheduleButton.disabled = false;
+    }
     return;
   }
 
@@ -4156,6 +4479,13 @@ function buildActionNeededItems() {
       detail: 'A worker application is waiting for your review.' });
   }
 
+  if (pendingChangeRequestCount > 0) {
+    items.push({ kind: 'change-request', action: 'change-requests',
+      title: 'Worker change request waiting',
+      who: pendingChangeRequestCount === 1 ? '1 request' : `${pendingChangeRequestCount} requests`,
+      detail: 'A worker is requesting a schedule or job change. Review it in the Workers tab.' });
+  }
+
   return items;
 }
 
@@ -4178,7 +4508,9 @@ function renderActionNeeded() {
   list.innerHTML = items.map((it) => {
     const btn = it.action === 'applicants'
       ? '<button class="button secondary action-needed-btn" data-action-applicants="1" type="button">Review applicants</button>'
-      : `<button class="button secondary action-needed-btn" data-action-request="${escapeHtml(it.requestId)}" type="button">View request</button>`;
+      : it.action === 'change-requests'
+        ? '<button class="button secondary action-needed-btn" data-action-change-requests="1" type="button">Review requests</button>'
+        : `<button class="button secondary action-needed-btn" data-action-request="${escapeHtml(it.requestId)}" type="button">View request</button>`;
     return `
       <div class="action-needed-card action-needed-${it.kind}">
         <div class="action-needed-info">
@@ -4222,6 +4554,12 @@ document.querySelector('#action-needed-list')?.addEventListener('click', (event)
   if (appBtn) {
     switchPageTab('dashboard');
     document.querySelector('[data-tab-panel="applicants"]')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    return;
+  }
+  const crBtn = event.target.closest('[data-action-change-requests]');
+  if (crBtn) {
+    switchPageTab('workers');
+    setTimeout(() => document.querySelector('#admin-change-requests')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 60);
   }
 });
 
@@ -4653,23 +4991,21 @@ async function saveInspection(button) {
   const panel = button.closest('.inspection-panel');
   const code = normalizeTroubleCode(panel.querySelector('.inspection-trouble-code').value);
   const codeDetails = troubleCodeDetails(code);
-  const values = {
-    dfBefore: panel.querySelector('.inspection-df-before').value || 'not recorded',
-    dfAfter: panel.querySelector('.inspection-df-after').value || 'not recorded',
-    drBefore: panel.querySelector('.inspection-dr-before').value || 'not recorded',
-    drAfter: panel.querySelector('.inspection-dr-after').value || 'not recorded',
-    pfBefore: panel.querySelector('.inspection-pf-before').value || 'not recorded',
-    pfAfter: panel.querySelector('.inspection-pf-after').value || 'not recorded',
-    prBefore: panel.querySelector('.inspection-pr-before').value || 'not recorded',
-    prAfter: panel.querySelector('.inspection-pr-after').value || 'not recorded',
-  };
+  const doorjamb = panel.querySelector('.inspection-doorjamb')?.value || 'not recorded';
+  const tire = (cls) => panel.querySelector(cls)?.value || 'not recorded';
+  const df = tire('.inspection-tire-df');
+  const pf = tire('.inspection-tire-pf');
+  const pr = tire('.inspection-tire-pr');
+  const dr = tire('.inspection-tire-dr');
+  const washerDone = panel.querySelector('.inspection-washer-fluid')?.checked;
   const psiGuide = psiGuideForRequest(request);
   const guideNote = psiGuide
-    ? ` Recommended PSI used: front ${psiGuide.front}, rear ${psiGuide.rear}.`
+    ? ` Recommended: front ${psiGuide.front}, rear ${psiGuide.rear}.`
     : '';
   const note = [
     `Quick inspection recorded for ${request.vehicle_year || ''} ${request.vehicle_make || ''} ${request.vehicle_model || ''}.`.replace(/\s+/g, ' ').trim(),
-    `Tire PSI before/after: driver front ${values.dfBefore}/${values.dfAfter}, driver rear ${values.drBefore}/${values.drAfter}, passenger front ${values.pfBefore}/${values.pfAfter}, passenger rear ${values.prBefore}/${values.prAfter}.${guideNote}`,
+    `Tire pressure set (door-jamb ${doorjamb}): driver front ${df}, passenger front ${pf}, passenger rear ${pr}, driver rear ${dr}.${guideNote}`,
+    `Windshield washer fluid: ${washerDone ? 'checked/filled' : 'not topped off'}.`,
     `Trouble code ${code || 'none'}: ${codeDetails.summary} Possible fixes: ${codeDetails.fixes}`,
   ].join(' ');
   const notes = request.notes ? `${request.notes}\n${note}` : note;
@@ -5623,6 +5959,15 @@ requestList.addEventListener('input', (event) => {
     : '<p class="field-help">Type a code to preview what the customer will see.</p>';
 });
 
+// Live-echo the confirmed door-jamb PSI next to every tire as it's typed.
+requestList.addEventListener('input', (event) => {
+  if (!event.target.classList.contains('inspection-doorjamb')) return;
+  const panel = event.target.closest('.inspection-panel');
+  if (!panel) return;
+  const value = event.target.value.trim() || '—';
+  panel.querySelectorAll('.doorjamb-echo').forEach((el) => { el.textContent = value; });
+});
+
 showAll?.addEventListener('click', () => {
   setActiveStatCard(null);
   currentView = 'all';
@@ -5828,6 +6173,24 @@ function payrollRequestDate(request) {
   return new Date(request.completed_at || request.canceled_at || request.updated_at || request.created_at);
 }
 
+// Company-net breakdown for a set of requests (those matching `inRange`). Single
+// source of truth so the dashboard "Company Net" tile and the Payroll tab always
+// agree: service fees (captured) + cancellation fees collected − worker payouts.
+function companyNetBreakdown(inRange) {
+  const reqs = allRequests || [];
+  const serviceFeeRevenue = reqs
+    .filter((r) => r.payment_status === 'captured' && inRange(r))
+    .reduce((s, r) => s + Number(r.displayed_fuel_service_fee || 0) + Number(r.displayed_car_wash_service_fee || 0) + Number(r.displayed_inspection_fee || 0), 0);
+  const cancellationRevenue = reqs
+    .filter((r) => r.payment_status === 'cancellation_fee_paid' && inRange(r))
+    .reduce((s, r) => s + Number(r.cancellation_fee ?? r.cancellation_fee_amount ?? 0), 0);
+  const workerPayouts = reqs
+    .filter((r) => inRange(r))
+    .reduce((s, r) => s + workerPayoutForRequest(r), 0);
+  const companyNet = roundMoneyValue(serviceFeeRevenue + cancellationRevenue - workerPayouts);
+  return { serviceFeeRevenue, cancellationRevenue, workerPayouts, companyNet };
+}
+
 function renderPayroll() {
   const container = document.getElementById('payroll-content');
   if (!container) return;
@@ -5850,10 +6213,11 @@ function renderPayroll() {
       || (allEmployees || []).find((e) => e.id === r.assigned_employee_id)?.full_name
       || (allEmployees || []).find((e) => e.id === r.assigned_employee_id)?.name
       || 'Unknown worker';
-    const entry = byWorker.get(key) || { name, jobs: 0, mileage: 0, total: 0 };
+    const entry = byWorker.get(key) || { name, jobs: 0, mileage: 0, total: 0, drivenMiles: 0 };
     entry.jobs += 1;
     entry.mileage += workerMileagePay(r);
     entry.total += workerPayoutForRequest(r);
+    entry.drivenMiles += Number(r.driven_miles) || 0; // GPS-verified actual miles (audit, not pay)
     byWorker.set(key, entry);
   }
   const rows = [...byWorker.values()].sort((a, b) => b.total - a.total);
@@ -5881,9 +6245,9 @@ function renderPayroll() {
     <p class="field-help">Company net = service fees + cancellation fees − worker payouts. Shown before Stripe processing fees; excludes fuel/wash cost (pass-through to the customer) and the per-mile surcharge margin.</p>
     ${rows.length ? `
       <table class="payroll-table">
-        <thead><tr><th>Worker</th><th>Jobs</th><th>Station mileage</th><th>Earnings</th></tr></thead>
+        <thead><tr><th>Worker</th><th>Jobs</th><th>Station mileage</th><th>Driven (GPS)</th><th>Earnings</th></tr></thead>
         <tbody>
-          ${rows.map((e) => `<tr><td>${escapeHtml(e.name)}</td><td>${e.jobs}</td><td>${money(roundMoneyValue(e.mileage))}</td><td><strong>${money(roundMoneyValue(e.total))}</strong></td></tr>`).join('')}
+          ${rows.map((e) => `<tr><td>${escapeHtml(e.name)}</td><td>${e.jobs}</td><td>${money(roundMoneyValue(e.mileage))}</td><td>${e.drivenMiles ? e.drivenMiles.toFixed(1) + ' mi' : '—'}</td><td><strong>${money(roundMoneyValue(e.total))}</strong></td></tr>`).join('')}
         </tbody>
       </table>
     ` : `<div class="worker-state-card"><p>No worker earnings in this period yet.</p></div>`}
@@ -5948,7 +6312,7 @@ function switchPageTab(page) {
   if (page === 'payroll') {
     renderPayroll();
   }
-  if (page === 'promos') {
+  if (page === 'services') {
     loadPromos();
   }
   renderRequests();
@@ -6114,16 +6478,21 @@ function openRevenueBreakdown() {
 
 function closeRevenueBreakdown() { /* no-op — kept for any legacy callers */ }
 
-document.getElementById('stat-card-open')?.addEventListener('click', () => statCardNav('unassigned', 'open'));
-document.getElementById('stat-card-open')?.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); statCardNav('unassigned', 'open'); } });
-document.getElementById('stat-card-inprogress')?.addEventListener('click', () => statCardNav('inprogress', 'inprogress'));
-document.getElementById('stat-card-inprogress')?.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); statCardNav('inprogress', 'inprogress'); } });
-document.getElementById('stat-card-completed')?.addEventListener('click', () => statCardNav('complete', 'completed'));
-document.getElementById('stat-card-completed')?.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); statCardNav('complete', 'completed'); } });
-document.getElementById('stat-card-workers')?.addEventListener('click', openWorkersPanel);
-document.getElementById('stat-card-workers')?.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openWorkersPanel(); } });
-document.getElementById('stat-card-revenue')?.addEventListener('click', openRevenueBreakdown);
-document.getElementById('stat-card-revenue')?.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openRevenueBreakdown(); } });
+// The request queue now lives only on the Requests page, so a stat tile must jump
+// there first (then filter / drill down). Navigation sits here in the click path —
+// NOT inside statCardNav/openWorkersPanel/openRevenueBreakdown, which also run on
+// Refresh and must not yank the user to another page.
+const goRequestsThen = (fn) => { switchPageTab('requests'); fn(); };
+document.getElementById('stat-card-open')?.addEventListener('click', () => goRequestsThen(() => statCardNav('unassigned', 'open')));
+document.getElementById('stat-card-open')?.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); goRequestsThen(() => statCardNav('unassigned', 'open')); } });
+document.getElementById('stat-card-inprogress')?.addEventListener('click', () => goRequestsThen(() => statCardNav('inprogress', 'inprogress')));
+document.getElementById('stat-card-inprogress')?.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); goRequestsThen(() => statCardNav('inprogress', 'inprogress')); } });
+document.getElementById('stat-card-completed')?.addEventListener('click', () => goRequestsThen(() => statCardNav('complete', 'completed')));
+document.getElementById('stat-card-completed')?.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); goRequestsThen(() => statCardNav('complete', 'completed')); } });
+document.getElementById('stat-card-workers')?.addEventListener('click', () => goRequestsThen(openWorkersPanel));
+document.getElementById('stat-card-workers')?.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); goRequestsThen(openWorkersPanel); } });
+document.getElementById('stat-card-revenue')?.addEventListener('click', () => goRequestsThen(openRevenueBreakdown));
+document.getElementById('stat-card-revenue')?.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); goRequestsThen(openRevenueBreakdown); } });
 
 // Find Tickets modal
 heroFindTicketsBtn?.addEventListener('click', openFindTicketsModal);
@@ -6369,6 +6738,7 @@ async function openTicketDetailModal(request) {
       <span class="status-pill">${escapeHtml(statusLabels[request.status] || request.status)}</span>
     </div>
     ${requestCardDetails(request)}
+    ${request.driven_miles ? `<p class="field-help" style="margin-top:10px">GPS-verified drive: <strong>${Number(request.driven_miles).toFixed(1)} mi</strong> actually driven for this job (proof-of-service).</p>` : ''}
     ${photosHtml}
     <div class="ticket-detail-edit-section" style="margin-top:18px">
       <div class="admin-button-row">
@@ -7004,53 +7374,64 @@ const SERVICE_PRICING_FIELDS = [
 function renderServicesSettingsList() {
   const list = document.querySelector('#services-settings-list');
   if (!list || list.dataset.rendered) return;
+  const chevron = '<svg class="svc-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>';
   list.innerHTML = `
-    <div class="pricing-group">
-      <div class="pricing-group-card">
-        <p class="pricing-group-label">Fuel Prices</p>
-        <div class="pricing-group-grid">
-          <label>Regular ($/gal)<input id="fp-regular" type="number" step="0.001" min="0"></label>
-          <label>Mid-grade ($/gal)<input id="fp-midgrade" type="number" step="0.001" min="0"></label>
-          <label>Premium ($/gal)<input id="fp-premium" type="number" step="0.001" min="0"></label>
-          <label>Diesel ($/gal)<input id="fp-diesel" type="number" step="0.001" min="0"></label>
-        </div>
-      </div>
-      <label class="pricing-fee-row">Fuel concierge service fee ($)<input id="sp-fuel-fee" type="number" step="0.01" min="0"></label>
-    </div>
+    <details class="svc-acc" open>
+      <summary class="svc-acc-head"><span>Fees</span>${chevron}</summary>
+      <div class="svc-acc-body">
 
-    <div class="pricing-group">
-      <div class="pricing-group-card">
-        <p class="pricing-group-label">Car Wash Packages</p>
-        <div class="pricing-group-grid">
-          <label>Buff &amp; Shine ($)<input id="sp-wash-buff-shine" type="number" step="0.01" min="0"></label>
-          <label>Shine &amp; Protect ($)<input id="sp-wash-shine-protect" type="number" step="0.01" min="0"></label>
-          <label>Shine ($)<input id="sp-wash-shine" type="number" step="0.01" min="0"></label>
-          <label>Double Wash ($)<input id="sp-wash-double" type="number" step="0.01" min="0"></label>
-        </div>
-      </div>
-      <label class="pricing-fee-row">Car wash service fee ($)<input id="sp-wash-fee" type="number" step="0.01" min="0"></label>
-    </div>
+        <details class="svc-sub-acc">
+          <summary class="svc-sub-acc-head"><span>Fuel Price</span>${chevron}</summary>
+          <div class="svc-sub-acc-body">
+            <div class="pricing-group-grid">
+              <label>Regular ($/gal)<input id="fp-regular" type="number" step="0.001" min="0"></label>
+              <label>Mid-grade ($/gal)<input id="fp-midgrade" type="number" step="0.001" min="0"></label>
+              <label>Premium ($/gal)<input id="fp-premium" type="number" step="0.001" min="0"></label>
+              <label>Diesel ($/gal)<input id="fp-diesel" type="number" step="0.001" min="0"></label>
+            </div>
+            <label class="pricing-fee-row">Fuel concierge service fee ($)<input id="sp-fuel-fee" type="number" step="0.01" min="0"></label>
+          </div>
+        </details>
 
-    <div class="pricing-group">
-      <label class="pricing-fee-row">Quick inspection fee ($)<input id="sp-inspection-fee" type="number" step="0.01" min="0"></label>
-      <label class="pricing-fee-row">Gas station distance surcharge ($/extra round-trip mile)<input id="sp-per-mile-rate" type="number" step="0.01" min="0"></label>
-      <p class="pricing-effective-hint">Applies to new and in-progress bookings immediately. Already-booked tickets keep their original surcharge.</p>
-    </div>
+        <details class="svc-sub-acc">
+          <summary class="svc-sub-acc-head"><span>Car Wash</span>${chevron}</summary>
+          <div class="svc-sub-acc-body">
+            <div class="pricing-group-grid">
+              <label>Buff &amp; Shine ($)<input id="sp-wash-buff-shine" type="number" step="0.01" min="0"></label>
+              <label>Shine &amp; Protect ($)<input id="sp-wash-shine-protect" type="number" step="0.01" min="0"></label>
+              <label>Shine ($)<input id="sp-wash-shine" type="number" step="0.01" min="0"></label>
+              <label>Double Wash ($)<input id="sp-wash-double" type="number" step="0.01" min="0"></label>
+            </div>
+            <label class="pricing-fee-row">Car wash service fee ($)<input id="sp-wash-fee" type="number" step="0.01" min="0"></label>
+          </div>
+        </details>
 
-    <div class="pricing-group">
-      <div class="pricing-group-card">
-        <p class="pricing-group-label">Time-Based Pay</p>
-        <div class="pricing-group-grid">
-          <label>Company time rate ($/min)<input id="sp-time-rate" type="number" step="0.01" min="0"></label>
-          <label>Fuel time — base (min)<input id="sp-fuel-time-base" type="number" step="0.1" min="0"></label>
-          <label>Fuel time — per gallon (min)<input id="sp-fuel-time-per-gal" type="number" step="0.1" min="0"></label>
-          <label>Car wash time (min)<input id="sp-wash-time" type="number" step="1" min="0"></label>
-          <label>Wash detour free miles<input id="sp-wash-detour-free" type="number" step="0.5" min="0"></label>
-          <label>Wash detour ($/mile)<input id="sp-wash-detour-rate" type="number" step="0.01" min="0"></label>
-        </div>
+        <details class="svc-sub-acc">
+          <summary class="svc-sub-acc-head"><span>Quick Inspection</span>${chevron}</summary>
+          <div class="svc-sub-acc-body">
+            <label class="pricing-fee-row">Quick inspection fee ($)<input id="sp-inspection-fee" type="number" step="0.01" min="0"></label>
+          </div>
+        </details>
+
+        <details class="svc-sub-acc">
+          <summary class="svc-sub-acc-head"><span>Time-Based Pay</span>${chevron}</summary>
+          <div class="svc-sub-acc-body">
+            <div class="pricing-group-grid">
+              <label>Company time rate ($/min)<input id="sp-time-rate" type="number" step="0.01" min="0"></label>
+              <label>Fuel time — base (min)<input id="sp-fuel-time-base" type="number" step="0.1" min="0"></label>
+              <label>Fuel time — per gallon (min)<input id="sp-fuel-time-per-gal" type="number" step="0.1" min="0"></label>
+              <label>Car wash time (min)<input id="sp-wash-time" type="number" step="1" min="0"></label>
+              <label>Wash detour free miles<input id="sp-wash-detour-free" type="number" step="0.5" min="0"></label>
+              <label>Wash detour ($/mile)<input id="sp-wash-detour-rate" type="number" step="0.01" min="0"></label>
+              <label>Gas station distance surcharge ($/extra round-trip mile)<input id="sp-per-mile-rate" type="number" step="0.01" min="0"></label>
+            </div>
+            <p class="pricing-effective-hint">Service time is baked into the customer's fee at the company rate (set $0 to turn it off). Each worker's actual per-minute pay is set on the Employees tab.</p>
+            <p class="pricing-effective-hint">The gas-station surcharge applies to new and in-progress bookings immediately. Already-booked tickets keep their original surcharge.</p>
+          </div>
+        </details>
+
       </div>
-      <p class="pricing-effective-hint">Service time is baked into the customer's fee at the company rate (set $0 to turn it off). Each worker's actual per-minute pay is set on the Employees tab.</p>
-    </div>
+    </details>
 
     <div class="pricing-effective-date-row">
       <div id="pricing-pending-banner" class="pricing-pending-banner" hidden></div>
@@ -7060,9 +7441,134 @@ function renderServicesSettingsList() {
         <input id="sp-effective-date" type="datetime-local">
       </label>
     </div>
+
+    <details class="pricing-sim" id="pricing-sim">
+      <summary><strong>Pricing &amp; payout simulator</strong></summary>
+      <p class="field-help">A sandbox to see what a job would cost the customer, what the worker earns, and how long it takes. It uses the rates above (edit them to test scenarios) and the numbers you type here — no live Mapbox or booking data.</p>
+      <div class="pricing-sim-inputs">
+        <label>Service
+          <select id="sim-service"><option value="fuel">Fuel only</option><option value="wash">Wash only</option><option value="both">Fuel + Wash</option></select>
+        </label>
+        <label>Gallons<input id="sim-gallons" type="number" min="0" step="1" value="10"></label>
+        <label>Price / gallon ($)<input id="sim-fuel-price" type="number" min="0" step="0.01" value="3.79"></label>
+        <label>Wash package
+          <select id="sim-wash-pkg">
+            <option value="sp-wash-buff-shine">Buff &amp; Shine</option>
+            <option value="sp-wash-shine-protect">Shine &amp; Protect</option>
+            <option value="sp-wash-shine">Shine</option>
+            <option value="sp-wash-double">Double Wash</option>
+          </select>
+        </label>
+        <label>Gas station round-trip miles<input id="sim-station-miles" type="number" min="0" step="0.1" value="0"></label>
+        <label>Car wash round-trip miles<input id="sim-wash-miles" type="number" min="0" step="0.1" value="0"></label>
+        <label>Worker pay rate ($/min)<input id="sim-worker-rate" type="number" min="0" step="0.01" value="0.50"></label>
+        <label class="sim-check"><input id="sim-quick" type="checkbox"> Quick vehicle care</label>
+      </div>
+      <div class="pricing-sim-output" id="sim-output"></div>
+    </details>
   `;
   list.dataset.rendered = '1';
+  runPricingSimulator();
 }
+
+// Reads the live pricing-form rates + the simulator's scenario inputs and renders a
+// full customer / worker / company breakdown. Pure math — no network, no real data.
+function simNum(id, dflt = 0) {
+  const n = Number(document.getElementById(id)?.value);
+  return Number.isFinite(n) ? n : dflt;
+}
+function runPricingSimulator() {
+  const out = document.getElementById('sim-output');
+  if (!out) return;
+  const service = document.getElementById('sim-service')?.value || 'fuel';
+  const needsFuel = service === 'fuel' || service === 'both';
+  const needsWash = service === 'wash' || service === 'both';
+  const quick = !!document.getElementById('sim-quick')?.checked;
+  const gallons = simNum('sim-gallons');
+  const pricePerGallon = simNum('sim-fuel-price');
+  const stationMiles = simNum('sim-station-miles');
+  const washMiles = simNum('sim-wash-miles');
+  const workerRateRaw = simNum('sim-worker-rate');
+
+  // Rates pulled live from the pricing form above (fall back to current constants).
+  const fuelFee = needsFuel ? simNum('sp-fuel-fee', BASE_FUEL_SERVICE_FEE) : 0;
+  const washFee = needsWash ? simNum('sp-wash-fee', BASE_WASH_SERVICE_FEE) : 0;
+  const inspFee = quick ? simNum('sp-inspection-fee', BASE_QUICK_INSPECTION_FEE) : 0;
+  const washPrice = needsWash ? simNum(document.getElementById('sim-wash-pkg')?.value || 'sp-wash-buff-shine', 0) : 0;
+  const companyRate = simNum('sp-time-rate', 0);
+  const fuelBaseMin = simNum('sp-fuel-time-base', 3);
+  const fuelPerGalMin = simNum('sp-fuel-time-per-gal', 0.5);
+  const washTimeMin = simNum('sp-wash-time', 20);
+  const washDetourFree = simNum('sp-wash-detour-free', 5);
+  const washDetourRate = simNum('sp-wash-detour-rate', 0.725);
+  const perMileRate = simNum('sp-per-mile-rate', 0.75);
+
+  // ── Customer side ──
+  const fuelCost = needsFuel ? roundMoneyValue(gallons * pricePerGallon) : 0;
+  const serviceMin = (needsFuel ? fuelBaseMin + fuelPerGalMin * gallons : 0) + (needsWash ? washTimeMin : 0);
+  const timeCharge = roundMoneyValue(serviceMin * companyRate);
+  const stationSurcharge = roundMoneyValue(stationMiles * perMileRate);
+  const netTarget = roundMoneyValue(fuelCost + washPrice + fuelFee + washFee + inspFee + stationSurcharge + timeCharge);
+  const customerTotal = netTarget > 0 ? Math.ceil((netTarget + RETURN_RECOVERY_FIXED) / (1 - RETURN_RECOVERY_RATE)) : 0;
+  const cardRecovery = roundMoneyValue(customerTotal - netTarget);
+
+  // ── Worker side ──
+  const workerRate = companyRate > 0 ? Math.min(workerRateRaw, companyRate) : workerRateRaw;
+  const feeGross = fuelFee + washFee + inspFee;
+  const feeStripe = roundMoneyValue(feeGross * RETURN_RECOVERY_RATE + RETURN_RECOVERY_FIXED);
+  const feeShare = feeGross > 0 ? roundMoneyValue(Math.max(0, feeGross - feeStripe) * WORKER_SERVICE_FEE_SHARE) : 0;
+  const mileagePay = roundMoneyValue(stationMiles * WORKER_MILEAGE_RATE);
+  const timePay = roundMoneyValue(serviceMin * workerRate);
+  const washDetourPay = roundMoneyValue(Math.max(0, washMiles - washDetourFree) * washDetourRate);
+  const workerPay = roundMoneyValue(feeShare + mileagePay + timePay + washDetourPay);
+
+  // ── Company keeps (service revenue minus worker pay; fuel/wash cost is pass-through) ──
+  const companyNet = roundMoneyValue(fuelFee + washFee + inspFee + timeCharge + stationSurcharge - workerPay);
+
+  // ── Time to complete ──
+  const minutes = Math.round(10 + 5 + ((stationMiles + washMiles) / 30) * 60 + (quick ? 10 : 0));
+
+  const row = (label, val, strong) => `<div class="sim-row${strong ? ' sim-row-total' : ''}"><span>${label}</span><span>${money(val)}</span></div>`;
+  out.innerHTML = `
+    <div class="sim-cols">
+      <div class="sim-card">
+        <h5>Customer pays</h5>
+        ${needsFuel ? row(`Fuel (${gallons} gal × ${money(pricePerGallon)})`, fuelCost) : ''}
+        ${needsWash ? row('Wash package', washPrice) : ''}
+        ${needsFuel ? row('Fuel service fee', fuelFee) : ''}
+        ${needsWash ? row('Wash service fee', washFee) : ''}
+        ${quick ? row('Quick vehicle care', inspFee) : ''}
+        ${timeCharge > 0 ? row(`Service time (${serviceMin.toFixed(1)} min × ${money(companyRate)})`, timeCharge) : ''}
+        ${stationSurcharge > 0 ? row('Gas station distance', stationSurcharge) : ''}
+        ${row('Card processing recovery', cardRecovery)}
+        ${row('Total', customerTotal, true)}
+      </div>
+      <div class="sim-card">
+        <h5>Worker earns</h5>
+        ${feeShare > 0 ? row('Service fee share (50%, net card)', feeShare) : ''}
+        ${mileagePay > 0 ? row(`Station mileage (${stationMiles} mi × ${money(WORKER_MILEAGE_RATE)})`, mileagePay) : ''}
+        ${timePay > 0 ? row(`Service time (${serviceMin.toFixed(1)} min × ${money(workerRate)})`, timePay) : ''}
+        ${washDetourPay > 0 ? row('Wash detour', washDetourPay) : ''}
+        ${row('Take-home', workerPay, true)}
+        ${workerRateRaw > companyRate && companyRate > 0 ? `<p class="field-help">Worker rate capped at the company rate (${money(companyRate)}/min).</p>` : ''}
+      </div>
+      <div class="sim-card">
+        <h5>Company keeps</h5>
+        ${row('Service revenue', roundMoneyValue(fuelFee + washFee + inspFee + timeCharge + stationSurcharge))}
+        ${row('Less worker pay', -workerPay)}
+        ${row('Net margin', companyNet, true)}
+        <p class="field-help">Fuel/wash cost is pass-through (reimbursed), not margin.</p>
+      </div>
+    </div>
+    <p class="sim-time"><strong>Worker time to complete:</strong> ~${minutes} min</p>
+  `;
+}
+
+// Recompute the simulator whenever a scenario input or a pricing-form rate changes.
+['input', 'change'].forEach((evt) => document.addEventListener(evt, (event) => {
+  const id = event.target?.id || '';
+  if (id.startsWith('sim-') || id.startsWith('sp-')) runPricingSimulator();
+}));
 
 // Gather the time-comp pricing params for admin_update_service_pricing. Falls back
 // to your defaults so a blank field never zeroes a rate by accident.

@@ -117,7 +117,6 @@
 		<button class="admin-page-tab" data-page="requests">Requests</button>
 		<button class="admin-page-tab" data-page="workers">Workers <span id="worker-count-badge" class="page-tab-badge">0</span></button>
 		<button class="admin-page-tab" data-page="payroll">Payroll</button>
-		<button class="admin-page-tab" data-page="promos">Promos</button>
 		<button class="admin-page-tab" data-page="services">Services</button>
 		<button class="admin-page-tab" data-page="settings">Settings</button>
 	  </nav>
@@ -153,7 +152,6 @@
 		  <a href="#" data-page="requests" class="admin-menu-item">Requests</a>
 		  <a href="#" data-page="workers" class="admin-menu-item">Workers</a>
 		  <a href="#" data-page="payroll" class="admin-menu-item">Payroll</a>
-		  <a href="#" data-page="promos" class="admin-menu-item">Promos</a>
 		  <a href="#" data-page="services" class="admin-menu-item">Services</a>
 		  <a href="#" data-page="settings" class="admin-menu-item">Settings</a>
 		  
@@ -217,6 +215,8 @@
             <span class="admin-stat-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="8.5"/><path d="M12 7v10M9.5 9.5a2.5 2 0 0 1 2.5-1.5c1.4 0 2.5.7 2.5 1.8 0 2.4-5 1.4-5 4 0 1.1 1.1 1.8 2.5 1.8s2.5-.7 2.5-1.7"/></svg></span>
           </div>
         </div>
+
+        <button class="admin-viewall-link" data-page-action="requests" data-request-view="unassigned" type="button">View all requests &rarr;</button>
 
         <!-- Active Workers inline panel -->
         <div id="workers-panel" class="revenue-breakdown-panel" hidden>
@@ -282,7 +282,7 @@
         </div>
       </section>
 
-      <section class="section admin-section admin-queue-section" data-page-section="dashboard requests" data-tab-panel="requests">
+      <section class="section admin-section admin-queue-section" data-page-section="requests" data-tab-panel="requests">
         <section class="admin-queue-card">
           <div class="admin-toolbar">
             <div>
@@ -419,6 +419,76 @@
           <button class="button primary" type="submit">Save service pricing</button>
           <p id="services-settings-status" class="form-status" role="status"></p>
         </form>
+
+        <details class="svc-acc" id="promos-acc">
+          <summary class="svc-acc-head"><span>Promos</span><svg class="svc-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></summary>
+          <div class="svc-acc-body">
+            <div class="admin-toolbar">
+              <p class="field-help">Discount codes applied at booking. Target everyone, first-time, or returning customers — validated server-side so they can't be faked.</p>
+              <button type="button" class="button primary" id="promo-new-btn">+ New code</button>
+            </div>
+
+            <form id="promo-form" class="admin-card promo-form" hidden>
+              <input type="hidden" id="promo-id">
+              <div class="promo-form-grid">
+                <label>Code
+                  <input type="text" id="promo-code" placeholder="NEW20" autocapitalize="characters" autocomplete="off" maxlength="32" required>
+                </label>
+                <label>Description (optional)
+                  <input type="text" id="promo-description" placeholder="20% off for first-timers" maxlength="120">
+                </label>
+                <label>Discount type
+                  <select id="promo-discount-type">
+                    <option value="percent">Percent (%)</option>
+                    <option value="fixed">Fixed ($)</option>
+                  </select>
+                </label>
+                <label>Value
+                  <input type="number" id="promo-discount-value" min="0" step="0.01" placeholder="20" required>
+                </label>
+                <label>Applies to
+                  <select id="promo-applies-to">
+                    <option value="service_fees">Service fees (margin)</option>
+                    <option value="wash_and_fees">Service fees + wash price</option>
+                    <option value="total">Whole total (incl. fuel + wash)</option>
+                    <option value="fuel_service">Fuel service fee only</option>
+                    <option value="wash_service">Car wash service fee only</option>
+                    <option value="inspection">Quick Vehicle Care fee only</option>
+                  </select>
+                </label>
+                <label>Who can use it
+                  <select id="promo-audience">
+                    <option value="all">All customers</option>
+                    <option value="new">New customers only</option>
+                    <option value="returning">Returning customers only</option>
+                  </select>
+                </label>
+                <label>Minimum order ($)
+                  <input type="number" id="promo-min-order" min="0" step="0.01" placeholder="0">
+                </label>
+                <label>Uses per customer
+                  <input type="number" id="promo-per-customer" min="0" step="1" placeholder="1">
+                </label>
+                <label>Total redemption cap
+                  <input type="number" id="promo-max-redemptions" min="1" step="1" placeholder="Unlimited">
+                </label>
+                <label>Expires (optional)
+                  <input type="date" id="promo-expires">
+                </label>
+                <label class="promo-active-label">
+                  <input type="checkbox" id="promo-active" checked> Active
+                </label>
+              </div>
+              <p id="promo-form-status" class="form-status" role="status"></p>
+              <div class="admin-button-row">
+                <button type="submit" class="button primary" id="promo-save-btn">Save code</button>
+                <button type="button" class="button secondary" id="promo-cancel-btn">Cancel</button>
+              </div>
+            </form>
+
+            <div id="promos-list"></div>
+          </div>
+        </details>
       </section>
 
       <section class="section admin-section" data-tab-panel="workers" data-page-section="workers" hidden>
@@ -428,6 +498,7 @@
             <h2>Workers</h2>
           </div>
         </div>
+        <div id="admin-change-requests" class="admin-change-requests"></div>
         <div id="admin-worker-profile-list" class="worker-profile-list"></div>
       </section>
 
@@ -446,76 +517,6 @@
         <div id="payroll-content"></div>
       </section>
 
-      <section class="section admin-section" data-tab-panel="promos" data-page-section="promos" hidden>
-        <div class="admin-toolbar">
-          <div>
-            <p class="eyebrow">Marketing</p>
-            <h2>Promo codes</h2>
-            <p class="field-help">Discounts on service fees at booking. Target everyone, first-time, or returning customers — validated server-side so they can't be faked.</p>
-          </div>
-          <button type="button" class="button primary" id="promo-new-btn">+ New code</button>
-        </div>
-
-        <form id="promo-form" class="admin-card promo-form" hidden>
-          <input type="hidden" id="promo-id">
-          <div class="promo-form-grid">
-            <label>Code
-              <input type="text" id="promo-code" placeholder="NEW20" autocapitalize="characters" autocomplete="off" maxlength="32" required>
-            </label>
-            <label>Description (optional)
-              <input type="text" id="promo-description" placeholder="20% off for first-timers" maxlength="120">
-            </label>
-            <label>Discount type
-              <select id="promo-discount-type">
-                <option value="percent">Percent (%)</option>
-                <option value="fixed">Fixed ($)</option>
-              </select>
-            </label>
-            <label>Value
-              <input type="number" id="promo-discount-value" min="0" step="0.01" placeholder="20" required>
-            </label>
-            <label>Applies to
-              <select id="promo-applies-to">
-                <option value="service_fees">Service fees (margin)</option>
-                <option value="wash_and_fees">Service fees + wash price</option>
-                <option value="total">Whole total (incl. fuel + wash)</option>
-                <option value="fuel_service">Fuel service fee only</option>
-                <option value="wash_service">Car wash service fee only</option>
-                <option value="inspection">Quick Vehicle Care fee only</option>
-              </select>
-            </label>
-            <label>Who can use it
-              <select id="promo-audience">
-                <option value="all">All customers</option>
-                <option value="new">New customers only</option>
-                <option value="returning">Returning customers only</option>
-              </select>
-            </label>
-            <label>Minimum order ($)
-              <input type="number" id="promo-min-order" min="0" step="0.01" placeholder="0">
-            </label>
-            <label>Uses per customer
-              <input type="number" id="promo-per-customer" min="0" step="1" placeholder="1">
-            </label>
-            <label>Total redemption cap
-              <input type="number" id="promo-max-redemptions" min="1" step="1" placeholder="Unlimited">
-            </label>
-            <label>Expires (optional)
-              <input type="date" id="promo-expires">
-            </label>
-            <label class="promo-active-label">
-              <input type="checkbox" id="promo-active" checked> Active
-            </label>
-          </div>
-          <p id="promo-form-status" class="form-status" role="status"></p>
-          <div class="admin-button-row">
-            <button type="submit" class="button primary" id="promo-save-btn">Save code</button>
-            <button type="button" class="button secondary" id="promo-cancel-btn">Cancel</button>
-          </div>
-        </form>
-
-        <div id="promos-list"></div>
-      </section>
 
       <section class="section admin-section" data-tab-panel="settings" data-page-section="settings" hidden>
         <div class="admin-toolbar">
@@ -786,10 +787,6 @@
       <button class="app-tab" data-tab data-tab-action=".admin-page-tabs [data-page='payroll']" type="button">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M12 7v10"/><path d="M14.6 9.3c-.5-.8-1.5-1.3-2.6-1.3-1.5 0-2.6.8-2.6 2s1.1 1.7 2.6 1.9 2.7.7 2.7 2-1.2 2-2.7 2c-1.2 0-2.2-.5-2.7-1.4"/></svg>
         <span>Payroll</span>
-      </button>
-      <button class="app-tab" data-tab data-tab-action=".admin-page-tabs [data-page='promos']" type="button">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M20.5 13.4l-7.1 7.1a1.5 1.5 0 0 1-2.1 0l-7.8-7.8V4h8.7l8.3 8.3a1.5 1.5 0 0 1 0 1.1z"/><circle cx="7.6" cy="7.6" r="1.2"/></svg>
-        <span>Promos</span>
       </button>
       <button class="app-tab" data-tab data-tab-action=".admin-page-tabs [data-page='services']" type="button">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 7h16M4 12h16M4 17h10"/></svg>

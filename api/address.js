@@ -486,7 +486,9 @@ async function handleRouteEta(body, res) {
     return res.status(400).json({ ok: false, message: 'Missing coordinates.' });
   }
   try {
-    const url = `https://api.mapbox.com/directions/v5/mapbox/driving/${oLon},${oLat};${dLon},${dLat}?access_token=${MAPBOX_TOKEN}&overview=false`;
+    // driving-traffic: live-traffic ETA so the customer's "how far out is my
+    // specialist" banner reflects current conditions (same API + price tier).
+    const url = `https://api.mapbox.com/directions/v5/mapbox/driving-traffic/${oLon},${oLat};${dLon},${dLat}?access_token=${MAPBOX_TOKEN}&overview=false`;
     const r = await fetch(url, { headers: MAPBOX_FETCH_HEADERS });
     if (!r.ok) return res.status(200).json({ ok: false });
     const data = await r.json();

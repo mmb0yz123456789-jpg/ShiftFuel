@@ -81,15 +81,19 @@ function isNameBrand(name) {
 }
 
 // Collapse an address to a comparison key so "414 Main Street, …" and
-// "414 Main St, …" are treated as the same place.
+// "414 Main St, …" are treated as the same place. Hyphens are treated as spaces
+// ("Ogletown-Stanton" == "Ogletown Stanton") and street-type suffixes are folded
+// to one form INCLUDING the plural/abbreviated variants Mapbox sometimes returns
+// ("Rds" vs "Rd"), so two brands at the same address collapse to one listing.
 function normalizeAddressKey(address) {
   let s = String(address || '').toLowerCase();
-  s = s.replace(/,?\s*united states$/, '').replace(/[.,]/g, ' ');
+  s = s.replace(/,?\s*united states$/, '').replace(/[.,\-/]/g, ' ');
   const suffixes = {
-    street: 'st', avenue: 'ave', boulevard: 'blvd', highway: 'hwy', road: 'rd',
+    street: 'st', streets: 'st', avenue: 'ave', avenues: 'ave', boulevard: 'blvd',
+    highway: 'hwy', highways: 'hwy', road: 'rd', roads: 'rd', rds: 'rd',
     drive: 'dr', lane: 'ln', court: 'ct', place: 'pl', parkway: 'pkwy', terrace: 'ter',
   };
-  s = s.replace(/\b(street|avenue|boulevard|highway|road|drive|lane|court|place|parkway|terrace)\b/g,
+  s = s.replace(/\b(streets?|avenues?|boulevard|highways?|roads?|rds|drive|lane|court|place|parkway|terrace)\b/g,
     (m) => suffixes[m] || m);
   return s.replace(/\s+/g, ' ').trim();
 }

@@ -52,7 +52,7 @@ const ALLOWED_BOOKING_FIELDS = [
   'vehicle_year', 'vehicle_make', 'vehicle_model', 'vehicle_color', 'license_plate', 'vehicle_id',
   'hospital', 'address_street', 'address_apt', 'address_city', 'address_state', 'address_zip', 'address_validation_status',
   'parking_location', 'parking_spot', 'parking_map_url', 'key_handoff_details', 'special_instructions',
-  'service_type', 'service_label', 'service_date', 'desired_return_time',
+  'service_type', 'service_label', 'service_date', 'desired_return_time', 'desired_pickup_time',
   'fuel_type', 'estimated_fuel_range', 'estimated_gallons', 'selected_fuel_gallons', 'authorization_fuel_gallons',
   'price_per_gallon', 'estimated_fuel_amount', 'fuel_convenience_fee',
   'wash_package', 'wash_package_label', 'wash_fee', 'wash_convenience_fee',
@@ -120,6 +120,8 @@ function sanitizeBookingRow(row) {
 
   if (row.service_date == null) delete row.service_date;
   if (row.desired_return_time == null) delete row.desired_return_time;
+  // Empty string would break the `time` column; treat blank pickup as "flexible".
+  if (!row.desired_pickup_time) delete row.desired_pickup_time;
 }
 
 async function attachLegacyUserAndVehicle(db, row) {

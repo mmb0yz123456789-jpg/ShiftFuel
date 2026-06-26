@@ -287,7 +287,9 @@
   // ── Directions + route drawing ───────────────────────────────────────────────
   async function fetchDirections(origin, dest) {
     const coords = `${origin.lon},${origin.lat};${dest.lon},${dest.lat}`;
-    const url = `https://api.mapbox.com/directions/v5/mapbox/driving/${coords}?access_token=${MAPBOX_TOKEN}&geometries=geojson&overview=full&steps=true`;
+    // driving-traffic: live-traffic-aware ETA + routing for in-app navigation
+    // (same Directions API + price tier as plain driving).
+    const url = `https://api.mapbox.com/directions/v5/mapbox/driving-traffic/${coords}?access_token=${MAPBOX_TOKEN}&geometries=geojson&overview=full&steps=true`;
     try {
       const r = await fetch(url);
       if (!r.ok) return null;

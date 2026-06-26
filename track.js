@@ -1358,18 +1358,31 @@ function renderPhotos(request, photos) {
 function inspectionSummaryFromNotes(request) {
   const notes = String(request.notes || "");
   const codeMatches = Array.from(notes.matchAll(/Trouble code ([A-Z0-9]+): ([\s\S]*?) Possible fixes: ([^\n]+)/g));
-  const psiMatches = Array.from(notes.matchAll(/Tire PSI before\/after: ([\s\S]*?)(?:\. Trouble code|\n|$)/g));
+  // New format: "Tire pressure set (door-jamb 35): driver front 35, …."
+  const newPsiMatches = Array.from(notes.matchAll(/Tire pressure set \(door-jamb ([^)]*)\): ([^.]*)\./g));
+  // Legacy format (jobs completed before the inspection redesign).
+  const oldPsiMatches = Array.from(notes.matchAll(/Tire PSI before\/after: ([\s\S]*?)(?:\. Trouble code|\n|$)/g));
+  const washerMatches = Array.from(notes.matchAll(/Windshield washer fluid: ([^.\n]+)/g));
   const latestCode = codeMatches.at(-1);
-  const latestPsi = psiMatches.at(-1);
+  const latestNewPsi = newPsiMatches.at(-1);
+  const latestOldPsi = oldPsiMatches.at(-1);
+  const latestWasher = washerMatches.at(-1);
 
-  if (!latestCode && !latestPsi) {
+  if (!latestCode && !latestNewPsi && !latestOldPsi && !latestWasher) {
     return "";
   }
+
+  const psiHtml = latestNewPsi
+    ? `<p><strong>Tire pressure:</strong> ${escapeHtml(latestNewPsi[2].trim())} (door-jamb ${escapeHtml(latestNewPsi[1].trim())} PSI).</p>`
+    : latestOldPsi
+      ? `<p><strong>Tire pressure:</strong> ${escapeHtml(latestOldPsi[1].trim().replace(/\.$/, ""))}.</p>`
+      : "";
 
   return `
     <section class="inspection-summary">
       <h3>Vehicle inspection</h3>
-      ${latestPsi ? `<p><strong>Tire pressure:</strong> ${escapeHtml(latestPsi[1].trim().replace(/\.$/, ""))}.</p>` : ""}
+      ${psiHtml}
+      ${latestWasher ? `<p><strong>Windshield washer fluid:</strong> ${escapeHtml(latestWasher[1].trim())}.</p>` : ""}
       ${latestCode ? `
         <p><strong>Trouble code ${escapeHtml(latestCode[1])}:</strong> ${escapeHtml(latestCode[2].trim())}</p>
         <p><strong>Possible fixes:</strong> ${escapeHtml(latestCode[3].trim())}</p>

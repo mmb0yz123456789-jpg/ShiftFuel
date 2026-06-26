@@ -10632,3 +10632,17 @@ justify-self: start;
    card must sit BELOW the header. Without this it inherited the hero's negative
    top margin and pulled up under the header, clipping the shield badge. */
 .staff-access-page .portal-login-card { margin-top: 24px; }
+
+/* Pricing & payout simulator (admin Services tab) */
+.pricing-sim { margin-top: 18px; border: 1px solid #e3ece8; border-radius: 12px; padding: 12px 14px; }
+.pricing-sim > summary { cursor: pointer; font-size: 1rem; color: #0d3b3b; }
+.pricing-sim-inputs { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 10px; margin: 12px 0; }
+.pricing-sim-inputs label { display: flex; flex-direction: column; gap: 4px; font-size: .82rem; font-weight: 700; color: #334; }
+.pricing-sim-inputs .sim-check { flex-direction: row; align-items: center; gap: 8px; }
+.pricing-sim-inputs .sim-check input { width: auto; }
+.sim-cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }
+.sim-card { background: #f6faf8; border: 1px solid #e3ece8; border-radius: 10px; padding: 10px 12px; }
+.sim-card h5 { margin: 0 0 8px; color: #0d3b3b; font-size: .95rem; }
+.sim-row { display: flex; justify-content: space-between; gap: 12px; font-size: .88rem; padding: 3px 0; }
+.sim-row-total { font-weight: 800; border-top: 1px solid #d7e3de; margin-top: 4px; padding-top: 6px; }
+.sim-time { margin-top: 12px; font-size: .95rem; }

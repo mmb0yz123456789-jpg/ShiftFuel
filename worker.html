@@ -201,6 +201,18 @@
               <div id="worker-today-counts" class="worker-today-counts"></div>
             </section>
 
+            <!-- Earnings breakdown (desktop dashboard only) — the data-rich lead.
+                 The phone keeps its lean Earnings tab; the computer view surfaces
+                 today / week / month / all-time at a glance. -->
+            <section class="section worker-desktop-only">
+              <div class="worker-dashboard-card">
+                <div class="worker-card-heading"><h2>Earnings</h2></div>
+                <div id="worker-earnings-breakdown" class="worker-earnings-breakdown">
+                  <div class="worker-state-card worker-state-empty"><p>Loading earnings…</p></div>
+                </div>
+              </div>
+            </section>
+
             <!-- Today's jobs with step-by-step guidance — the home work surface. -->
             <section class="section worker-today-section">
               <div class="worker-card-heading worker-today-heading">
@@ -209,6 +221,18 @@
               </div>
               <div id="worker-dashboard-today" class="worker-today-list">
                 <div class="worker-state-card worker-state-empty"><p>Loading today’s jobs…</p></div>
+              </div>
+            </section>
+
+            <!-- Upcoming agenda (desktop dashboard only) — claimed jobs dated
+                 beyond today, so the worker sees the week ahead. Read-only;
+                 they act on each one from the phone when its day comes. -->
+            <section class="section worker-desktop-only">
+              <div class="worker-dashboard-card">
+                <div class="worker-card-heading"><h2>Upcoming</h2></div>
+                <div id="worker-upcoming-schedule" class="worker-upcoming-schedule">
+                  <div class="worker-state-card worker-state-empty"><p>Loading upcoming jobs…</p></div>
+                </div>
               </div>
             </section>
 
@@ -230,6 +254,17 @@
                     <span class="worker-stat-value" id="worker-stat-rating">&mdash;</span>
                     <span class="worker-stat-label">Customer Rating</span>
                   </button>
+                </div>
+              </div>
+            </section>
+
+            <!-- Completed job history (desktop dashboard only) — the full record,
+                 read-only, with each job's locked payout. -->
+            <section class="section worker-desktop-only">
+              <div class="worker-dashboard-card">
+                <div class="worker-card-heading"><h2>Job History</h2></div>
+                <div id="worker-job-history" class="worker-job-history">
+                  <div class="worker-state-card worker-state-empty"><p>Loading history…</p></div>
                 </div>
               </div>
             </section>
@@ -326,7 +361,65 @@
             <p id="worker-schedule-status" class="field-help"></p>
           </form>
         </section>
+
+        <!-- Request a change → admin approval queue (schedule changes your own
+             availability settings can't cover: time off, hours, one-offs). -->
+        <section class="section worker-change-requests-view">
+          <div class="section-heading"><h2>Request a Change</h2></div>
+          <div class="worker-dashboard-card">
+            <p class="field-help">Need something your availability settings can't cover — time off, different hours, or a one-off? Send it to your admin to review.</p>
+            <label>What kind of change?
+              <select id="wcr-schedule-type">
+                <option value="time_off">Time off</option>
+                <option value="hours_change">Change my hours</option>
+                <option value="other">Other</option>
+              </select>
+            </label>
+            <label id="wcr-schedule-date-row">Date off <span class="optional-mark">For time off</span>
+              <input id="wcr-schedule-date" type="date">
+              <span class="field-help">If you pick a date, approving it marks that day off automatically.</span>
+            </label>
+            <label>Details
+              <textarea id="wcr-schedule-details" rows="3" placeholder="e.g. I need Friday off, or change Mondays to 10am–3pm"></textarea>
+            </label>
+            <button class="button primary" id="wcr-schedule-submit" type="button">Submit request</button>
+            <p id="wcr-schedule-status" class="field-help"></p>
+          </div>
+          <div class="worker-dashboard-card">
+            <div class="worker-card-heading"><h2>My Requests</h2></div>
+            <div id="worker-change-requests-list"><p class="field-help">Loading your requests…</p></div>
+          </div>
+        </section>
       </div><!-- /wtab-schedule -->
+
+      <!-- Job-change request modal (opened from a job card's "Request a change"). -->
+      <div id="worker-jobchange-overlay" class="worker-profile-panel-overlay"></div>
+      <div id="worker-jobchange-modal" class="worker-profile-panel" hidden>
+        <div class="worker-profile-panel-inner">
+          <div class="wacc-head">
+            <div>
+              <h2>Request a job change</h2>
+              <p class="wacc-sub" id="wcr-job-subtitle"></p>
+            </div>
+            <button class="wacc-close" id="wcr-job-close" type="button" aria-label="Close">&times;</button>
+          </div>
+          <div class="wcr-job-body">
+            <label>What do you need?
+              <select id="wcr-job-type">
+                <option value="drop">Drop this job</option>
+                <option value="reschedule">Reschedule</option>
+                <option value="swap">Swap with another worker</option>
+                <option value="other">Other</option>
+              </select>
+            </label>
+            <label>Details
+              <textarea id="wcr-job-details" rows="3" placeholder="Tell your admin what you need and why"></textarea>
+            </label>
+            <button class="button primary" id="wcr-job-submit" type="button">Send to admin</button>
+            <p id="wcr-job-status" class="field-help"></p>
+          </div>
+        </div>
+      </div>
 
       <!-- ── Tab: Earnings ──────────────────────────────────── -->
       <div id="wtab-earnings" class="worker-tab" hidden>
@@ -336,6 +429,24 @@
           </div>
           <div id="worker-earnings-list" class="worker-earnings">
             <div class="worker-state-card worker-state-empty"><p>No completed jobs yet today.</p></div>
+          </div>
+        </section>
+        <section class="section">
+          <div class="section-heading">
+            <h2>Earnings calculator</h2>
+          </div>
+          <div class="worker-dashboard-card worker-pay-calc" id="worker-pay-calc">
+            <p class="field-help">Estimate your take-home and time for a job. Just type in the numbers — nothing here affects a real job.</p>
+            <div class="worker-pay-calc-inputs">
+              <label>Service
+                <select id="wcalc-service"><option value="fuel">Fuel only</option><option value="wash">Wash only</option><option value="both">Fuel + Wash</option></select>
+              </label>
+              <label>Gallons<input id="wcalc-gallons" type="number" min="0" step="1" value="10"></label>
+              <label>Gas station round-trip miles<input id="wcalc-station-miles" type="number" min="0" step="0.1" value="0"></label>
+              <label>Car wash round-trip miles<input id="wcalc-wash-miles" type="number" min="0" step="0.1" value="0"></label>
+              <label class="worker-pay-calc-check"><input id="wcalc-quick" type="checkbox"> Quick vehicle care</label>
+            </div>
+            <div class="worker-pay-calc-output" id="wcalc-output"></div>
           </div>
         </section>
       </div><!-- /wtab-earnings -->

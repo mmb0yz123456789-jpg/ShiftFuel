@@ -219,8 +219,12 @@ const stepCopy = {
         <label><span>Desired return time <span class="required-mark">Required</span></span><select data-required name="returnTime" data-return-time>
           <option value="">Select return time</option>
         </select></label>
+        <label class="span-2"><span>Earliest pickup / drop-off time <span class="optional-mark">Optional</span></span>
+          <input type="time" step="1800" name="pickupTime" data-pickup-time>
+        </label>
       </div>
       <p class="field-help">Return times are shown in 30-minute increments. Unavailable and fully booked times are not selectable.</p>
+      <p class="field-help">Pickup time is the earliest your keys/vehicle are available. Leave it blank if you're flexible — a wider gap before your return time gives us more ways to fit your service in.</p>
     `,
   },
   Handoff: {
@@ -586,6 +590,21 @@ function isMissingRpcError(error) {
     || (message.includes("function") && message.includes("does not exist"));
 }
 
+// Rough minutes a job will occupy a worker, mirroring the worker app's
+// time-to-complete estimate (worker.js workerEstimatedMinutes): drive to the
+// site + find the car + the round-trip pump/wash drive legs + quick-care time.
+// Used to size the capacity block when checking which return times can be staffed.
+const EST_TO_DESTINATION_MIN = 10;
+const EST_FIND_CAR_MIN = 5;
+const EST_QUICK_CARE_MIN = 10;
+function estimateBookingMinutes() {
+  const stationRT = serviceNeedsFuel() ? (Number(bookingState.station.oneWayMiles) || 0) * 2 : 0;
+  const washRT = serviceNeedsWash() ? (Number(washEstimate.oneWayMiles) || 0) * 2 : 0;
+  const driveLegs = ((stationRT + washRT) / 30) * 60; // legs at ~30 mph
+  const quickCare = bookingState.values.quickCare ? EST_QUICK_CARE_MIN : 0;
+  return Math.round(EST_TO_DESTINATION_MIN + EST_FIND_CAR_MIN + driveLegs + quickCare);
+}
+
 function availableTimeOptions() {
   const selectedDate = bookingState.values.serviceDate || "";
   const now = new Date();
@@ -593,6 +612,11 @@ function availableTimeOptions() {
   const bookedSlots = bookingState.bookedSlots || new Set();
   const availabilitySlots = bookingState.availabilitySlots;
   const hasAvailabilityLookup = availabilitySlots instanceof Set;
+  // Capacity is the authority when present: the server already folded in worker
+  // shifts, duration, the pickup window, and existing bookings, so a slot it
+  // returns is genuinely staffable and one it omits is full / too tight.
+  const capacitySlots = bookingState.capacitySlots;
+  const hasCapacity = capacitySlots instanceof Set;
   // Car wash bookings must be returned before the wash closes (8 AM–7 PM),
   // so the latest selectable return time is capped at 6:00 PM to leave an
   // hour of buffer for the wash and drive-back. The start of the window is
@@ -605,10 +629,15 @@ function availableTimeOptions() {
       const value = timeValue(hour, minute);
       const optionDate = new Date(`${selectedDate || todayValue()}T${value}:00`);
       const past = isToday && optionDate <= now;
-      const booked = bookedSlots.has(value);
       const afterWashCutoff = washClose && (hour > 18 || (hour === 18 && minute > 0));
+      // In capacity mode the server's list already accounts for existing bookings,
+      // so a missing slot means "full / can't fit" — no separate booked check.
+      // Otherwise fall back to the older availability + one-per-slot booked logic.
+      const booked = hasCapacity ? false : bookedSlots.has(value);
       const unavailable = afterWashCutoff
-        || (hasAvailabilityLookup ? !availabilitySlots.has(value) : (hour < 9 || hour > 17 || (hour === 17 && minute > 0)));
+        || (hasCapacity
+              ? !capacitySlots.has(value)
+              : (hasAvailabilityLookup ? !availabilitySlots.has(value) : (hour < 9 || hour > 17 || (hour === 17 && minute > 0))));
       if (!unavailable || bookingState.values.returnTime === value) {
         options.push({ value, label: timeLabel(hour, minute), disabled: past || booked || unavailable });
       }
@@ -620,15 +649,24 @@ function availableTimeOptions() {
 async function loadBookedSlots() {
   bookingState.bookedSlots = new Set();
   bookingState.availabilitySlots = null;
+  bookingState.capacitySlots = null;
   if (!window.ShiftFuelSupabase || !bookingState.values.serviceDate) return;
+  // Size the capacity block to this job's estimate and respect the pickup window.
+  const durationMinutes = estimateBookingMinutes();
+  const pickupTime = bookingState.values.pickupTime ? `${bookingState.values.pickupTime}:00` : null;
   try {
-    const [bookedResult, availabilityResult] = await Promise.all([
+    const [bookedResult, availabilityResult, capacityResult] = await Promise.all([
       window.ShiftFuelSupabase.rpc("public_booked_return_slots", {
         p_service_date: bookingState.values.serviceDate,
       }),
       window.ShiftFuelSupabase.rpc("public_worker_availability_slots", {
         p_service_date: bookingState.values.serviceDate,
         p_hospital: "",
+      }),
+      window.ShiftFuelSupabase.rpc("public_capacity_return_slots", {
+        p_service_date: bookingState.values.serviceDate,
+        p_duration_minutes: durationMinutes,
+        p_pickup_time: pickupTime,
       }),
     ]);
 
@@ -647,6 +685,19 @@ async function loadBookedSlots() {
       }
     } else {
       bookingState.availabilitySlots = new Set((availabilityResult?.data || [])
+        .map((row) => normalizeTimeSlot(row.slot))
+        .filter(Boolean));
+    }
+
+    // Capacity gate (authoritative when present). Fail-open: if the RPC hasn't
+    // been deployed yet, or errors, leave capacitySlots null so the older
+    // availability/booked logic still drives the dropdown.
+    if (capacityResult?.error) {
+      if (!isMissingRpcError(capacityResult.error)) {
+        console.warn("Could not load capacity slots:", capacityResult.error);
+      }
+    } else {
+      bookingState.capacitySlots = new Set((capacityResult?.data || [])
         .map((row) => normalizeTimeSlot(row.slot))
         .filter(Boolean));
     }
@@ -1876,8 +1927,8 @@ function renderServiceDetails(panel) {
 
   container.innerHTML = `
     ${fuelFields}
-    ${washFields}
     ${stationFields}
+    ${washFields}
     <div class="placeholder-note">Only fields needed for your selected service are shown.</div>
   `;
   if (WASH_PACKAGES.length === 1 && serviceNeedsWash()) bookingState.values.washPackage = WASH_PACKAGES[0].value;
@@ -2194,7 +2245,9 @@ function renderScheduleFields(panel) {
   const selectedTime = bookingState.values.returnTime || "";
   const options = availableTimeOptions();
   const placeholder = bookingState.values.serviceDate && options.length === 0
-    ? "No return times available for this date"
+    ? (bookingState.values.pickupTime
+        ? "No staffable times — try an earlier pickup time or another date"
+        : "No return times available for this date")
     : "Select return time";
   timeSelect.innerHTML = `<option value="">${placeholder}</option>${options.map((option) => `
     <option value="${option.value}" ${option.disabled ? "disabled" : ""} ${option.value === selectedTime && !option.disabled ? "selected" : ""}>${option.label}${option.disabled ? " - unavailable" : ""}</option>
@@ -2638,6 +2691,7 @@ function buildBookingPayload() {
   const washPackage = selectedWashPackage();
   const serviceDate = bookingState.values.serviceDate || "";
   const returnTime = bookingState.values.returnTime || "";
+  const pickupTime = bookingState.values.pickupTime || "";
   const notes = [
     bookingState.values.specialInstructions ? `[special_instructions] ${bookingState.values.specialInstructions}` : "",
     "[booking_source shared_flow]",
@@ -2695,6 +2749,9 @@ function buildBookingPayload() {
     service_label: serviceLabel(),
     service_date: serviceDate,
     desired_return_time: returnTime ? `${returnTime}:00` : "",
+    // Optional earliest-pickup constraint. Omit entirely when blank so the empty
+    // string never reaches the `time` column (NULL = customer is flexible).
+    desired_pickup_time: pickupTime ? `${pickupTime}:00` : undefined,
     fuel_type: serviceNeedsFuel() ? bookingState.values.fuelType || "" : "",
     estimated_fuel_range: serviceNeedsFuel() ? bookingState.values.fuelPreference || "" : "",
     estimated_gallons: totals.fuelGallons,
@@ -2827,6 +2884,7 @@ function renderReviewSummary(panel) {
       ${serviceNeedsFuel() && bookingState.station.name ? `<div><dt>Gas station</dt><dd>${escapeHtml(bookingState.station.name)}${totals.stationSurcharge > 0 ? ` | +${formatMoney(totals.stationSurcharge)} distance surcharge` : " | Closest (no extra charge)"}</dd></div>` : ""}
       <div><dt>Add-ons</dt><dd>${escapeHtml(addOns)}</dd></div>
       <div><dt>Service date</dt><dd>${escapeHtml(values.serviceDate || "Not selected")}</dd></div>
+      ${values.pickupTime ? `<div><dt>Earliest pickup time</dt><dd>${escapeHtml(values.pickupTime)}</dd></div>` : ""}
       <div><dt>Desired return time</dt><dd>${escapeHtml(values.returnTime || "Not selected")}</dd></div>
       <div><dt>Parking location</dt><dd>${escapeHtml(values.parking || "Not entered")}</dd></div>
       <div><dt>Key handoff details</dt><dd>${escapeHtml(values.handoff || "Not entered")}</dd></div>
@@ -2987,6 +3045,13 @@ function renderFlow(root) {
       renderServiceDetails(panel);
     }
     if (event.target.matches('[name="serviceDate"]')) {
+      bookingState.values.returnTime = "";
+      await loadBookedSlots();
+      renderScheduleFields(panel);
+    }
+    if (event.target.matches('[name="pickupTime"]')) {
+      // Pickup is the earliest-start bound, so it changes which return times can
+      // be staffed — reload the capacity-filtered slots and make them re-pick.
       bookingState.values.returnTime = "";
       await loadBookedSlots();
       renderScheduleFields(panel);

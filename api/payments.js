@@ -27,6 +27,7 @@ const { verifyServiceArea } = require('./_service-area');
 const { computeSurchargeForChosen, PER_MILE_RATE } = require('./_gas-stations');
 const { enforceRateLimit } = require('./_rate-limit');
 const { amountsFromRow, validatePromoForCustomer, recordPromoRedemption } = require('./_promos');
+const { recordDrivenMileage } = require('./_route-mileage');
 
 // Per-IP caps on the actions that reach Mapbox before Stripe verification.
 const PAYMENTS_RATE_LIMITS = {
@@ -315,6 +316,13 @@ async function markRequestComplete(db, requestId, paymentIntentId, capturedAmoun
     console.error('[payments] post-write verify failed for request', requestId, JSON.stringify(verified), vErr?.message);
     throw new Error('DB_UPDATE_FAILED');
   }
+
+  // Best-effort: stamp GPS-verified driven mileage + route for payroll/proof.
+  // Idempotent (one Map Matching call per job) and fully swallowed — mileage
+  // proof must never affect completion or payment capture.
+  try {
+    await recordDrivenMileage({ supabaseAdmin: db, requestId });
+  } catch (_) { /* proof only — ignore */ }
 }
 
 // ── Action handlers ───────────────────────────────────────────────────────────
@@ -442,7 +450,7 @@ const ALLOWED_BOOKING_FIELDS = [
   'gas_station_name', 'gas_station_address', 'gas_station_lat', 'gas_station_lon',
   'parking_location', 'parking_spot', 'parking_map_url', 'key_handoff_details',
   'special_instructions',
-  'service_type', 'service_label', 'service_date', 'desired_return_time',
+  'service_type', 'service_label', 'service_date', 'desired_return_time', 'desired_pickup_time',
   'fuel_type', 'estimated_fuel_range', 'estimated_gallons', 'selected_fuel_gallons', 'authorization_fuel_gallons', 'price_per_gallon', 'estimated_fuel_amount',
   'fuel_convenience_fee', 'wash_package', 'wash_package_label', 'wash_fee', 'wash_convenience_fee',
   'quick_inspection', 'quick_inspection_fee', 'service_fee', 'detailing_available_window',
@@ -678,10 +686,55 @@ async function resolveStationSurcharge(body) {
   }
 }
 
+// Booking-duration estimate, mirroring the client's estimateBookingMinutes (and
+// worker.js workerEstimatedMinutes): drive to site + find car + round-trip
+// station/wash legs (from the [station_miles]/[wash_miles] note stamps) + quick
+// care. Used only to size the capacity re-check block.
+function estimateJobMinutes(row) {
+  const notes = String(row.notes || '');
+  const st = String(row.service_type || '');
+  const stationOne = /fuel/.test(st) ? Number((notes.match(/\[station_miles (\d+(?:\.\d+)?)\]/) || [])[1] || 0) : 0;
+  const washOne = /wash/.test(st) ? Number((notes.match(/\[wash_miles (\d+(?:\.\d+)?)\]/) || [])[1] || 0) : 0;
+  const driveLegs = ((stationOne * 2 + washOne * 2) / 30) * 60; // legs at ~30 mph
+  const quick = row.quick_inspection ? 10 : 0;
+  return Math.round(10 + 5 + driveLegs + quick);
+}
+
+// Capacity race guard. Re-checks the chosen return time against the SAME RPC the
+// booking client used to offer it. Returns { ok:false } ONLY when the RPC
+// successfully returns a non-empty slot list that no longer contains the chosen
+// time (a real capacity change since the customer picked it). Fails OPEN on every
+// uncertainty — missing fields, missing/erroring RPC, empty list, any exception —
+// so this guard can never break a booking, only catch a genuine overbook race.
+async function capacityStillAvailable(db, row) {
+  try {
+    const date = row.service_date;
+    const ret = String(row.desired_return_time || '').slice(0, 5);
+    if (!date || !ret) return { ok: true };
+    const { data, error } = await db.rpc('public_capacity_return_slots', {
+      p_service_date: date,
+      p_duration_minutes: estimateJobMinutes(row),
+      p_pickup_time: row.desired_pickup_time || null,
+    });
+    if (error || !Array.isArray(data) || data.length === 0) return { ok: true };
+    const open = new Set(data.map((r) => String(r.slot || '').slice(0, 5)).filter(Boolean));
+    if (open.has(ret)) return { ok: true };
+    return { ok: false, message: 'That return time was just taken while you were booking. Please go back and choose another time.' };
+  } catch (e) {
+    return { ok: true };
+  }
+}
+
 // Insert a service_requests row, retrying once per optional column that a given
 // deployment hasn't migrated yet. Returns the inserted row, or throws an Error
 // whose .userMessage is safe to surface to the client. Shared by both booking paths.
 async function insertBookingWithColumnRetry(db, row, logTag) {
+  // Last-moment capacity re-check (fail-open) so two customers can't both grab
+  // the final unit of a slot between offer and submit.
+  const cap = await capacityStillAvailable(db, row);
+  if (!cap.ok) {
+    throw Object.assign(new Error('CAPACITY_TAKEN'), { userMessage: cap.message });
+  }
   const maxInsertAttempts = Object.keys(row).length + 5;
   for (let attempt = 0; attempt < maxInsertAttempts; attempt += 1) {
     const { data, error } = await db.from('service_requests').insert(row).select().maybeSingle();
@@ -763,6 +816,8 @@ async function handleCreateAuthorizedBooking(body, res) {
   for (const field of ALLOWED_BOOKING_FIELDS) {
     if (rawFields[field] !== undefined) row[field] = rawFields[field];
   }
+  // Blank pickup time = flexible; never send "" to the `time` column.
+  if (!row.desired_pickup_time) delete row.desired_pickup_time;
 
   if (!row.customer_name || !String(row.customer_name).trim()) {
     return res.status(400).json({ error: 'Customer name is required' });
@@ -941,6 +996,8 @@ async function handleCreateScheduledBooking(body, res) {
   for (const field of ALLOWED_BOOKING_FIELDS) {
     if (rawFields[field] !== undefined) row[field] = rawFields[field];
   }
+  // Blank pickup time = flexible; never send "" to the `time` column.
+  if (!row.desired_pickup_time) delete row.desired_pickup_time;
 
   if (!row.customer_name || !String(row.customer_name).trim()) return res.status(400).json({ error: 'Customer name is required' });
   if (!row.customer_phone || !String(row.customer_phone).trim()) return res.status(400).json({ error: 'Customer phone is required' });
