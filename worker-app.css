@@ -1242,3 +1242,35 @@
 .wcr-badge.is-rejected { background: #fee2e2; color: #991b1b; }
 .wcr-job-body { padding: 1rem 1.25rem 1.25rem; }
 .wcr-job-body .button.primary { width: 100%; margin-top: 4px; }
+
+/* Availability tabs (Schedule tab) — a clean segmented control */
+.worker-schedule-tabs {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+.worker-sched-tab {
+  flex: 1;
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid rgba(13, 59, 59, 0.14);
+  background: #f4f8f6;
+  color: #0d3b3b;
+  font-weight: 800;
+  font-size: 0.92rem;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+.worker-sched-tab:hover { border-color: rgba(13, 59, 59, 0.28); }
+.worker-sched-tab.is-active {
+  background: linear-gradient(135deg, #003b38, #002b29);
+  color: #fff;
+  border-color: #003b38;
+}
+.worker-availability-window {
+  padding-top: 4px;
+}
+.worker-availability-window > .button.primary {
+  width: 100%;
+  margin-top: 14px;
+}

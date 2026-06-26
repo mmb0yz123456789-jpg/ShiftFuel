@@ -6614,6 +6614,49 @@ function closeTicketDetailModal() {
   document.body.style.overflow = '';
 }
 
+// Public Mapbox token (same pk.* token the maps already ship in the browser).
+// The Static Images request runs from the admin page on our allowed domain, so
+// the token's Referer restriction is satisfied with no server proxy.
+const MAPBOX_STATIC_TOKEN = 'pk.eyJ1IjoibW1iMHl6MTIiLCJhIjoiY21xcXZiaGU4MGxubjJvcHpidnhidG55cyJ9.Ciss2gT76eC3Zt92_qhtGA';
+
+// Build a Mapbox Static Images URL from a stored GeoJSON LineString (driven_route):
+// a road map with the snapped route drawn in teal + green "A" start / red "B" end
+// pins, auto-framed to fit. Returns null if the geometry isn't usable.
+function routeStaticMapUrl(geojson, { width = 640, height = 320 } = {}) {
+  const coords = geojson && geojson.type === 'LineString' && Array.isArray(geojson.coordinates)
+    ? geojson.coordinates
+    : null;
+  if (!coords || coords.length < 2) return null;
+
+  // Round to 5 decimals (~1 m) and cap point count so the URL stays well under
+  // Mapbox's ~8KB static-image limit even for a long trip.
+  const round5 = (n) => Math.round(Number(n) * 1e5) / 1e5;
+  let pts = coords
+    .filter((c) => Array.isArray(c) && Number.isFinite(c[0]) && Number.isFinite(c[1]))
+    .map((c) => [round5(c[0]), round5(c[1])]);
+  if (pts.length < 2) return null;
+  const MAX = 100;
+  if (pts.length > MAX) {
+    const step = (pts.length - 1) / (MAX - 1);
+    const sampled = [];
+    for (let i = 0; i < MAX; i++) sampled.push(pts[Math.round(i * step)]);
+    sampled[sampled.length - 1] = pts[pts.length - 1];
+    pts = sampled;
+  }
+
+  const line = { type: 'Feature', properties: { stroke: '#0d9488', 'stroke-width': 4, 'stroke-opacity': 0.9 }, geometry: { type: 'LineString', coordinates: pts } };
+  const [sLon, sLat] = pts[0];
+  const [eLon, eLat] = pts[pts.length - 1];
+  const overlay = [
+    `geojson(${encodeURIComponent(JSON.stringify(line))})`,
+    `pin-s-a+1f7a45(${sLon},${sLat})`,
+    `pin-s-b+d9534f(${eLon},${eLat})`,
+  ].join(',');
+
+  return `https://api.mapbox.com/styles/v1/mapbox/streets-v12/static/${overlay}/auto/${width}x${height}@2x`
+    + `?padding=36&access_token=${MAPBOX_STATIC_TOKEN}`;
+}
+
 async function openTicketDetailModal(request) {
   if (!ticketDetailModal || !ticketDetailBody) return;
   const title = document.querySelector('#ticket-detail-title');
@@ -6650,7 +6693,13 @@ async function openTicketDetailModal(request) {
       <span class="status-pill">${escapeHtml(statusLabels[request.status] || request.status)}</span>
     </div>
     ${requestCardDetails(request)}
-    ${request.driven_miles ? `<p class="field-help" style="margin-top:10px">GPS-verified drive: <strong>${Number(request.driven_miles).toFixed(1)} mi</strong> actually driven for this job (proof-of-service).</p>` : ''}
+    ${request.driven_miles ? (() => {
+      const mapUrl = routeStaticMapUrl(request.driven_route);
+      return `<div class="ticket-route-proof">
+        <p class="field-help" style="margin:10px 0 8px">GPS-verified drive: <strong>${Number(request.driven_miles).toFixed(1)} mi</strong> actually driven for this job (proof-of-service).</p>
+        ${mapUrl ? `<img class="ticket-route-map" src="${escapeHtml(mapUrl)}" alt="Route the worker drove for this job" loading="lazy" onerror="this.remove()">` : ''}
+      </div>`;
+    })() : ''}
     ${photosHtml}
     <div class="ticket-detail-edit-section" style="margin-top:18px">
       <div class="admin-button-row">
@@ -7328,18 +7377,35 @@ function renderServicesSettingsList() {
         <details class="svc-sub-acc">
           <summary class="svc-sub-acc-head"><span>Time-Based Pay</span>${chevron}</summary>
           <div class="svc-sub-acc-body">
-            <div class="pricing-group-grid">
-              <label>Company time rate ($/min)<input id="sp-time-rate" type="number" step="0.01" min="0"></label>
-              <label>Fuel time — base (min)<input id="sp-fuel-time-base" type="number" step="0.1" min="0"></label>
-              <label>Fuel time — per gallon (min)<input id="sp-fuel-time-per-gal" type="number" step="0.1" min="0"></label>
-              <label>Car wash time (min)<input id="sp-wash-time" type="number" step="1" min="0"></label>
-              <label>Wash detour free miles<input id="sp-wash-detour-free" type="number" step="0.5" min="0"></label>
-              <label>Worker mileage pay ($/mile)<input id="sp-wash-detour-rate" type="number" step="0.01" min="0"></label>
-              <label>Gas station distance surcharge ($/extra round-trip mile)<input id="sp-per-mile-rate" type="number" step="0.01" min="0"></label>
+            <p class="tbp-intro">This covers the <strong>time</strong> part of a job (minutes spent fueling/washing) and the <strong>per-mile</strong> pay. Each field is tagged: <span class="tbp-tag tbp-tag-customer">customer pays</span> = added to the customer's bill, <span class="tbp-tag tbp-tag-worker">worker earns</span> = paid to the driver.</p>
+
+            <div class="tbp-group tbp-group-customer">
+              <h5 class="tbp-group-head">⏱ Service time <span class="tbp-tag tbp-tag-customer">customer pays</span></h5>
+              <p class="tbp-group-sub">How long a job “takes” for billing. Minutes × company rate is baked into the customer's fee; each worker is then paid their own per-minute rate (set on the Workers tab) for those minutes.</p>
+              <div class="pricing-group-grid">
+                <label>Company time rate ($/min)<input id="sp-time-rate" type="number" step="0.01" min="0"><span class="tbp-hint">Charged to the customer per service-minute. Set $0 to turn time pricing off entirely.</span></label>
+                <label>Fuel time — base (min)<input id="sp-fuel-time-base" type="number" step="0.1" min="0"><span class="tbp-hint">Flat minutes counted for any fuel stop.</span></label>
+                <label>Fuel time — per gallon (min)<input id="sp-fuel-time-per-gal" type="number" step="0.1" min="0"><span class="tbp-hint">Extra minutes per gallon — e.g. 10 gal × 0.5 = +5 min.</span></label>
+                <label>Car wash time (min)<input id="sp-wash-time" type="number" step="1" min="0"><span class="tbp-hint">Flat minutes counted for a car wash.</span></label>
+              </div>
             </div>
-            <p class="pricing-effective-hint">Service time is baked into the customer's fee at the company rate (set $0 to turn it off). Each worker's actual per-minute pay is set on the Employees tab.</p>
-            <p class="pricing-effective-hint">Worker mileage pay ($/mile) is what a driver earns per detour mile — it covers both the gas-station mileage and the car-wash detour. Separate from the customer-facing gas-station surcharge below.</p>
-            <p class="pricing-effective-hint">The gas-station surcharge applies to new and in-progress bookings immediately. Already-booked tickets keep their original surcharge.</p>
+
+            <div class="tbp-group tbp-group-worker">
+              <h5 class="tbp-group-head">🚗 Worker mileage <span class="tbp-tag tbp-tag-worker">worker earns</span></h5>
+              <p class="tbp-group-sub">What a driver earns for the extra miles they drive on a detour.</p>
+              <div class="pricing-group-grid">
+                <label>Worker mileage pay ($/mile)<input id="sp-wash-detour-rate" type="number" step="0.001" min="0"><span class="tbp-hint">Paid to the driver per detour mile — covers BOTH gas-station mileage and the car-wash detour. (Accepts 3 decimals, e.g. 0.725.)</span></label>
+                <label>Wash detour free miles<input id="sp-wash-detour-free" type="number" step="0.5" min="0"><span class="tbp-hint">First N round-trip wash miles are free before mileage pay kicks in.</span></label>
+              </div>
+            </div>
+
+            <div class="tbp-group tbp-group-customer">
+              <h5 class="tbp-group-head">💵 Gas station surcharge <span class="tbp-tag tbp-tag-customer">customer pays</span></h5>
+              <p class="tbp-group-sub">What the customer pays when they pick a farther-than-closest gas station. Separate from worker mileage pay above.</p>
+              <div class="pricing-group-grid">
+                <label>Gas station distance surcharge ($/extra round-trip mile)<input id="sp-per-mile-rate" type="number" step="0.01" min="0"><span class="tbp-hint">Added to the customer's total per extra mile. Applies to new + in-progress bookings immediately; already-booked tickets keep their original surcharge.</span></label>
+              </div>
+            </div>
           </div>
         </details>
 
@@ -7353,6 +7419,11 @@ function renderServicesSettingsList() {
         <span class="pricing-effective-hint">Leave blank to apply immediately</span>
         <input id="sp-effective-date" type="datetime-local">
       </label>
+    </div>
+
+    <div class="pricing-save-row">
+      <button class="button primary" type="submit">Save service pricing</button>
+      <p id="services-settings-status" class="form-status" role="status"></p>
     </div>
 
     <details class="pricing-sim" id="pricing-sim">
@@ -7384,7 +7455,7 @@ function renderServicesSettingsList() {
         <label>Company rate ($/min)<input id="sim-company-rate" type="number" min="0" step="0.01"></label>
         <label>Worker pay rate ($/min)<input id="sim-worker-rate" type="number" min="0" step="0.01" value="0.50"></label>
         <label>Gas station surcharge — customer ($/mile)<input id="sim-per-mile" type="number" min="0" step="0.01"></label>
-        <label>Worker mileage pay ($/mile)<input id="sim-worker-mile" type="number" min="0" step="0.01"></label>
+        <label>Worker mileage pay ($/mile)<input id="sim-worker-mile" type="number" min="0" step="0.001"></label>
       </div>
       <div class="pricing-sim-output" id="sim-output"></div>
     </details>
@@ -7459,10 +7530,18 @@ function runPricingSimulator() {
   const minutes = Math.round(10 + 5 + ((stationMiles + washMiles) / 30) * 60 + (quick ? 10 : 0));
 
   const row = (label, val, strong) => `<div class="sim-row${strong ? ' sim-row-total' : ''}"><span>${label}</span><span>${money(val)}</span></div>`;
+  const note = (txt) => `<p class="sim-note">${txt}</p>`;
+  const serviceRevenue = roundMoneyValue(fuelFee + washFee + inspFee + timeCharge + stationSurcharge);
+  const feeParts = [
+    needsFuel ? `fuel ${money(fuelFee)}` : '',
+    needsWash ? `wash ${money(washFee)}` : '',
+    quick ? `care ${money(inspFee)}` : '',
+  ].filter(Boolean).join(' + ');
   out.innerHTML = `
     <div class="sim-cols">
-      <div class="sim-card">
+      <div class="sim-card sim-card-customer">
         <h5>Customer pays</h5>
+        ${note('Every line on the customer\'s bill. Fuel/wash cost is a pass-through (you reimburse the station); the fees + time + surcharge are your revenue.')}
         ${needsFuel ? row(`Fuel (${gallons} gal × ${money(pricePerGallon)})`, fuelCost) : ''}
         ${needsWash ? row('Wash package', washPrice) : ''}
         ${needsFuel ? row('Fuel service fee', fuelFee) : ''}
@@ -7473,21 +7552,24 @@ function runPricingSimulator() {
         ${row('Card processing recovery', cardRecovery)}
         ${row('Total', customerTotal, true)}
       </div>
-      <div class="sim-card">
+      <div class="sim-card sim-card-worker">
         <h5>Worker earns</h5>
-        ${feeShare > 0 ? row('Service fee share (50%, net card)', feeShare) : ''}
-        ${mileagePay > 0 ? row(`Station mileage (${stationMiles} mi × ${money(washDetourRate)})`, mileagePay) : ''}
-        ${timePay > 0 ? row(`Service time (${serviceMin.toFixed(1)} min × ${money(workerRate)})`, timePay) : ''}
-        ${washDetourPay > 0 ? row('Wash detour', washDetourPay) : ''}
+        ${note('What the driver takes home for this job.')}
+        ${feeShare > 0 ? row('Service fee share (50%, net card)', feeShare) + note(`Half of the service fees after card processing: (${feeParts || 'fees'} = ${money(feeGross)}) − card ${money(feeStripe)} = ${money(Math.max(0, feeGross - feeStripe))}, ÷ 2.`) : ''}
+        ${timePay > 0 ? row('Service time', timePay) + note(`${serviceMin.toFixed(1)} service-minutes × ${money(workerRate)}/min (this driver's rate).`) : ''}
+        ${mileagePay > 0 ? row('Station mileage', mileagePay) + note(`${stationMiles} extra round-trip mi × ${money(washDetourRate)}/mi.`) : ''}
+        ${washDetourPay > 0 ? row('Wash detour', washDetourPay) + note(`${Math.max(0, washMiles - washDetourFree)} mi past the ${washDetourFree}-mi free allowance × ${money(washDetourRate)}/mi.`) : ''}
         ${row('Take-home', workerPay, true)}
-        ${workerRateRaw > companyRate && companyRate > 0 ? `<p class="field-help">Worker rate capped at the company rate (${money(companyRate)}/min).</p>` : ''}
+        ${workerRateRaw > companyRate && companyRate > 0 ? note(`Heads up: worker rate capped at the company rate (${money(companyRate)}/min).`) : ''}
       </div>
-      <div class="sim-card">
+      <div class="sim-card sim-card-company">
         <h5>Company keeps</h5>
-        ${row('Service revenue', roundMoneyValue(fuelFee + washFee + inspFee + timeCharge + stationSurcharge))}
+        ${note('Your margin after paying the driver.')}
+        ${row('Service revenue', serviceRevenue)}
+        ${note(`The fees + time charge + gas surcharge you collect (service fees${timeCharge > 0 ? ' + service time' : ''}${stationSurcharge > 0 ? ' + gas surcharge' : ''}). Fuel/wash cost isn't here — it's reimbursed, not revenue.`)}
         ${row('Less worker pay', -workerPay)}
         ${row('Net margin', companyNet, true)}
-        <p class="field-help">Fuel/wash cost is pass-through (reimbursed), not margin.</p>
+        ${note(companyNet < 0 ? '⚠️ Negative — you would lose money on this job. Raise a fee or lower the pay rate.' : 'This is what the company keeps after the driver is paid.')}
       </div>
     </div>
     <p class="sim-time"><strong>Worker time to complete:</strong> ~${minutes} min</p>
@@ -7900,9 +7982,13 @@ document.querySelector('#account-username-form')?.addEventListener('submit', asy
   e.preventDefault();
   const statusEl = document.getElementById('account-username-status');
   const submitBtn = e.target.querySelector('[type="submit"]');
-  const currentPassword = document.getElementById('account-current-pw-name')?.value || '';
+  const currentUsername = (document.getElementById('account-current-username')?.value || '').trim();
   const newUsername = (document.getElementById('account-new-name')?.value || '').trim();
 
+  if (!currentUsername) {
+    if (statusEl) statusEl.textContent = 'Enter your current username.';
+    return;
+  }
   if (newUsername.length < 3) {
     if (statusEl) statusEl.textContent = 'New name must be at least 3 characters.';
     return;
@@ -7910,14 +7996,16 @@ document.querySelector('#account-username-form')?.addEventListener('submit', asy
   if (statusEl) statusEl.textContent = 'Updating name...';
   if (submitBtn) submitBtn.disabled = true;
   try {
-    const [currentHash, newHash] = await Promise.all([sha256Hex(currentPassword), sha256Hex(newUsername.toLowerCase())]);
-    const { error } = await db.rpc('admin_change_username', { p_token: adminToken(), p_current_password_hash: currentHash, p_new_username_hash: newHash });
+    // Hash both names the same way the login + new name are hashed (lowercased),
+    // so the current-username check matches the stored admin_username_hash.
+    const [currentHash, newHash] = await Promise.all([sha256Hex(currentUsername.toLowerCase()), sha256Hex(newUsername.toLowerCase())]);
+    const { error } = await db.rpc('admin_change_username', { p_token: adminToken(), p_current_username_hash: currentHash, p_new_username_hash: newHash });
     if (error) throw error;
     e.target.reset();
     if (statusEl) statusEl.textContent = 'Name updated.';
   } catch (err) {
     const msg = err?.message || '';
-    if (statusEl) statusEl.textContent = msg.includes('INVALID_CURRENT_PASSWORD') ? 'Current password is incorrect.' : `Could not update name: ${msg || err}`;
+    if (statusEl) statusEl.textContent = msg.includes('INVALID_CURRENT_USERNAME') ? 'Current username is incorrect.' : `Could not update name: ${msg || err}`;
   } finally {
     if (submitBtn) submitBtn.disabled = false;
   }

@@ -85,9 +85,23 @@ applicantForm?.addEventListener('submit', async (event) => {
     // Screening answers are folded into `notes` as a labeled block so they're
     // saved + visible to admins without needing a new applicants-table column.
     const licenseState = String(data.get('applicantLicenseState') || '').trim().toUpperCase();
+    // Derive age (and the 21+ flag admins care about) from the date of birth.
+    const dob = String(data.get('applicantDob') || '').trim();
+    let dobLine = 'Date of birth: —';
+    if (dob) {
+      const d = new Date(dob);
+      let age = NaN;
+      if (!Number.isNaN(d.getTime())) {
+        const now = new Date();
+        age = now.getFullYear() - d.getFullYear();
+        const m = now.getMonth() - d.getMonth();
+        if (m < 0 || (m === 0 && now.getDate() < d.getDate())) age -= 1;
+      }
+      dobLine = `Date of birth: ${dob}${Number.isFinite(age) ? ` (age ${age} — ${age >= 21 ? '21+' : 'UNDER 21'})` : ''}`;
+    }
     const screeningLines = [
       `Driver's license: ${String(data.get('applicantLicense') || '—').trim()}${licenseState ? ` (${licenseState})` : ''}`,
-      `21 or older: ${String(data.get('applicantAge21') || '—').trim()}`,
+      dobLine,
       String(data.get('applicantViolations') || '').trim() ? `Moving violations (last 3 yr): ${String(data.get('applicantViolations')).trim()}` : null,
       `Work authorized (US): ${String(data.get('applicantWorkAuth') || '—').trim()}`,
       String(data.get('applicantServiceArea') || '').trim() ? `Service area: ${String(data.get('applicantServiceArea')).trim()}` : null,

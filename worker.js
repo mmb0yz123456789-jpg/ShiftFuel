@@ -771,10 +771,11 @@ const TIME_COMP = {
 
 // Pull the admin's live Services settings into the pay constants so worker payout
 // (and the Earnings calculator) reflect what the admin configured rather than the
-// hardcoded defaults. The single per-mile "detour/mileage" rate (wash_detour_rate)
-// drives BOTH the gas-station mileage pay and the wash detour. Settings are the
-// source for live/estimated pay; a completed job's pay is still frozen at
-// completion via its [worker_payout] tag, so later changes never move it.
+// hardcoded defaults. The admin "Wash detour ($/mile)" rate (wash_detour_rate) is
+// the single per-mile WORKER drive-pay rate — it drives BOTH the gas-station
+// mileage pay and the wash-detour pay (NOT the customer's per-mile surcharge, which
+// is per_mile_rate). Settings are the source for live/estimated pay; a completed
+// job's pay is still frozen at completion via its [worker_payout] tag.
 async function loadWorkerPayRates() {
   try {
     const { data, error } = await workerDb.rpc('public_get_service_pricing');
@@ -1771,7 +1772,6 @@ async function loadWorkerProfile() {
     }
     await loadWorkerPayRates();
     await loadWorkerSchedule();
-    loadWorkerChangeRequests();
     await loadWorkerJobs();
     startWorkerJobsPoll();
     startWorkerHeartbeat();
@@ -5077,23 +5077,16 @@ workerDaysOffCalendar?.addEventListener('click', (event) => {
   renderWorkerDaysOffCalendar();
 });
 
-openWorkdaysPanel?.addEventListener('click', () => {
-  if (workdaysPanel) workdaysPanel.hidden = false;
-  if (daysOffPanel) daysOffPanel.hidden = true;
-});
-
-closeWorkdaysPanel?.addEventListener('click', () => {
-  if (workdaysPanel) workdaysPanel.hidden = true;
-});
-
-openDaysOffPanel?.addEventListener('click', () => {
-  if (daysOffPanel) daysOffPanel.hidden = false;
-  if (workdaysPanel) workdaysPanel.hidden = true;
-});
-
-closeDaysOffPanel?.addEventListener('click', () => {
-  if (daysOffPanel) daysOffPanel.hidden = true;
-});
+// Availability tabs: Work Days (default) ↔ Days Off. Both panels stay in the DOM
+// and editable; the tabs just switch which one shows.
+function setScheduleTab(showDaysOff) {
+  if (workdaysPanel) workdaysPanel.hidden = showDaysOff;
+  if (daysOffPanel) daysOffPanel.hidden = !showDaysOff;
+  openWorkdaysPanel?.classList.toggle('is-active', !showDaysOff);
+  openDaysOffPanel?.classList.toggle('is-active', showDaysOff);
+}
+openWorkdaysPanel?.addEventListener('click', () => setScheduleTab(false));
+openDaysOffPanel?.addEventListener('click', () => setScheduleTab(true));
 
 workerScheduleForm?.addEventListener('submit', (event) => event.preventDefault());
 

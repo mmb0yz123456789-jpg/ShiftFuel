@@ -332,27 +332,20 @@
         <section id="worker-availability" class="section worker-schedule-view">
           <div class="section-heading">
             <h2>My Availability</h2>
+            <p class="field-help">Set the days and hours you work, and block out any days off. Saved instantly — no approval needed.</p>
           </div>
           <form id="worker-schedule-form" class="admin-edit-panel worker-schedule-form-inline">
-            <div class="worker-schedule-actions">
-              <button id="open-workdays-panel" class="button primary" type="button">Work Days and Shift Times</button>
-              <button id="open-days-off-panel" class="button primary" type="button">Days Off</button>
+            <div class="worker-schedule-tabs" role="tablist">
+              <button id="open-workdays-panel" class="worker-sched-tab is-active" type="button">Work Days &amp; Shift Times</button>
+              <button id="open-days-off-panel" class="worker-sched-tab" type="button">Days Off</button>
             </div>
 
-            <div id="workdays-panel" class="worker-availability-window" hidden>
-              <div class="worker-window-heading">
-                <h3>Work Days and Shift Times</h3>
-                <button id="close-workdays-panel" class="button" type="button">Close</button>
-              </div>
+            <div id="workdays-panel" class="worker-availability-window">
               <div id="worker-days-grid" class="worker-days-grid"></div>
               <button id="save-workdays" class="button primary" type="button">Save work days</button>
             </div>
 
             <div id="days-off-panel" class="worker-availability-window" hidden>
-              <div class="worker-window-heading">
-                <h3>Days Off</h3>
-                <button id="close-days-off-panel" class="button" type="button">Close</button>
-              </div>
               <p class="field-help">Click any date in the 3-month booking window to make that day unbookable.</p>
               <div id="worker-days-off-calendar" class="worker-days-off-calendar"></div>
               <p id="worker-days-off-summary" class="field-help"></p>
@@ -360,35 +353,6 @@
             </div>
             <p id="worker-schedule-status" class="field-help"></p>
           </form>
-        </section>
-
-        <!-- Request a change → admin approval queue (schedule changes your own
-             availability settings can't cover: time off, hours, one-offs). -->
-        <section class="section worker-change-requests-view">
-          <div class="section-heading"><h2>Request a Change</h2></div>
-          <div class="worker-dashboard-card">
-            <p class="field-help">Need something your availability settings can't cover — time off, different hours, or a one-off? Send it to your admin to review.</p>
-            <label>What kind of change?
-              <select id="wcr-schedule-type">
-                <option value="time_off">Time off</option>
-                <option value="hours_change">Change my hours</option>
-                <option value="other">Other</option>
-              </select>
-            </label>
-            <label id="wcr-schedule-date-row">Date off <span class="optional-mark">For time off</span>
-              <input id="wcr-schedule-date" type="date">
-              <span class="field-help">If you pick a date, approving it marks that day off automatically.</span>
-            </label>
-            <label>Details
-              <textarea id="wcr-schedule-details" rows="3" placeholder="e.g. I need Friday off, or change Mondays to 10am–3pm"></textarea>
-            </label>
-            <button class="button primary" id="wcr-schedule-submit" type="button">Submit request</button>
-            <p id="wcr-schedule-status" class="field-help"></p>
-          </div>
-          <div class="worker-dashboard-card">
-            <div class="worker-card-heading"><h2>My Requests</h2></div>
-            <div id="worker-change-requests-list"><p class="field-help">Loading your requests…</p></div>
-          </div>
         </section>
       </div><!-- /wtab-schedule -->
 
