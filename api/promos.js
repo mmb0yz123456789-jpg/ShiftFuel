@@ -9,7 +9,7 @@
 
 const { setCorsHeaders, getSupabaseAdmin, verifyAdminToken } = require('./_auth');
 const { enforceRateLimit } = require('./_rate-limit');
-const { normalizeCode, validatePromoForCustomer } = require('./_promos');
+const { normalizeCode, validatePromoForCustomer, APPLIES_TO } = require('./_promos');
 
 module.exports = async (req, res) => {
   setCorsHeaders(req, res);
@@ -29,8 +29,14 @@ module.exports = async (req, res) => {
         code: body.code,
         phone: body.phone,
         email: body.email,
-        serviceFees: Number(body.service_fees) || 0,
-        orderTotal: Number(body.order_total) || 0,
+        amounts: {
+          fuel_service: Number(body.fuel_service) || 0,
+          wash_service: Number(body.wash_service) || 0,
+          inspection: Number(body.inspection) || 0,
+          wash_price: Number(body.wash_price) || 0,
+          // Back-compat: older clients sent a single service_fees sum.
+          total: Number(body.order_total) || 0,
+        },
       });
       if (!result.ok) return res.status(200).json({ ok: false, valid: false, reason: result.reason });
       return res.status(200).json({
@@ -40,6 +46,7 @@ module.exports = async (req, res) => {
         discount: result.discount,
         discount_type: result.promo.discount_type,
         discount_value: result.promo.discount_value,
+        applies_to: result.promo.applies_to || 'service_fees',
         description: result.promo.description || '',
       });
     } catch (err) {
@@ -68,12 +75,14 @@ module.exports = async (req, res) => {
       if (!Number.isFinite(value) || value <= 0) return res.status(400).json({ error: 'Discount value must be greater than 0' });
       if (p.discount_type === 'percent' && value > 100) return res.status(400).json({ error: 'Percentage cannot exceed 100' });
       if (!['all', 'new', 'returning'].includes(p.audience || 'all')) return res.status(400).json({ error: 'Invalid audience' });
+      if (!APPLIES_TO.includes(p.applies_to || 'service_fees')) return res.status(400).json({ error: 'Invalid "applies to" option' });
 
       const row = {
         code,
         description: p.description ? String(p.description).trim() : null,
         discount_type: p.discount_type,
         discount_value: value,
+        applies_to: p.applies_to || 'service_fees',
         audience: p.audience || 'all',
         min_order_amount: Math.max(0, Number(p.min_order_amount) || 0),
         per_customer_limit: Math.max(0, parseInt(p.per_customer_limit, 10) || 0),

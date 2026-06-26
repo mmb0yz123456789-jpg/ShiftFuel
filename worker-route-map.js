@@ -5,8 +5,8 @@
 // rotates to their heading, the route, a live ETA, and a next-turn banner that
 // advances as they drive — all INSIDE the installed PWA. That's deliberate: handing
 // off to Apple/Google Maps backgrounds the app, which pauses the customer's live
-// GPS tracking and drops the screen wake lock. Navigating in-app keeps both alive.
-// "Open in Maps" stays as a fallback for anyone who prefers native turn-by-turn.
+// GPS tracking and drops the screen wake lock. Navigating in-app keeps both alive,
+// so the app IS the GPS — there's no native "Open in Maps" handoff.
 //
 // Cost control (Mapbox is billed per request): we call the Directions API once per
 // leg and again ONLY when the worker strays off-route (rate-limited), never on every
@@ -21,8 +21,8 @@
   const REROUTE_MIN_INTERVAL_MS = 12000;  // never re-request Directions more often than this
   // The car wash we currently use — geocoded on demand for the wash service leg.
   const CAR_WASH = { name: 'DECarSpa', address: '602 Main St, Wilmington, DE 19804' };
-  const NAV_ZOOM = 16.2;                  // close, street-level follow zoom
-  const NAV_PITCH = 55;                   // 3D tilt for the driving view
+  const NAV_ZOOM = 16.7;                  // close, street-level follow zoom
+  const NAV_PITCH = 62;                   // 3D tilt for the driving view
   const ARRIVE_METERS = 45;               // auto "arrived" radius at the destination
 
   let assetsPromise = null;
@@ -101,15 +101,6 @@
     return `${Math.max(0, Math.round(metres / 0.3048))} ft`;
   }
 
-  // Native-maps deep link (Apple Maps on iOS, Google Maps elsewhere).
-  function navUrl(dest, address) {
-    const d = dest ? `${dest.lat},${dest.lon}` : String(address || '').trim();
-    if (!d) return '';
-    const enc = encodeURIComponent(d);
-    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent || '');
-    return isIOS ? `https://maps.apple.com/?daddr=${enc}` : `https://www.google.com/maps/dir/?api=1&destination=${enc}`;
-  }
-
   function loadAssets() {
     if (assetsPromise) return assetsPromise;
     assetsPromise = new Promise((resolve, reject) => {
@@ -171,7 +162,6 @@
         </div>
         <div class="wrm-actions">
           <button class="button primary wrm-start-service" type="button" hidden>Start service</button>
-          <a class="button secondary wrm-open-native" target="_blank" rel="noopener noreferrer">Open in Maps (turn-by-turn)</a>
         </div>
       </div>`;
     document.body.appendChild(modal);
@@ -342,11 +332,15 @@
   // direction of travel points up — the Uber/Lyft driving view.
   function applyNavCamera(loc, bearingDeg) {
     if (!map || !loc) return;
+    // Push the puck into the lower third so the road ahead fills the screen — the
+    // way a car GPS frames the drive.
+    const h = map.getContainer()?.clientHeight || 0;
     map.easeTo({
       center: [loc.lon, loc.lat],
       zoom: NAV_ZOOM,
       pitch: NAV_PITCH,
       bearing: Number.isFinite(bearingDeg) ? bearingDeg : map.getBearing(),
+      padding: { top: Math.round(h * 0.55), bottom: 0, left: 0, right: 0 },
       duration: 700,
       essential: true,
     });
@@ -471,7 +465,6 @@
     const modal = ensureModal();
     const titleEl = modal.querySelector('.wrm-title');
     const etaEl = modal.querySelector('.wrm-eta');
-    const nativeBtn = modal.querySelector('.wrm-open-native');
     const banner = modal.querySelector('.wrm-banner');
     const startBtn = modal.querySelector('.wrm-start-service');
     titleEl.textContent = isStation ? 'Drive to gas station'
@@ -513,10 +506,8 @@
     }
     if (!dest) {
       etaEl.textContent = isStation ? 'Could not find a gas station nearby.' : 'Could not locate the destination.';
-      nativeBtn.href = navUrl(null, isStation ? (request.gas_station_address || request.gas_station_name) : addressText(request));
       return;
     }
-    nativeBtn.href = navUrl(dest, dest.label);
 
     // Remember the resolved service destination so the customer's "heading to the
     // station / car wash" ETA has a target (covers "closest station" jobs and the
@@ -532,7 +523,7 @@
     if (map) { map.remove(); map = null; }
     map = new mapboxgl.Map({
       container: mapEl,
-      style: 'mapbox://styles/mapbox/streets-v12',
+      style: 'mapbox://styles/mapbox/navigation-day-v1',
       center: [dest.lon, dest.lat],
       zoom: 13,
       pitch: 0,

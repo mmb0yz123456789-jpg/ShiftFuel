@@ -8,7 +8,7 @@
 const Stripe = require('stripe');
 const { setCorsHeaders, getSupabaseAdmin } = require('./_auth');
 const { notifyWorkersNewJob } = require('./_push');
-const { serviceFeesFromRow, validatePromoForCustomer, recordPromoRedemption } = require('./_promos');
+const { amountsFromRow, validatePromoForCustomer, recordPromoRedemption } = require('./_promos');
 
 function getStripe() {
   if (!process.env.STRIPE_SECRET_KEY) throw new Error('STRIPE_SECRET_KEY not configured');
@@ -433,9 +433,10 @@ module.exports = async function handler(req, res) {
     if (body.promo_code) {
       try {
         const preDiscountTotal = Number(body.promo_order_total) || (intent.amount / 100);
+        const amounts = amountsFromRow(body);
+        amounts.total = preDiscountTotal;
         const result = await validatePromoForCustomer({
-          db, code: body.promo_code, phone: body.customer_phone, email: body.customer_email,
-          serviceFees: serviceFeesFromRow(body), orderTotal: preDiscountTotal,
+          db, code: body.promo_code, phone: body.customer_phone, email: body.customer_email, amounts,
         });
         if (!result.ok) {
           return res.status(409).json({ error: `Promo code ${String(body.promo_code).toUpperCase()}: ${result.reason} Please re-check your total before booking.` });

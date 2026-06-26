@@ -7538,6 +7538,16 @@ function promoDiscountLabel(p) {
 function promoAudienceLabel(a) {
   return a === 'new' ? 'New customers' : a === 'returning' ? 'Returning customers' : 'All customers';
 }
+function promoAppliesLabel(a) {
+  return {
+    total: 'whole total',
+    wash_and_fees: 'service fees + wash',
+    fuel_service: 'fuel service fee',
+    wash_service: 'car wash service fee',
+    inspection: 'inspection fee',
+    service_fees: 'service fees',
+  }[a || 'service_fees'] || 'service fees';
+}
 
 async function loadPromos() {
   if (!promosList || !adminToken()) return;
@@ -7567,7 +7577,7 @@ function renderPromosList(promos) {
         <div class="promo-card-main">
           <div class="promo-card-tags">
             <span class="promo-card-code">${escapeHtml(p.code)}</span>
-            <span class="promo-card-badge">${escapeHtml(promoDiscountLabel(p))}</span>
+            <span class="promo-card-badge">${escapeHtml(promoDiscountLabel(p))} ${escapeHtml(promoAppliesLabel(p.applies_to))}</span>
             <span class="promo-card-badge promo-card-audience">${escapeHtml(promoAudienceLabel(p.audience))}</span>
             ${p.active ? '' : '<span class="promo-card-badge promo-card-off">Inactive</span>'}
           </div>
@@ -7593,6 +7603,7 @@ function openPromoForm(promo) {
   g('#promo-description').value = promo?.description || '';
   g('#promo-discount-type').value = promo?.discount_type || 'percent';
   g('#promo-discount-value').value = promo?.discount_value ?? '';
+  g('#promo-applies-to').value = promo?.applies_to || 'service_fees';
   g('#promo-audience').value = promo?.audience || 'all';
   g('#promo-min-order').value = promo?.min_order_amount || '';
   g('#promo-per-customer').value = promo?.per_customer_limit ?? 1;
@@ -7614,6 +7625,7 @@ promoForm?.addEventListener('submit', async (e) => {
     description: g('#promo-description').value,
     discount_type: g('#promo-discount-type').value,
     discount_value: g('#promo-discount-value').value,
+    applies_to: g('#promo-applies-to').value,
     audience: g('#promo-audience').value,
     min_order_amount: g('#promo-min-order').value,
     per_customer_limit: g('#promo-per-customer').value,

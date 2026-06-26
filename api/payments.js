@@ -26,7 +26,7 @@ const { placeScheduledHold } = require('./_scheduled-auth');
 const { verifyServiceArea } = require('./_service-area');
 const { computeSurchargeForChosen, PER_MILE_RATE } = require('./_gas-stations');
 const { enforceRateLimit } = require('./_rate-limit');
-const { serviceFeesFromRow, validatePromoForCustomer, recordPromoRedemption } = require('./_promos');
+const { amountsFromRow, validatePromoForCustomer, recordPromoRedemption } = require('./_promos');
 
 // Per-IP caps on the actions that reach Mapbox before Stripe verification.
 const PAYMENTS_RATE_LIMITS = {
@@ -394,7 +394,7 @@ async function handleCreateIntent(body, res) {
       metadata: { customer_name: customer_name || '', service_label: service_label || '' },
       payment_method_options: {
         card: {
-          request_incremental_authorization_support: 'if_available',
+          request_incremental_authorization: 'if_available',
         },
       },
     };
@@ -403,7 +403,7 @@ async function handleCreateIntent(body, res) {
       pi = await stripe.paymentIntents.create(paymentIntentParams);
     } catch (createErr) {
       const incrementalParamRejected = createErr.code === 'parameter_unknown'
-        || /request_incremental_authorization_support|payment_method_options/i.test(String(createErr.message || ''));
+        || /request_incremental_authorization|payment_method_options/i.test(String(createErr.message || ''));
       if (!incrementalParamRejected) throw createErr;
       console.warn('[payments/create_intent] Incremental authorization option rejected; retrying without it:', createErr.message);
       delete paymentIntentParams.payment_method_options;
@@ -741,10 +741,10 @@ async function insertBookingWithColumnRetry(db, row, logTag) {
 // (discountCents 0 / promoContext null when there's no code).
 async function resolveBookingPromo(db, body, row, serverPricing) {
   if (!body.promo_code) return { discountCents: 0, promoContext: null };
+  const amounts = amountsFromRow(row);
+  amounts.total = Number(body.promo_order_total) || (serverPricing.amount_cents / 100);
   const result = await validatePromoForCustomer({
-    db, code: body.promo_code, phone: row.customer_phone, email: row.customer_email,
-    serviceFees: serviceFeesFromRow(row),
-    orderTotal: Number(body.promo_order_total) || (serverPricing.amount_cents / 100),
+    db, code: body.promo_code, phone: row.customer_phone, email: row.customer_email, amounts,
   });
   if (!result.ok) {
     return { error: `Promo code ${String(body.promo_code).toUpperCase()}: ${result.reason} Please re-check your total before booking.` };

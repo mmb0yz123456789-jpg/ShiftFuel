@@ -106,7 +106,7 @@ const bookingState = {
     oneWayMiles: 0,
     perMileRate: 0.75,
   },
-  promo: { code: "", discount_type: "", discount_value: 0 },
+  promo: { code: "", discount_type: "", discount_value: 0, applies_to: "" },
   submitted: false,
   submitting: false,
   submittedRequestNumber: "",
@@ -458,6 +458,22 @@ function selectedWashPackage() {
   return WASH_PACKAGES.find((item) => item.value === bookingState.values.washPackage) || null;
 }
 
+// The dollar base a promo's % / $ is computed against, per the code's applies_to
+// mode. Mirrors discountBase() in api/_promos.js so the preview matches the
+// server's authoritative charge.
+function promoDiscountBase(t, appliesTo) {
+  const fees = (Number(t.fuelFee) || 0) + (Number(t.washFee) || 0) + (Number(t.quickFee) || 0);
+  switch (appliesTo) {
+    case "total":         return Number(t.total) || 0;
+    case "wash_and_fees": return fees + (Number(t.washAmount) || 0);
+    case "fuel_service":  return Number(t.fuelFee) || 0;
+    case "wash_service":  return Number(t.washFee) || 0;
+    case "inspection":    return Number(t.quickFee) || 0;
+    case "service_fees":
+    default:              return fees;
+  }
+}
+
 function calculateTotals() {
   const selectedFuelGallons = serviceNeedsFuel() ? FUEL_SELECTED_GALLONS[bookingState.values.fuelPreference] || 0 : 0;
   const authorizationFuelGallons = serviceNeedsFuel() ? FUEL_AUTHORIZATION_GALLONS[bookingState.values.fuelPreference] || 0 : 0;
@@ -504,20 +520,22 @@ function calculateTotals() {
   const fuelFee = Math.round((fuelBaseFee + fuelRecovery + fuelTimeCost) * 100) / 100;
   const washFee = Math.round((washBaseFee + washRecovery + washTimeCost) * 100) / 100;
 
-  // Promo discount applies to SERVICE FEES only (never the at-cost fuel). The
-  // server re-validates + recomputes this at booking; this mirrors it so the
-  // authorized total + summary match what they'll be charged.
   const serviceFees = Math.round((fuelFee + washFee + quickFee) * 100) / 100;
-  // Recompute the discount from the code's type/value against the CURRENT service
-  // fees, so a % code scales (and a $ code caps) as the customer changes service.
+  const subtotal = estimatedTotal; // pre-discount gross total
+  // Recompute the discount live from the code's type/value against the base it
+  // targets (applies_to), so it scales/caps as the customer changes service. The
+  // server re-validates + recomputes this authoritatively at booking. The discount
+  // always comes out of the company's take — never the worker's pay.
   let promoDiscount = 0;
   const promo = bookingState.promo;
-  if (promo && promo.code && serviceFees > 0) {
-    const dv = Number(promo.discount_value) || 0;
-    promoDiscount = promo.discount_type === "percent" ? serviceFees * (dv / 100) : dv;
-    promoDiscount = Math.round(Math.min(Math.max(0, promoDiscount), serviceFees) * 100) / 100;
+  if (promo && promo.code) {
+    const base = promoDiscountBase({ fuelFee, washFee, quickFee, washAmount, total: subtotal }, promo.applies_to);
+    if (base > 0) {
+      const dv = Number(promo.discount_value) || 0;
+      promoDiscount = promo.discount_type === "percent" ? base * (dv / 100) : dv;
+      promoDiscount = Math.round(Math.min(Math.max(0, promoDiscount), base) * 100) / 100;
+    }
   }
-  const subtotal = estimatedTotal; // pre-discount gross total
   const discountedTotal = Math.max(0, Math.round((estimatedTotal - promoDiscount) * 100) / 100);
 
   return {
@@ -3105,21 +3123,25 @@ function renderFlow(root) {
         return;
       }
       const t = calculateTotals();
-      // The box is always visible, so guard the case where there's no service to
+      // The box is always visible, so guard the case where there's no order to
       // discount yet — friendlier than the server's "doesn't apply" reply.
-      if (t.subtotal <= 0 || t.serviceFees <= 0) {
-        if (msg) msg.textContent = "Pick a service first — codes apply to the service fees.";
+      if (t.subtotal <= 0) {
+        if (msg) msg.textContent = "Pick a service first to apply a code.";
         return;
       }
       promoApply.disabled = true; promoApply.textContent = "Checking…";
       try {
         const r = await fetch("/api/promos", {
           method: "POST", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ action: "validate", code, phone: v.customerPhone, email: v.customerEmail, service_fees: t.serviceFees, order_total: t.subtotal }),
+          body: JSON.stringify({
+            action: "validate", code, phone: v.customerPhone, email: v.customerEmail,
+            fuel_service: t.fuelFee, wash_service: t.washFee, inspection: t.quickFee,
+            wash_price: t.washAmount, order_total: t.subtotal,
+          }),
         });
         const data = await r.json().catch(() => ({}));
         if (data && data.valid) {
-          bookingState.promo = { code: data.code, discount_type: data.discount_type, discount_value: Number(data.discount_value) || 0 };
+          bookingState.promo = { code: data.code, discount_type: data.discount_type, discount_value: Number(data.discount_value) || 0, applies_to: data.applies_to || "service_fees" };
           render();
         } else {
           if (msg) msg.textContent = (data && data.reason) || "That code isn't valid.";
@@ -3132,7 +3154,7 @@ function renderFlow(root) {
       return;
     }
     if (event.target.closest("[data-promo-remove]")) {
-      bookingState.promo = { code: "", discount_type: "", discount_value: 0 };
+      bookingState.promo = { code: "", discount_type: "", discount_value: 0, applies_to: "" };
       render();
       return;
     }

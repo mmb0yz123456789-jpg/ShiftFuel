@@ -18,22 +18,49 @@ function roundMoney(n) {
   return Math.round((Number(n) || 0) * 100) / 100;
 }
 
-// The discountable base: the displayed convenience/service fees only.
-function serviceFeesFromRow(row) {
-  const f = Number(row.displayed_fuel_service_fee ?? row.fuel_convenience_fee ?? 0) || 0;
-  const w = Number(row.displayed_car_wash_service_fee ?? row.wash_convenience_fee ?? 0) || 0;
-  const i = Number(row.displayed_inspection_fee ?? row.quick_inspection_fee ?? 0) || 0;
-  return roundMoney(Math.max(0, f + w + i));
+const APPLIES_TO = ['service_fees', 'wash_and_fees', 'total', 'fuel_service', 'wash_service', 'inspection'];
+
+const num = (v) => Number(v) || 0;
+
+// Pull the price breakdown a discount can target off a booking row. The same
+// shape is sent by the browser for the live preview (api/promos validate).
+function amountsFromRow(row) {
+  return {
+    fuel_service: num(row.displayed_fuel_service_fee ?? row.fuel_convenience_fee),
+    wash_service: num(row.displayed_car_wash_service_fee ?? row.wash_convenience_fee),
+    inspection: num(row.displayed_inspection_fee ?? row.quick_inspection_fee),
+    wash_price: num(row.wash_fee ?? row.wash_amount), // car-wash package price
+    total: num(row.promo_order_total ?? row.estimated_total ?? row.rounded_customer_total),
+  };
 }
 
-function computeDiscount(promo, serviceFees) {
-  const base = Math.max(0, Number(serviceFees) || 0);
-  if (base <= 0) return 0;
+// The dollar base a code's % / $ is computed against, per its applies_to mode.
+function discountBase(appliesTo, a) {
+  const fees = num(a.fuel_service) + num(a.wash_service) + num(a.inspection);
+  switch (appliesTo) {
+    case 'total':        return roundMoney(num(a.total));
+    case 'wash_and_fees':return roundMoney(fees + num(a.wash_price));
+    case 'fuel_service': return roundMoney(num(a.fuel_service));
+    case 'wash_service': return roundMoney(num(a.wash_service));
+    case 'inspection':   return roundMoney(num(a.inspection));
+    case 'service_fees':
+    default:             return roundMoney(fees);
+  }
+}
+
+// Back-compat: service fees only.
+function serviceFeesFromRow(row) {
+  return discountBase('service_fees', amountsFromRow(row));
+}
+
+function computeDiscount(promo, base) {
+  const b = Math.max(0, Number(base) || 0);
+  if (b <= 0) return 0;
   let d = promo.discount_type === 'percent'
-    ? base * (Number(promo.discount_value) / 100)
+    ? b * (Number(promo.discount_value) / 100)
     : Number(promo.discount_value);
   if (!Number.isFinite(d) || d <= 0) return 0;
-  return roundMoney(Math.min(d, base)); // never discount more than the service fees
+  return roundMoney(Math.min(d, b)); // never discount more than the base
 }
 
 // An ILIKE pattern that matches a phone's digits regardless of formatting, e.g.
@@ -83,8 +110,11 @@ async function fetchPromo(db, code) {
   return data || null;
 }
 
-// Full server-side validation. Returns { ok, reason, promo, discount }.
-async function validatePromoForCustomer({ db, code, phone, email, serviceFees, orderTotal }) {
+// Full server-side validation. `amounts` is the price breakdown (from a row via
+// amountsFromRow, or sent by the browser). Returns { ok, reason, promo, discount }.
+async function validatePromoForCustomer({ db, code, phone, email, amounts }) {
+  const a = amounts || {};
+  const orderTotal = num(a.total);
   const promo = await fetchPromo(db, code);
   if (!promo) return { ok: false, reason: 'That promo code was not found.' };
   if (!promo.active) return { ok: false, reason: 'This promo code is no longer active.' };
@@ -120,7 +150,8 @@ async function validatePromoForCustomer({ db, code, phone, email, serviceFees, o
     }
   }
 
-  const discount = computeDiscount(promo, serviceFees);
+  const base = discountBase(promo.applies_to || 'service_fees', a);
+  const discount = computeDiscount(promo, base);
   if (discount <= 0) return { ok: false, reason: 'This code does not apply to this order.' };
   return { ok: true, promo, discount };
 }
@@ -145,8 +176,11 @@ async function recordPromoRedemption({ db, promo, requestId, phone, email, disco
 }
 
 module.exports = {
+  APPLIES_TO,
   normalizeCode,
   roundMoney,
+  amountsFromRow,
+  discountBase,
   serviceFeesFromRow,
   computeDiscount,
   validatePromoForCustomer,
