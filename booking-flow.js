@@ -103,6 +103,7 @@ const bookingState = {
     lon: "",
     surcharge: 0,
     extraMiles: 0,
+    oneWayMiles: 0,
     perMileRate: 0.75,
   },
   promo: { code: "", discount_type: "", discount_value: 0 },
@@ -2080,6 +2081,10 @@ function applyStationSelection(s) {
   bookingState.station.lon = s.lon ?? "";
   bookingState.station.surcharge = Number(s.surcharge) || 0;
   bookingState.station.extraMiles = Number(s.extra_round_trip_miles) || 0;
+  // One-way driving miles to this station (already a real Mapbox distance from the
+  // picker) — stashed in notes so the worker's time-to-complete can include the
+  // round-trip drive to the pump. Display-only; no extra Mapbox call.
+  bookingState.station.oneWayMiles = Number(s.one_way_miles) || 0;
 }
 
 // Clear any station selection (e.g. when the address changes or fuel is dropped)
@@ -2094,6 +2099,7 @@ function resetStationSelection() {
   bookingState.station.lon = "";
   bookingState.station.surcharge = 0;
   bookingState.station.extraMiles = 0;
+  bookingState.station.oneWayMiles = 0;
 }
 
 // Refresh any visible price summaries after a station change. Both are no-ops if
@@ -2576,6 +2582,10 @@ function buildBookingPayload() {
     // Freeze the time charge at the booking-time company rate so the customer's
     // price is locked — later company/employee rate changes never move it.
     Number(totals.timeCost) > 0 ? `[time_charge ${Number(totals.timeCost).toFixed(2)}]` : "",
+    // One-way driving miles to the gas station (real Mapbox distance from the
+    // picker) so the worker's time-to-complete can add the round-trip pump drive.
+    serviceNeedsFuel() && Number(bookingState.station.oneWayMiles) > 0
+      ? `[station_miles ${Number(bookingState.station.oneWayMiles).toFixed(1)}]` : "",
   ].filter(Boolean).join(" ");
 
   return {

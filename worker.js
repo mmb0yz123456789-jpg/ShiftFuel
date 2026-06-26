@@ -788,11 +788,19 @@ function workerEstimatedPayout(request) {
 const EST_TO_DESTINATION_MIN = 10;
 const EST_FIND_CAR_MIN = 5;
 const EST_QUICK_CARE_MIN = 10;
+// Round-trip driving miles to the gas station. Prefer the real one-way distance
+// captured at booking ([station_miles] note, doubled); fall back to the extra
+// detour miles for older jobs that don't carry it.
+function workerStationDriveMiles(request) {
+  if (!serviceNeedsFuel(request)) return 0;
+  const m = String(request?.notes || '').match(/\[station_miles (\d+(?:\.\d+)?)\]/);
+  if (m) return Number(m[1]) * 2;
+  return Number(request.gas_station_extra_miles) || 0;
+}
 function workerEstimatedMinutes(request) {
-  // Driving the service legs at ~30 mph. The detour miles are already round trip
-  // (gas: extra round-trip miles; wash: car→wash×2), so this covers both the GPS
-  // time out to the gas/wash and the time to go back.
-  const detourMiles = (Number(request.gas_station_extra_miles) || 0) + workerWashDetourMiles(request);
+  // Driving the service legs at ~30 mph: the round trip out to the gas station
+  // (and back) plus any car-wash detour (car→wash×2).
+  const detourMiles = workerStationDriveMiles(request) + workerWashDetourMiles(request);
   const driveLegs = (detourMiles / 30) * 60;
   const quickCare = request.quick_inspection ? EST_QUICK_CARE_MIN : 0;
   return Math.round(EST_TO_DESTINATION_MIN + EST_FIND_CAR_MIN + driveLegs + quickCare);
