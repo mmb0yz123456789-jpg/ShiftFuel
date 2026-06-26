@@ -626,9 +626,12 @@
   body.admin-portal-page .admin-page-tabs { display: none !important; width: 0 !important; }
   body.admin-portal-page .portal-closing-banner { display: none !important; }
 
-  /* Tighter tab labels so 5 admin tabs fit a narrow phone. */
-  body.admin-portal-page .app-tab { font-size: 0.62rem; padding: 6px 2px; }
-  body.admin-portal-page .app-tab svg { width: 21px; height: 21px; }
+  /* Tighter tab labels so all 7 admin tabs (incl. Payroll + Promos) fit a narrow
+     phone without wrapping. */
+  body.admin-portal-page .app-tabbar { gap: 0; }
+  body.admin-portal-page .app-tab { font-size: 0.56rem; padding: 6px 1px; min-width: 0; }
+  body.admin-portal-page .app-tab span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+  body.admin-portal-page .app-tab svg { width: 20px; height: 20px; }
 }
 
 /* ─────────────────────────────────────────────────────────────────────────

@@ -779,13 +779,23 @@ function workerEstimatedPayout(request) {
   return roundMoneyValue(Math.max(0, payout));
 }
 
-// Rough total minutes to complete, for the Jobs-tab time estimate: paid service
-// minutes + a drive allowance (base + any extra detour miles at ~30 mph).
+// Rough total minutes to complete, for the Jobs-tab time estimate. This is the
+// worker's real elapsed time (NOT the customer's billed service minutes):
+//   10 min to drive to the destination
+// +  5 min to find the car
+// +  GPS time out to the gas station / car wash / both, and the time to go back
+// + 10 min only if the customer added Quick Vehicle Care
+const EST_TO_DESTINATION_MIN = 10;
+const EST_FIND_CAR_MIN = 5;
+const EST_QUICK_CARE_MIN = 10;
 function workerEstimatedMinutes(request) {
-  const service = workerServiceMinutes(request);
+  // Driving the service legs at ~30 mph. The detour miles are already round trip
+  // (gas: extra round-trip miles; wash: car→wash×2), so this covers both the GPS
+  // time out to the gas/wash and the time to go back.
   const detourMiles = (Number(request.gas_station_extra_miles) || 0) + workerWashDetourMiles(request);
-  const drive = 25 + (detourMiles / 30) * 60; // ~25 min base round trip + detours
-  return Math.round(service + drive);
+  const driveLegs = (detourMiles / 30) * 60;
+  const quickCare = request.quick_inspection ? EST_QUICK_CARE_MIN : 0;
+  return Math.round(EST_TO_DESTINATION_MIN + EST_FIND_CAR_MIN + driveLegs + quickCare);
 }
 
 // The customer's time charge, FROZEN at booking ([time_charge X.XX] in notes). Used
