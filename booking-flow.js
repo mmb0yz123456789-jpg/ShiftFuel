@@ -418,9 +418,8 @@ function updateFuelBufferNote(panel) {
     note.textContent = '';
     return;
   }
-  const totals = calculateTotals();
   note.hidden = false;
-  note.innerHTML = `💳 <strong>Card hold:</strong> we authorize a temporary hold of about <strong>${formatMoney(totals.estimatedTotal)}</strong> — enough for up to <strong>${authGal} gallons</strong> plus the service fee, in case your tank takes a bit more than the range. You're only charged for the fuel actually pumped; the rest is released right after service.`;
+  note.innerHTML = `💳 <strong>Card hold:</strong> at checkout we authorize for up to <strong>${authGal} gallons</strong> — just in case your tank needs a little more fuel than the range you picked. You're only charged for the fuel actually pumped; the rest is released right after service.`;
 }
 const slotHoldingStatuses = new Set([
   "accepted", "key_received", "vehicle_picked_up", "service_in_progress",
@@ -1028,7 +1027,7 @@ function renderSummarySidebar(steps, flowName, unlockedIndex) {
         <h3>Booking Summary</h3>
         <p class="field-help">Review your details before continuing.</p>
         <div class="summary-rows">${rows}</div>
-        ${totals.subtotal > 0 ? `<div class="summary-promo-wrap">${renderPromoBlock()}</div>` : ""}
+        <div class="summary-promo-wrap">${renderPromoBlock()}</div>
         ${totals.promoDiscount > 0 ? `
         <div class="summary-discount-row">
           <span>Promo ${escapeHtml(bookingState.promo.code)}</span>
@@ -1868,6 +1867,7 @@ function renderServiceDetails(panel) {
   restorePanelValues(panel);
   updateFuelBufferNote(panel);
   if (serviceNeedsFuel()) loadStationOptions(panel);
+  if (serviceNeedsWash()) ensureWashEstimate();
 }
 
 // Per-extra-mile rate shown in the UI; the server (api/_gas-stations.js) is the
@@ -1939,6 +1939,50 @@ async function applyPreferredStation(panel) {
     if (statusEl) statusEl.textContent = `Auto-selected your usual: ${data.stations[0].name}. Change it anytime below.`;
   } catch (_) {
     // Non-fatal — the closest station stays selected.
+  }
+}
+
+// ── Car-wash drive estimate ───────────────────────────────────────────────────
+// The wash facility is fixed (DECarSpa). The worker's "time to complete" needs the
+// round-trip drive to it, but the real GPS coords aren't captured until mid-job, so
+// estimate it at booking from the service address. Geocoded once per session and
+// cached; straight-line distance ×1.3 road factor — display-only, so no routing
+// call. Stored one-way (the worker doubles it), in `[wash_miles]`.
+const CAR_WASH_FACILITY_ADDRESS = "602 Main St, Wilmington, DE 19804";
+let carWashFacilityCoords = null;
+let washEstimate = { fetchedFor: "", oneWayMiles: 0 };
+
+function bookingHaversineMiles(a, b) {
+  if (!a || !b) return 0;
+  const R = 3958.8, toRad = (d) => (d * Math.PI) / 180;
+  const dLat = toRad(b.lat - a.lat), dLon = toRad(b.lon - a.lon);
+  const x = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(a.lat)) * Math.cos(toRad(b.lat)) * Math.sin(dLon / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(x));
+}
+
+async function ensureWashEstimate() {
+  const lat = Number(bookingState.values.address_lat);
+  const lon = Number(bookingState.values.address_lon);
+  if (!Number.isFinite(lat) || !Number.isFinite(lon) || (lat === 0 && lon === 0)) return;
+  const key = `${lat},${lon}`;
+  if (washEstimate.fetchedFor === key && washEstimate.oneWayMiles > 0) return;
+  try {
+    if (!carWashFacilityCoords) {
+      const res = await fetch("/api/address", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "geocode", street: CAR_WASH_FACILITY_ADDRESS }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (data && data.ok && Number.isFinite(Number(data.lat)) && Number.isFinite(Number(data.lon))) {
+        carWashFacilityCoords = { lat: Number(data.lat), lon: Number(data.lon) };
+      }
+    }
+    if (!carWashFacilityCoords) return;
+    const oneWay = bookingHaversineMiles({ lat, lon }, carWashFacilityCoords) * 1.3;
+    washEstimate = { fetchedFor: key, oneWayMiles: Math.round(oneWay * 10) / 10 };
+  } catch (_) {
+    // Non-fatal — the wash drive just won't be included in the estimate.
   }
 }
 
@@ -2586,6 +2630,9 @@ function buildBookingPayload() {
     // picker) so the worker's time-to-complete can add the round-trip pump drive.
     serviceNeedsFuel() && Number(bookingState.station.oneWayMiles) > 0
       ? `[station_miles ${Number(bookingState.station.oneWayMiles).toFixed(1)}]` : "",
+    // One-way miles to the fixed car-wash facility, same purpose for the wash leg.
+    serviceNeedsWash() && Number(washEstimate.oneWayMiles) > 0
+      ? `[wash_miles ${Number(washEstimate.oneWayMiles).toFixed(1)}]` : "",
   ].filter(Boolean).join(" ");
 
   return {
@@ -3058,6 +3105,12 @@ function renderFlow(root) {
         return;
       }
       const t = calculateTotals();
+      // The box is always visible, so guard the case where there's no service to
+      // discount yet — friendlier than the server's "doesn't apply" reply.
+      if (t.subtotal <= 0 || t.serviceFees <= 0) {
+        if (msg) msg.textContent = "Pick a service first — codes apply to the service fees.";
+        return;
+      }
       promoApply.disabled = true; promoApply.textContent = "Checking…";
       try {
         const r = await fetch("/api/promos", {

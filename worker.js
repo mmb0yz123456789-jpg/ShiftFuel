@@ -797,10 +797,20 @@ function workerStationDriveMiles(request) {
   if (m) return Number(m[1]) * 2;
   return Number(request.gas_station_extra_miles) || 0;
 }
+// Round-trip wash drive for the estimate: prefer the real captured spot coords
+// (workerWashDetourMiles, available once the car's spot is known mid-job), else the
+// booking-time [wash_miles] note (one-way → doubled) so upcoming jobs still show it.
+function workerWashDriveMiles(request) {
+  if (!serviceNeedsWash(request)) return 0;
+  const live = workerWashDetourMiles(request);
+  if (live > 0) return live;
+  const m = String(request?.notes || '').match(/\[wash_miles (\d+(?:\.\d+)?)\]/);
+  return m ? Number(m[1]) * 2 : 0;
+}
 function workerEstimatedMinutes(request) {
   // Driving the service legs at ~30 mph: the round trip out to the gas station
-  // (and back) plus any car-wash detour (car→wash×2).
-  const detourMiles = workerStationDriveMiles(request) + workerWashDetourMiles(request);
+  // (and back) plus the round trip to the car wash.
+  const detourMiles = workerStationDriveMiles(request) + workerWashDriveMiles(request);
   const driveLegs = (detourMiles / 30) * 60;
   const quickCare = request.quick_inspection ? EST_QUICK_CARE_MIN : 0;
   return Math.round(EST_TO_DESTINATION_MIN + EST_FIND_CAR_MIN + driveLegs + quickCare);

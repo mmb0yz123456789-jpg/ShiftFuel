@@ -3026,21 +3026,20 @@ async function saveAdminWorkerProfile(button) {
   // so it works regardless of admin_update_employee's field whitelist.
   const timeRateRaw = card?.querySelector('.admin-worker-time-rate')?.value;
   let timeRate = timeRateRaw != null && String(timeRateRaw).trim() !== '' ? Number(timeRateRaw) : null;
+  let capped = false;
   // Cap the per-employee rate at the company rate — a worker can't earn more per
   // minute than the company charges.
   if (Number.isFinite(timeRate) && timeRate > adminCompanyTimeRatePerMin) {
     timeRate = adminCompanyTimeRatePerMin;
     const rateInput = card?.querySelector('.admin-worker-time-rate');
     if (rateInput) rateInput.value = adminCompanyTimeRatePerMin;
-    if (status) status.textContent = `Time rate capped at the company rate ($${adminCompanyTimeRatePerMin.toFixed(2)}/min).`;
+    capped = true;
   }
   // db.rpc returns the error in the result (it doesn't throw), so check it and
-  // surface a clear message instead of failing silently.
+  // surface a clear message instead of failing silently (handled at the end so the
+  // generic "saved" message can't overwrite it).
   const { error: rateErr } = await db.rpc('admin_set_employee_time_rate', { p_token: adminToken(), p_employee_id: employeeId, p_rate: Number.isFinite(timeRate) ? timeRate : null });
-  if (rateErr) {
-    console.warn('Could not save employee time rate:', rateErr);
-    if (status) status.textContent = 'Worker saved — but the time rate did not save. Run the time-based-pay SQL migration in Supabase, then try again.';
-  }
+  if (rateErr) console.warn('Could not save employee time rate:', rateErr);
 
   // admin_update_employee also syncs employee_availability.work_location when
   // home_location changes, and cascades name/phone/photo to any open
@@ -3048,7 +3047,13 @@ async function saveAdminWorkerProfile(button) {
   const data = (rpcRows || [])[0];
 
   // Normalize the returned row so photo_zoom/position defaults are always numbers.
-  allEmployees = allEmployees.map((employee) => employee.id === employeeId ? normalizeEmployee(data) : employee);
+  const savedEmployee = normalizeEmployee(data);
+  // admin_update_employee doesn't return time_rate_per_min (it's saved by the
+  // separate RPC above), so apply the value we just saved — otherwise the card
+  // refreshes from the stale row and snaps back to the company-rate placeholder
+  // even though the rate persisted.
+  if (!rateErr) savedEmployee.time_rate_per_min = Number.isFinite(timeRate) ? timeRate : null;
+  allEmployees = allEmployees.map((employee) => employee.id === employeeId ? savedEmployee : employee);
   selectedScheduleEmployeeId = employeeId;
   if (workerLocation) {
     workerLocation.value = data.home_location || DEFAULT_WORK_LOCATION;
@@ -3056,7 +3061,15 @@ async function saveAdminWorkerProfile(button) {
   renderWorkerSelect();
   renderWorkerProfiles();
   renderRequests();
-  if (status) status.textContent = 'Worker profile saved.';
+  if (status) {
+    if (rateErr) {
+      status.textContent = 'Worker saved — but the time pay rate did NOT save. Run the time-based-pay SQL migration (202606261200_time_based_comp.sql) in Supabase, then try again.';
+    } else if (capped) {
+      status.textContent = `Worker saved. Time pay rate capped at the company rate ($${adminCompanyTimeRatePerMin.toFixed(2)}/min) — a worker can't earn more per minute than the company charges.`;
+    } else {
+      status.textContent = 'Worker profile saved.';
+    }
+  }
 }
 
 async function resetAdminWorkerPassword(button) {
