@@ -18,6 +18,9 @@
        the public site inside the app shell. Browser visitors still see them. */
     html.is-pwa .portal-hero-back,
     html.is-pwa .portal-login-back { display: none !important; }
+    /* When the top back-arrow already returns to the customer site (visitor came
+       straight from there), hide the redundant bottom "Back to customer site". */
+    html.hide-bottom-back .portal-login-back { display: none !important; }
   </style>
 </head>
 <body class="landing-page portal-login-page admin-login-page">
@@ -62,6 +65,20 @@
       <span>Back to Staff Access</span>
     </a>
   </header>
+
+  <!-- The customer site links straight to /admin/login on desktop, but goes via
+       Staff Access on mobile. So the back arrow only returns to Staff Access if the
+       visitor actually came from there; otherwise it goes back to the customer site. -->
+  <script>
+    (function () {
+      var back = document.querySelector('.portal-hero-back');
+      if (!back || /staff-access/i.test(document.referrer || '')) return;
+      back.setAttribute('href', 'index.html');
+      var label = back.querySelector('span');
+      if (label) label.textContent = 'Back to customer site';
+      document.documentElement.classList.add('hide-bottom-back');
+    })();
+  </script>
 
   <main class="portal-login-shell">
     <section class="portal-login-card">

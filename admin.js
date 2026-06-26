@@ -908,7 +908,7 @@ function roundMoneyValue(value) {
 
 // ── Worker payout (must mirror workerNetPayout in worker.js) ─────────────────
 const WORKER_SERVICE_FEE_SHARE = 0.5;   // 50% of service fees, net of card processing
-const WORKER_MILEAGE_RATE = 0.725;      // IRS rate for chosen-station detours
+let WORKER_MILEAGE_RATE = 0.725;        // worker per-mile detour pay; set from settings (wash_detour_rate)
 
 // Did the customer cancel after the worker already had the keys? Those workers
 // are owed half the cancellation fee actually collected (no mileage — they never
@@ -2208,7 +2208,7 @@ function updateDashboardStatCards() {
   if (statInProgress) statInProgress.textContent = inProgressCount;
   if (statCompletedToday) statCompletedToday.textContent = completedCount;
   if (statActiveWorkers) statActiveWorkers.textContent = activeWorkerCount;
-  if (statNetRevenue) statNetRevenue.textContent = `$${netRevenue.toFixed(2)}`;
+  if (statNetRevenue) statNetRevenue.textContent = money(companyNet);
   // Worker Snapshot — derive live presence from the heartbeat (last_seen_at +
   // presence_status) plus current job assignments. A worker counts as "live"
   // only if they pinged within the freshness window; otherwise they age out to
@@ -3140,73 +3140,9 @@ function renderWorkerSelect() {
   if (workerSelect) workerSelect.value = selectedScheduleEmployeeId || '';
 }
 
-function syncSelectedWorker(employeeId) {
-  if (!employeeId || !allEmployees.some((employee) => employee.id === employeeId)) {
-    return false;
-  }
-
-  selectedScheduleEmployeeId = employeeId;
-  if (workerSelect) workerSelect.value = employeeId;
-  renderWorkerProfiles();
-  return true;
-}
-
-async function loadAdminWorkerSchedule(employeeId) {
-  const employee = allEmployees.find((item) => item.id === employeeId);
-  if (!employee) return;
-
-  syncSelectedWorker(employeeId);
-  if (workerLocation) workerLocation.value = employee.home_location || DEFAULT_WORK_LOCATION;
-
-  if (String(employeeId).startsWith('local-')) {
-    renderWorkerDaysGrid(workerDayOptions.map(({ dayOfWeek }) => ({
-      dayOfWeek,
-      startsAt: '09:00',
-      endsAt: '17:00',
-    })));
-    selectedWorkerDaysOff = new Set();
-    renderWorkerDaysOffCalendar();
-    renderWorkerProfiles();
-    if (workerScheduleStatus) {
-      workerScheduleStatus.textContent = 'This is a local fallback worker. Run supabase-operational-upgrades.sql before saving availability.';
-    }
-    return;
-  }
-
-  const { data: availability, error: availabilityError } = await db
-    .from('employee_availability')
-    .select('day_of_week,starts_at,ends_at,work_location')
-    .eq('employee_id', employeeId);
-
-  if (availabilityError) {
-    console.warn('Could not load worker availability:', availabilityError);
-    renderWorkerDaysGrid([]);
-  } else {
-    const rows = availability || [];
-    renderWorkerDaysGrid(rows.map((row) => ({
-      dayOfWeek: row.day_of_week,
-      startsAt: String(row.starts_at || '09:00').slice(0, 5),
-      endsAt: String(row.ends_at || '17:00').slice(0, 5),
-    })));
-
-    const location = rows.find((row) => row.work_location)?.work_location || employee.home_location || DEFAULT_WORK_LOCATION;
-    if (workerLocation) workerLocation.value = location;
-  }
-
-  const { data: daysOff, error: daysOffError } = await db
-    .from('employee_days_off')
-    .select('day_off')
-    .eq('employee_id', employeeId);
-
-  if (daysOffError) {
-    console.warn('Could not load worker days off:', daysOffError);
-  } else {
-    selectedWorkerDaysOff = new Set((daysOff || []).map((item) => item.day_off));
-  }
-
-  renderWorkerDaysOffCalendar();
-  renderWorkerProfiles();
-}
+// (Removed: the old "Select worker" dropdown schedule loader — syncSelectedWorker
+// / loadAdminWorkerSchedule. Schedule editing now lives inline in each Workers-tab
+// employee card; see loadAdminCardAvailability / saveAdminCardSchedule.)
 
 async function uploadAdminWorkerPhoto(employeeId, blob) {
   const safeName = (blob.name || 'profile.jpg').replace(/[^a-z0-9.-]/gi, '-').toLowerCase();
@@ -4117,26 +4053,6 @@ workerProfileList?.addEventListener('click', async (event) => {
   } finally {
     saveButton.disabled = false;
   }
-});
-
-async function handleWorkerSelection(employeeId, shouldScroll = false) {
-  if (!employeeId) {
-    selectedScheduleEmployeeId = '';
-    if (workerSelect) workerSelect.value = '';
-    renderWorkerProfiles();
-    return;
-  }
-
-  if (!syncSelectedWorker(employeeId)) return;
-  await loadAdminWorkerSchedule(employeeId);
-
-  if (shouldScroll) {
-    document.querySelector(`[data-worker-id="${employeeId}"]`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-  }
-}
-
-workerSelect?.addEventListener('change', () => {
-  handleWorkerSelection(workerSelect.value, true);
 });
 
 async function updateRequestStatus(id, status) {
@@ -6222,17 +6138,11 @@ function renderPayroll() {
   }
   const rows = [...byWorker.values()].sort((a, b) => b.total - a.total);
 
-  const serviceFeeRevenue = (allRequests || [])
-    .filter((r) => r.payment_status === 'captured' && inRange(r))
-    .reduce((s, r) => s + Number(r.displayed_fuel_service_fee || 0) + Number(r.displayed_car_wash_service_fee || 0) + Number(r.displayed_inspection_fee || 0), 0);
-  // Cancellation fees the company actually collected (e.g. cancel-after-keys).
-  // Those jobs aren't "captured", so without this their income would be missing
-  // while the worker's cut is still subtracted below — understating company net.
-  const cancellationRevenue = (allRequests || [])
-    .filter((r) => r.payment_status === 'cancellation_fee_paid' && inRange(r))
-    .reduce((s, r) => s + Number(r.cancellation_fee ?? r.cancellation_fee_amount ?? 0), 0);
-  const workerPayouts = rows.reduce((s, e) => s + e.total, 0);
-  const companyNet = roundMoneyValue(serviceFeeRevenue + cancellationRevenue - workerPayouts);
+  // Summary figures come from the shared helper so this tab and the dashboard
+  // "Company Net" tile can never drift. (Cancellation fees are collected on jobs
+  // that aren't "captured", so they're counted separately or company net is
+  // understated while the worker's cut is still subtracted.)
+  const { serviceFeeRevenue, cancellationRevenue, workerPayouts, companyNet } = companyNetBreakdown(inRange);
   const rangeLabel = dashboardRangeLabel(payrollRange);
 
   container.innerHTML = `
@@ -6491,8 +6401,10 @@ document.getElementById('stat-card-completed')?.addEventListener('click', () => 
 document.getElementById('stat-card-completed')?.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); goRequestsThen(() => statCardNav('complete', 'completed')); } });
 document.getElementById('stat-card-workers')?.addEventListener('click', () => goRequestsThen(openWorkersPanel));
 document.getElementById('stat-card-workers')?.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); goRequestsThen(openWorkersPanel); } });
-document.getElementById('stat-card-revenue')?.addEventListener('click', () => goRequestsThen(openRevenueBreakdown));
-document.getElementById('stat-card-revenue')?.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); goRequestsThen(openRevenueBreakdown); } });
+// The tile shows Company Net, so it opens the Payroll tab (full breakdown) rather
+// than the gross service-fee drilldown.
+document.getElementById('stat-card-revenue')?.addEventListener('click', () => switchPageTab('payroll'));
+document.getElementById('stat-card-revenue')?.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); switchPageTab('payroll'); } });
 
 // Find Tickets modal
 heroFindTicketsBtn?.addEventListener('click', openFindTicketsModal);
@@ -7422,10 +7334,11 @@ function renderServicesSettingsList() {
               <label>Fuel time — per gallon (min)<input id="sp-fuel-time-per-gal" type="number" step="0.1" min="0"></label>
               <label>Car wash time (min)<input id="sp-wash-time" type="number" step="1" min="0"></label>
               <label>Wash detour free miles<input id="sp-wash-detour-free" type="number" step="0.5" min="0"></label>
-              <label>Wash detour ($/mile)<input id="sp-wash-detour-rate" type="number" step="0.01" min="0"></label>
+              <label>Worker mileage pay ($/mile)<input id="sp-wash-detour-rate" type="number" step="0.01" min="0"></label>
               <label>Gas station distance surcharge ($/extra round-trip mile)<input id="sp-per-mile-rate" type="number" step="0.01" min="0"></label>
             </div>
             <p class="pricing-effective-hint">Service time is baked into the customer's fee at the company rate (set $0 to turn it off). Each worker's actual per-minute pay is set on the Employees tab.</p>
+            <p class="pricing-effective-hint">Worker mileage pay ($/mile) is what a driver earns per detour mile — it covers both the gas-station mileage and the car-wash detour. Separate from the customer-facing gas-station surcharge below.</p>
             <p class="pricing-effective-hint">The gas-station surcharge applies to new and in-progress bookings immediately. Already-booked tickets keep their original surcharge.</p>
           </div>
         </details>
@@ -7461,8 +7374,17 @@ function renderServicesSettingsList() {
         </label>
         <label>Gas station round-trip miles<input id="sim-station-miles" type="number" min="0" step="0.1" value="0"></label>
         <label>Car wash round-trip miles<input id="sim-wash-miles" type="number" min="0" step="0.1" value="0"></label>
-        <label>Worker pay rate ($/min)<input id="sim-worker-rate" type="number" min="0" step="0.01" value="0.50"></label>
         <label class="sim-check"><input id="sim-quick" type="checkbox"> Quick vehicle care</label>
+      </div>
+      <p class="field-help" style="margin:.6rem 0 .2rem"><strong>Rates</strong> — pre-filled from your saved settings. Change them here to test "what-if" scenarios; this sandbox never touches your saved pricing.</p>
+      <div class="pricing-sim-inputs">
+        <label>Fuel service fee ($)<input id="sim-fuel-fee" type="number" min="0" step="0.01"></label>
+        <label>Wash service fee ($)<input id="sim-wash-fee" type="number" min="0" step="0.01"></label>
+        <label>Quick care fee ($)<input id="sim-insp-fee" type="number" min="0" step="0.01"></label>
+        <label>Company rate ($/min)<input id="sim-company-rate" type="number" min="0" step="0.01"></label>
+        <label>Worker pay rate ($/min)<input id="sim-worker-rate" type="number" min="0" step="0.01" value="0.50"></label>
+        <label>Gas station surcharge — customer ($/mile)<input id="sim-per-mile" type="number" min="0" step="0.01"></label>
+        <label>Worker mileage pay ($/mile)<input id="sim-worker-mile" type="number" min="0" step="0.01"></label>
       </div>
       <div class="pricing-sim-output" id="sim-output"></div>
     </details>
@@ -7474,7 +7396,11 @@ function renderServicesSettingsList() {
 // Reads the live pricing-form rates + the simulator's scenario inputs and renders a
 // full customer / worker / company breakdown. Pure math — no network, no real data.
 function simNum(id, dflt = 0) {
-  const n = Number(document.getElementById(id)?.value);
+  const el = document.getElementById(id);
+  // An empty field must fall back to the default — Number('') is 0, which would
+  // silently zero a fee/rate and make the whole simulator read $0.
+  if (!el || el.value === '' || el.value == null) return dflt;
+  const n = Number(el.value);
   return Number.isFinite(n) ? n : dflt;
 }
 function runPricingSimulator() {
@@ -7490,18 +7416,22 @@ function runPricingSimulator() {
   const washMiles = simNum('sim-wash-miles');
   const workerRateRaw = simNum('sim-worker-rate');
 
-  // Rates pulled live from the pricing form above (fall back to current constants).
-  const fuelFee = needsFuel ? simNum('sp-fuel-fee', BASE_FUEL_SERVICE_FEE) : 0;
-  const washFee = needsWash ? simNum('sp-wash-fee', BASE_WASH_SERVICE_FEE) : 0;
-  const inspFee = quick ? simNum('sp-inspection-fee', BASE_QUICK_INSPECTION_FEE) : 0;
+  // Rates come from the simulator's own editable inputs (pre-filled from saved
+  // settings), so the sandbox is self-contained and a blank settings form can't
+  // zero it out. Defaults fall back to the loaded pricing constants.
+  const fuelFee = needsFuel ? simNum('sim-fuel-fee', BASE_FUEL_SERVICE_FEE) : 0;
+  const washFee = needsWash ? simNum('sim-wash-fee', BASE_WASH_SERVICE_FEE) : 0;
+  const inspFee = quick ? simNum('sim-insp-fee', BASE_QUICK_INSPECTION_FEE) : 0;
   const washPrice = needsWash ? simNum(document.getElementById('sim-wash-pkg')?.value || 'sp-wash-buff-shine', 0) : 0;
-  const companyRate = simNum('sp-time-rate', 0);
+  const companyRate = simNum('sim-company-rate', adminCompanyTimeRatePerMin);
+  // Time params still come from the Time-Based Pay settings (rarely changed).
   const fuelBaseMin = simNum('sp-fuel-time-base', 3);
   const fuelPerGalMin = simNum('sp-fuel-time-per-gal', 0.5);
   const washTimeMin = simNum('sp-wash-time', 20);
   const washDetourFree = simNum('sp-wash-detour-free', 5);
-  const washDetourRate = simNum('sp-wash-detour-rate', 0.725);
-  const perMileRate = simNum('sp-per-mile-rate', 0.75);
+  // One worker per-mile rate drives gas-station mileage AND wash detour.
+  const washDetourRate = simNum('sim-worker-mile', WORKER_MILEAGE_RATE);
+  const perMileRate = simNum('sim-per-mile', 0.75);
 
   // ── Customer side ──
   const fuelCost = needsFuel ? roundMoneyValue(gallons * pricePerGallon) : 0;
@@ -7517,7 +7447,7 @@ function runPricingSimulator() {
   const feeGross = fuelFee + washFee + inspFee;
   const feeStripe = roundMoneyValue(feeGross * RETURN_RECOVERY_RATE + RETURN_RECOVERY_FIXED);
   const feeShare = feeGross > 0 ? roundMoneyValue(Math.max(0, feeGross - feeStripe) * WORKER_SERVICE_FEE_SHARE) : 0;
-  const mileagePay = roundMoneyValue(stationMiles * WORKER_MILEAGE_RATE);
+  const mileagePay = roundMoneyValue(stationMiles * washDetourRate);
   const timePay = roundMoneyValue(serviceMin * workerRate);
   const washDetourPay = roundMoneyValue(Math.max(0, washMiles - washDetourFree) * washDetourRate);
   const workerPay = roundMoneyValue(feeShare + mileagePay + timePay + washDetourPay);
@@ -7546,7 +7476,7 @@ function runPricingSimulator() {
       <div class="sim-card">
         <h5>Worker earns</h5>
         ${feeShare > 0 ? row('Service fee share (50%, net card)', feeShare) : ''}
-        ${mileagePay > 0 ? row(`Station mileage (${stationMiles} mi × ${money(WORKER_MILEAGE_RATE)})`, mileagePay) : ''}
+        ${mileagePay > 0 ? row(`Station mileage (${stationMiles} mi × ${money(washDetourRate)})`, mileagePay) : ''}
         ${timePay > 0 ? row(`Service time (${serviceMin.toFixed(1)} min × ${money(workerRate)})`, timePay) : ''}
         ${washDetourPay > 0 ? row('Wash detour', washDetourPay) : ''}
         ${row('Take-home', workerPay, true)}
@@ -7665,6 +7595,18 @@ function applyServicePricing(data) {
   BASE_WASH_SERVICE_FEE = Number(data.wash_service_fee);
   BASE_QUICK_INSPECTION_FEE = Number(data.quick_inspection_fee);
   if (data.time_rate_per_min != null) adminCompanyTimeRatePerMin = Number(data.time_rate_per_min);
+  // Keep the payroll-fallback payout mirror in sync with live settings (frozen
+  // [worker_payout] jobs are unaffected). The single wash_detour_rate drives both
+  // the gas-station mileage and the wash detour, matching worker.js.
+  if (data.time_rate_per_min != null) ADMIN_TIME_COMP.companyRatePerMin = Number(data.time_rate_per_min);
+  if (data.fuel_time_base_min != null) ADMIN_TIME_COMP.fuelBaseMin = Number(data.fuel_time_base_min);
+  if (data.fuel_time_per_gallon_min != null) ADMIN_TIME_COMP.fuelPerGallonMin = Number(data.fuel_time_per_gallon_min);
+  if (data.wash_time_min != null) ADMIN_TIME_COMP.washMin = Number(data.wash_time_min);
+  if (data.wash_detour_free_miles != null) ADMIN_TIME_COMP.washDetourFreeMiles = Number(data.wash_detour_free_miles);
+  if (data.wash_detour_rate != null) {
+    ADMIN_TIME_COMP.washDetourRate = Number(data.wash_detour_rate);
+    WORKER_MILEAGE_RATE = Number(data.wash_detour_rate);
+  }
   CR_FEES = {
     fuelConvenience: Number(data.fuel_service_fee),
     washConvenience: Number(data.wash_service_fee),
@@ -7700,6 +7642,16 @@ async function loadServicePricing() {
     if (v('sp-wash-shine-protect')) v('sp-wash-shine-protect').value = Number(data.wash_shine_protect_price).toFixed(2);
     if (v('sp-wash-shine')) v('sp-wash-shine').value = Number(data.wash_shine_price).toFixed(2);
     if (v('sp-wash-double')) v('sp-wash-double').value = Number(data.wash_double_wash_price).toFixed(2);
+
+    // Seed the payout simulator's editable rate inputs with the saved settings,
+    // then recompute it (its first render ran before this data arrived).
+    if (v('sim-fuel-fee')) v('sim-fuel-fee').value = Number(data.fuel_service_fee).toFixed(2);
+    if (v('sim-wash-fee')) v('sim-wash-fee').value = Number(data.wash_service_fee).toFixed(2);
+    if (v('sim-insp-fee')) v('sim-insp-fee').value = Number(data.quick_inspection_fee).toFixed(2);
+    if (v('sim-company-rate')) v('sim-company-rate').value = Number(data.time_rate_per_min ?? 0.50).toFixed(2);
+    if (v('sim-per-mile')) v('sim-per-mile').value = Number(data.per_mile_rate ?? 0.75).toFixed(2);
+    if (v('sim-worker-mile')) v('sim-worker-mile').value = Number(data.wash_detour_rate ?? 0.725).toFixed(3);
+    if (typeof runPricingSimulator === 'function') runPricingSimulator();
     return data;
   } catch {
     // Non-fatal — form keeps its defaults.

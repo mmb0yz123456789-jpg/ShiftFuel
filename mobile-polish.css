@@ -645,9 +645,15 @@
   .admin-requests-table,
   .admin-requests-table tbody { display: block; width: 100%; }
 
+  /* Compact card: a 2-column grid so the four detail fields pair up onto two
+     lines (Service | Status, then Worker | Date). Customer headline and the
+     action row span the full width. */
   .admin-requests-table tr.queue-row {
-    display: block;
-    padding: 13px 14px;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    column-gap: 14px;
+    row-gap: 2px;
+    padding: 12px 14px;
     margin: 0 0 10px;
     border: 1px solid rgba(13, 59, 59, 0.12);
     border-radius: 14px;
@@ -655,51 +661,50 @@
     box-shadow: 0 1px 4px rgba(6, 39, 39, 0.05);
   }
 
-  /* Generic label : value row */
+  /* Each field stacks its label over its value, left-aligned, in its grid cell. */
   .admin-requests-table tr.queue-row td {
     display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 12px;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 1px;
     width: auto;
-    padding: 5px 0;
+    min-width: 0;
+    padding: 4px 0;
     border: none !important;
-    text-align: right;
+    text-align: left;
   }
   .admin-requests-table tr.queue-row td::before {
     content: attr(data-label);
-    flex: 0 0 auto;
-    text-align: left;
-    font-size: 0.7rem;
+    font-size: 0.66rem;
     font-weight: 800;
     letter-spacing: 0.03em;
     text-transform: uppercase;
     color: var(--sf-muted, #60716d);
   }
 
-  /* Customer is the card headline — full width, no label. */
+  /* Customer is the card headline — spans both columns, no label. */
   .admin-requests-table tr.queue-row td[data-label="Customer"] {
-    display: block;
-    text-align: left;
-    padding-bottom: 9px;
-    margin-bottom: 5px;
+    grid-column: 1 / -1;
+    padding-bottom: 8px;
+    margin-bottom: 4px;
     border-bottom: 1px solid rgba(13, 59, 59, 0.08) !important;
   }
   .admin-requests-table tr.queue-row td[data-label="Customer"]::before { display: none; }
   .admin-requests-table tr.queue-row td[data-label="Customer"] .queue-customer-cell strong { font-size: 1.02rem; }
 
-  /* Action row — full-width buttons, no label. */
+  /* Action row — spans both columns, full-width buttons, no label. */
   .admin-requests-table tr.queue-row td[data-label="Action"] {
-    display: block;
-    text-align: left;
+    grid-column: 1 / -1;
     padding-top: 8px;
+    margin-top: 2px;
+    border-top: 1px solid rgba(13, 59, 59, 0.08) !important;
   }
   .admin-requests-table tr.queue-row td[data-label="Action"]::before { display: none; }
-  .admin-requests-table tr.queue-row td[data-label="Action"] .queue-next-action-cell { display: flex; gap: 8px; }
+  .admin-requests-table tr.queue-row td[data-label="Action"] .queue-next-action-cell { display: flex; gap: 8px; width: 100%; }
   .admin-requests-table tr.queue-row td[data-label="Action"] .queue-next-action-cell .button { flex: 1; min-height: 44px; }
   .admin-requests-table tr.queue-row td[data-label="Action"] .queue-row-kebab { flex: 0 0 44px; }
 
-  /* Status pill sits on the right of its row naturally. */
+  /* Status renders as a chip on its own value line. */
   .admin-requests-table tr.queue-row td[data-label="Status"] .status-pill { white-space: nowrap; }
 
   /* Expanded detail row spans full width as a panel (no card chrome). */

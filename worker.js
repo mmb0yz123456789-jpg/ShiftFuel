@@ -728,9 +728,12 @@ function feeSummary(request) {
 
 const PAYMENT_RECOVERY_RATE = 0.029;
 const PAYMENT_RECOVERY_FIXED = 0.30;
-const BASE_FUEL_SERVICE_FEE = 15;
-const BASE_WASH_SERVICE_FEE = 15;
-const BASE_QUICK_INSPECTION_FEE = 5;
+// Service fees + pay rates default to the agreed numbers, then get overwritten by
+// the admin's live Services settings via loadWorkerPayRates() at startup, so the
+// calculator and live payouts always reflect what the admin configured.
+let BASE_FUEL_SERVICE_FEE = 15;
+let BASE_WASH_SERVICE_FEE = 15;
+let BASE_QUICK_INSPECTION_FEE = 5;
 
 // Worker pay model:
 //   - 50% of the service fees (fuel + wash + inspection), net of card processing.
@@ -738,7 +741,7 @@ const BASE_QUICK_INSPECTION_FEE = 5;
 //     (IRS standard mileage rate); the company keeps the remaining $0.025/mile
 //     of the $0.75/mile customer surcharge.
 const WORKER_SERVICE_FEE_SHARE = 0.5;
-const WORKER_MILEAGE_RATE = 0.725;
+let WORKER_MILEAGE_RATE = 0.725;
 
 function roundMoneyValue(value) {
   return Math.round((Number(value) || 0) * 100) / 100;
@@ -765,6 +768,34 @@ const TIME_COMP = {
   washDetourFreeMiles: 5,
   washDetourRate: 0.725,
 };
+
+// Pull the admin's live Services settings into the pay constants so worker payout
+// (and the Earnings calculator) reflect what the admin configured rather than the
+// hardcoded defaults. The single per-mile "detour/mileage" rate (wash_detour_rate)
+// drives BOTH the gas-station mileage pay and the wash detour. Settings are the
+// source for live/estimated pay; a completed job's pay is still frozen at
+// completion via its [worker_payout] tag, so later changes never move it.
+async function loadWorkerPayRates() {
+  try {
+    const { data, error } = await workerDb.rpc('public_get_service_pricing');
+    if (error || !data) return;
+    if (data.fuel_service_fee != null) BASE_FUEL_SERVICE_FEE = Number(data.fuel_service_fee);
+    if (data.wash_service_fee != null) BASE_WASH_SERVICE_FEE = Number(data.wash_service_fee);
+    if (data.quick_inspection_fee != null) BASE_QUICK_INSPECTION_FEE = Number(data.quick_inspection_fee);
+    if (data.time_rate_per_min != null) TIME_COMP.companyRatePerMin = Number(data.time_rate_per_min);
+    if (data.fuel_time_base_min != null) TIME_COMP.fuelBaseMin = Number(data.fuel_time_base_min);
+    if (data.fuel_time_per_gallon_min != null) TIME_COMP.fuelPerGallonMin = Number(data.fuel_time_per_gallon_min);
+    if (data.wash_time_min != null) TIME_COMP.washMin = Number(data.wash_time_min);
+    if (data.wash_detour_free_miles != null) TIME_COMP.washDetourFreeMiles = Number(data.wash_detour_free_miles);
+    if (data.wash_detour_rate != null) {
+      TIME_COMP.washDetourRate = Number(data.wash_detour_rate);
+      WORKER_MILEAGE_RATE = Number(data.wash_detour_rate);
+    }
+    if (typeof runWorkerPayCalc === 'function') runWorkerPayCalc();
+  } catch (e) {
+    console.warn('Could not load worker pay rates from settings:', e);
+  }
+}
 
 function parseNoteCoords(request, tag) {
   const m = String(request?.notes || '').match(new RegExp('\\[' + tag + ' (-?\\d+(?:\\.\\d+)?),(-?\\d+(?:\\.\\d+)?)\\]'));
@@ -1738,6 +1769,7 @@ async function loadWorkerProfile() {
     if (sessionStorage.getItem('shiftfuel_worker_must_change_pw') === 'true') {
       openPasswordModal(true);
     }
+    await loadWorkerPayRates();
     await loadWorkerSchedule();
     loadWorkerChangeRequests();
     await loadWorkerJobs();

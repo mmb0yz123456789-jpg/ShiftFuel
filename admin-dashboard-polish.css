@@ -412,14 +412,3 @@
   cursor: pointer;
 }
 .admin-viewall-link:hover { text-decoration: underline; }
-
-/* ── Compact request rows/cards (denser queue on the Requests tab) ── */
-.admin-requests-table td { padding: 8px 10px; }
-.admin-requests-table .queue-customer-cell { gap: 8px; }
-.admin-requests-table .queue-avatar { width: 34px; height: 34px; }
-@media (max-width: 760px) {
-  /* Tighten the stacked mobile cards: less padding, smaller gaps. */
-  .admin-requests-table td { padding: 6px 12px; }
-  .admin-requests-table tbody tr { padding: 10px 12px; }
-  .admin-requests-table tbody tr + tr { margin-top: 10px; }
-}
