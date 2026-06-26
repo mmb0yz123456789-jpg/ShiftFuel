@@ -1959,8 +1959,12 @@ font-size: 0.85rem;
 }
 .summary-promo-input .button {
   flex: 0 0 auto;
+  /* Beat the small-phone rule (.button { width: 100% } @ ≤420px) that otherwise
+     expands Apply and squeezes the promo input to nothing. */
+  width: auto;
   padding: 10px 16px;
 }
+.summary-promo-input input { width: auto; }
 .summary-promo-msg {
   margin: 6px 0 0;
   min-height: 1em;

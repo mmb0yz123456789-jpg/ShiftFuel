@@ -840,18 +840,82 @@ function workerMileagePay(request) {
   return miles > 0 ? roundMoneyValue(miles * WORKER_MILEAGE_RATE) : 0;
 }
 
+// ── Time-based pay (mirror of worker.js, for the Payroll fallback when a job has
+// no frozen [worker_payout] yet). New completions read the frozen value; this
+// keeps the live calc correct for the window before the freeze existed. ──
+const ADMIN_TIME_COMP = { companyRatePerMin: 0.50, fuelBaseMin: 3, fuelPerGallonMin: 0.5, washMin: 20, washDetourFreeMiles: 5, washDetourRate: 0.725 };
+function adminFrozenTimeCharge(request) {
+  const m = String(request?.notes || '').match(/\[time_charge (\d+(?:\.\d+)?)\]/);
+  return m ? Number(m[1]) : 0;
+}
+function adminNoteCoords(request, tag) {
+  const m = String(request?.notes || '').match(new RegExp('\\[' + tag + ' (-?\\d+(?:\\.\\d+)?),(-?\\d+(?:\\.\\d+)?)\\]'));
+  if (!m) return null;
+  const lat = Number(m[1]), lon = Number(m[2]);
+  return (Number.isFinite(lat) && Number.isFinite(lon)) ? { lat, lon } : null;
+}
+function adminHaversineMiles(a, b) {
+  if (!a || !b) return 0;
+  const R = 3958.8, toRad = (d) => d * Math.PI / 180;
+  const dLat = toRad(b.lat - a.lat), dLon = toRad(b.lon - a.lon);
+  const x = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(a.lat)) * Math.cos(toRad(b.lat)) * Math.sin(dLon / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(x));
+}
+function adminJobNeedsFuel(r) { return /fuel/.test(String(r.service_type || '')); }
+function adminJobNeedsWash(r) { return /wash/.test(String(r.service_type || '')); }
+function adminServiceMinutes(r) {
+  let m = 0;
+  if (adminJobNeedsFuel(r)) m += ADMIN_TIME_COMP.fuelBaseMin + ADMIN_TIME_COMP.fuelPerGallonMin * Number(r.selected_fuel_gallons || r.estimated_gallons || r.authorization_fuel_gallons || 0);
+  if (adminJobNeedsWash(r)) m += ADMIN_TIME_COMP.washMin;
+  return m;
+}
+// The assigned worker's per-minute rate, capped at the company rate (defaults to it).
+function adminWorkerTimeRate(request) {
+  const company = ADMIN_TIME_COMP.companyRatePerMin;
+  const emp = (allEmployees || []).find((e) => String(e.id) === String(request.assigned_employee_id));
+  const rate = Number(emp?.time_rate_per_min);
+  return Number.isFinite(rate) && rate > 0 ? Math.min(rate, company) : company;
+}
+function adminWorkerTimePay(request) {
+  return roundMoneyValue(adminServiceMinutes(request) * adminWorkerTimeRate(request));
+}
+function adminWorkerWashDetourPay(request) {
+  if (!adminJobNeedsWash(request)) return 0;
+  const car = adminNoteCoords(request, 'pickup_coords');
+  const wash = adminNoteCoords(request, 'wash_dest_coords');
+  if (!car || !wash) return 0;
+  const miles = adminHaversineMiles(car, wash) * 2 * 1.3; // round trip + road factor
+  return roundMoneyValue(Math.max(0, miles - ADMIN_TIME_COMP.washDetourFreeMiles) * ADMIN_TIME_COMP.washDetourRate);
+}
+
 // What a worker earned on a single request. Completed/captured jobs pay 50% of
 // service fees (net of Stripe) plus station mileage; a customer-cancel-after-keys
 // pays 50% of the cancellation fee actually collected (net of Stripe), no
 // mileage; anything else hasn't earned yet.
+// The worker's pay locked into notes at completion ([worker_payout X.XX]) — read
+// back so later rate changes or admin fee edits never move a finished job's pay.
+function frozenWorkerPayout(request) {
+  const all = String(request?.notes || '').match(/\[worker_payout (\d+(?:\.\d+)?)\]/g);
+  if (!all || !all.length) return null;
+  const n = Number((all[all.length - 1].match(/[\d.]+/) || [])[0]);
+  return Number.isFinite(n) ? n : null;
+}
+
 function workerPayoutForRequest(request) {
+  const completed = request.status === 'complete' || request.payment_status === 'captured';
+  if (completed) {
+    const locked = frozenWorkerPayout(request);
+    if (locked != null) return roundMoneyValue(locked);
+  }
   let gross = 0;
   let mileage = 0;
-  if (request.status === 'complete' || request.payment_status === 'captured') {
+  if (completed) {
     const receipts = receiptTotalsFromNotes(request);
     const hasReceipts = Number(receipts.fuel || 0) > 0 || Number(receipts.wash || 0) > 0;
     const fees = hasReceipts ? feeSummary(request, receipts) : feeSummary(request);
-    gross = Number(fees.fuel || 0) + Number(fees.wash || 0) + Number(fees.inspection || 0);
+    // Strip the folded time cost from the 50% share so time is paid exactly once
+    // (via adminWorkerTimePay below), mirroring worker.js workerNetPayout.
+    gross = Math.max(0, Number(fees.fuel || 0) + Number(fees.wash || 0) + Number(fees.inspection || 0) - adminFrozenTimeCharge(request));
     mileage = workerMileagePay(request);
   } else if (isCanceledAfterKeys(request) && request.payment_status === 'cancellation_fee_paid') {
     // 50% of the cancellation fee the company actually collected.
@@ -860,6 +924,10 @@ function workerPayoutForRequest(request) {
     return 0;
   }
   let payout = mileage;
+  if (completed) {
+    // Time pay (minutes at the worker's rate) + car-wash detour mileage.
+    payout += adminWorkerTimePay(request) + adminWorkerWashDetourPay(request);
+  }
   if (gross > 0) {
     const stripe = roundMoneyValue(gross * RETURN_RECOVERY_RATE + RETURN_RECOVERY_FIXED);
     payout += Math.max(0, gross - stripe) * WORKER_SERVICE_FEE_SHARE;
@@ -1223,6 +1291,7 @@ function requestCardDetails(request) {
       ${hasPayment ? `<p><strong>Estimated total:</strong> ${money(request.estimated_total)} | <strong>Final total:</strong> ${request.final_total == null ? 'Not recorded' : money(request.final_total)}</p>` : ''}
       ${(receiptTotals.fuel || receiptTotals.wash) ? `<p><strong>Receipt totals:</strong> Fuel ${money(receiptTotals.fuel)} | Car wash ${money(receiptTotals.wash)}</p>` : ''}
       ${hasPayment ? `<p><strong>Service fees:</strong> Fuel service ${money(fees.fuel)} | Car wash service ${money(fees.wash)} | Quick inspection ${money(fees.inspection)}</p>` : ''}
+      ${(request.status === 'complete' || request.payment_status === 'captured') ? `<p><strong>Driver pay${frozenWorkerPayout(request) != null ? ' (locked)' : ''}:</strong> ${money(workerPayoutForRequest(request))}${request.assigned_worker_name ? ` &rarr; ${escapeHtml(request.assigned_worker_name)}` : ''}${frozenWorkerPayout(request) != null ? '' : ' <span class="field-help" style="display:inline">(live — not yet locked)</span>'}</p>` : ''}
       ${hasPayment ? renderPricingAuditDetails(request) : ''}
       ${request.payment_intent_id ? `<hr class="details-divider">
       <p><strong>Payment status:</strong> ${paymentStatusLabel(request)}</p>
@@ -2574,7 +2643,8 @@ function renderWorkerProfileCard(employee) {
           <input class="admin-worker-started" type="date" value="${escapeHtml(employee.started_at || '')}">
         </label>
         <label>Time pay rate ($/min)
-          <input class="admin-worker-time-rate" type="number" step="0.01" min="0" placeholder="Company rate" value="${employee.time_rate_per_min != null ? Number(employee.time_rate_per_min) : ''}">
+          <input class="admin-worker-time-rate" type="number" step="0.01" min="0" placeholder="$${adminCompanyTimeRatePerMin.toFixed(2)} (company rate)" value="${employee.time_rate_per_min != null ? Number(employee.time_rate_per_min) : ''}">
+          <span class="field-help">Currently earns <strong>$${(employee.time_rate_per_min != null ? Number(employee.time_rate_per_min) : adminCompanyTimeRatePerMin).toFixed(2)}/min</strong>${employee.time_rate_per_min != null ? '' : ' (company rate)'}</span>
         </label>
       </div>
       <div class="admin-button-row">
@@ -4916,6 +4986,19 @@ async function saveEdit(button) {
   setTime('desired_return_time', '.edit-return-time');
   setNum('estimated_total',      '.edit-estimated-total');
   setNum('final_total',          '.edit-final-total');
+
+  // Lower-only rule: the final total may be reduced (goodwill / partial refund)
+  // but never raised above what the customer authorized — you can't capture more
+  // than the hold, and raising it would also unfairly inflate the worker payout.
+  if (updates.final_total != null) {
+    const req = allRequests.find((r) => r.id === id);
+    const ceiling = Number(req?.authorized_amount ?? req?.estimated_total ?? req?.final_total);
+    if (Number.isFinite(ceiling) && Number(updates.final_total) > ceiling + 0.001) {
+      if (statusEl) statusEl.textContent = `Final total can't exceed the authorized ${money(ceiling)}. You can only lower it.`;
+      else alert(`Final total can't exceed the authorized ${money(ceiling)}. You can only lower it.`);
+      return;
+    }
+  }
 
   if (Object.keys(updates).length === 0) {
     if (statusEl) statusEl.textContent = 'No changes to save.';

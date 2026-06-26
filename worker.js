@@ -737,11 +737,19 @@ function isCanceledAfterKeys(request) {
 // the cancellation fee actually collected (no mileage). Never negative.
 function workerNetPayout(request) {
   const completed = request.status === 'complete' || request.payment_status === 'captured';
+  // Once a job is finished its pay is frozen — read the locked amount and never
+  // recompute (so later rate changes / admin fee edits can't move it).
+  if (completed) {
+    const locked = frozenWorkerPayout(request);
+    if (locked != null) return roundMoneyValue(locked);
+  }
   let gross = 0;
   let mileage = 0;
   if (completed) {
     const fees = feeSummary(request);
-    gross = fees.fuel + fees.wash + fees.inspection;
+    // The time cost was folded into the displayed service fee — strip it out of the
+    // 50% share so time is paid exactly once (via workerTimePay), not 1.5x.
+    gross = Math.max(0, fees.fuel + fees.wash + fees.inspection - frozenTimeCharge(request));
     mileage = workerMileagePay(request);
   } else if (isCanceledAfterKeys(request) && request.payment_status === 'cancellation_fee_paid') {
     gross = Number(request.cancellation_fee ?? request.cancellation_fee_amount ?? 0);
@@ -763,7 +771,8 @@ function workerNetPayout(request) {
 // for the "you'll make ~$X" line in the Jobs tab.
 function workerEstimatedPayout(request) {
   const fees = feeSummary(request);
-  const gross = fees.fuel + fees.wash + fees.inspection;
+  // Strip the folded time cost from the share — time is paid separately below.
+  const gross = Math.max(0, fees.fuel + fees.wash + fees.inspection - frozenTimeCharge(request));
   const stripe = roundMoneyValue(gross * PAYMENT_RECOVERY_RATE + PAYMENT_RECOVERY_FIXED);
   let payout = Math.max(0, gross - stripe) * WORKER_SERVICE_FEE_SHARE;
   payout += workerMileagePay(request) + workerTimePay(request) + workerWashDetourPay(request);
@@ -785,6 +794,30 @@ function workerEstimatedMinutes(request) {
 function frozenTimeCharge(request) {
   const m = String(request?.notes || '').match(/\[time_charge (\d+(?:\.\d+)?)\]/);
   return m ? Number(m[1]) : 0;
+}
+
+// The worker's payout LOCKED into the booking notes at completion
+// ([worker_payout X.XX]). Read it back so a later rate change OR an admin
+// lowering the customer's fee never moves what a driver already earned on a
+// finished job. Returns null for jobs completed before this existed (those fall
+// back to the live calc).
+function frozenWorkerPayout(request) {
+  const all = String(request?.notes || '').match(/\[worker_payout (\d+(?:\.\d+)?)\]/g);
+  if (!all || !all.length) return null;
+  const n = Number((all[all.length - 1].match(/[\d.]+/) || [])[0]);
+  return Number.isFinite(n) ? n : null;
+}
+
+// Compute the worker's pay at THIS driver's current rate and append the lock tag
+// to the job's notes, to be saved at completion. `baseNotes` defaults to the
+// job's current notes; the live calc runs against notes that don't yet carry the
+// tag, so there's no circular read-back.
+function appendWorkerPayoutNote(request, baseNotes) {
+  const notes = baseNotes != null ? baseNotes : (request.notes || '');
+  if (/\[worker_payout /.test(notes)) return notes; // already locked — don't double-stamp
+  const payout = workerNetPayout({ ...request, status: 'complete', notes });
+  const tag = `[worker_payout ${roundMoneyValue(payout).toFixed(2)}]`;
+  return notes ? `${notes}\n${tag}` : tag;
 }
 
 function transactionPricingSummary(request, receiptTotals = { fuel: 0, wash: 0 }) {
@@ -3608,11 +3641,15 @@ async function sendWorkerToCustomerPayment(button) {
 
   const finalTotal = finalTotalFromSavedReceipts(request, receiptTotals);
 
+  // Lock the worker's pay into the notes NOW (computed at this driver's current
+  // rate), so a later rate change or admin fee edit never moves it.
+  const notesWithPayout = appendWorkerPayoutNote(request);
+
   // Save the final total first so the capture endpoint can read it.
   const { error: updateErr } = await workerDb.rpc('worker_update_request', {
     p_token: SESSION_WORKER_TOKEN,
     p_request_id: id,
-    p_data: { final_total: finalTotal, ...pricingAuditFields(request, receiptTotals) },
+    p_data: { final_total: finalTotal, notes: notesWithPayout, ...pricingAuditFields(request, receiptTotals) },
   });
 
   if (updateErr) {
@@ -3684,7 +3721,8 @@ async function completeWorkerRequest(button) {
     ...pricingAuditFields(request, receiptTotals),
   };
   if (!isReturnWorkflow) updates.completed_at = timestamp;
-  if (returnConfirmNote) updates.notes = notes;
+  // Lock the worker's pay at this driver's current rate (frozen for the finished job).
+  updates.notes = appendWorkerPayoutNote(request, notes);
 
   let { error: updateErr } = await workerDb.rpc('worker_update_request', {
     p_token: SESSION_WORKER_TOKEN,
