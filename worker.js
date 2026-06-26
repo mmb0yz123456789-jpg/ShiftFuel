@@ -959,6 +959,16 @@ function runWorkerPayCalc() {
   const needsFuel = service === 'fuel' || service === 'both';
   const needsWash = service === 'wash' || service === 'both';
   const quick = !!document.getElementById('wcalc-quick')?.checked;
+
+  // Show only the inputs that apply to the chosen service (fuel vs wash vs both).
+  const setCalcVis = (id, show) => {
+    const lbl = document.getElementById(id)?.closest('label');
+    if (lbl) lbl.style.display = show ? '' : 'none';
+  };
+  setCalcVis('wcalc-gallons', needsFuel);
+  setCalcVis('wcalc-station-miles', needsFuel);
+  setCalcVis('wcalc-wash-miles', needsWash);
+
   const gallons = wcalcNum('wcalc-gallons');
   const stationMiles = wcalcNum('wcalc-station-miles');
   const washMiles = wcalcNum('wcalc-wash-miles');
@@ -5077,16 +5087,8 @@ workerDaysOffCalendar?.addEventListener('click', (event) => {
   renderWorkerDaysOffCalendar();
 });
 
-// Availability tabs: Work Days (default) ↔ Days Off. Both panels stay in the DOM
-// and editable; the tabs just switch which one shows.
-function setScheduleTab(showDaysOff) {
-  if (workdaysPanel) workdaysPanel.hidden = showDaysOff;
-  if (daysOffPanel) daysOffPanel.hidden = !showDaysOff;
-  openWorkdaysPanel?.classList.toggle('is-active', !showDaysOff);
-  openDaysOffPanel?.classList.toggle('is-active', showDaysOff);
-}
-openWorkdaysPanel?.addEventListener('click', () => setScheduleTab(false));
-openDaysOffPanel?.addEventListener('click', () => setScheduleTab(true));
+// Availability: Work Days and the Days Off calendar are both shown stacked (no
+// tabs) — nothing to toggle.
 
 workerScheduleForm?.addEventListener('submit', (event) => event.preventDefault());
 

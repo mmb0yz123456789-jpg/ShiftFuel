@@ -335,18 +335,15 @@
             <p class="field-help">Set the days and hours you work, and block out any days off. Saved instantly — no approval needed.</p>
           </div>
           <form id="worker-schedule-form" class="admin-edit-panel worker-schedule-form-inline">
-            <div class="worker-schedule-tabs" role="tablist">
-              <button id="open-workdays-panel" class="worker-sched-tab is-active" type="button">Work Days &amp; Shift Times</button>
-              <button id="open-days-off-panel" class="worker-sched-tab" type="button">Days Off</button>
-            </div>
-
             <div id="workdays-panel" class="worker-availability-window">
+              <h3 class="worker-availability-title">Work Days &amp; Shift Times</h3>
               <div id="worker-days-grid" class="worker-days-grid"></div>
               <button id="save-workdays" class="button primary" type="button">Save work days</button>
             </div>
 
-            <div id="days-off-panel" class="worker-availability-window" hidden>
-              <p class="field-help">Click any date in the 3-month booking window to make that day unbookable.</p>
+            <div id="days-off-panel" class="worker-availability-window worker-availability-divider">
+              <h3 class="worker-availability-title">Days Off</h3>
+              <p class="field-help">Click any date in the 3-month booking window to block it — customers can't book you on those days.</p>
               <div id="worker-days-off-calendar" class="worker-days-off-calendar"></div>
               <p id="worker-days-off-summary" class="field-help"></p>
               <button id="save-days-off" class="button primary" type="button">Save days off</button>
@@ -406,8 +403,8 @@
                 <select id="wcalc-service"><option value="fuel">Fuel only</option><option value="wash">Wash only</option><option value="both">Fuel + Wash</option></select>
               </label>
               <label>Gallons<input id="wcalc-gallons" type="number" min="0" step="1" value="10"></label>
-              <label>Gas station round-trip miles<input id="wcalc-station-miles" type="number" min="0" step="0.1" value="0"></label>
-              <label>Car wash round-trip miles<input id="wcalc-wash-miles" type="number" min="0" step="0.1" value="0"></label>
+              <label>Extra miles to the gas station (round-trip)<input id="wcalc-station-miles" type="number" min="0" step="0.1" value="0"><span class="field-help">How far you drive out to the customer's chosen station and back. You're paid per mile for these.</span></label>
+              <label>Miles to the car wash (round-trip)<input id="wcalc-wash-miles" type="number" min="0" step="0.1" value="0"><span class="field-help">How far you drive to the wash and back. The first few miles are covered; you earn per mile beyond that.</span></label>
               <label class="worker-pay-calc-check"><input id="wcalc-quick" type="checkbox"> Quick vehicle care</label>
             </div>
             <div class="worker-pay-calc-output" id="wcalc-output"></div>

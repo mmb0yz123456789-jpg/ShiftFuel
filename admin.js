@@ -7443,8 +7443,8 @@ function renderServicesSettingsList() {
             <option value="sp-wash-double">Double Wash</option>
           </select>
         </label>
-        <label>Gas station round-trip miles<input id="sim-station-miles" type="number" min="0" step="0.1" value="0"></label>
-        <label>Car wash round-trip miles<input id="sim-wash-miles" type="number" min="0" step="0.1" value="0"></label>
+        <label>Gas station round-trip miles<input id="sim-station-miles" type="number" min="0" step="0.1" value="0"><span class="tbp-hint">Extra round-trip distance to the customer's chosen (non-nearest) station. Drives the customer surcharge AND worker mileage pay.</span></label>
+        <label>Car wash round-trip miles<input id="sim-wash-miles" type="number" min="0" step="0.1" value="0"><span class="tbp-hint">Round-trip distance to the wash. Worker earns mileage only past the free allowance below; not billed to the customer.</span></label>
         <label class="sim-check"><input id="sim-quick" type="checkbox"> Quick vehicle care</label>
       </div>
       <p class="field-help" style="margin:.6rem 0 .2rem"><strong>Rates</strong> — pre-filled from your saved settings. Change them here to test "what-if" scenarios; this sandbox never touches your saved pricing.</p>
@@ -7481,6 +7481,23 @@ function runPricingSimulator() {
   const needsFuel = service === 'fuel' || service === 'both';
   const needsWash = service === 'wash' || service === 'both';
   const quick = !!document.getElementById('sim-quick')?.checked;
+
+  // Show only the inputs that apply to the chosen service: fuel-only hides the
+  // wash fields, wash-only hides the fuel fields, both shows everything.
+  const setSimVis = (id, show) => {
+    const lbl = document.getElementById(id)?.closest('label');
+    if (lbl) lbl.style.display = show ? '' : 'none';
+  };
+  setSimVis('sim-gallons', needsFuel);
+  setSimVis('sim-fuel-price', needsFuel);
+  setSimVis('sim-station-miles', needsFuel);
+  setSimVis('sim-per-mile', needsFuel);
+  setSimVis('sim-fuel-fee', needsFuel);
+  setSimVis('sim-wash-pkg', needsWash);
+  setSimVis('sim-wash-miles', needsWash);
+  setSimVis('sim-wash-fee', needsWash);
+  setSimVis('sim-insp-fee', quick);
+
   const gallons = simNum('sim-gallons');
   const pricePerGallon = simNum('sim-fuel-price');
   const stationMiles = simNum('sim-station-miles');

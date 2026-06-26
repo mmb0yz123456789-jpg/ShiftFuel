@@ -417,14 +417,12 @@
    small Copy/Paste. Times get the space so they're actually legible. ---- */
 .worker-portal-page .worker-day-row {
   display: grid !important;
-  grid-template-columns: auto 1fr auto !important;
-  grid-template-areas:
-    "day day copy"
-    "times times times" !important;
+  grid-template-columns: 78px minmax(0, 1fr) auto !important;
+  grid-template-areas: "day times copy" !important;   /* one tidy line per day */
   align-items: center !important;
-  column-gap: 10px !important;
-  row-gap: 10px !important;
-  padding: 14px 2px !important;
+  column-gap: 12px !important;
+  row-gap: 8px !important;
+  padding: 8px 2px !important;
   background: transparent !important;
   border: 0 !important;
   border-bottom: 1px solid rgba(13, 59, 59, 0.08) !important;
@@ -436,23 +434,36 @@
 .worker-portal-page .worker-day-handle { display: none !important; } /* decorative only — hidden to free space */
 .worker-portal-page .worker-day-toggle {
   grid-area: day;
-  display: inline-flex !important; align-items: center !important; gap: 10px !important;
+  display: inline-flex !important; align-items: center !important; gap: 8px !important;
   margin: 0 !important; padding: 0 !important; background: transparent !important; border: 0 !important;
 }
 .worker-portal-page .worker-day-name { font-weight: 700; color: var(--sf-teal, #0d3b3b); }
-.worker-portal-page .worker-day-copy-actions { grid-area: copy; display: flex !important; gap: 8px !important; }
+.worker-portal-page .worker-day-copy-actions { grid-area: copy; display: flex !important; gap: 6px !important; }
 .worker-portal-page .worker-day-copy-actions .button {
-  min-height: 30px !important; padding: 3px 12px !important; font-size: 0.76rem !important;
+  min-height: 32px !important; padding: 3px 12px !important; font-size: 0.76rem !important;
   background: transparent !important; border: 1px solid rgba(13, 59, 59, 0.18) !important;
 }
 .worker-portal-page .worker-day-times {
   grid-area: times;
-  display: flex !important; align-items: center !important; gap: 10px !important;
+  display: flex !important; align-items: center !important; gap: 8px !important;
 }
 .worker-portal-page .worker-day-times input[type="time"] {
-  flex: 1 1 0 !important; min-width: 0 !important; min-height: 44px !important; padding: 6px 10px !important;
+  flex: 1 1 0 !important; min-width: 0 !important; min-height: 38px !important; padding: 5px 10px !important;
 }
 .worker-portal-page .worker-day-dash { color: #8a9893; flex: 0 0 auto; }
+
+/* Narrow phones: not enough width for one line — stack the times under the
+   day + Copy/Paste row (the old two-row layout, just for small screens). */
+@media (max-width: 560px) {
+  .worker-portal-page .worker-day-row {
+    grid-template-columns: auto 1fr auto !important;
+    grid-template-areas:
+      "day day copy"
+      "times times times" !important;
+    padding: 12px 2px !important;
+  }
+  .worker-portal-page .worker-day-times input[type="time"] { min-height: 44px !important; }
+}
 
 /* ---- Aside "View X" heading link ---- */
 .worker-portal-page .worker-aside-heading { display: flex !important; align-items: center !important; justify-content: space-between !important; }
@@ -1243,34 +1254,20 @@
 .wcr-job-body { padding: 1rem 1.25rem 1.25rem; }
 .wcr-job-body .button.primary { width: 100%; margin-top: 4px; }
 
-/* Availability tabs (Schedule tab) — a clean segmented control */
-.worker-schedule-tabs {
-  display: flex;
-  gap: 8px;
-  margin-bottom: 16px;
-}
-.worker-sched-tab {
-  flex: 1;
-  padding: 12px 14px;
-  border-radius: 12px;
-  border: 1px solid rgba(13, 59, 59, 0.14);
-  background: #f4f8f6;
-  color: #0d3b3b;
-  font-weight: 800;
-  font-size: 0.92rem;
-  cursor: pointer;
-  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
-}
-.worker-sched-tab:hover { border-color: rgba(13, 59, 59, 0.28); }
-.worker-sched-tab.is-active {
-  background: linear-gradient(135deg, #003b38, #002b29);
-  color: #fff;
-  border-color: #003b38;
-}
-.worker-availability-window {
-  padding-top: 4px;
-}
+/* Availability (Schedule tab): Work Days then the Days Off calendar, stacked. */
+.worker-availability-window { padding-top: 4px; }
 .worker-availability-window > .button.primary {
   width: 100%;
   margin-top: 14px;
+}
+.worker-availability-title {
+  margin: 0 0 12px;
+  font-size: 1.02rem;
+  color: var(--sf-teal, #0d3b3b);
+}
+/* Visual break between the Work Days block and the Days Off calendar below it. */
+.worker-availability-divider {
+  margin-top: 22px;
+  padding-top: 20px;
+  border-top: 1px solid rgba(13, 59, 59, 0.1);
 }
