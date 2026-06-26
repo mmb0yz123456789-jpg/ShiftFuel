@@ -240,13 +240,16 @@
         </div>
       </section>
 
-      <section class="section admin-section admin-action-needed-section" data-page-section="dashboard requests" data-conditional id="action-needed-section" hidden>
-        <div class="admin-toolbar">
+      <section class="section admin-section admin-action-needed-section is-collapsed" data-page-section="dashboard requests" data-conditional id="action-needed-section" hidden>
+        <div class="admin-toolbar action-needed-toggle" id="action-needed-toggle" role="button" tabindex="0" aria-expanded="false" aria-controls="action-needed-list">
           <div>
             <p class="eyebrow">Action needed</p>
             <h2>Needs your attention</h2>
           </div>
-          <span class="action-needed-count status-pill status-pill-open" id="action-needed-count"></span>
+          <div class="action-needed-toggle-right">
+            <span class="action-needed-count status-pill status-pill-open" id="action-needed-count"></span>
+            <svg class="action-needed-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
+          </div>
         </div>
         <div id="action-needed-list" class="action-needed-list"></div>
       </section>

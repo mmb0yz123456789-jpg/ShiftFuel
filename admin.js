@@ -4203,6 +4203,18 @@ function openRequestFromAction(id) {
   }, 60);
 }
 
+// Collapse/expand the "Needs your attention" panel (starts collapsed to save space).
+const actionNeededToggle = document.querySelector('#action-needed-toggle');
+actionNeededToggle?.addEventListener('click', () => {
+  const section = document.querySelector('#action-needed-section');
+  if (!section) return;
+  const collapsed = section.classList.toggle('is-collapsed');
+  actionNeededToggle.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+});
+actionNeededToggle?.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); actionNeededToggle.click(); }
+});
+
 document.querySelector('#action-needed-list')?.addEventListener('click', (event) => {
   const reqBtn = event.target.closest('[data-action-request]');
   if (reqBtn) { openRequestFromAction(reqBtn.dataset.actionRequest); return; }
