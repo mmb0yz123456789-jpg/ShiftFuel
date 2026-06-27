@@ -25,6 +25,7 @@ const { notifyRequest } = require('./_push');
 const { placeScheduledHold } = require('./_scheduled-auth');
 const { verifyServiceArea } = require('./_service-area');
 const { computeSurchargeForChosen, PER_MILE_RATE } = require('./_gas-stations');
+const { computeWashDistanceCharge } = require('./_wash-distance');
 const { enforceRateLimit } = require('./_rate-limit');
 const { amountsFromRow, validatePromoForCustomer, recordPromoRedemption } = require('./_promos');
 const { recordDrivenMileage } = require('./_route-mileage');
@@ -121,13 +122,17 @@ function calculateBookingAuthorization(row, opts = {}) {
   // never trusted from the client. Folded into the net so it grosses up like
   // every other line item.
   const stationSurcharge = roundMoney(opts.stationSurcharge || 0);
+  // "Customer choice" car-wash distance charge — server-authoritative, computed
+  // from the fixed wash facility (see _wash-distance). Folded into the net like
+  // the gas surcharge so it grosses up the same way.
+  const washSurcharge = needsWash ? roundMoney(opts.washSurcharge || 0) : 0;
   // Service-time cost — same DB rates / gallon map / rounding as the client.
   const timeRate = num(s.timeRatePerMin, 0);
   const selectedGallons = needsFuel ? (BOOKING_SELECTED_GALLONS[row.estimated_fuel_range] || 0) : 0;
   const fuelTimeCost = roundMoney((needsFuel ? (num(s.fuelTimeBaseMin, 3) + num(s.fuelTimePerGalMin, 0.5) * selectedGallons) : 0) * timeRate);
   const washTimeCost = roundMoney((needsWash ? num(s.washTimeMin, 20) : 0) * timeRate);
   const timeCost = roundMoney(fuelTimeCost + washTimeCost);
-  const netTarget = roundMoney(fuelEstimate + washAmount + fuelBaseFee + washBaseFee + quickFee + stationSurcharge + timeCost);
+  const netTarget = roundMoney(fuelEstimate + washAmount + fuelBaseFee + washBaseFee + quickFee + stationSurcharge + washSurcharge + timeCost);
 
   if ((needsFuel && !fuelGallons) || (needsWash && !washPackage) || !netTarget) {
     return { valid: false, error: 'Service pricing details are incomplete. Please review the booking.' };
@@ -686,6 +691,29 @@ async function resolveStationSurcharge(body) {
   }
 }
 
+// Authoritative car-wash distance charge for a booking. Recomputed server-side
+// from the fixed wash facility (shared with the customer's quote) so it can't be
+// faked. On a Mapbox/geocode outage, fall back to the client's quoted value,
+// clamped, so a transient failure can't block an otherwise-valid booking.
+async function resolveWashSurcharge(body, row) {
+  if (!bookingNeedsWash(row.service_type)) return { surcharge: 0 };
+  try {
+    const result = await computeWashDistanceCharge({
+      serviceLat: Number(body.address_lat),
+      serviceLon: Number(body.address_lon),
+      gasLat: Number(body.gas_station_lat),
+      gasLon: Number(body.gas_station_lon),
+      needsFuel: bookingNeedsFuel(row.service_type),
+    });
+    return { surcharge: roundMoney(result.surcharge) };
+  } catch (err) {
+    const clientValue = roundMoney(body.wash_distance_surcharge || 0);
+    const clamped = Math.min(clientValue, PER_MILE_RATE * 200); // ≤ $150 ceiling
+    console.warn('[payments] wash surcharge recompute failed; using clamped client value:', clamped, err.message);
+    return { surcharge: roundMoney(clamped) };
+  }
+}
+
 // Booking-duration estimate, mirroring the client's estimateBookingMinutes (and
 // worker.js workerEstimatedMinutes): drive to site + find car + round-trip
 // station/wash legs (from the [station_miles]/[wash_miles] note stamps) + quick
@@ -850,8 +878,9 @@ async function handleCreateAuthorizedBooking(body, res) {
   }
 
   const station = await resolveStationSurcharge(body);
+  const washCharge = await resolveWashSurcharge(body, row);
   const settings = await getServerPricingSettings(getSupabaseAdmin());
-  const serverPricing = calculateBookingAuthorization(row, { stationSurcharge: station.surcharge, settings });
+  const serverPricing = calculateBookingAuthorization(row, { stationSurcharge: station.surcharge, washSurcharge: washCharge.surcharge, settings });
   if (!serverPricing.valid) {
     return res.status(400).json({ error: serverPricing.error });
   }
@@ -1019,8 +1048,9 @@ async function handleCreateScheduledBooking(body, res) {
   if (!expectedCents || expectedCents < 50) return res.status(400).json({ error: 'Amount must be at least $0.50' });
 
   const station = await resolveStationSurcharge(body);
+  const washCharge = await resolveWashSurcharge(body, row);
   const settings = await getServerPricingSettings(getSupabaseAdmin());
-  const serverPricing = calculateBookingAuthorization(row, { stationSurcharge: station.surcharge, settings });
+  const serverPricing = calculateBookingAuthorization(row, { stationSurcharge: station.surcharge, washSurcharge: washCharge.surcharge, settings });
   if (!serverPricing.valid) return res.status(400).json({ error: serverPricing.error });
   const db = getSupabaseAdmin();
   const promoResolve = await resolveBookingPromo(db, body, row, serverPricing);

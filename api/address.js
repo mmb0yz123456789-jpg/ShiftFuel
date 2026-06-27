@@ -25,6 +25,7 @@ const {
   SERVICE_ANCHOR_LON,
 } = require('./_service-area');
 const { computeStationOptions, computeTypedStationOptions } = require('./_gas-stations');
+const { computeWashDistanceCharge } = require('./_wash-distance');
 const { enforceRateLimit } = require('./_rate-limit');
 
 // Per-IP rate limits for the actions that call paid third-party APIs. Tuned so
@@ -39,6 +40,7 @@ const RATE_LIMITS = {
   isochrone:             { limit: 20, windowSeconds: 60 },
   geocode:               { limit: 40, windowSeconds: 60 },
   route_eta:             { limit: 40, windowSeconds: 60 },
+  wash_distance_quote:   { limit: 40, windowSeconds: 60 },
 };
 
 // Short-lived in-memory cache for station lookups, keyed by rounded coords (and
@@ -505,6 +507,24 @@ async function handleRouteEta(body, res) {
   }
 }
 
+// Customer-facing quote for the fixed-wash-facility distance charge. Returns the
+// same number the authoritative booking re-price will charge (shared module).
+async function handleWashDistanceQuote(body, res) {
+  try {
+    const result = await computeWashDistanceCharge({
+      serviceLat: Number(body.address_lat),
+      serviceLon: Number(body.address_lon),
+      gasLat: Number(body.gas_station_lat),
+      gasLon: Number(body.gas_station_lon),
+      needsFuel: !!body.needs_fuel,
+    });
+    return res.status(200).json({ ok: true, surcharge: result.surcharge, extra_miles: result.extra_miles });
+  } catch (err) {
+    console.error('[address/wash_distance_quote] Error:', err.message);
+    return res.status(200).json({ ok: false, surcharge: 0 });
+  }
+}
+
 const HANDLERS = {
   validate_service_area: handleValidateServiceArea,
   address_suggest: handleAddressSuggest,
@@ -514,6 +534,7 @@ const HANDLERS = {
   geocode: handleGeocode,
   route_eta: handleRouteEta,
   isochrone: handleIsochrone,
+  wash_distance_quote: handleWashDistanceQuote,
   get_service_area: handleGetServiceArea,
   save_service_area: handleSaveServiceArea,
 };

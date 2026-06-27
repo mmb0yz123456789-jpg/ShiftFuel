@@ -907,8 +907,39 @@ function roundMoneyValue(value) {
 }
 
 // ── Worker payout (must mirror workerNetPayout in worker.js) ─────────────────
-const WORKER_SERVICE_FEE_SHARE = 0.5;   // 50% of service fees, net of card processing
+const WORKER_SERVICE_FEE_SHARE = 0.5;   // fallback / cancellation-fee share
 let WORKER_MILEAGE_RATE = 0.725;        // worker per-mile detour pay; set from settings (wash_detour_rate)
+// Independent worker share per service-fee type (admin-editable, from settings).
+// Default 0.5 each so payout is unchanged until the admin sets different values.
+let ADMIN_FEE_SHARES = { fuel: 0.5, wash: 0.5, insp: 0.5 };
+
+// Mirror of workerFeeShareSplit in worker.js — worker's cut of the service fees
+// with an independent share per fee type. Card + folded service-time removed first,
+// then the net is split by each fee's time-stripped gross. Equal shares == old math.
+function adminFeeShareSplit(fuelFee, washFee, inspFee, timeCharge) {
+  const f = Number(fuelFee) || 0;
+  const w = Number(washFee) || 0;
+  const i = Number(inspFee) || 0;
+  const t = Number(timeCharge) || 0;
+  const totalFee = f + w + i;
+  if (totalFee <= 0) return 0;
+  const gross = Math.max(0, totalFee - t);
+  if (gross <= 0) return 0;
+  const stripe = roundMoneyValue(gross * RETURN_RECOVERY_RATE + RETURN_RECOVERY_FIXED);
+  const net = Math.max(0, gross - stripe);
+  if (net <= 0) return 0;
+  const timeBearing = f + w;
+  const gFuel = Math.max(0, f - (timeBearing > 0 ? t * (f / timeBearing) : 0));
+  const gWash = Math.max(0, w - (timeBearing > 0 ? t * (w / timeBearing) : 0));
+  const gInsp = i;
+  const gSum = gFuel + gWash + gInsp;
+  if (gSum <= 0) return 0;
+  return roundMoneyValue(
+    net * (gFuel / gSum) * ADMIN_FEE_SHARES.fuel +
+    net * (gWash / gSum) * ADMIN_FEE_SHARES.wash +
+    net * (gInsp / gSum) * ADMIN_FEE_SHARES.insp
+  );
+}
 
 // Did the customer cancel after the worker already had the keys? Those workers
 // are owed half the cancellation fee actually collected (no mileage — they never
@@ -968,7 +999,7 @@ function adminWorkerWashDetourPay(request) {
   const wash = adminNoteCoords(request, 'wash_dest_coords');
   if (!car || !wash) return 0;
   const miles = adminHaversineMiles(car, wash) * 2 * 1.3; // round trip + road factor
-  return roundMoneyValue(Math.max(0, miles - ADMIN_TIME_COMP.washDetourFreeMiles) * ADMIN_TIME_COMP.washDetourRate);
+  return roundMoneyValue(miles * ADMIN_TIME_COMP.washDetourRate); // paid on all miles (free allowance is customer-side)
 }
 
 // What a worker earned on a single request. Completed/captured jobs pay 50% of
@@ -990,30 +1021,24 @@ function workerPayoutForRequest(request) {
     const locked = frozenWorkerPayout(request);
     if (locked != null) return roundMoneyValue(locked);
   }
-  let gross = 0;
-  let mileage = 0;
+  let payout = 0;
   if (completed) {
     const receipts = receiptTotalsFromNotes(request);
     const hasReceipts = Number(receipts.fuel || 0) > 0 || Number(receipts.wash || 0) > 0;
     const fees = hasReceipts ? feeSummary(request, receipts) : feeSummary(request);
-    // Strip the folded time cost from the 50% share so time is paid exactly once
-    // (via adminWorkerTimePay below), mirroring worker.js workerNetPayout.
-    gross = Math.max(0, Number(fees.fuel || 0) + Number(fees.wash || 0) + Number(fees.inspection || 0) - adminFrozenTimeCharge(request));
-    mileage = workerMileagePay(request);
+    // Time pay (minutes at the worker's rate) + car-wash detour mileage + station mileage.
+    payout += workerMileagePay(request) + adminWorkerTimePay(request) + adminWorkerWashDetourPay(request);
+    // Per-type service-fee share (time folded out so it's paid once). Mirrors worker.js.
+    payout += adminFeeShareSplit(fees.fuel, fees.wash, fees.inspection, adminFrozenTimeCharge(request));
   } else if (isCanceledAfterKeys(request) && request.payment_status === 'cancellation_fee_paid') {
-    // 50% of the cancellation fee the company actually collected.
-    gross = Number(request.cancellation_fee ?? request.cancellation_fee_amount ?? 0);
+    // 50% of the cancellation fee the company actually collected (no per-type split).
+    const cancelGross = Number(request.cancellation_fee ?? request.cancellation_fee_amount ?? 0);
+    if (cancelGross > 0) {
+      const stripe = roundMoneyValue(cancelGross * RETURN_RECOVERY_RATE + RETURN_RECOVERY_FIXED);
+      payout += Math.max(0, cancelGross - stripe) * WORKER_SERVICE_FEE_SHARE;
+    }
   } else {
     return 0;
-  }
-  let payout = mileage;
-  if (completed) {
-    // Time pay (minutes at the worker's rate) + car-wash detour mileage.
-    payout += adminWorkerTimePay(request) + adminWorkerWashDetourPay(request);
-  }
-  if (gross > 0) {
-    const stripe = roundMoneyValue(gross * RETURN_RECOVERY_RATE + RETURN_RECOVERY_FIXED);
-    payout += Math.max(0, gross - stripe) * WORKER_SERVICE_FEE_SHARE;
   }
   return roundMoneyValue(Math.max(0, payout));
 }
@@ -7338,11 +7363,12 @@ function renderServicesSettingsList() {
   const chevron = '<svg class="svc-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>';
   list.innerHTML = `
     <details class="svc-acc" open>
-      <summary class="svc-acc-head"><span>Fees</span>${chevron}</summary>
+      <summary class="svc-acc-head"><span>Service pricing</span>${chevron}</summary>
       <div class="svc-acc-body">
+        <p class="tbp-intro">Grouped by service. Tags show who each amount touches: <span class="tbp-tag tbp-tag-customer">customer pays</span> = on the customer's bill · <span class="tbp-tag tbp-tag-worker">worker earns</span> = paid to the driver.</p>
 
-        <details class="svc-sub-acc">
-          <summary class="svc-sub-acc-head"><span>Fuel Price</span>${chevron}</summary>
+        <details class="svc-sub-acc" open>
+          <summary class="svc-sub-acc-head"><span>⛽ Fuel</span>${chevron}</summary>
           <div class="svc-sub-acc-body">
             <div class="pricing-group-grid">
               <label>Regular ($/gal)<input id="fp-regular" type="number" step="0.001" min="0"></label>
@@ -7350,12 +7376,17 @@ function renderServicesSettingsList() {
               <label>Premium ($/gal)<input id="fp-premium" type="number" step="0.001" min="0"></label>
               <label>Diesel ($/gal)<input id="fp-diesel" type="number" step="0.001" min="0"></label>
             </div>
-            <label class="pricing-fee-row">Fuel concierge service fee ($)<input id="sp-fuel-fee" type="number" step="0.01" min="0"></label>
+            <div class="pricing-group-grid">
+              <label>Fuel service fee ($) <span class="tbp-tag tbp-tag-customer">customer pays</span><input id="sp-fuel-fee" type="number" step="0.01" min="0"></label>
+              <label>Fuel-fee worker share (%) <span class="tbp-tag tbp-tag-worker">worker earns</span><input id="sp-fuel-share" type="number" step="1" min="0" max="100"><span class="tbp-hint">Driver's cut of the fuel service fee (net of card).</span></label>
+              <label>Fuel time — base (min)<input id="sp-fuel-time-base" type="number" step="0.1" min="0"><span class="tbp-hint">Flat minutes per fuel stop (billed via the time rate below).</span></label>
+              <label>Fuel time — per gallon (min)<input id="sp-fuel-time-per-gal" type="number" step="0.1" min="0"><span class="tbp-hint">Extra minutes per gallon — e.g. 10 gal × 0.5 = +5 min.</span></label>
+            </div>
           </div>
         </details>
 
         <details class="svc-sub-acc">
-          <summary class="svc-sub-acc-head"><span>Car Wash</span>${chevron}</summary>
+          <summary class="svc-sub-acc-head"><span>🚿 Car wash</span>${chevron}</summary>
           <div class="svc-sub-acc-body">
             <div class="pricing-group-grid">
               <label>Buff &amp; Shine ($)<input id="sp-wash-buff-shine" type="number" step="0.01" min="0"></label>
@@ -7363,48 +7394,40 @@ function renderServicesSettingsList() {
               <label>Shine ($)<input id="sp-wash-shine" type="number" step="0.01" min="0"></label>
               <label>Double Wash ($)<input id="sp-wash-double" type="number" step="0.01" min="0"></label>
             </div>
-            <label class="pricing-fee-row">Car wash service fee ($)<input id="sp-wash-fee" type="number" step="0.01" min="0"></label>
+            <div class="pricing-group-grid">
+              <label>Car wash service fee ($) <span class="tbp-tag tbp-tag-customer">customer pays</span><input id="sp-wash-fee" type="number" step="0.01" min="0"></label>
+              <label>Wash-fee worker share (%) <span class="tbp-tag tbp-tag-worker">worker earns</span><input id="sp-wash-share" type="number" step="1" min="0" max="100"><span class="tbp-hint">Driver's cut of the car-wash service fee (net of card).</span></label>
+              <label>Car wash time (min)<input id="sp-wash-time" type="number" step="1" min="0"><span class="tbp-hint">Flat minutes for a car wash (billed via the time rate).</span></label>
+              <label>Wash detour free miles<input id="sp-wash-detour-free" type="number" step="0.5" min="0"><span class="tbp-hint">First N round-trip wash miles are free before mileage pay kicks in.</span></label>
+            </div>
           </div>
         </details>
 
         <details class="svc-sub-acc">
-          <summary class="svc-sub-acc-head"><span>Quick Inspection</span>${chevron}</summary>
+          <summary class="svc-sub-acc-head"><span>🔍 Quick care</span>${chevron}</summary>
           <div class="svc-sub-acc-body">
-            <label class="pricing-fee-row">Quick inspection fee ($)<input id="sp-inspection-fee" type="number" step="0.01" min="0"></label>
+            <div class="pricing-group-grid">
+              <label>Quick care fee ($) <span class="tbp-tag tbp-tag-customer">customer pays</span><input id="sp-inspection-fee" type="number" step="0.01" min="0"></label>
+              <label>Quick-care worker share (%) <span class="tbp-tag tbp-tag-worker">worker earns</span><input id="sp-quick-share" type="number" step="1" min="0" max="100"><span class="tbp-hint">Driver's cut of the quick-care fee (net of card).</span></label>
+            </div>
           </div>
         </details>
 
         <details class="svc-sub-acc">
-          <summary class="svc-sub-acc-head"><span>Time-Based Pay</span>${chevron}</summary>
+          <summary class="svc-sub-acc-head"><span>🚗 Distance &amp; mileage</span>${chevron}</summary>
           <div class="svc-sub-acc-body">
-            <p class="tbp-intro">This covers the <strong>time</strong> part of a job (minutes spent fueling/washing) and the <strong>per-mile</strong> pay. Each field is tagged: <span class="tbp-tag tbp-tag-customer">customer pays</span> = added to the customer's bill, <span class="tbp-tag tbp-tag-worker">worker earns</span> = paid to the driver.</p>
-
-            <div class="tbp-group tbp-group-customer">
-              <h5 class="tbp-group-head">⏱ Service time <span class="tbp-tag tbp-tag-customer">customer pays</span></h5>
-              <p class="tbp-group-sub">How long a job “takes” for billing. Minutes × company rate is baked into the customer's fee; each worker is then paid their own per-minute rate (set on the Workers tab) for those minutes.</p>
-              <div class="pricing-group-grid">
-                <label>Company time rate ($/min)<input id="sp-time-rate" type="number" step="0.01" min="0"><span class="tbp-hint">Charged to the customer per service-minute. Set $0 to turn time pricing off entirely.</span></label>
-                <label>Fuel time — base (min)<input id="sp-fuel-time-base" type="number" step="0.1" min="0"><span class="tbp-hint">Flat minutes counted for any fuel stop.</span></label>
-                <label>Fuel time — per gallon (min)<input id="sp-fuel-time-per-gal" type="number" step="0.1" min="0"><span class="tbp-hint">Extra minutes per gallon — e.g. 10 gal × 0.5 = +5 min.</span></label>
-                <label>Car wash time (min)<input id="sp-wash-time" type="number" step="1" min="0"><span class="tbp-hint">Flat minutes counted for a car wash.</span></label>
-              </div>
+            <div class="pricing-group-grid">
+              <label>Gas station distance surcharge ($/extra round-trip mile) <span class="tbp-tag tbp-tag-customer">customer pays</span><input id="sp-per-mile-rate" type="number" step="0.01" min="0"><span class="tbp-hint">Added to the customer's total when they pick a farther-than-closest gas station.</span></label>
+              <label>Worker mileage pay ($/mile) <span class="tbp-tag tbp-tag-worker">worker earns</span><input id="sp-wash-detour-rate" type="number" step="0.001" min="0"><span class="tbp-hint">Paid to the driver per detour mile — covers BOTH gas-station mileage and the car-wash detour. (3 decimals OK, e.g. 0.725.)</span></label>
             </div>
+          </div>
+        </details>
 
-            <div class="tbp-group tbp-group-worker">
-              <h5 class="tbp-group-head">🚗 Worker mileage <span class="tbp-tag tbp-tag-worker">worker earns</span></h5>
-              <p class="tbp-group-sub">What a driver earns for the extra miles they drive on a detour.</p>
-              <div class="pricing-group-grid">
-                <label>Worker mileage pay ($/mile)<input id="sp-wash-detour-rate" type="number" step="0.001" min="0"><span class="tbp-hint">Paid to the driver per detour mile — covers BOTH gas-station mileage and the car-wash detour. (Accepts 3 decimals, e.g. 0.725.)</span></label>
-                <label>Wash detour free miles<input id="sp-wash-detour-free" type="number" step="0.5" min="0"><span class="tbp-hint">First N round-trip wash miles are free before mileage pay kicks in.</span></label>
-              </div>
-            </div>
-
-            <div class="tbp-group tbp-group-customer">
-              <h5 class="tbp-group-head">💵 Gas station surcharge <span class="tbp-tag tbp-tag-customer">customer pays</span></h5>
-              <p class="tbp-group-sub">What the customer pays when they pick a farther-than-closest gas station. Separate from worker mileage pay above.</p>
-              <div class="pricing-group-grid">
-                <label>Gas station distance surcharge ($/extra round-trip mile)<input id="sp-per-mile-rate" type="number" step="0.01" min="0"><span class="tbp-hint">Added to the customer's total per extra mile. Applies to new + in-progress bookings immediately; already-booked tickets keep their original surcharge.</span></label>
-              </div>
+        <details class="svc-sub-acc">
+          <summary class="svc-sub-acc-head"><span>⏱ Service time</span>${chevron}</summary>
+          <div class="svc-sub-acc-body">
+            <div class="pricing-group-grid">
+              <label>Company time rate ($/min) <span class="tbp-tag tbp-tag-customer">customer pays</span><input id="sp-time-rate" type="number" step="0.01" min="0"><span class="tbp-hint">Charged to the customer per service-minute (fuel + wash time above). Set $0 to turn time pricing off. Each worker's own per-minute pay is set on the Workers tab.</span></label>
             </div>
           </div>
         </details>
@@ -7468,6 +7491,12 @@ function renderServicesSettingsList() {
         <label>Distance surcharge — customer ($/mile)<input id="sim-per-mile" type="number" min="0" step="0.01"><span class="tbp-hint">Charged to the customer for gas-station choice AND wash detour past the free miles.</span></label>
         <label>Worker mileage pay ($/mile)<input id="sim-worker-mile" type="number" min="0" step="0.001"></label>
       </div>
+      <p class="field-help" style="margin:.6rem 0 .2rem"><strong>Goal-seek</strong> — set a yearly target for the company and an expected volume; it back-solves the service fee for this scenario and shows what's left for the worker. A planning estimate, not a guarantee.</p>
+      <div class="pricing-sim-inputs">
+        <label>Target company net ($/year)<input id="sim-target-year" type="number" min="0" step="1000" placeholder="e.g. 120000"></label>
+        <label>Expected jobs / year<input id="sim-jobs-year" type="number" min="0" step="10" placeholder="e.g. 4000"></label>
+      </div>
+      <div class="pricing-sim-goal" id="sim-goal-output"></div>
       <div class="pricing-sim-output" id="sim-output"></div>
     </details>
   `;
@@ -7574,8 +7603,18 @@ function runPricingSimulator() {
   // ── Company keeps (service revenue minus worker pay; fuel/wash cost is pass-through) ──
   const companyNet = roundMoneyValue(fuelFee + washFee + inspFee + timeCharge + stationSurcharge + washSurcharge - workerPay);
 
-  // ── Time to complete ──
-  const minutes = Math.round(10 + 5 + ((stationMiles + washMiles) / 30) * 60 + (quick ? 10 : 0));
+  // ── Time to complete ── drive legs only count for the services actually in the job.
+  const driveMiles = (needsFuel ? stationMiles : 0) + (needsWash ? washMiles : 0);
+  const minutes = Math.round(10 + 5 + (driveMiles / 30) * 60 + (quick ? 10 : 0));
+
+  // Annualize a per-job dollar amount by the worker-minutes it takes, at 40 hrs/wk.
+  const HOURS_PER_YEAR = 40 * 52; // 2080
+  const rateLine = (amount) => {
+    if (minutes <= 0) return '';
+    const perMin = amount / minutes;
+    const yearly = perMin * 60 * HOURS_PER_YEAR;
+    return `≈ ${money(perMin)}/min · ~$${Math.round(yearly).toLocaleString()}/yr at 40 hrs/wk of jobs like this`;
+  };
 
   const row = (label, val, strong) => `<div class="sim-row${strong ? ' sim-row-total' : ''}"><span>${label}</span><span>${money(val)}</span></div>`;
   const note = (txt) => `<p class="sim-note">${txt}</p>`;
@@ -7607,6 +7646,7 @@ function runPricingSimulator() {
         ${mileagePay > 0 ? row('Station mileage', mileagePay) + note(`${stationMiles} extra round-trip mi × ${money(washDetourRate)}/mi.`) : ''}
         ${washDetourPay > 0 ? row('Wash detour', washDetourPay) + note(`${washMiles} round-trip wash detour mi × ${money(washDetourRate)}/mi — paid on every mile (the customer's free ${washDetourFree} mi don't reduce the driver's pay).`) : ''}
         ${row('Take-home', workerPay, true)}
+        ${minutes > 0 ? note(rateLine(workerPay)) : ''}
         ${workerRateRaw > companyRate && companyRate > 0 ? note(`Heads up: worker rate capped at the company rate (${money(companyRate)}/min).`) : ''}
       </div>
       <div class="sim-card sim-card-company">
@@ -7616,11 +7656,57 @@ function runPricingSimulator() {
         ${note(`The fees + time charge + distance surcharges you collect (service fees${timeCharge > 0 ? ' + service time' : ''}${stationSurcharge > 0 ? ' + gas distance' : ''}${washSurcharge > 0 ? ' + wash distance' : ''}). Fuel/wash cost isn't here — it's reimbursed, not revenue.`)}
         ${row('Less worker pay', -workerPay)}
         ${row('Net margin', companyNet, true)}
+        ${minutes > 0 ? note(rateLine(companyNet)) : ''}
         ${note(companyNet < 0 ? '⚠️ Negative — you would lose money on this job. Raise a fee or lower the pay rate.' : 'This is what the company keeps after the driver is paid.')}
       </div>
     </div>
     <p class="sim-time"><strong>Worker time to complete:</strong> ~${minutes} min</p>
   `;
+
+  // ── Goal-seek: recommend a service-fee level to hit a yearly company target ──
+  const goalOut = document.getElementById('sim-goal-output');
+  if (goalOut) {
+    const targetYear = simNum('sim-target-year', 0);
+    const jobsYear = simNum('sim-jobs-year', 0);
+    const currentTotalFee = fuelFee + washFee + inspFee;
+    if (targetYear > 0 && jobsYear > 0 && currentTotalFee > 0) {
+      // Company net per job as a function of scaling the service fees by k (time,
+      // distance, shares held fixed). Near-linear, so solve from two evaluations.
+      const feeShareAtScale = (k) => {
+        const fF = fuelFee * k, wF = washFee * k, iF = inspFee * k;
+        const tot = fF + wF + iF;
+        const stripe = tot > 0 ? roundMoneyValue(tot * RETURN_RECOVERY_RATE + RETURN_RECOVERY_FIXED) : 0;
+        const netOf = (fee) => (tot > 0 ? Math.max(0, fee - stripe * (fee / tot)) : 0);
+        return roundMoneyValue(netOf(fF) * fuelSharePct + netOf(wF) * washSharePct + netOf(iF) * inspSharePct);
+      };
+      const companyNetAtScale = (k) => {
+        const rev = roundMoneyValue((fuelFee + washFee + inspFee) * k + timeCharge + stationSurcharge + washSurcharge);
+        const wPay = roundMoneyValue(feeShareAtScale(k) + mileagePay + timePay + washDetourPay);
+        return roundMoneyValue(rev - wPay);
+      };
+      const reqPerJob = targetYear / jobsYear;
+      const c1 = companyNetAtScale(1);
+      const slope = companyNetAtScale(2) - c1; // company-$ per unit of fee scale
+      let kRec = slope > 0 ? 1 + (reqPerJob - c1) / slope : 1;
+      if (!Number.isFinite(kRec) || kRec < 0) kRec = 0;
+      const recTotalFee = roundMoneyValue(currentTotalFee * kRec);
+      const recCompanyPerJob = companyNetAtScale(kRec);
+      const recWorkerPerJob = roundMoneyValue(feeShareAtScale(kRec) + mileagePay + timePay + washDetourPay);
+      const alreadyMet = c1 >= reqPerJob;
+      const goalRow = (label, val) => `<div class="sim-row"><span>${label}</span><span>${val}</span></div>`;
+      goalOut.innerHTML = `
+        <div class="sim-card sim-card-company" style="margin-top:.5rem">
+          <h5>To net $${Math.round(targetYear).toLocaleString()}/yr at ${jobsYear.toLocaleString()} jobs/yr</h5>
+          ${note(`That's ${money(reqPerJob)} company net per job. ${alreadyMet ? 'Your current pricing already meets this — you could even lower fees.' : 'Current pricing falls short; here\'s the fee that closes the gap.'}`)}
+          ${goalRow('Recommended total service fee', `${money(recTotalFee)}${kRec !== 1 ? ` <span style="color:#60716d">(now ${money(currentTotalFee)})</span>` : ''}`)}
+          ${goalRow('Company net', `${money(recCompanyPerJob)}/job · ~$${Math.round(recCompanyPerJob * jobsYear).toLocaleString()}/yr`)}
+          ${goalRow('Worker take-home', `${money(recWorkerPerJob)}/job · ~$${Math.round(recWorkerPerJob * jobsYear).toLocaleString()}/yr`)}
+          ${note('Scales the service fee(s) for THIS scenario — split the recommended total across fuel/wash as you like, then save it in the groups above.')}
+        </div>`;
+    } else {
+      goalOut.innerHTML = '';
+    }
+  }
 }
 
 // Recompute the simulator whenever a scenario input or a pricing-form rate changes.
@@ -7641,6 +7727,10 @@ function timeCompPricingParams() {
     p_wash_time_min: v('sp-wash-time', 20),
     p_wash_detour_free_miles: v('sp-wash-detour-free', 5),
     p_wash_detour_rate: v('sp-wash-detour-rate', 0.725),
+    // Worker service-fee shares: form stores whole percents, DB stores fractions.
+    p_fuel_fee_share: v('sp-fuel-share', 50) / 100,
+    p_wash_fee_share: v('sp-wash-share', 50) / 100,
+    p_quick_care_fee_share: v('sp-quick-share', 50) / 100,
   };
 }
 
@@ -7736,6 +7826,9 @@ function applyServicePricing(data) {
     ADMIN_TIME_COMP.washDetourRate = Number(data.wash_detour_rate);
     WORKER_MILEAGE_RATE = Number(data.wash_detour_rate);
   }
+  if (data.fuel_fee_share != null) ADMIN_FEE_SHARES.fuel = Number(data.fuel_fee_share);
+  if (data.wash_fee_share != null) ADMIN_FEE_SHARES.wash = Number(data.wash_fee_share);
+  if (data.quick_care_fee_share != null) ADMIN_FEE_SHARES.insp = Number(data.quick_care_fee_share);
   CR_FEES = {
     fuelConvenience: Number(data.fuel_service_fee),
     washConvenience: Number(data.wash_service_fee),
@@ -7767,6 +7860,9 @@ async function loadServicePricing() {
     if (v('sp-wash-time')) v('sp-wash-time').value = Number(data.wash_time_min ?? 20);
     if (v('sp-wash-detour-free')) v('sp-wash-detour-free').value = Number(data.wash_detour_free_miles ?? 5);
     if (v('sp-wash-detour-rate')) v('sp-wash-detour-rate').value = Number(data.wash_detour_rate ?? 0.725).toFixed(3);
+    if (v('sp-fuel-share')) v('sp-fuel-share').value = Math.round(Number(data.fuel_fee_share ?? 0.5) * 100);
+    if (v('sp-wash-share')) v('sp-wash-share').value = Math.round(Number(data.wash_fee_share ?? 0.5) * 100);
+    if (v('sp-quick-share')) v('sp-quick-share').value = Math.round(Number(data.quick_care_fee_share ?? 0.5) * 100);
     if (v('sp-wash-buff-shine')) v('sp-wash-buff-shine').value = Number(data.wash_buff_shine_price).toFixed(2);
     if (v('sp-wash-shine-protect')) v('sp-wash-shine-protect').value = Number(data.wash_shine_protect_price).toFixed(2);
     if (v('sp-wash-shine')) v('sp-wash-shine').value = Number(data.wash_shine_price).toFixed(2);
@@ -7780,6 +7876,9 @@ async function loadServicePricing() {
     if (v('sim-company-rate')) v('sim-company-rate').value = Number(data.time_rate_per_min ?? 0.50).toFixed(2);
     if (v('sim-per-mile')) v('sim-per-mile').value = Number(data.per_mile_rate ?? 0.75).toFixed(2);
     if (v('sim-worker-mile')) v('sim-worker-mile').value = Number(data.wash_detour_rate ?? 0.725).toFixed(3);
+    if (v('sim-fuel-share')) v('sim-fuel-share').value = Math.round(Number(data.fuel_fee_share ?? 0.5) * 100);
+    if (v('sim-wash-share')) v('sim-wash-share').value = Math.round(Number(data.wash_fee_share ?? 0.5) * 100);
+    if (v('sim-insp-share')) v('sim-insp-share').value = Math.round(Number(data.quick_care_fee_share ?? 0.5) * 100);
     if (typeof runPricingSimulator === 'function') runPricingSimulator();
     return data;
   } catch {

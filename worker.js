@@ -740,8 +740,11 @@ let BASE_QUICK_INSPECTION_FEE = 5;
 //   - $0.725 per extra round-trip mile driven to a customer-chosen gas station
 //     (IRS standard mileage rate); the company keeps the remaining $0.025/mile
 //     of the $0.75/mile customer surcharge.
-const WORKER_SERVICE_FEE_SHARE = 0.5;
+const WORKER_SERVICE_FEE_SHARE = 0.5; // fallback / cancellation-fee share
 let WORKER_MILEAGE_RATE = 0.725;
+// Independent worker share per service-fee type (admin-editable, from settings).
+// Default 0.5 each so payout is unchanged until the admin sets different values.
+let WORKER_FEE_SHARES = { fuel: 0.5, wash: 0.5, insp: 0.5 };
 
 function roundMoneyValue(value) {
   return Math.round((Number(value) || 0) * 100) / 100;
@@ -792,6 +795,9 @@ async function loadWorkerPayRates() {
       TIME_COMP.washDetourRate = Number(data.wash_detour_rate);
       WORKER_MILEAGE_RATE = Number(data.wash_detour_rate);
     }
+    if (data.fuel_fee_share != null) WORKER_FEE_SHARES.fuel = Number(data.fuel_fee_share);
+    if (data.wash_fee_share != null) WORKER_FEE_SHARES.wash = Number(data.wash_fee_share);
+    if (data.quick_care_fee_share != null) WORKER_FEE_SHARES.insp = Number(data.quick_care_fee_share);
     if (typeof runWorkerPayCalc === 'function') runWorkerPayCalc();
   } catch (e) {
     console.warn('Could not load worker pay rates from settings:', e);
@@ -848,8 +854,9 @@ function workerWashDetourMiles(request) {
   return haversineMiles(car, wash) * 2 * 1.3; // round trip, ~1.3x road factor
 }
 function workerWashDetourPay(request) {
-  const billable = Math.max(0, workerWashDetourMiles(request) - TIME_COMP.washDetourFreeMiles);
-  return roundMoneyValue(billable * TIME_COMP.washDetourRate);
+  // Worker is paid on EVERY wash detour mile; the customer's free allowance is a
+  // customer-side discount the company absorbs, not unpaid driving.
+  return roundMoneyValue(workerWashDetourMiles(request) * TIME_COMP.washDetourRate);
 }
 
 // Did the customer cancel after the worker already had the keys? Those workers
@@ -864,6 +871,37 @@ function isCanceledAfterKeys(request) {
 // inspection) net of Stripe processing (2.9% + $0.30), plus full mileage pay for
 // any extra driving to a chosen station. A customer-cancel-after-keys pays 50% of
 // the cancellation fee actually collected (no mileage). Never negative.
+// Worker's cut of the service fees, with an INDEPENDENT share per fee type
+// (fuel / wash / quick-care). Card processing and the folded service-time cost are
+// removed first (so time is paid once, via workerTimePay), then the remaining net
+// is split across the fees by each fee's time-stripped gross and each pays its own
+// share. At equal 50/50/50 shares this exactly equals the old single-share math.
+function workerFeeShareSplit(fuelFee, washFee, inspFee, timeCharge) {
+  const f = Number(fuelFee) || 0;
+  const w = Number(washFee) || 0;
+  const i = Number(inspFee) || 0;
+  const t = Number(timeCharge) || 0;
+  const totalFee = f + w + i;
+  if (totalFee <= 0) return 0;
+  const gross = Math.max(0, totalFee - t);
+  if (gross <= 0) return 0;
+  const stripe = roundMoneyValue(gross * PAYMENT_RECOVERY_RATE + PAYMENT_RECOVERY_FIXED);
+  const net = Math.max(0, gross - stripe);
+  if (net <= 0) return 0;
+  // Time is folded into fuel/wash only; quick-care carries none.
+  const timeBearing = f + w;
+  const gFuel = Math.max(0, f - (timeBearing > 0 ? t * (f / timeBearing) : 0));
+  const gWash = Math.max(0, w - (timeBearing > 0 ? t * (w / timeBearing) : 0));
+  const gInsp = i;
+  const gSum = gFuel + gWash + gInsp;
+  if (gSum <= 0) return 0;
+  return roundMoneyValue(
+    net * (gFuel / gSum) * WORKER_FEE_SHARES.fuel +
+    net * (gWash / gSum) * WORKER_FEE_SHARES.wash +
+    net * (gInsp / gSum) * WORKER_FEE_SHARES.insp
+  );
+}
+
 function workerNetPayout(request) {
   const completed = request.status === 'complete' || request.payment_status === 'captured';
   // Once a job is finished its pay is frozen — read the locked amount and never
@@ -872,25 +910,18 @@ function workerNetPayout(request) {
     const locked = frozenWorkerPayout(request);
     if (locked != null) return roundMoneyValue(locked);
   }
-  let gross = 0;
-  let mileage = 0;
+  let payout = 0;
   if (completed) {
     const fees = feeSummary(request);
-    // The time cost was folded into the displayed service fee — strip it out of the
-    // 50% share so time is paid exactly once (via workerTimePay), not 1.5x.
-    gross = Math.max(0, fees.fuel + fees.wash + fees.inspection - frozenTimeCharge(request));
-    mileage = workerMileagePay(request);
+    payout += workerMileagePay(request) + workerTimePay(request) + workerWashDetourPay(request);
+    payout += workerFeeShareSplit(fees.fuel, fees.wash, fees.inspection, frozenTimeCharge(request));
   } else if (isCanceledAfterKeys(request) && request.payment_status === 'cancellation_fee_paid') {
-    gross = Number(request.cancellation_fee ?? request.cancellation_fee_amount ?? 0);
-  }
-  let payout = mileage;
-  if (completed) {
-    // Time pay (minutes at the worker's rate) + car-wash detour mileage.
-    payout += workerTimePay(request) + workerWashDetourPay(request);
-  }
-  if (gross > 0) {
-    const stripe = roundMoneyValue(gross * PAYMENT_RECOVERY_RATE + PAYMENT_RECOVERY_FIXED);
-    payout += Math.max(0, gross - stripe) * WORKER_SERVICE_FEE_SHARE;
+    // Cancellation-after-keys: 50% of the cancellation fee collected (no per-type split).
+    const cancelGross = Number(request.cancellation_fee ?? request.cancellation_fee_amount ?? 0);
+    if (cancelGross > 0) {
+      const stripe = roundMoneyValue(cancelGross * PAYMENT_RECOVERY_RATE + PAYMENT_RECOVERY_FIXED);
+      payout += Math.max(0, cancelGross - stripe) * WORKER_SERVICE_FEE_SHARE;
+    }
   }
   return roundMoneyValue(Math.max(0, payout));
 }
@@ -900,10 +931,7 @@ function workerNetPayout(request) {
 // for the "you'll make ~$X" line in the Jobs tab.
 function workerEstimatedPayout(request) {
   const fees = feeSummary(request);
-  // Strip the folded time cost from the share — time is paid separately below.
-  const gross = Math.max(0, fees.fuel + fees.wash + fees.inspection - frozenTimeCharge(request));
-  const stripe = roundMoneyValue(gross * PAYMENT_RECOVERY_RATE + PAYMENT_RECOVERY_FIXED);
-  let payout = Math.max(0, gross - stripe) * WORKER_SERVICE_FEE_SHARE;
+  let payout = workerFeeShareSplit(fees.fuel, fees.wash, fees.inspection, frozenTimeCharge(request));
   payout += workerMileagePay(request) + workerTimePay(request) + workerWashDetourPay(request);
   return roundMoneyValue(Math.max(0, payout));
 }
@@ -973,9 +1001,11 @@ function runWorkerPayCalc() {
   const stationMiles = wcalcNum('wcalc-station-miles');
   const washMiles = wcalcNum('wcalc-wash-miles');
 
-  const feeGross = (needsFuel ? BASE_FUEL_SERVICE_FEE : 0) + (needsWash ? BASE_WASH_SERVICE_FEE : 0) + (quick ? BASE_QUICK_INSPECTION_FEE : 0);
-  const feeStripe = roundMoneyValue(feeGross * PAYMENT_RECOVERY_RATE + PAYMENT_RECOVERY_FIXED);
-  const feeShare = feeGross > 0 ? roundMoneyValue(Math.max(0, feeGross - feeStripe) * WORKER_SERVICE_FEE_SHARE) : 0;
+  const fuelFee = needsFuel ? BASE_FUEL_SERVICE_FEE : 0;
+  const washFee = needsWash ? BASE_WASH_SERVICE_FEE : 0;
+  const inspFee = quick ? BASE_QUICK_INSPECTION_FEE : 0;
+  // Per-type fee shares (no time folded into these base fees), matching real payout.
+  const feeShare = workerFeeShareSplit(fuelFee, washFee, inspFee, 0);
   const serviceMin = (needsFuel ? TIME_COMP.fuelBaseMin + TIME_COMP.fuelPerGallonMin * gallons : 0) + (needsWash ? TIME_COMP.washMin : 0);
   const rate = workerTimeRate();
   const timePay = roundMoneyValue(serviceMin * rate);
@@ -984,15 +1014,23 @@ function runWorkerPayCalc() {
   // are a customer discount the company absorbs, not unpaid driving.
   const washDetourPay = needsWash ? roundMoneyValue(washMiles * TIME_COMP.washDetourRate) : 0;
   const payout = roundMoneyValue(feeShare + timePay + mileagePay + washDetourPay);
-  const minutes = Math.round(EST_TO_DESTINATION_MIN + EST_FIND_CAR_MIN + ((stationMiles + washMiles) / 30) * 60 + (quick ? EST_QUICK_CARE_MIN : 0));
+  // Drive legs only count for the services actually in the job (fixes a stale
+  // hidden-field value inflating the estimate after switching service type).
+  const driveMiles = (needsFuel ? stationMiles : 0) + (needsWash ? washMiles : 0);
+  const minutes = Math.round(EST_TO_DESTINATION_MIN + EST_FIND_CAR_MIN + (driveMiles / 30) * 60 + (quick ? EST_QUICK_CARE_MIN : 0));
+  // Per-minute + annualized take-home (40 hrs/wk) so the driver can gauge the rate.
+  const rateLine = minutes > 0
+    ? `≈ ${money(payout / minutes)}/min · ~$${Math.round((payout / minutes) * 60 * 40 * 52).toLocaleString()}/yr at 40 hrs/wk`
+    : '';
 
   const row = (label, val, strong) => `<div class="wcalc-row${strong ? ' wcalc-row-total' : ''}"><span>${label}</span><span>${money(val)}</span></div>`;
   out.innerHTML = `
-    ${feeShare > 0 ? row('Service fee share (50%, net card)', feeShare) : ''}
+    ${feeShare > 0 ? row('Service fee share (net card)', feeShare) : ''}
     ${mileagePay > 0 ? row(`Station mileage (${stationMiles} mi × ${money(WORKER_MILEAGE_RATE)})`, mileagePay) : ''}
     ${timePay > 0 ? row(`Service time (${serviceMin.toFixed(1)} min × ${money(rate)})`, timePay) : ''}
     ${washDetourPay > 0 ? row(`Wash detour (${washMiles} mi × ${money(TIME_COMP.washDetourRate)})`, washDetourPay) : ''}
     ${row('Estimated take-home', payout, true)}
+    ${rateLine ? `<p class="wcalc-note" style="margin:.25rem 0 0;font-size:.82rem;color:#60716d">${rateLine}</p>` : ''}
     <p class="wcalc-time"><strong>Time to complete:</strong> ~${minutes} min</p>
   `;
 }

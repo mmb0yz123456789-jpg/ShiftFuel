@@ -386,6 +386,36 @@
   .admin-sched-row { grid-template-columns: 1fr 1fr; }
   .admin-sched-toggle { grid-column: 1 / -1; }
 }
+/* Desktop: tidy one-line rows that read like a weekly table — day + toggle on
+   the left, then compact inline Start / End fields, all vertically centered. */
+@media (min-width: 761px) {
+  .admin-sched-grid { gap: 6px; }
+  .admin-sched-row {
+    grid-template-columns: 160px minmax(0, 1fr) minmax(0, 1fr);
+    align-items: center;
+    padding: 8px 14px;
+  }
+  .admin-sched-toggle { display: inline-flex; align-items: center; gap: 8px; font-weight: 600; }
+  .admin-sched-time {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    text-transform: uppercase;
+    letter-spacing: .02em;
+    font-size: .72rem;
+    font-weight: 700;
+  }
+  .admin-sched-time input {
+    width: auto;
+    flex: 0 1 160px;
+    max-width: 170px;
+    text-transform: none;
+    letter-spacing: normal;
+    font-weight: 400;
+  }
+  /* Dim a day's time fields when it's unchecked so the active days stand out. */
+  .admin-sched-row:has(.admin-sched-enabled:not(:checked)) .admin-sched-time { opacity: .45; }
+}
 
 /* ── Worker change-request queue (Workers tab) ── */
 .admin-change-requests:empty { display: none; }

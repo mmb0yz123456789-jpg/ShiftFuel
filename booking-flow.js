@@ -55,6 +55,10 @@ const flows = {
 
 const bookingState = {
   values: {},
+  // Car-wash distance charge (fixed wash facility). Server-authoritative: fetched
+  // via the wash_distance_quote API into here, echoed in the quote so it matches
+  // what the booking re-price charges. 0 for fuel-only / short wash detours.
+  washSurcharge: 0,
   address: {
     validated: false,
     status: "warning",
@@ -492,13 +496,16 @@ function calculateTotals() {
   // (non-closest) station. The server is authoritative; this mirrors it so the
   // authorized total matches.
   const stationSurcharge = serviceNeedsFuel() ? (Number(bookingState.station.surcharge) || 0) : 0;
+  // Car-wash distance charge — server-authoritative (fetched via wash_distance_quote
+  // into bookingState.washSurcharge); mirrored here so the authorized total matches.
+  const washSurcharge = serviceNeedsWash() ? (Number(bookingState.washSurcharge) || 0) : 0;
   // Service-time cost, baked into the SERVICE FEES (so the summary still adds up),
   // split per service. 0 until the admin sets the company time rate.
   const timeRate = TIME_COMP_RATES.timeRatePerMin || 0;
   const fuelTimeCost = Math.round((serviceNeedsFuel() ? (TIME_COMP_RATES.fuelBaseMin + TIME_COMP_RATES.fuelPerGallonMin * selectedFuelGallons) : 0) * timeRate * 100) / 100;
   const washTimeCost = Math.round((serviceNeedsWash() ? TIME_COMP_RATES.washMin : 0) * timeRate * 100) / 100;
   const timeCost = Math.round((fuelTimeCost + washTimeCost) * 100) / 100;
-  const netTarget = fuelEstimate + washAmount + fuelBaseFee + washBaseFee + quickFee + stationSurcharge + timeCost;
+  const netTarget = fuelEstimate + washAmount + fuelBaseFee + washBaseFee + quickFee + stationSurcharge + washSurcharge + timeCost;
   const grossBeforeRounding = netTarget ? (netTarget + 0.30) / (1 - 0.029) : 0;
   const estimatedTotal = netTarget ? Math.ceil(grossBeforeRounding) : 0;
   const recovery = Math.round((estimatedTotal - netTarget) * 100) / 100;
@@ -553,6 +560,7 @@ function calculateTotals() {
     washFee,
     quickFee,
     stationSurcharge,
+    washSurcharge,
     timeCost,
     serviceFees,
     subtotal,
@@ -1936,7 +1944,7 @@ function renderServiceDetails(panel) {
   restorePanelValues(panel);
   updateFuelBufferNote(panel);
   if (serviceNeedsFuel()) loadStationOptions(panel);
-  if (serviceNeedsWash()) ensureWashEstimate();
+  if (serviceNeedsWash()) { ensureWashEstimate(); ensureWashCharge(); }
 }
 
 // Per-extra-mile rate shown in the UI; the server (api/_gas-stations.js) is the
@@ -2052,6 +2060,44 @@ async function ensureWashEstimate() {
     washEstimate = { fetchedFor: key, oneWayMiles: Math.round(oneWay * 10) / 10 };
   } catch (_) {
     // Non-fatal — the wash drive just won't be included in the estimate.
+  }
+}
+
+// Server-authoritative car-wash distance charge (fixed wash facility). Mirrors the
+// gas-station surcharge: fetch the exact dollar amount the booking re-price will
+// use, store it on bookingState, and refresh the visible summary. For a fuel+wash
+// job it depends on the chosen station, so it waits until one is selected.
+async function ensureWashCharge() {
+  if (!serviceNeedsWash()) { bookingState.washSurcharge = 0; return; }
+  const lat = Number(bookingState.values.address_lat);
+  const lon = Number(bookingState.values.address_lon);
+  if (!Number.isFinite(lat) || !Number.isFinite(lon) || (lat === 0 && lon === 0)) return;
+  const needsFuel = serviceNeedsFuel();
+  const gasLat = needsFuel ? Number(bookingState.station.lat) : NaN;
+  const gasLon = needsFuel ? Number(bookingState.station.lon) : NaN;
+  if (needsFuel && !(Number.isFinite(gasLat) && Number.isFinite(gasLon) && (gasLat !== 0 || gasLon !== 0))) {
+    return; // no station chosen yet — called again after applyStationSelection
+  }
+  try {
+    const res = await fetch("/api/address", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        action: "wash_distance_quote",
+        address_lat: lat,
+        address_lon: lon,
+        gas_station_lat: needsFuel ? gasLat : "",
+        gas_station_lon: needsFuel ? gasLon : "",
+        needs_fuel: needsFuel,
+      }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (data && data.ok) {
+      bookingState.washSurcharge = Number(data.surcharge) || 0;
+      if (typeof renderPaymentSummary === "function") renderPaymentSummary(document);
+    }
+  } catch (_) {
+    // Non-fatal — the authorize step re-fetches and the server is authoritative.
   }
 }
 
@@ -2198,6 +2244,8 @@ function applyStationSelection(s) {
   // picker) — stashed in notes so the worker's time-to-complete can include the
   // round-trip drive to the pump. Display-only; no extra Mapbox call.
   bookingState.station.oneWayMiles = Number(s.one_way_miles) || 0;
+  // A fuel+wash job's wash charge depends on this station — re-quote it now.
+  if (serviceNeedsWash()) ensureWashCharge();
 }
 
 // Clear any station selection (e.g. when the address changes or fuel is dropped)
@@ -2271,6 +2319,7 @@ function renderPaymentSummary(panel) {
       ${serviceNeedsFuel() ? `<div><dt>Estimated fuel</dt><dd>${escapeHtml(bookingState.values.fuelPreference || "Selected range")} selected. We authorize a ${totals.authorizationFuelGallons} gallon buffer just in case: ${totals.authorizationFuelGallons} gal x ${formatMoney(PRICE_PER_GALLON)}/gal = ${formatMoney(totals.fuelEstimate)}</dd></div>` : ""}
       ${totals.washPackage ? `<div><dt>Car wash package</dt><dd>${escapeHtml(totals.washPackage.label)} - ${formatMoney(totals.washAmount)}</dd></div>` : ""}
       ${totals.stationSurcharge > 0 ? `<div><dt>Preferred station distance</dt><dd>${escapeHtml(bookingState.station.name || "Selected station")} (+${formatMoney(totals.stationSurcharge)})</dd></div>` : ""}
+      ${totals.washSurcharge > 0 ? `<div><dt>Car wash distance</dt><dd>+${formatMoney(totals.washSurcharge)}</dd></div>` : ""}
       ${totals.promoDiscount > 0 ? `<div class="payment-promo-line"><dt>Promo ${escapeHtml(bookingState.promo.code)}</dt><dd>&minus;${formatMoney(totals.promoDiscount)}</dd></div>` : ""}
       <div><dt>Estimated total</dt><dd>${formatMoney(totals.estimatedTotal)}</dd></div>
       ${serviceIsAdvanceBooking() ? `<div><dt>Scheduled authorization</dt><dd>Your card is saved now — no charge today. We authorize ${formatMoney(totals.estimatedTotal)} about 2 days before your service date, and you're only charged once service is complete.</dd></div>` : ""}
@@ -2356,6 +2405,9 @@ async function confirmPaymentAuthorization(panel, button) {
     return;
   }
 
+  // Make sure the server-authoritative wash distance charge is current before we
+  // lock in + authorize the total, so the authorized amount matches the re-price.
+  await ensureWashCharge();
   const totals = calculateTotals();
   if (button) {
     button.disabled = true;
@@ -2737,6 +2789,9 @@ function buildBookingPayload() {
     gas_station_lat: serviceNeedsFuel() ? bookingState.station.lat || "" : "",
     gas_station_lon: serviceNeedsFuel() ? bookingState.station.lon || "" : "",
     gas_station_surcharge: serviceNeedsFuel() ? bookingState.station.surcharge || 0 : 0,
+    // Car wash distance charge — server recomputes authoritatively from the fixed
+    // wash facility; this is only a fallback hint if its geocode is briefly down.
+    wash_distance_surcharge: serviceNeedsWash() ? bookingState.washSurcharge || 0 : 0,
     // Promo code: the server re-validates + recomputes the discount authoritatively;
     // promo_order_total is the pre-discount subtotal for the minimum-order check.
     promo_code: bookingState.promo && bookingState.promo.code ? bookingState.promo.code : "",
