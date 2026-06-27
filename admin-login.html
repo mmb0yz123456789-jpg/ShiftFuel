@@ -179,25 +179,38 @@
       message.textContent = "Signing in...";
 
       try {
-        const { data: token, error } = await window.ShiftFuelSupabase.rpc("admin_create_session", {
-          p_username_hash: usernameHash,
-          p_password_hash: passwordHash,
+        // Login now goes through /api/admin-login, which throttles brute force
+        // PER IP. The raw password never leaves the browser — only the SHA-256
+        // hashes are sent, same as before.
+        const resp = await fetch("/api/admin-login", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ username_hash: usernameHash, password_hash: passwordHash }),
         });
+        const result = await resp.json().catch(() => ({}));
 
-        if (error) throw error;
-
-        localStorage.removeItem(ATTEMPT_KEY);
-        localStorage.removeItem(LOCK_KEY);
-        sessionStorage.setItem("shiftfuel_admin", "true");
-        sessionStorage.setItem("shiftfuel_admin_token", token);
-        sessionStorage.setItem("shiftfuel_admin_expires", String(Date.now() + 8 * 60 * 60 * 1000));
-        window.location.href = "/admin/dashboard";
-      } catch (err) {
-        const msg = err?.message || "";
-        if (msg.includes("ACCOUNT_LOCKED")) {
-          message.textContent = "Admin login is temporarily locked. Try again in 15 minutes.";
+        if (resp.ok && result.token) {
+          localStorage.removeItem(ATTEMPT_KEY);
+          localStorage.removeItem(LOCK_KEY);
+          sessionStorage.setItem("shiftfuel_admin", "true");
+          sessionStorage.setItem("shiftfuel_admin_token", result.token);
+          sessionStorage.setItem("shiftfuel_admin_expires", String(Date.now() + 8 * 60 * 60 * 1000));
+          window.location.href = "/admin/dashboard";
           return;
         }
+
+        if (resp.status === 429) {
+          const retry = Number(resp.headers.get("Retry-After") || 0);
+          const mins = retry ? Math.ceil(retry / 60) : 15;
+          message.textContent = `Too many attempts from your network. Try again in about ${mins} minute${mins === 1 ? "" : "s"}.`;
+          return;
+        }
+        if (resp.status === 423 || result.error === "ACCOUNT_LOCKED") {
+          message.textContent = "Admin login is temporarily locked. Try again later.";
+          return;
+        }
+        throw new Error(result.error || "INVALID_CREDENTIALS");
+      } catch (err) {
         message.textContent = "";
         const attempts = Number(localStorage.getItem(ATTEMPT_KEY) || 0) + 1;
         localStorage.setItem(ATTEMPT_KEY, String(attempts));

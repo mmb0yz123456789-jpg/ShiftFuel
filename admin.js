@@ -62,7 +62,6 @@ const findTicketsResultCount = document.querySelector('#find-tickets-result-coun
 const workerScheduleForm = document.querySelector('#worker-schedule-form');
 const workerScheduleStatus = document.querySelector('#worker-schedule-status');
 const workerSelect = document.querySelector('#worker-select');
-const workerLocation = document.querySelector('#worker-location');
 const workerDaysGrid = document.querySelector('#worker-days-grid');
 const workerDaysOffCalendar = document.querySelector('#worker-days-off-calendar');
 const workerDaysOffSummary = document.querySelector('#worker-days-off-summary');
@@ -3265,7 +3264,8 @@ async function saveAdminWorkerProfile(button) {
     full_name: card?.querySelector('.admin-worker-name')?.value.trim() || existingEmployee?.full_name || DEFAULT_WORKER_NAME,
     phone,
     email: card?.querySelector('.admin-worker-email')?.value.trim() || existingEmployee?.email || null,
-    home_location: card?.querySelector('.admin-worker-location')?.value || existingEmployee?.home_location || DEFAULT_WORK_LOCATION,
+    home_location: existingEmployee?.home_location || DEFAULT_WORK_LOCATION, // work location dropped from UI; keep the column populated with a default
+
     started_at: card?.querySelector('.admin-worker-started')?.value || null,
     photo_url: photoUrl,
     original_photo_url: originalPhotoUrl,
@@ -3319,9 +3319,6 @@ async function saveAdminWorkerProfile(button) {
   if (!rateErr) savedEmployee.time_rate_per_min = Number.isFinite(timeRate) ? timeRate : null;
   allEmployees = allEmployees.map((employee) => employee.id === employeeId ? savedEmployee : employee);
   selectedScheduleEmployeeId = employeeId;
-  if (workerLocation) {
-    workerLocation.value = data.home_location || DEFAULT_WORK_LOCATION;
-  }
   renderWorkerSelect();
   renderWorkerProfiles();
   renderRequests();
@@ -7061,7 +7058,7 @@ function baseWorkerSchedule() {
   return {
     employeeId: selectedScheduleEmployeeId,
     workerName: employee?.full_name || DEFAULT_WORKER_NAME,
-    workerLocation: document.querySelector('#worker-location')?.value.trim() || employee?.home_location || DEFAULT_WORK_LOCATION,
+    workerLocation: employee?.home_location || DEFAULT_WORK_LOCATION,
     workdays: selectedWorkdaysFromForm(),
     daysOff: Array.from(selectedWorkerDaysOff).sort(),
     savedAt: new Date().toISOString(),
@@ -7398,7 +7395,7 @@ function renderServicesSettingsList() {
               <label>Car wash service fee ($) <span class="tbp-tag tbp-tag-customer">customer pays</span><input id="sp-wash-fee" type="number" step="0.01" min="0"></label>
               <label>Wash-fee worker share (%) <span class="tbp-tag tbp-tag-worker">worker earns</span><input id="sp-wash-share" type="number" step="1" min="0" max="100"><span class="tbp-hint">Driver's cut of the car-wash service fee (net of card).</span></label>
               <label>Car wash time (min)<input id="sp-wash-time" type="number" step="1" min="0"><span class="tbp-hint">Flat minutes for a car wash (billed via the time rate).</span></label>
-              <label>Wash detour free miles<input id="sp-wash-detour-free" type="number" step="0.5" min="0"><span class="tbp-hint">First N round-trip wash miles are free before mileage pay kicks in.</span></label>
+              <label>Wash detour free miles<input id="sp-wash-detour-free" type="number" step="0.5" min="0"><span class="tbp-hint">First N round-trip wash miles are free to the customer (the driver is still paid for every mile).</span></label>
             </div>
           </div>
         </details>
@@ -7417,7 +7414,7 @@ function renderServicesSettingsList() {
           <summary class="svc-sub-acc-head"><span>🚗 Distance &amp; mileage</span>${chevron}</summary>
           <div class="svc-sub-acc-body">
             <div class="pricing-group-grid">
-              <label>Gas station distance surcharge ($/extra round-trip mile) <span class="tbp-tag tbp-tag-customer">customer pays</span><input id="sp-per-mile-rate" type="number" step="0.01" min="0"><span class="tbp-hint">Added to the customer's total when they pick a farther-than-closest gas station.</span></label>
+              <label>Gas station distance surcharge ($/extra round-trip mile) <span class="tbp-tag tbp-tag-customer">customer pays</span><input id="sp-per-mile-rate" type="number" step="0.01" min="0"><span class="tbp-hint">Per mile charged to the customer for a farther-than-closest gas station AND for the car-wash detour past the free miles.</span></label>
               <label>Worker mileage pay ($/mile) <span class="tbp-tag tbp-tag-worker">worker earns</span><input id="sp-wash-detour-rate" type="number" step="0.001" min="0"><span class="tbp-hint">Paid to the driver per detour mile — covers BOTH gas-station mileage and the car-wash detour. (3 decimals OK, e.g. 0.725.)</span></label>
             </div>
           </div>

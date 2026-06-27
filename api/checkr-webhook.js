@@ -14,13 +14,29 @@
  * Required env var (Vercel): CHECKR_WEBHOOK_SECRET
  */
 
+const crypto = require('crypto');
 const { getSupabaseAdmin } = require('./_auth');
+
+// Constant-time string compare so a token guess can't be narrowed by timing.
+function safeEqual(a, b) {
+  const ba = Buffer.from(String(a ?? ''));
+  const bb = Buffer.from(String(b ?? ''));
+  if (ba.length !== bb.length) return false;
+  return crypto.timingSafeEqual(ba, bb);
+}
 
 module.exports = async (req, res) => {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
+  // Fail CLOSED: if the shared secret isn't configured we reject everything,
+  // rather than (previously) skipping the check and accepting forged reports
+  // that could mark an applicant's background check "clear".
   const secret = process.env.CHECKR_WEBHOOK_SECRET;
-  if (secret && req.query?.token !== secret) {
+  if (!secret) {
+    console.error('[checkr-webhook] CHECKR_WEBHOOK_SECRET is not configured — rejecting request');
+    return res.status(503).json({ error: 'Webhook not configured' });
+  }
+  if (!safeEqual(req.query?.token, secret)) {
     return res.status(401).json({ error: 'Unauthorized' });
   }
 

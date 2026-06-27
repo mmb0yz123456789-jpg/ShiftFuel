@@ -464,6 +464,12 @@
 }
 .tbp-tag-customer { background: #e0f2fe; color: #075985; }   /* blue = customer pays */
 .tbp-tag-worker   { background: #dcfce7; color: #166534; }   /* green = worker earns */
+/* Tint the editable box itself to match its tag: blue = customer pays, green =
+   worker earns. Scoped to the service-pricing groups. */
+.svc-sub-acc-body label:has(.tbp-tag-customer) input { border-color: #7dd3fc; background: #f0f9ff; }
+.svc-sub-acc-body label:has(.tbp-tag-customer) input:focus { border-color: #0284c7; box-shadow: 0 0 0 3px rgba(2, 132, 199, 0.15); outline: none; }
+.svc-sub-acc-body label:has(.tbp-tag-worker) input { border-color: #86efac; background: #f0fdf4; }
+.svc-sub-acc-body label:has(.tbp-tag-worker) input:focus { border-color: #16a34a; box-shadow: 0 0 0 3px rgba(22, 101, 52, 0.15); outline: none; }
 .tbp-group {
   border: 1px solid var(--admin-line, #e5e7eb); border-radius: 12px;
   padding: 14px 16px; margin-bottom: 14px; border-left-width: 4px;

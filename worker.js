@@ -4,7 +4,6 @@ const workerProfileForm = document.querySelector('#worker-profile-form');
 const workerProfileName = document.querySelector('#worker-profile-name');
 const workerProfileUsername = document.querySelector('#worker-profile-username');
 const workerProfilePhone = document.querySelector('#worker-profile-phone');
-const workerProfileLocation = document.querySelector('#worker-profile-location');
 const workerProfileStarted = document.querySelector('#worker-profile-started');
 const workerProfilePhoto = document.querySelector('#worker-profile-photo');
 const workerProfileStatus = document.querySelector('#worker-profile-status');
@@ -40,16 +39,13 @@ const workerDashboardPhoto = document.querySelector('#worker-dashboard-photo');
 const workerDashboardPhotoPlaceholder = document.querySelector('#worker-dashboard-photo-placeholder');
 const workerPortalHeading = document.querySelector('#worker-portal-heading');
 const workerHeroSubtitle = document.querySelector('#worker-hero-subtitle');
-const workerCurrentLocation = document.querySelector('#worker-current-location');
 const workerCurrentJobsToday = document.querySelector('#worker-current-jobs-today');
 const workerCurrentRating = document.querySelector('#worker-current-rating');
 const workerWorkingSince = document.querySelector('#worker-working-since');
 const workerDashboardName = document.querySelector('#worker-dashboard-name');
-const workerDashboardLocation = document.querySelector('#worker-dashboard-location');
 const workerDashboardPhone = document.querySelector('#worker-dashboard-phone');
 const workerScheduleForm = document.querySelector('#worker-schedule-form');
 const workerScheduleStatus = document.querySelector('#worker-schedule-status');
-const workerLocation = document.querySelector('#worker-location');
 const workerDaysGrid = document.querySelector('#worker-days-grid');
 const workerDaysOffCalendar = document.querySelector('#worker-days-off-calendar');
 const workerDaysOffSummary = document.querySelector('#worker-days-off-summary');
@@ -298,17 +294,6 @@ const workerDayOptions = [
 let currentEmployee = null;
 let selectedWorkerDaysOff = new Set();
 
-// Populate work location dropdowns from the shared SERVICE_CENTERS list.
-function populateLocationSelects() {
-  const options = SERVICE_CENTERS.map(loc =>
-    `<option value="${loc}">${loc}</option>`
-  ).join('');
-  [workerLocation, workerProfileLocation].forEach(sel => {
-    if (!sel) return;
-    sel.innerHTML = `<option value="">Select service center</option>${options}`;
-  });
-}
-populateLocationSelects();
 let copiedWorkerDaySchedule = null;
 let allWorkerJobs = [];
 let vehiclePsiGuides = [];
@@ -1606,9 +1591,6 @@ async function loadWorkerSchedule() {
       startsAt: String(row.starts_at || '09:00').slice(0, 5),
       endsAt: String(row.ends_at || '17:00').slice(0, 5),
     })));
-
-    const scheduleLocation = rows.find((row) => row.work_location)?.work_location || currentEmployee.home_location || DEFAULT_WORK_LOCATION;
-    if (workerLocation) workerLocation.value = scheduleLocation;
   }
 
   renderWorkerAvailabilitySnapshot();
@@ -1793,18 +1775,12 @@ async function loadWorkerProfile() {
     applyAvatarPhoto(document.querySelector('#worker-mobile-avatar-btn'), avatarPhoto);
     const panelName = document.getElementById('worker-panel-name');
     if (panelName) panelName.textContent = workerName;
-    const panelLocation = document.getElementById('worker-panel-location');
-    if (panelLocation) panelLocation.textContent = currentEmployee.home_location || '—';
     const panelPhone = document.getElementById('worker-panel-phone');
     if (panelPhone) panelPhone.textContent = currentEmployee.phone ? formatPhone(currentEmployee.phone) : 'Not provided';
     if (workerProfileName) workerProfileName.value = workerName;
     if (workerProfileUsername) workerProfileUsername.value = currentEmployee.username || '';
     if (workerProfilePhone) workerProfilePhone.value = formatPhone(currentEmployee.phone || '');
-    if (workerProfileLocation) workerProfileLocation.value = currentEmployee.home_location || DEFAULT_WORK_LOCATION;
     if (workerProfileStarted) workerProfileStarted.value = currentEmployee.started_at || '';
-    if (workerLocation) workerLocation.value = currentEmployee.home_location || DEFAULT_WORK_LOCATION;
-    if (workerCurrentLocation) workerCurrentLocation.textContent = currentEmployee.home_location || DEFAULT_WORK_LOCATION;
-    if (workerDashboardLocation) workerDashboardLocation.textContent = currentEmployee.home_location || DEFAULT_WORK_LOCATION;
     if (workerDashboardPhone) workerDashboardPhone.textContent = currentEmployee.phone ? formatPhone(currentEmployee.phone) : 'Not provided';
     if (workerWorkingSince) workerWorkingSince.textContent = currentEmployee.started_at ? formatDate(currentEmployee.started_at) : 'Today';
 
@@ -1977,7 +1953,7 @@ async function saveWorkerAvailability() {
     return;
   }
 
-  const workLocation = workerLocation?.value || DEFAULT_WORK_LOCATION;
+  const workLocation = currentEmployee?.home_location || DEFAULT_WORK_LOCATION;
   const { error } = await workerDb.rpc('worker_save_availability', {
     p_token: SESSION_WORKER_TOKEN,
     p_workdays: workdays.map((day) => ({
@@ -1990,7 +1966,6 @@ async function saveWorkerAvailability() {
   if (error) throw error;
 
   currentEmployee.home_location = workLocation;
-  if (workerProfileLocation) workerProfileLocation.value = workLocation;
   setScheduleStatus('Work days and shift times saved.');
 }
 
@@ -4677,7 +4652,7 @@ workerProfileForm?.addEventListener('submit', async (event) => {
     const username = (workerProfileUsername?.value || '').trim();
     const phoneInputValue = workerProfilePhone?.value.trim() || null;
     const phone = phoneInputValue ? formatPhone(phoneInputValue) : null;
-    const homeLocation = workerProfileLocation?.value || currentEmployee.home_location || DEFAULT_WORK_LOCATION;
+    const homeLocation = currentEmployee.home_location || DEFAULT_WORK_LOCATION;
 
     // Check for phone duplicate before uploading photo.
     if (phone) {
@@ -4755,9 +4730,7 @@ workerProfileForm?.addEventListener('submit', async (event) => {
     if (workerProfileName) workerProfileName.value = currentEmployee.full_name;
     if (workerProfileUsername) workerProfileUsername.value = currentEmployee.username || '';
     if (workerProfilePhone) workerProfilePhone.value = formatPhone(currentEmployee.phone || '');
-    if (workerProfileLocation) workerProfileLocation.value = currentEmployee.home_location || DEFAULT_WORK_LOCATION;
     if (workerProfileStarted) workerProfileStarted.value = currentEmployee.started_at || '';
-    if (workerLocation) workerLocation.value = currentEmployee.home_location || DEFAULT_WORK_LOCATION;
     currentEmployee.photo_position_x = photoPositionX;
     currentEmployee.photo_position_y = photoPositionY;
     showWorkerPhoto(
