@@ -7433,7 +7433,15 @@ function renderServicesSettingsList() {
         <label>Service
           <select id="sim-service"><option value="fuel">Fuel only</option><option value="wash">Wash only</option><option value="both">Fuel + Wash</option></select>
         </label>
-        <label>Gallons<input id="sim-gallons" type="number" min="0" step="1" value="10"></label>
+        <label>Gallons
+          <select id="sim-gallons">
+            <option value="10" selected>10</option>
+            <option value="15">15</option>
+            <option value="20">20</option>
+            <option value="30">30</option>
+            <option value="40">40</option>
+          </select>
+        </label>
         <label>Price / gallon ($)<input id="sim-fuel-price" type="number" min="0" step="0.01" value="3.79"></label>
         <label>Wash package
           <select id="sim-wash-pkg">
@@ -7454,6 +7462,9 @@ function renderServicesSettingsList() {
         <label>Quick care fee ($)<input id="sim-insp-fee" type="number" min="0" step="0.01"></label>
         <label>Company rate ($/min)<input id="sim-company-rate" type="number" min="0" step="0.01"></label>
         <label>Worker pay rate ($/min)<input id="sim-worker-rate" type="number" min="0" step="0.01" value="0.50"></label>
+        <label>Worker fuel-fee share (%)<input id="sim-fuel-share" type="number" min="0" max="100" step="1" value="50"><span class="tbp-hint">Driver's cut of the fuel service fee (net of card).</span></label>
+        <label>Worker wash-fee share (%)<input id="sim-wash-share" type="number" min="0" max="100" step="1" value="50"><span class="tbp-hint">Driver's cut of the car-wash service fee (net of card).</span></label>
+        <label>Worker quick-care share (%)<input id="sim-insp-share" type="number" min="0" max="100" step="1" value="50"><span class="tbp-hint">Driver's cut of the quick-care fee (net of card).</span></label>
         <label>Distance surcharge — customer ($/mile)<input id="sim-per-mile" type="number" min="0" step="0.01"><span class="tbp-hint">Charged to the customer for gas-station choice AND wash detour past the free miles.</span></label>
         <label>Worker mileage pay ($/mile)<input id="sim-worker-mile" type="number" min="0" step="0.001"></label>
       </div>
@@ -7493,10 +7504,13 @@ function runPricingSimulator() {
   setSimVis('sim-station-miles', needsFuel);
   setSimVis('sim-per-mile', needsFuel || needsWash); // surcharge rate now drives gas AND wash distance
   setSimVis('sim-fuel-fee', needsFuel);
+  setSimVis('sim-fuel-share', needsFuel);
   setSimVis('sim-wash-pkg', needsWash);
   setSimVis('sim-wash-miles', needsWash);
   setSimVis('sim-wash-fee', needsWash);
+  setSimVis('sim-wash-share', needsWash);
   setSimVis('sim-insp-fee', quick);
+  setSimVis('sim-insp-share', quick);
 
   const gallons = simNum('sim-gallons');
   const pricePerGallon = simNum('sim-fuel-price');
@@ -7536,9 +7550,20 @@ function runPricingSimulator() {
 
   // ── Worker side ──
   const workerRate = companyRate > 0 ? Math.min(workerRateRaw, companyRate) : workerRateRaw;
+  // Each service fee can pay the driver an independent share. Card processing is
+  // one per-transaction cost, so apportion it across the fee lines by amount,
+  // then apply that line's own worker share to its net (same split logic as the
+  // customer-side recovery). At 50/50/50 this matches the old single-share math.
+  const fuelSharePct = simNum('sim-fuel-share', 50) / 100;
+  const washSharePct = simNum('sim-wash-share', 50) / 100;
+  const inspSharePct = simNum('sim-insp-share', 50) / 100;
   const feeGross = fuelFee + washFee + inspFee;
-  const feeStripe = roundMoneyValue(feeGross * RETURN_RECOVERY_RATE + RETURN_RECOVERY_FIXED);
-  const feeShare = feeGross > 0 ? roundMoneyValue(Math.max(0, feeGross - feeStripe) * WORKER_SERVICE_FEE_SHARE) : 0;
+  const feeStripe = feeGross > 0 ? roundMoneyValue(feeGross * RETURN_RECOVERY_RATE + RETURN_RECOVERY_FIXED) : 0;
+  const netOf = (fee) => (feeGross > 0 ? Math.max(0, fee - feeStripe * (fee / feeGross)) : 0);
+  const fuelFeeShare = roundMoneyValue(netOf(fuelFee) * fuelSharePct);
+  const washFeeShare = roundMoneyValue(netOf(washFee) * washSharePct);
+  const inspFeeShare = roundMoneyValue(netOf(inspFee) * inspSharePct);
+  const feeShare = roundMoneyValue(fuelFeeShare + washFeeShare + inspFeeShare);
   const mileagePay = needsFuel ? roundMoneyValue(stationMiles * washDetourRate) : 0;
   const timePay = roundMoneyValue(serviceMin * workerRate);
   // Worker is paid on EVERY wash detour mile (incl. the customer's free 5) — the
@@ -7555,11 +7580,6 @@ function runPricingSimulator() {
   const row = (label, val, strong) => `<div class="sim-row${strong ? ' sim-row-total' : ''}"><span>${label}</span><span>${money(val)}</span></div>`;
   const note = (txt) => `<p class="sim-note">${txt}</p>`;
   const serviceRevenue = roundMoneyValue(fuelFee + washFee + inspFee + timeCharge + stationSurcharge + washSurcharge);
-  const feeParts = [
-    needsFuel ? `fuel ${money(fuelFee)}` : '',
-    needsWash ? `wash ${money(washFee)}` : '',
-    quick ? `care ${money(inspFee)}` : '',
-  ].filter(Boolean).join(' + ');
   out.innerHTML = `
     <div class="sim-cols">
       <div class="sim-card sim-card-customer">
@@ -7579,7 +7599,10 @@ function runPricingSimulator() {
       <div class="sim-card sim-card-worker">
         <h5>Worker earns</h5>
         ${note('What the driver takes home for this job.')}
-        ${feeShare > 0 ? row('Service fee share (50%, net card)', feeShare) + note(`Half of the service fees after card processing: (${feeParts || 'fees'} = ${money(feeGross)}) − card ${money(feeStripe)} = ${money(Math.max(0, feeGross - feeStripe))}, ÷ 2.`) : ''}
+        ${fuelFeeShare > 0 ? row(`Fuel fee share (${Math.round(fuelSharePct * 100)}%, net card)`, fuelFeeShare) : ''}
+        ${washFeeShare > 0 ? row(`Wash fee share (${Math.round(washSharePct * 100)}%, net card)`, washFeeShare) : ''}
+        ${inspFeeShare > 0 ? row(`Quick-care fee share (${Math.round(inspSharePct * 100)}%, net card)`, inspFeeShare) : ''}
+        ${feeShare > 0 ? note(`Each fee pays its own share of (fee − its slice of the ${money(feeStripe)} card cost). Fees ${money(feeGross)} total.`) : ''}
         ${timePay > 0 ? row('Service time', timePay) + note(`${serviceMin.toFixed(1)} service-minutes × ${money(workerRate)}/min (this driver's rate).`) : ''}
         ${mileagePay > 0 ? row('Station mileage', mileagePay) + note(`${stationMiles} extra round-trip mi × ${money(washDetourRate)}/mi.`) : ''}
         ${washDetourPay > 0 ? row('Wash detour', washDetourPay) + note(`${washMiles} round-trip wash detour mi × ${money(washDetourRate)}/mi — paid on every mile (the customer's free ${washDetourFree} mi don't reduce the driver's pay).`) : ''}
