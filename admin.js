@@ -8089,9 +8089,16 @@ function runPricingSimulator() {
   const driveMiles = (needsFuel ? stationMiles : 0) + (needsWash ? washMiles : 0);
   const minutes = Math.round(10 + 5 + (driveMiles / 30) * 60 + (quick ? 10 : 0));
 
-  // Per-minute rate for THIS job only (yearly projection lives in the Annual
-  // planner below, which blends the real job mix instead of extrapolating one job).
-  const rateLine = (amount) => (minutes > 0 ? `≈ ${money(amount / minutes)}/min for this job` : '');
+  // Per-minute rate for THIS job, plus a rough full-time year = that rate held for
+  // 40 hrs/wk × 52 wks of back-to-back jobs like this one. (The Annual planner below
+  // is the accurate version — it blends your real job mix instead of one job.)
+  const MIN_PER_FULLTIME_YEAR = 40 * 52 * 60; // 124,800 minutes
+  const rateLine = (amount) => {
+    if (minutes <= 0) return '';
+    const perMin = amount / minutes;
+    const yearly = `~$${Math.round(perMin * MIN_PER_FULLTIME_YEAR).toLocaleString()}`;
+    return `≈ ${money(perMin)}/min · ${yearly}/yr at 40 hrs/wk`;
+  };
 
   const row = (label, val, strong) => `<div class="sim-row${strong ? ' sim-row-total' : ''}"><span>${label}</span><span>${money(val)}</span></div>`;
   const note = (txt) => `<p class="sim-note">${txt}</p>`;
