@@ -195,6 +195,10 @@
             Re-center
           </button>
 
+          <button class="wrm-bottom-close" type="button" aria-label="Close map">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
+          </button>
+
           <div class="wrm-bottom map-step-action-bar">
             <span class="wrm-eta"></span>
             <button class="wrm-start-service" type="button" hidden>Start service</button>
@@ -203,6 +207,7 @@
       </div>`;
     document.body.appendChild(modal);
     modal.querySelector('.wrm-close').addEventListener('click', closeModal);
+    modal.querySelector('.wrm-bottom-close').addEventListener('click', closeModal);
     modal.querySelector('.wrm-recenter').addEventListener('click', () => {
       if (nav) { nav.follow = true; if (nav.lastLoc) applyNavCamera(nav.lastLoc, nav.lastBearing); }
       toggleRecenter(false);
@@ -780,6 +785,11 @@
         background: #fff; color: #0d3b3b; font-weight: 800; font-size: .85rem;
         box-shadow: 0 4px 14px rgba(0,0,0,.3); cursor: pointer; }
       .wrm-recenter[hidden] { display: none; }
+      .wrm-bottom-close { position: fixed; right: 16px; bottom: calc(env(safe-area-inset-bottom) + 128px); z-index: 10000;
+        width: 42px; height: 42px; border-radius: 999px; border: none; cursor: pointer;
+        background: rgba(20,20,26,.86); color: #fff; display: inline-flex; align-items: center; justify-content: center;
+        box-shadow: 0 8px 22px rgba(0,0,0,.28); backdrop-filter: blur(10px); }
+      .wrm-bottom-close:active { transform: scale(.96); }
       /* Bottom fixed action area: force the step button above Mapbox layers. */
       .map-step-action-bar {
         position: fixed;

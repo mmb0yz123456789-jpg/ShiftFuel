@@ -2859,6 +2859,10 @@ function workerPrimaryStatusButton(request, label, status) {
   return `<button class="button primary worker-update-status" data-id="${escapeHtml(request.id)}" data-status="${escapeHtml(status)}" type="button">${escapeHtml(label)}</button>`;
 }
 
+function workerOpenFuelCardButton() {
+  return `<button class="button secondary worker-open-fuel-card" type="button">Open virtual card</button>`;
+}
+
 // In-app navigation to the gas station for the fuel service drive. No
 // worker-start-nav class here — that's the en-route gate; this only opens the map
 // (data-route-map), so it never re-runs the "started"/GPS-start logic.
@@ -2995,11 +2999,13 @@ function renderWorkerJobActions(request) {
     // before wash so the wash is the final appearance step before return.
     if (serviceNeedsFuel(request) && !serviceDoneOrUnable(request, 'fuel')) {
       nextAction = 'Complete the fuel service.';
+      actions.push(workerOpenFuelCardButton());
       actions.push(workerPrimaryStatusButton(request, `Fuel complete â€” ${request.fuel_type || 'fuel'}`, 'fueling_complete'));
       actions.push(workerServiceUnableButton(request, 'fuel'));
       actions.push(workerNavStationButton(request));
     } else if (serviceNeedsWash(request) && !serviceDoneOrUnable(request, 'wash')) {
       nextAction = 'Complete the car wash.';
+      actions.push(workerOpenFuelCardButton());
       actions.push(workerPrimaryStatusButton(request, `Wash complete â€” ${request.wash_package_label || 'selected wash'}`, 'car_wash_complete'));
       actions.push(workerServiceUnableButton(request, 'wash'));
       actions.push(workerNavWashButton(request));
@@ -3014,11 +3020,13 @@ function renderWorkerJobActions(request) {
     actions.push(workerServiceUnableButton(request, 'wash'));
   } else if (request.status === 'fuel_receipt_uploaded' && serviceNeedsWash(request) && !serviceDoneOrUnable(request, 'wash')) {
     nextAction = 'Drive to the car wash and complete it.';
+    actions.push(workerOpenFuelCardButton());
     actions.push(workerPrimaryStatusButton(request, `Wash complete â€” ${request.wash_package_label || 'selected wash'}`, 'car_wash_complete'));
     actions.push(workerServiceUnableButton(request, 'wash'));
     actions.push(workerNavWashButton(request));
   } else if (request.status === 'wash_receipt_uploaded' && serviceNeedsFuel(request) && !serviceDoneOrUnable(request, 'fuel')) {
     nextAction = 'Drive to the gas station and complete the fuel service.';
+    actions.push(workerOpenFuelCardButton());
     actions.push(workerPrimaryStatusButton(request, `Fuel complete â€” ${request.fuel_type || 'fuel'}`, 'fueling_complete'));
     actions.push(workerServiceUnableButton(request, 'fuel'));
     actions.push(workerNavStationButton(request));
@@ -4551,6 +4559,17 @@ document.addEventListener('click', async (event) => {
       } else {
         document.querySelector('#worker-dashboard-today')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
       }
+      return;
+    }
+
+    if (button.classList.contains('worker-open-fuel-card')) {
+      if (typeof switchWorkerTab === 'function') switchWorkerTab('earnings');
+      setTimeout(() => {
+        const card = document.getElementById('worker-fuelcard-card');
+        card?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        card?.classList.add('is-highlighted');
+        setTimeout(() => card?.classList.remove('is-highlighted'), 1400);
+      }, 80);
       return;
     }
 

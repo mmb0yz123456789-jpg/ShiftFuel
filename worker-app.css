@@ -1298,6 +1298,9 @@
   border: 1px solid #e6ece8;
   border-radius: 14px;
 }
+.worker-payout-card.is-highlighted {
+  box-shadow: 0 0 0 3px rgba(31, 122, 69, 0.18), 0 12px 26px rgba(6, 39, 39, 0.16);
+}
 .worker-payout-head {
   display: flex;
   align-items: center;
