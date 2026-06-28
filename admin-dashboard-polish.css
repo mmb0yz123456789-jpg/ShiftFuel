@@ -227,6 +227,30 @@
   border-radius: 16px;
 }
 
+/* ---- Annual planner job-mix table (pricing simulator) --- */
+.pricing-mix-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 6px 0 12px;
+  font-size: 0.85rem;
+}
+.pricing-mix-table th,
+.pricing-mix-table td {
+  padding: 6px 8px;
+  text-align: left;
+  border-bottom: 1px solid var(--admin-line, #e5e7eb);
+}
+.pricing-mix-table thead th {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  color: #5b6f6b;
+  font-weight: 800;
+}
+.pricing-mix-table tbody th { font-weight: 600; white-space: nowrap; }
+.pricing-mix-table input { width: 100%; min-width: 64px; padding: 6px 8px; }
+.pricing-mix-table .mix-na { color: #9bb0ab; text-align: center; }
+
 /* ---- GPS-verified route map (ticket detail proof) ------- */
 .ticket-route-proof {
   margin: 4px 0 6px;
@@ -343,7 +367,7 @@
 .svc-acc-head::marker { display: none; }
 .svc-chevron { color: var(--text-2, #6b7280); transition: transform 0.18s ease; flex-shrink: 0; }
 .svc-acc[open] > .svc-acc-head .svc-chevron { transform: rotate(180deg); }
-.svc-acc-body { padding: 0 18px 14px; display: grid; gap: 2px; }
+.svc-acc-body { padding: 0 18px 16px; display: grid; gap: 12px; }
 
 .svc-sub-acc { border-top: 1px solid var(--admin-line, #eef0ee); }
 .svc-sub-acc-head {
@@ -378,7 +402,9 @@
   background: rgba(13, 59, 59, 0.03);
   border: 1px solid rgba(13, 59, 59, 0.07);
 }
-.admin-sched-toggle { align-self: center; margin: 0; }
+.admin-sched-toggle { display: inline-flex; align-items: center; gap: 8px; align-self: center; margin: 0; font-weight: 600; }
+/* Pin the day checkbox to a sane size (mobile was rendering it oversized) + theme it. */
+.admin-sched-enabled { width: 18px; height: 18px; min-height: 0; flex: 0 0 auto; margin: 0; accent-color: var(--admin-green, #1f9d57); cursor: pointer; }
 .admin-sched-time { margin: 0; font-size: 0.82rem; color: #60716d; }
 .admin-sched-time input { width: 100%; }
 .admin-sched-status:not(:empty) { margin-top: 8px; color: var(--admin-green, #1f9d57); font-weight: 600; }
@@ -466,10 +492,33 @@
 .tbp-tag-worker   { background: #dcfce7; color: #166534; }   /* green = worker earns */
 /* Tint the editable box itself to match its tag: blue = customer pays, green =
    worker earns. Scoped to the service-pricing groups. */
-.svc-sub-acc-body label:has(.tbp-tag-customer) input { border-color: #7dd3fc; background: #f0f9ff; }
-.svc-sub-acc-body label:has(.tbp-tag-customer) input:focus { border-color: #0284c7; box-shadow: 0 0 0 3px rgba(2, 132, 199, 0.15); outline: none; }
-.svc-sub-acc-body label:has(.tbp-tag-worker) input { border-color: #86efac; background: #f0fdf4; }
-.svc-sub-acc-body label:has(.tbp-tag-worker) input:focus { border-color: #16a34a; box-shadow: 0 0 0 3px rgba(22, 101, 52, 0.15); outline: none; }
+.svc-acc-body label:has(.tbp-tag-customer) input { border-color: #7dd3fc; background: #f0f9ff; }
+.svc-acc-body label:has(.tbp-tag-customer) input:focus { border-color: #0284c7; box-shadow: 0 0 0 3px rgba(2, 132, 199, 0.15); outline: none; }
+.svc-acc-body label:has(.tbp-tag-worker) input { border-color: #86efac; background: #f0fdf4; }
+.svc-acc-body label:has(.tbp-tag-worker) input:focus { border-color: #16a34a; box-shadow: 0 0 0 3px rgba(22, 101, 52, 0.15); outline: none; }
+
+/* ---- Find page: unified search (requests + people) ------- */
+.admin-find-card { padding: 14px 16px; }
+.admin-find-bar {
+  display: flex; align-items: center; gap: 10px;
+  border: 1px solid var(--admin-line, #e5e7eb);
+  border-radius: 12px; padding: 11px 14px; background: #fff;
+}
+.admin-find-bar:focus-within { border-color: var(--admin-green, #1f9d57); box-shadow: 0 0 0 3px rgba(31, 157, 87, 0.12); }
+.admin-find-icon { width: 20px; height: 20px; color: #6b7d78; flex: 0 0 auto; }
+.admin-find-bar input { flex: 1; border: 0; outline: none; background: transparent; font: inherit; font-size: 0.95rem; min-width: 0; }
+.admin-find-results { margin-top: 12px; display: grid; gap: 8px; }
+.admin-find-group { margin: 8px 0 2px; font-size: 0.72rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.04em; color: #5b6f6b; }
+.admin-find-result {
+  display: grid; gap: 3px; width: 100%; text-align: left;
+  padding: 12px 14px; border: 1px solid var(--admin-line, #e5e7eb);
+  border-radius: 12px; background: #fff; cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+.admin-find-result:hover { border-color: var(--admin-green, #1f9d57); background: var(--admin-mint, #eaf4ef); }
+.admin-find-result .find-ticket-result-header { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.admin-find-result .find-ticket-name { font-weight: 800; color: var(--admin-ink, #0b2321); }
+.admin-find-result .find-ticket-meta { font-size: 0.82rem; color: #60716d; }
 .tbp-group {
   border: 1px solid var(--admin-line, #e5e7eb); border-radius: 12px;
   padding: 14px 16px; margin-bottom: 14px; border-left-width: 4px;

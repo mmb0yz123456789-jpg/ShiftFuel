@@ -220,12 +220,12 @@ const stepCopy = {
     fields: `
       <div class="booking-field-grid">
         <label><span>Service date <span class="required-mark">Required</span></span><span class="sfp-field-host" data-date-host><input type="hidden" data-required name="serviceDate"></span></label>
+        <label><span>Earliest Pickup Time <span class="optional-mark">Optional</span></span><select name="pickupTime" data-pickup-time>
+          <option value="">Flexible — no preference</option>
+        </select></label>
         <label><span>Desired return time <span class="required-mark">Required</span></span><select data-required name="returnTime" data-return-time>
           <option value="">Select return time</option>
         </select></label>
-        <label class="span-2"><span>Earliest pickup / drop-off time <span class="optional-mark">Optional</span></span>
-          <input type="time" step="1800" name="pickupTime" data-pickup-time>
-        </label>
       </div>
       <p class="field-help">Return times are shown in 30-minute increments. Unavailable and fully booked times are not selectable.</p>
       <p class="field-help">Pickup time is the earliest your keys/vehicle are available. Leave it blank if you're flexible — a wider gap before your return time gives us more ways to fit your service in.</p>
@@ -652,6 +652,25 @@ function availableTimeOptions() {
     }
   }
   return options;
+}
+
+// Earliest-pickup options: plain 30-minute slots across the service window (it's a
+// soft "keys available from" bound, not a capacity-gated slot). Past times on the
+// service date are disabled.
+function pickupTimeOptions() {
+  const selectedDate = bookingState.values.serviceDate || "";
+  const isToday = selectedDate === todayValue();
+  const now = new Date();
+  const opts = [];
+  for (let hour = 7; hour <= 22; hour += 1) {
+    for (const minute of [0, 30]) {
+      if (hour === 22 && minute > 0) continue;
+      const value = timeValue(hour, minute);
+      const past = isToday && new Date(`${selectedDate || todayValue()}T${value}:00`) <= now;
+      opts.push({ value, label: timeLabel(hour, minute), disabled: past });
+    }
+  }
+  return opts;
 }
 
 async function loadBookedSlots() {
@@ -2303,6 +2322,20 @@ function renderScheduleFields(panel) {
   if (selectedTime && !Array.from(timeSelect.options).some((option) => option.value === selectedTime && !option.disabled)) {
     bookingState.values.returnTime = "";
     timeSelect.value = "";
+  }
+
+  // Earliest-pickup dropdown (30-min slots; "Flexible" default).
+  const pickupSelect = panel.querySelector("[data-pickup-time]");
+  if (pickupSelect && pickupSelect.tagName === "SELECT") {
+    const selectedPickup = bookingState.values.pickupTime || "";
+    const popts = pickupTimeOptions();
+    pickupSelect.innerHTML = `<option value="">Flexible — no preference</option>${popts.map((o) => `
+      <option value="${o.value}" ${o.disabled ? "disabled" : ""} ${o.value === selectedPickup && !o.disabled ? "selected" : ""}>${o.label}</option>
+    `).join("")}`;
+    if (selectedPickup && !popts.some((o) => o.value === selectedPickup && !o.disabled)) {
+      bookingState.values.pickupTime = "";
+      pickupSelect.value = "";
+    }
   }
 }
 

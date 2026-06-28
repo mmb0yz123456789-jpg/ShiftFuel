@@ -335,19 +335,23 @@
             <p class="field-help">Set the days and hours you work, and block out any days off. Saved instantly — no approval needed.</p>
           </div>
           <form id="worker-schedule-form" class="admin-edit-panel worker-schedule-form-inline">
-            <div id="workdays-panel" class="worker-availability-window">
-              <h3 class="worker-availability-title">Work Days &amp; Shift Times</h3>
-              <div id="worker-days-grid" class="worker-days-grid"></div>
-              <button id="save-workdays" class="button primary" type="button">Save work days</button>
-            </div>
+            <details id="workdays-panel" class="worker-availability-window worker-acc" open>
+              <summary class="worker-acc-head"><span>Work Days &amp; Shift Times</span><svg class="worker-acc-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></summary>
+              <div class="worker-acc-body">
+                <div id="worker-days-grid" class="worker-days-grid"></div>
+                <button id="save-workdays" class="button primary" type="button">Save work days</button>
+              </div>
+            </details>
 
-            <div id="days-off-panel" class="worker-availability-window worker-availability-divider">
-              <h3 class="worker-availability-title">Days Off</h3>
-              <p class="field-help">Click any date in the 3-month booking window to block it — customers can't book you on those days.</p>
-              <div id="worker-days-off-calendar" class="worker-days-off-calendar"></div>
-              <p id="worker-days-off-summary" class="field-help"></p>
-              <button id="save-days-off" class="button primary" type="button">Save days off</button>
-            </div>
+            <details id="days-off-panel" class="worker-availability-window worker-acc">
+              <summary class="worker-acc-head"><span>Days Off</span><svg class="worker-acc-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></summary>
+              <div class="worker-acc-body">
+                <p class="field-help">Click any date in the 3-month booking window to block it — customers can't book you on those days.</p>
+                <div id="worker-days-off-calendar" class="worker-days-off-calendar"></div>
+                <p id="worker-days-off-summary" class="field-help"></p>
+                <button id="save-days-off" class="button primary" type="button">Save days off</button>
+              </div>
+            </details>
             <p id="worker-schedule-status" class="field-help"></p>
           </form>
         </section>
@@ -384,6 +388,28 @@
 
       <!-- ── Tab: Earnings ──────────────────────────────────── -->
       <div id="wtab-earnings" class="worker-tab" hidden>
+        <section class="section" id="worker-pay-setup-section">
+          <div class="section-heading">
+            <h2>Payouts &amp; fuel card</h2>
+          </div>
+          <div class="worker-payout-card" id="worker-connect-card">
+            <div class="worker-payout-head">
+              <h3>Direct deposit payouts</h3>
+              <span class="worker-payout-status" id="worker-connect-status">Checking…</span>
+            </div>
+            <p class="field-help" id="worker-connect-help">Set up your bank to get paid by direct deposit.</p>
+            <button class="button primary" id="worker-connect-btn" type="button" hidden>Set up payout account</button>
+          </div>
+          <div class="worker-payout-card" id="worker-fuelcard-card">
+            <div class="worker-payout-head">
+              <h3>Fuel card</h3>
+              <span class="worker-payout-status" id="worker-fuelcard-status">Checking…</span>
+            </div>
+            <div id="worker-fuelcard-body">
+              <p class="field-help">Your virtual fuel &amp; car-wash card will appear here once your admin issues it.</p>
+            </div>
+          </div>
+        </section>
         <section class="section">
           <div class="section-heading">
             <h2>My Earnings</h2>

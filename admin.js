@@ -1014,7 +1014,20 @@ function frozenWorkerPayout(request) {
   return Number.isFinite(n) ? n : null;
 }
 
+// Payroll + the Company-Net tile call this several times per request (earning
+// filter, per-worker loop, companyNetBreakdown). It parses the notes each time, so
+// memoize per request object. Safe because allRequests is REPLACED on every load
+// (fresh objects ⇒ the cache auto-invalidates); a completed job's pay is frozen.
+const _workerPayoutCache = new WeakMap();
 function workerPayoutForRequest(request) {
+  if (!request || typeof request !== 'object') return 0;
+  const cached = _workerPayoutCache.get(request);
+  if (cached !== undefined) return cached;
+  const result = computeWorkerPayoutForRequest(request);
+  _workerPayoutCache.set(request, result);
+  return result;
+}
+function computeWorkerPayoutForRequest(request) {
   const completed = request.status === 'complete' || request.payment_status === 'captured';
   if (completed) {
     const locked = frozenWorkerPayout(request);
@@ -2528,6 +2541,11 @@ function normalizeEmployee(employee) {
     last_seen_at: employee.last_seen_at || null,
     presence_status: employee.presence_status || 'offline',
     background_verified: employee.background_verified === true,
+    stripe_connect_account_id: employee.stripe_connect_account_id || '',
+    stripe_connect_ready: employee.stripe_connect_ready === true,
+    stripe_card_id: employee.stripe_card_id || '',
+    stripe_card_last4: employee.stripe_card_last4 || '',
+    stripe_card_status: employee.stripe_card_status || '',
   };
 }
 
@@ -2535,21 +2553,10 @@ async function loadEmployees() {
   try {
     await ensureEmployee(DEFAULT_WORKER_NAME);
 
-    let { data, error } = await db
-      .from('employees_public')
-      .select('id,employee_code,username,full_name,phone,email,photo_url,original_photo_url,cropped_photo_url,photo_zoom,photo_position_x,photo_position_y,home_location,started_at,active,last_seen_at,presence_status,background_verified')
-      .order('full_name', { ascending: true });
-
-    if (error) {
-      console.warn('Full employee profile load failed, trying basic employee fields:', error);
-      const fallback = await db
-        .from('employees_public')
-        .select('id,employee_code,username,full_name,phone,email,home_location,active')
-        .order('full_name', { ascending: true });
-
-      data = fallback.data;
-      error = fallback.error;
-    }
+    // Worker profiles (incl. email/phone) load through a token-gated RPC so that
+    // worker contact PII is never readable via the public anon key / the
+    // employees_public view. See admin_list_employees + migration 202606271820.
+    let { data, error } = await db.rpc('admin_list_employees', { p_token: adminToken() });
 
     if (error) throw error;
 
@@ -2877,6 +2884,33 @@ function renderWorkerProfileCard(employee) {
         }
       </div>
       <p class="field-help admin-worker-status">${isLocal ? 'Run the Supabase worker upgrade before saving this worker.' : ''}</p>
+
+      <div class="admin-stripe-block" data-worker-id="${escapeHtml(employee.id)}">
+        <h4 class="admin-sched-title">Payouts &amp; fuel card</h4>
+        <div class="admin-stripe-row">
+          <div class="admin-stripe-info">
+            <strong>Direct deposit (Stripe Connect)</strong>
+            <p class="field-help">${employee.stripe_connect_ready
+              ? 'Onboarded — ready to receive payouts.'
+              : employee.stripe_connect_account_id
+                ? 'Account created — worker must finish onboarding in their app.'
+                : 'No payout account yet. Send the worker their setup link, or they can start it from their Earnings tab.'}</p>
+          </div>
+          <button class="button secondary worker-connect-link" data-id="${escapeHtml(employee.id)}" type="button" ${isLocal ? 'disabled' : ''}>Copy payout setup link</button>
+        </div>
+        <div class="admin-stripe-row">
+          <div class="admin-stripe-info">
+            <strong>Fuel card</strong>
+            <p class="field-help">${employee.stripe_card_id
+              ? `Issued · •••• ${escapeHtml(employee.stripe_card_last4 || '')} · ${escapeHtml(employee.stripe_card_status || 'active')}`
+              : 'Virtual card, fuel &amp; car-wash merchants only, $150 per-transaction cap.'}</p>
+          </div>
+          ${employee.stripe_card_id
+            ? `<button class="button secondary worker-card-toggle" data-id="${escapeHtml(employee.id)}" data-status="${escapeHtml(employee.stripe_card_status || 'active')}" type="button" ${isLocal ? 'disabled' : ''}>${employee.stripe_card_status === 'inactive' ? 'Unfreeze card' : 'Freeze card'}</button>`
+            : `<button class="button primary worker-issue-card" data-id="${escapeHtml(employee.id)}" type="button" ${isLocal ? 'disabled' : ''}>Issue fuel card</button>`}
+        </div>
+        <p class="field-help admin-stripe-status" data-worker-id="${escapeHtml(employee.id)}"></p>
+      </div>
 
       <div class="admin-sched-block">
         <h4 class="admin-sched-title">Weekly schedule</h4>
@@ -3477,7 +3511,6 @@ async function loadRequests() {
   // driven by currentView — re-render them so a refresh doesn't revert to the
   // default queue.
   if (activeStatCard === 'workers') openWorkersPanel();
-  else if (activeStatCard === 'revenue') openRevenueBreakdown();
   else renderRequests();
   renderActionNeeded();
 }
@@ -3804,15 +3837,15 @@ async function hireApplicant(applicantId) {
     throw new Error('Applicant needs a phone number before hiring.');
   }
 
-  // Use employees_public view so this works with restricted base table access.
-  const { data: existingByPhone, error: phoneError } = await db
-    .from('employees_public')
-    .select('id')
-    .eq('phone', phone)
-    .limit(1);
+  // Look up an existing employee by phone through a token-gated RPC (phone is no
+  // longer readable via the anon employees_public view). See admin_employee_id_by_phone.
+  const { data: existingId, error: phoneError } = await db.rpc('admin_employee_id_by_phone', {
+    p_token: adminToken(),
+    p_phone: phone,
+  });
 
   if (phoneError) throw phoneError;
-  const employee = existingByPhone?.[0] || null;
+  const employee = existingId ? { id: existingId } : null;
 
   if (employee) {
     const { error } = await db.rpc('admin_update_employee', {
@@ -5957,8 +5990,7 @@ const customRangeEnd = document.querySelector('#custom-range-end');
 function applyDashboardRange() {
   // History views (Completed/Closed) are date-scoped, so re-render the queue too.
   updateDashboardStatCards();
-  if (activeStatCard === 'revenue') openRevenueBreakdown();
-  else renderRequests();
+  renderRequests();
 }
 
 dashboardRangeSelect?.addEventListener('change', () => {
@@ -6151,7 +6183,7 @@ function renderPayroll() {
       || (allEmployees || []).find((e) => e.id === r.assigned_employee_id)?.full_name
       || (allEmployees || []).find((e) => e.id === r.assigned_employee_id)?.name
       || 'Unknown worker';
-    const entry = byWorker.get(key) || { name, jobs: 0, mileage: 0, total: 0, drivenMiles: 0 };
+    const entry = byWorker.get(key) || { key, employeeId: r.assigned_employee_id || null, name, jobs: 0, mileage: 0, total: 0, drivenMiles: 0 };
     entry.jobs += 1;
     entry.mileage += workerMileagePay(r);
     entry.total += workerPayoutForRequest(r);
@@ -6167,6 +6199,39 @@ function renderPayroll() {
   const { serviceFeeRevenue, cancellationRevenue, workerPayouts, companyNet } = companyNetBreakdown(inRange);
   const rangeLabel = dashboardRangeLabel(payrollRange);
 
+  // ── Payout tracker state for this period ──────────────────────────────────
+  const { key: periodKey, label: periodLabel } = payrollPeriodMeta(payrollRange);
+  const payouts = payrollPayoutsByKey[periodKey];
+  const payoutsReady = Array.isArray(payouts);
+  if (!payoutsReady && !payrollPayoutsLoading[periodKey]) loadPayrollPayouts(periodKey);
+  const paidByKey = new Map();
+  if (payoutsReady) {
+    for (const p of payouts) {
+      if (p.status !== 'paid') continue;
+      paidByKey.set(p.employee_id || p.worker_name, p);
+    }
+  }
+  const paidCount = rows.filter((e) => paidByKey.has(e.key)).length;
+  const outstanding = roundMoneyValue(
+    rows.filter((e) => !paidByKey.has(e.key)).reduce((s, e) => s + e.total, 0)
+  );
+
+  const statusCell = (e) => {
+    if (!payoutsReady) return '<span class="field-help" style="display:inline">…</span>';
+    const paid = paidByKey.get(e.key);
+    if (paid) {
+      const when = paid.paid_at ? new Date(paid.paid_at).toLocaleDateString() : '';
+      const ref = paid.reference ? ` · ${escapeHtml(paid.reference)}` : '';
+      return `<span class="payout-paid-badge" title="${escapeHtml(payoutMethodLabel(paid.method))}${ref}">Paid · ${escapeHtml(payoutMethodLabel(paid.method))}${when ? ' · ' + escapeHtml(when) : ''}</span> <button type="button" class="payout-undo-link" data-void-payout="${escapeHtml(paid.id)}">Undo</button>`;
+    }
+    const emp = e.employeeId ? (allEmployees || []).find((x) => x.id === e.employeeId) : null;
+    const stripeReady = !!(emp && emp.stripe_connect_ready);
+    const stripeBtn = stripeReady
+      ? `<button type="button" class="button primary payout-stripe-btn" data-stripe-pay-employee="${escapeHtml(e.employeeId)}" data-name="${escapeHtml(e.name)}" data-amount="${roundMoneyValue(e.total)}">Pay via Stripe</button> `
+      : '';
+    return `${stripeBtn}<button type="button" class="button secondary payout-pay-btn" data-pay-employee="${escapeHtml(e.key)}" data-employee-id="${escapeHtml(e.employeeId || '')}" data-name="${escapeHtml(e.name)}" data-amount="${roundMoneyValue(e.total)}">Mark paid</button>`;
+  };
+
   container.innerHTML = `
     <div class="payroll-summary-grid">
       <div class="payroll-summary-card"><span class="payroll-summary-label">Service fee revenue</span><span class="payroll-summary-value">${money(roundMoneyValue(serviceFeeRevenue))}</span></div>
@@ -6176,10 +6241,11 @@ function renderPayroll() {
     </div>
     <p class="field-help">Company net = service fees + cancellation fees − worker payouts. Shown before Stripe processing fees; excludes fuel/wash cost (pass-through to the customer) and the per-mile surcharge margin.</p>
     ${rows.length ? `
+      <p class="payroll-paid-summary">${payoutsReady ? `${paidCount}/${rows.length} workers paid · ${money(outstanding)} outstanding` : 'Loading payment status…'}</p>
       <table class="payroll-table">
-        <thead><tr><th>Worker</th><th>Jobs</th><th>Station mileage</th><th>Driven (GPS)</th><th>Earnings</th></tr></thead>
+        <thead><tr><th>Worker</th><th>Jobs</th><th>Station mileage</th><th>Driven (GPS)</th><th>Earnings</th><th>Payment</th></tr></thead>
         <tbody>
-          ${rows.map((e) => `<tr><td>${escapeHtml(e.name)}</td><td>${e.jobs}</td><td>${money(roundMoneyValue(e.mileage))}</td><td>${e.drivenMiles ? e.drivenMiles.toFixed(1) + ' mi' : '—'}</td><td><strong>${money(roundMoneyValue(e.total))}</strong></td></tr>`).join('')}
+          ${rows.map((e) => `<tr><td>${escapeHtml(e.name)}</td><td>${e.jobs}</td><td>${money(roundMoneyValue(e.mileage))}</td><td>${e.drivenMiles ? e.drivenMiles.toFixed(1) + ' mi' : '—'}</td><td><strong>${money(roundMoneyValue(e.total))}</strong></td><td class="payroll-payment-cell">${statusCell(e)}</td></tr>`).join('')}
         </tbody>
       </table>
     ` : `<div class="worker-state-card"><p>No worker earnings in this period yet.</p></div>`}
@@ -6192,6 +6258,296 @@ document.addEventListener('click', (event) => {
   payrollRange = btn.dataset.payrollRange;
   document.querySelectorAll('[data-payroll-range]').forEach((b) => b.classList.toggle('active', b === btn));
   renderPayroll();
+});
+
+// ── Payout tracker (Phase 1: record who's been paid each period) ─────────────
+// Earnings are computed in renderPayroll; this layer records the *payment* of
+// those earnings into the worker_payouts ledger so the admin can see who is
+// still outstanding. Stripe Connect (Phase 2) will write into the same ledger.
+let payrollPayoutsByKey = {};
+const payrollPayoutsLoading = {};
+
+const PAYOUT_METHOD_LABELS = {
+  manual: 'Manual',
+  zelle: 'Zelle',
+  venmo: 'Venmo',
+  cash: 'Cash',
+  bank: 'Bank',
+  stripe_connect: 'Stripe',
+};
+function payoutMethodLabel(method) {
+  return PAYOUT_METHOD_LABELS[method] || method || 'Manual';
+}
+
+// A stable key for the visible period so payments scope to exactly what's shown.
+function payrollPeriodMeta(range) {
+  const { start } = dashboardRangeBounds(range);
+  const key = `${range}:${start ? start.toISOString().slice(0, 10) : 'all'}`;
+  return { key, label: dashboardRangeLabel(range) };
+}
+
+async function loadPayrollPayouts(periodKey) {
+  if (payrollPayoutsLoading[periodKey]) return;
+  payrollPayoutsLoading[periodKey] = true;
+  try {
+    const { data, error } = await db.rpc('admin_list_payouts', {
+      p_token: adminToken(),
+      p_period_key: periodKey,
+    });
+    if (error) throw error;
+    payrollPayoutsByKey[periodKey] = data || [];
+  } catch (err) {
+    console.warn('Could not load payouts:', err?.message || err);
+    payrollPayoutsByKey[periodKey] = payrollPayoutsByKey[periodKey] || [];
+  } finally {
+    payrollPayoutsLoading[periodKey] = false;
+    renderPayroll();
+  }
+}
+
+async function recordPayout(opts) {
+  const { error } = await db.rpc('admin_record_payout', {
+    p_token: adminToken(),
+    p_employee_id: opts.employeeId || null,
+    p_worker_name: opts.name || null,
+    p_period_key: opts.periodKey,
+    p_period_label: opts.periodLabel || null,
+    p_amount: Number(opts.amount) || 0,
+    p_method: opts.method || 'manual',
+    p_reference: opts.reference || null,
+    p_notes: null,
+  });
+  if (error) throw error;
+  delete payrollPayoutsByKey[opts.periodKey];
+  loadPayrollPayouts(opts.periodKey);
+}
+
+async function voidPayout(id) {
+  if (!window.confirm('Undo this recorded payment? The worker will show as unpaid again for this period.')) return;
+  const { key } = payrollPeriodMeta(payrollRange);
+  const { error } = await db.rpc('admin_void_payout', { p_token: adminToken(), p_payout_id: id });
+  if (error) {
+    window.alert('Could not undo the payment: ' + (error.message || error));
+    return;
+  }
+  delete payrollPayoutsByKey[key];
+  loadPayrollPayouts(key);
+}
+
+// Phase 2: transfer a worker's pay through Stripe Connect. The serverless
+// function both moves the money and records it into worker_payouts, so we just
+// reload the ledger afterwards.
+async function payViaStripe(opts) {
+  if (!window.confirm(`Send ${money(roundMoneyValue(opts.amount))} to ${opts.name} via Stripe direct deposit?`)) return;
+  const meta = payrollPeriodMeta(payrollRange);
+  try {
+    const res = await fetch('/api/payouts', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'connect_transfer',
+        caller_token: adminToken(),
+        employee_id: opts.employeeId,
+        amount: Number(opts.amount),
+        period_key: meta.key,
+        period_label: meta.label,
+      }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || data.error) {
+      window.alert(data.error || 'Stripe payout failed.');
+      return;
+    }
+    if (data.ledger_warning) {
+      window.alert('Payment sent, but recording it failed: ' + data.ledger_warning);
+    }
+    delete payrollPayoutsByKey[meta.key];
+    loadPayrollPayouts(meta.key);
+  } catch (err) {
+    window.alert('Stripe payout failed: ' + (err.message || err));
+  }
+}
+
+// Lazily-built "record payment" modal, reused across clicks.
+let payoutModalEls = null;
+function ensurePayoutModal() {
+  if (payoutModalEls) return payoutModalEls;
+  const backdrop = document.createElement('div');
+  backdrop.className = 'sf-payout-modal-backdrop';
+  backdrop.hidden = true;
+  backdrop.innerHTML = `
+    <div class="sf-payout-modal" role="dialog" aria-modal="true" aria-labelledby="payout-modal-title">
+      <h3 id="payout-modal-title">Record payment</h3>
+      <p class="sf-payout-modal-sub"></p>
+      <label>Amount paid
+        <input type="number" id="payout-amount" step="0.01" min="0" inputmode="decimal">
+      </label>
+      <label>Method
+        <select id="payout-method">
+          <option value="manual">Manual / Other</option>
+          <option value="zelle">Zelle</option>
+          <option value="venmo">Venmo</option>
+          <option value="cash">Cash</option>
+          <option value="bank">Bank transfer / Direct deposit</option>
+        </select>
+      </label>
+      <label>Reference <span class="field-help" style="display:inline">optional</span>
+        <input type="text" id="payout-reference" placeholder="e.g. Zelle confirmation #" autocomplete="off">
+      </label>
+      <p class="form-status" id="payout-modal-status"></p>
+      <div class="sf-payout-modal-actions">
+        <button type="button" class="button secondary" id="payout-cancel">Cancel</button>
+        <button type="button" class="button primary" id="payout-confirm">Record payment</button>
+      </div>
+    </div>`;
+  document.body.appendChild(backdrop);
+
+  const els = {
+    backdrop,
+    sub: backdrop.querySelector('.sf-payout-modal-sub'),
+    amount: backdrop.querySelector('#payout-amount'),
+    method: backdrop.querySelector('#payout-method'),
+    reference: backdrop.querySelector('#payout-reference'),
+    status: backdrop.querySelector('#payout-modal-status'),
+    confirm: backdrop.querySelector('#payout-confirm'),
+    cancel: backdrop.querySelector('#payout-cancel'),
+  };
+
+  const close = () => { backdrop.hidden = true; els.current = null; };
+  els.cancel.addEventListener('click', close);
+  backdrop.addEventListener('click', (e) => { if (e.target === backdrop) close(); });
+  els.confirm.addEventListener('click', async () => {
+    if (!els.current) return;
+    els.confirm.disabled = true;
+    els.status.textContent = 'Saving…';
+    try {
+      await recordPayout({
+        ...els.current,
+        amount: els.amount.value,
+        method: els.method.value,
+        reference: els.reference.value.trim(),
+      });
+      close();
+    } catch (err) {
+      els.status.textContent = 'Could not record payment: ' + (err.message || err);
+    } finally {
+      els.confirm.disabled = false;
+    }
+  });
+
+  payoutModalEls = els;
+  return els;
+}
+
+function openPayoutModal(opts) {
+  const els = ensurePayoutModal();
+  els.current = opts;
+  els.sub.innerHTML = `Paying <strong>${escapeHtml(opts.name)}</strong> for ${escapeHtml(opts.periodLabel || 'this period')}.`;
+  els.amount.value = Number(opts.amount) || 0;
+  els.method.value = 'manual';
+  els.reference.value = '';
+  els.status.textContent = '';
+  els.backdrop.hidden = false;
+  els.amount.focus();
+}
+
+document.addEventListener('click', (event) => {
+  const payBtn = event.target.closest('[data-pay-employee]');
+  if (payBtn) {
+    const meta = payrollPeriodMeta(payrollRange);
+    openPayoutModal({
+      key: payBtn.dataset.payEmployee,
+      employeeId: payBtn.dataset.employeeId || null,
+      name: payBtn.dataset.name,
+      amount: payBtn.dataset.amount,
+      periodKey: meta.key,
+      periodLabel: meta.label,
+    });
+    return;
+  }
+  const stripeBtn = event.target.closest('[data-stripe-pay-employee]');
+  if (stripeBtn) {
+    payViaStripe({
+      employeeId: stripeBtn.dataset.stripePayEmployee,
+      name: stripeBtn.dataset.name,
+      amount: stripeBtn.dataset.amount,
+    });
+    return;
+  }
+  const voidBtn = event.target.closest('[data-void-payout]');
+  if (voidBtn) voidPayout(voidBtn.dataset.voidPayout);
+});
+
+// ── Admin Stripe controls on worker profiles (Connect link, fuel card) ───────
+function setStripeStatus(id, msg, isError) {
+  const el = document.querySelector(`.admin-stripe-status[data-worker-id="${(window.CSS && CSS.escape) ? CSS.escape(id) : id}"]`);
+  if (el) { el.textContent = msg; el.style.color = isError ? 'var(--sf-danger)' : ''; }
+}
+
+async function postStaffApi(path, payload) {
+  const res = await fetch(path, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ caller_token: adminToken(), ...payload }),
+  });
+  const data = await res.json().catch(() => ({}));
+  return { ok: res.ok && !data.error, data };
+}
+
+document.addEventListener('click', async (event) => {
+  const linkBtn = event.target.closest('.worker-connect-link');
+  if (linkBtn) {
+    const id = linkBtn.dataset.id;
+    linkBtn.disabled = true;
+    setStripeStatus(id, 'Generating link…');
+    const { ok, data } = await postStaffApi('/api/payouts', { action: 'connect_onboarding_link', employee_id: id });
+    if (!ok || !data.url) {
+      setStripeStatus(id, data.error || 'Could not generate the setup link.', true);
+    } else {
+      try {
+        await navigator.clipboard.writeText(data.url);
+        setStripeStatus(id, 'Setup link copied — send it to the worker to finish onboarding.');
+      } catch {
+        setStripeStatus(id, 'Setup link: ' + data.url);
+      }
+    }
+    linkBtn.disabled = false;
+    return;
+  }
+
+  const issueBtn = event.target.closest('.worker-issue-card');
+  if (issueBtn) {
+    const id = issueBtn.dataset.id;
+    if (!window.confirm('Issue a virtual fuel & car-wash card for this worker? (Fuel/wash merchants only, $150 per transaction.)')) return;
+    issueBtn.disabled = true;
+    setStripeStatus(id, 'Issuing card…');
+    const { ok, data } = await postStaffApi('/api/fuel-cards', { action: 'issue_card', employee_id: id });
+    if (!ok) {
+      setStripeStatus(id, data.error || 'Could not issue the card.', true);
+      issueBtn.disabled = false;
+    } else {
+      setStripeStatus(id, `Card issued · •••• ${data.last4 || ''}.`);
+      loadEmployees();
+    }
+    return;
+  }
+
+  const toggleBtn = event.target.closest('.worker-card-toggle');
+  if (toggleBtn) {
+    const id = toggleBtn.dataset.id;
+    const next = toggleBtn.dataset.status === 'inactive' ? 'active' : 'inactive';
+    toggleBtn.disabled = true;
+    setStripeStatus(id, next === 'inactive' ? 'Freezing card…' : 'Unfreezing card…');
+    const { ok, data } = await postStaffApi('/api/fuel-cards', { action: 'set_card_status', employee_id: id, status: next });
+    if (!ok) {
+      setStripeStatus(id, data.error || 'Could not update the card.', true);
+      toggleBtn.disabled = false;
+    } else {
+      setStripeStatus(id, data.status === 'inactive' ? 'Card frozen.' : 'Card active.');
+      loadEmployees();
+    }
+    return;
+  }
 });
 
 function switchPageTab(page) {
@@ -6360,60 +6716,10 @@ function openWorkersPanel() {
   requestList?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
 
-function openRevenueBreakdown() {
-  setActiveStatCard('revenue');
-
-  const rangeLabel = dashboardRangeLabel(dashboardRange);
-  const captured = allRequests.filter((r) => r.payment_status === 'captured' && isInDashboardRange(r, dashboardRange));
-
-  if (!requestList) return;
-
-  if (!captured.length) {
-    requestList.innerHTML = '<div class="empty-state"><p>No captured payments in this period.</p></div>';
-  } else {
-    let grandTotal = 0;
-    const rows = captured.map((r) => {
-      const fuel  = Number(r.displayed_fuel_service_fee || 0);
-      const wash  = Number(r.displayed_car_wash_service_fee || 0);
-      const insp  = Number(r.displayed_inspection_fee || 0);
-      const total = fuel + wash + insp;
-      grandTotal += total;
-      const name = [r.first_name, r.last_name].filter(Boolean).join(' ') || 'Customer';
-      const ticket = r.id ? `#${String(r.id).slice(0, 8)}` : '';
-      return `<tr>
-        <td>${escapeHtml(ticket)}</td>
-        <td>${escapeHtml(name)}</td>
-        <td>${fuel > 0 ? '$' + fuel.toFixed(2) : '—'}</td>
-        <td>${wash > 0 ? '$' + wash.toFixed(2) : '—'}</td>
-        <td>${insp > 0 ? '$' + insp.toFixed(2) : '—'}</td>
-        <td class="revenue-row-total">$${total.toFixed(2)}</td>
-      </tr>`;
-    }).join('');
-    requestList.innerHTML = `
-      <table class="revenue-breakdown-table">
-        <thead><tr>
-          <th>Ticket</th><th>Customer</th><th>Fuel Fee</th><th>Wash Fee</th><th>Inspection Fee</th><th>Total</th>
-        </tr></thead>
-        <tbody>${rows}</tbody>
-        <tfoot><tr>
-          <td colspan="5" class="revenue-grand-label">Net Revenue Total</td>
-          <td class="revenue-grand-total">$${grandTotal.toFixed(2)}</td>
-        </tr></tfoot>
-      </table>`;
-  }
-
-  if (requestQueueHeading) requestQueueHeading.textContent = `Service Fee Revenue — ${rangeLabel}`;
-  if (requestQueueEyebrow) requestQueueEyebrow.textContent = 'Revenue';
-  if (showAllTimeBtn) showAllTimeBtn.style.display = 'none';
-  requestList?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-}
-
-function closeRevenueBreakdown() { /* no-op — kept for any legacy callers */ }
-
 // The request queue now lives only on the Requests page, so a stat tile must jump
 // there first (then filter / drill down). Navigation sits here in the click path —
-// NOT inside statCardNav/openWorkersPanel/openRevenueBreakdown, which also run on
-// Refresh and must not yank the user to another page.
+// NOT inside statCardNav/openWorkersPanel, which also run on Refresh and must not
+// yank the user to another page.
 const goRequestsThen = (fn) => { switchPageTab('requests'); fn(); };
 document.getElementById('stat-card-open')?.addEventListener('click', () => goRequestsThen(() => statCardNav('unassigned', 'open')));
 document.getElementById('stat-card-open')?.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); goRequestsThen(() => statCardNav('unassigned', 'open')); } });
@@ -6551,7 +6857,11 @@ function ticketMatchesQuery(r, q) {
     const phoneDigits = normalizePhone(r.customer_phone);
     if (phoneDigits.includes(qDigits) || qDigits.includes(phoneDigits.slice(-qDigits.length))) return true;
   }
-  return fuzzyMatch(r.customer_name, q) || fuzzyMatch(r.customer_email, q);
+  return fuzzyMatch(r.customer_name, q)
+    || fuzzyMatch(r.customer_email, q)
+    || fuzzyMatch(r.license_plate, q)
+    || fuzzyMatch(r.vehicle_plate, q)
+    || (q.length >= 6 && String(r.id || '').toLowerCase().includes(q.toLowerCase()));
 }
 
 function runFindTicketsSearch() {
@@ -6619,6 +6929,62 @@ findTicketsResults?.addEventListener('click', (e) => {
   if (!request) return;
   closeFindTicketsModal();
   openTicketDetailModal(request);
+});
+
+// ── "Find" page: inline unified search (requests + people) ───────────────────
+function workerMatchesFind(e, q) {
+  const n = q.toLowerCase();
+  const digits = q.replace(/\D/g, '');
+  return (e.full_name || '').toLowerCase().includes(n)
+    || (e.email || '').toLowerCase().includes(n)
+    || (e.employee_code || '').toLowerCase().includes(n)
+    || (digits.length >= 3 && (e.phone || '').replace(/\D/g, '').includes(digits));
+}
+function runAdminFind() {
+  const input = document.getElementById('admin-find-input');
+  const out = document.getElementById('admin-find-results');
+  if (!input || !out) return;
+  const q = input.value.trim();
+  if (!q) { out.hidden = true; out.innerHTML = ''; return; }
+  const workers = (allEmployees || []).filter((w) => workerMatchesFind(w, q)).slice(0, 10);
+  const reqs = (allRequests || []).filter((r) => ticketMatchesQuery(r, q)).slice(0, 30);
+  const workerRows = workers.map((w) => `
+    <button class="admin-find-result" data-find-worker="${escapeHtml(w.id)}" type="button">
+      <div class="find-ticket-result-header">
+        <span class="find-ticket-name">${escapeHtml(w.full_name || 'Worker')}</span>
+        <span class="status-pill ${w.active ? 'status-pill-complete' : 'status-pill-denied'}">${w.active ? 'Active' : 'Inactive'}</span>
+      </div>
+      <span class="find-ticket-meta">Worker · ${w.phone ? escapeHtml(formatPhone(w.phone)) : 'No phone'}${w.email ? ' · ' + escapeHtml(w.email) : ''}</span>
+    </button>`).join('');
+  const reqRows = reqs.map((r) => `
+    <button class="admin-find-result" data-find-request="${escapeHtml(r.id)}" type="button">
+      <div class="find-ticket-result-header">
+        <span class="find-ticket-name">${escapeHtml(r.customer_name || 'Customer')}</span>
+        <span class="status-pill">${escapeHtml(statusLabels[r.status] || r.status)}</span>
+      </div>
+      <span class="find-ticket-meta">${r.customer_phone ? escapeHtml(formatPhone(r.customer_phone)) : 'No phone'}${r.customer_email ? ' · ' + escapeHtml(r.customer_email) : ''}</span>
+      <span class="find-ticket-meta">${escapeHtml(r.service_date || 'Date not set')}${[r.vehicle_year, r.vehicle_make, r.vehicle_model].filter(Boolean).length ? ' · ' + escapeHtml([r.vehicle_year, r.vehicle_make, r.vehicle_model].filter(Boolean).join(' ')) : ''}</span>
+    </button>`).join('');
+  out.hidden = false;
+  out.innerHTML = (workers.length ? `<p class="admin-find-group">People</p>${workerRows}` : '')
+    + (reqs.length ? `<p class="admin-find-group">Requests</p>${reqRows}` : '')
+    + ((!workers.length && !reqs.length) ? '<p class="find-tickets-empty">No matching requests or people.</p>' : '');
+}
+document.getElementById('admin-find-input')?.addEventListener('input', runAdminFind);
+document.getElementById('admin-find-results')?.addEventListener('click', (event) => {
+  const wbtn = event.target.closest('[data-find-worker]');
+  if (wbtn) {
+    const id = wbtn.dataset.findWorker;
+    selectedScheduleEmployeeId = id;
+    switchPageTab('workers');
+    setTimeout(() => document.querySelector(`#admin-worker-profile-list [data-worker-id="${id}"]`)?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 80);
+    return;
+  }
+  const rbtn = event.target.closest('[data-find-request]');
+  if (rbtn) {
+    const r = (allRequests || []).find((x) => x.id === rbtn.dataset.findRequest);
+    if (r) openTicketDetailModal(r);
+  }
 });
 
 closeTicketDetailBtn?.addEventListener('click', closeTicketDetailModal);
@@ -6739,11 +7105,11 @@ async function openTicketDetailModal(request) {
 }
 
 async function loadTicketPhotos(requestId) {
-  const { data, error } = await db
-    .from('photos')
-    .select('photo_type,image_url,thumbnail_url,original_url,created_at')
-    .eq('service_request_id', requestId)
-    .order('created_at', { ascending: true });
+  // Token-gated so the photos table can stay locked to anon (no enumeration).
+  const { data, error } = await db.rpc('staff_request_photos', {
+    p_token: adminToken(),
+    p_request_id: requestId,
+  });
   if (error) { console.warn('Could not load ticket photos:', error); return []; }
   return data || [];
 }
@@ -7359,14 +7725,11 @@ function renderServicesSettingsList() {
   if (!list || list.dataset.rendered) return;
   const chevron = '<svg class="svc-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>';
   list.innerHTML = `
-    <details class="svc-acc" open>
-      <summary class="svc-acc-head"><span>Service pricing</span>${chevron}</summary>
-      <div class="svc-acc-body">
-        <p class="tbp-intro">Grouped by service. Tags show who each amount touches: <span class="tbp-tag tbp-tag-customer">customer pays</span> = on the customer's bill · <span class="tbp-tag tbp-tag-worker">worker earns</span> = paid to the driver.</p>
+    <p class="tbp-intro" style="margin-bottom:12px">Each service is its own section. Tags show who each amount touches: <span class="tbp-tag tbp-tag-customer">customer pays</span> = on the customer's bill · <span class="tbp-tag tbp-tag-worker">worker earns</span> = paid to the driver.</p>
 
-        <details class="svc-sub-acc" open>
-          <summary class="svc-sub-acc-head"><span>⛽ Fuel</span>${chevron}</summary>
-          <div class="svc-sub-acc-body">
+    <details class="svc-acc" open>
+      <summary class="svc-acc-head"><span>⛽ Fuel</span>${chevron}</summary>
+      <div class="svc-acc-body">
             <div class="pricing-group-grid">
               <label>Regular ($/gal)<input id="fp-regular" type="number" step="0.001" min="0"></label>
               <label>Mid-grade ($/gal)<input id="fp-midgrade" type="number" step="0.001" min="0"></label>
@@ -7382,9 +7745,9 @@ function renderServicesSettingsList() {
           </div>
         </details>
 
-        <details class="svc-sub-acc">
-          <summary class="svc-sub-acc-head"><span>🚿 Car wash</span>${chevron}</summary>
-          <div class="svc-sub-acc-body">
+        <details class="svc-acc">
+          <summary class="svc-acc-head"><span>🚿 Car wash</span>${chevron}</summary>
+          <div class="svc-acc-body">
             <div class="pricing-group-grid">
               <label>Buff &amp; Shine ($)<input id="sp-wash-buff-shine" type="number" step="0.01" min="0"></label>
               <label>Shine &amp; Protect ($)<input id="sp-wash-shine-protect" type="number" step="0.01" min="0"></label>
@@ -7400,9 +7763,9 @@ function renderServicesSettingsList() {
           </div>
         </details>
 
-        <details class="svc-sub-acc">
-          <summary class="svc-sub-acc-head"><span>🔍 Quick care</span>${chevron}</summary>
-          <div class="svc-sub-acc-body">
+        <details class="svc-acc">
+          <summary class="svc-acc-head"><span>🔍 Quick care</span>${chevron}</summary>
+          <div class="svc-acc-body">
             <div class="pricing-group-grid">
               <label>Quick care fee ($) <span class="tbp-tag tbp-tag-customer">customer pays</span><input id="sp-inspection-fee" type="number" step="0.01" min="0"></label>
               <label>Quick-care worker share (%) <span class="tbp-tag tbp-tag-worker">worker earns</span><input id="sp-quick-share" type="number" step="1" min="0" max="100"><span class="tbp-hint">Driver's cut of the quick-care fee (net of card).</span></label>
@@ -7410,9 +7773,9 @@ function renderServicesSettingsList() {
           </div>
         </details>
 
-        <details class="svc-sub-acc">
-          <summary class="svc-sub-acc-head"><span>🚗 Distance &amp; mileage</span>${chevron}</summary>
-          <div class="svc-sub-acc-body">
+        <details class="svc-acc">
+          <summary class="svc-acc-head"><span>🚗 Distance &amp; mileage</span>${chevron}</summary>
+          <div class="svc-acc-body">
             <div class="pricing-group-grid">
               <label>Gas station distance surcharge ($/extra round-trip mile) <span class="tbp-tag tbp-tag-customer">customer pays</span><input id="sp-per-mile-rate" type="number" step="0.01" min="0"><span class="tbp-hint">Per mile charged to the customer for a farther-than-closest gas station AND for the car-wash detour past the free miles.</span></label>
               <label>Worker mileage pay ($/mile) <span class="tbp-tag tbp-tag-worker">worker earns</span><input id="sp-wash-detour-rate" type="number" step="0.001" min="0"><span class="tbp-hint">Paid to the driver per detour mile — covers BOTH gas-station mileage and the car-wash detour. (3 decimals OK, e.g. 0.725.)</span></label>
@@ -7420,17 +7783,14 @@ function renderServicesSettingsList() {
           </div>
         </details>
 
-        <details class="svc-sub-acc">
-          <summary class="svc-sub-acc-head"><span>⏱ Service time</span>${chevron}</summary>
-          <div class="svc-sub-acc-body">
+        <details class="svc-acc">
+          <summary class="svc-acc-head"><span>⏱ Service time</span>${chevron}</summary>
+          <div class="svc-acc-body">
             <div class="pricing-group-grid">
               <label>Company time rate ($/min) <span class="tbp-tag tbp-tag-customer">customer pays</span><input id="sp-time-rate" type="number" step="0.01" min="0"><span class="tbp-hint">Charged to the customer per service-minute (fuel + wash time above). Set $0 to turn time pricing off. Each worker's own per-minute pay is set on the Workers tab.</span></label>
             </div>
           </div>
         </details>
-
-      </div>
-    </details>
 
     <div class="pricing-effective-date-row">
       <div id="pricing-pending-banner" class="pricing-pending-banner" hidden></div>
@@ -7488,10 +7848,17 @@ function renderServicesSettingsList() {
         <label>Distance surcharge — customer ($/mile)<input id="sim-per-mile" type="number" min="0" step="0.01"><span class="tbp-hint">Charged to the customer for gas-station choice AND wash detour past the free miles.</span></label>
         <label>Worker mileage pay ($/mile)<input id="sim-worker-mile" type="number" min="0" step="0.001"></label>
       </div>
-      <p class="field-help" style="margin:.6rem 0 .2rem"><strong>Goal-seek</strong> — set a yearly target for the company and an expected volume; it back-solves the service fee for this scenario and shows what's left for the worker. A planning estimate, not a guarantee.</p>
+      <p class="field-help" style="margin:.6rem 0 .2rem"><strong>Annual planner</strong> — enter your expected yearly job mix. Each service type is costed with its own time + distance (jobs differ, so no single job is extrapolated), then blended into a yearly projection. Add a company target to get a recommended fee. Uses the rates above; a planning estimate, not a guarantee.</p>
+      <table class="pricing-mix-table">
+        <thead><tr><th>Service</th><th>Jobs / yr</th><th>Avg gallons</th><th>Gas detour mi</th><th>Wash detour mi</th></tr></thead>
+        <tbody>
+          <tr><th scope="row">Fuel only</th><td><input id="mix-fuel-jobs" type="number" min="0" step="10" value="0"></td><td><input id="mix-fuel-gal" type="number" min="0" step="1" value="10"></td><td><input id="mix-fuel-sta" type="number" min="0" step="0.1" value="0"></td><td class="mix-na">—</td></tr>
+          <tr><th scope="row">Wash only</th><td><input id="mix-wash-jobs" type="number" min="0" step="10" value="0"></td><td class="mix-na">—</td><td class="mix-na">—</td><td><input id="mix-wash-wash" type="number" min="0" step="0.1" value="0"></td></tr>
+          <tr><th scope="row">Fuel + Wash</th><td><input id="mix-both-jobs" type="number" min="0" step="10" value="0"></td><td><input id="mix-both-gal" type="number" min="0" step="1" value="10"></td><td><input id="mix-both-sta" type="number" min="0" step="0.1" value="0"></td><td><input id="mix-both-wash" type="number" min="0" step="0.1" value="0"></td></tr>
+        </tbody>
+      </table>
       <div class="pricing-sim-inputs">
-        <label>Target company net ($/year)<input id="sim-target-year" type="number" min="0" step="1000" placeholder="e.g. 120000"></label>
-        <label>Expected jobs / year<input id="sim-jobs-year" type="number" min="0" step="10" placeholder="e.g. 4000"></label>
+        <label>Target company net ($/year)<input id="mix-target-year" type="number" min="0" step="1000" placeholder="e.g. 120000"></label>
       </div>
       <div class="pricing-sim-goal" id="sim-goal-output"></div>
       <div class="pricing-sim-output" id="sim-output"></div>
@@ -7604,14 +7971,9 @@ function runPricingSimulator() {
   const driveMiles = (needsFuel ? stationMiles : 0) + (needsWash ? washMiles : 0);
   const minutes = Math.round(10 + 5 + (driveMiles / 30) * 60 + (quick ? 10 : 0));
 
-  // Annualize a per-job dollar amount by the worker-minutes it takes, at 40 hrs/wk.
-  const HOURS_PER_YEAR = 40 * 52; // 2080
-  const rateLine = (amount) => {
-    if (minutes <= 0) return '';
-    const perMin = amount / minutes;
-    const yearly = perMin * 60 * HOURS_PER_YEAR;
-    return `≈ ${money(perMin)}/min · ~$${Math.round(yearly).toLocaleString()}/yr at 40 hrs/wk of jobs like this`;
-  };
+  // Per-minute rate for THIS job only (yearly projection lives in the Annual
+  // planner below, which blends the real job mix instead of extrapolating one job).
+  const rateLine = (amount) => (minutes > 0 ? `≈ ${money(amount / minutes)}/min for this job` : '');
 
   const row = (label, val, strong) => `<div class="sim-row${strong ? ' sim-row-total' : ''}"><span>${label}</span><span>${money(val)}</span></div>`;
   const note = (txt) => `<p class="sim-note">${txt}</p>`;
@@ -7660,48 +8022,80 @@ function runPricingSimulator() {
     <p class="sim-time"><strong>Worker time to complete:</strong> ~${minutes} min</p>
   `;
 
-  // ── Goal-seek: recommend a service-fee level to hit a yearly company target ──
+  // ── Annual planner: blend the expected job mix into a yearly projection, and
+  // optionally recommend a service-fee scale to hit a company-net target. Each
+  // service type is costed with its OWN time + distance, so jobs aren't treated
+  // as one uniform ~N-min job. ──
   const goalOut = document.getElementById('sim-goal-output');
   if (goalOut) {
-    const targetYear = simNum('sim-target-year', 0);
-    const jobsYear = simNum('sim-jobs-year', 0);
-    const currentTotalFee = fuelFee + washFee + inspFee;
-    if (targetYear > 0 && jobsYear > 0 && currentTotalFee > 0) {
-      // Company net per job as a function of scaling the service fees by k (time,
-      // distance, shares held fixed). Near-linear, so solve from two evaluations.
-      const feeShareAtScale = (k) => {
-        const fF = fuelFee * k, wF = washFee * k, iF = inspFee * k;
-        const tot = fF + wF + iF;
-        const stripe = tot > 0 ? roundMoneyValue(tot * RETURN_RECOVERY_RATE + RETURN_RECOVERY_FIXED) : 0;
-        const netOf = (fee) => (tot > 0 ? Math.max(0, fee - stripe * (fee / tot)) : 0);
-        return roundMoneyValue(netOf(fF) * fuelSharePct + netOf(wF) * washSharePct + netOf(iF) * inspSharePct);
-      };
-      const companyNetAtScale = (k) => {
-        const rev = roundMoneyValue((fuelFee + washFee + inspFee) * k + timeCharge + stationSurcharge + washSurcharge);
-        const wPay = roundMoneyValue(feeShareAtScale(k) + mileagePay + timePay + washDetourPay);
-        return roundMoneyValue(rev - wPay);
-      };
-      const reqPerJob = targetYear / jobsYear;
-      const c1 = companyNetAtScale(1);
-      const slope = companyNetAtScale(2) - c1; // company-$ per unit of fee scale
-      let kRec = slope > 0 ? 1 + (reqPerJob - c1) / slope : 1;
-      if (!Number.isFinite(kRec) || kRec < 0) kRec = 0;
-      const recTotalFee = roundMoneyValue(currentTotalFee * kRec);
-      const recCompanyPerJob = companyNetAtScale(kRec);
-      const recWorkerPerJob = roundMoneyValue(feeShareAtScale(kRec) + mileagePay + timePay + washDetourPay);
-      const alreadyMet = c1 >= reqPerJob;
-      const goalRow = (label, val) => `<div class="sim-row"><span>${label}</span><span>${val}</span></div>`;
-      goalOut.innerHTML = `
-        <div class="sim-card sim-card-company" style="margin-top:.5rem">
-          <h5>To net $${Math.round(targetYear).toLocaleString()}/yr at ${jobsYear.toLocaleString()} jobs/yr</h5>
-          ${note(`That's ${money(reqPerJob)} company net per job. ${alreadyMet ? 'Your current pricing already meets this — you could even lower fees.' : 'Current pricing falls short; here\'s the fee that closes the gap.'}`)}
-          ${goalRow('Recommended total service fee', `${money(recTotalFee)}${kRec !== 1 ? ` <span style="color:#60716d">(now ${money(currentTotalFee)})</span>` : ''}`)}
-          ${goalRow('Company net', `${money(recCompanyPerJob)}/job · ~$${Math.round(recCompanyPerJob * jobsYear).toLocaleString()}/yr`)}
-          ${goalRow('Worker take-home', `${money(recWorkerPerJob)}/job · ~$${Math.round(recWorkerPerJob * jobsYear).toLocaleString()}/yr`)}
-          ${note('Scales the service fee(s) for THIS scenario — split the recommended total across fuel/wash as you like, then save it in the groups above.')}
-        </div>`;
+    // Per-job company net + worker pay for one service type at a given fee scale.
+    const jobEconomics = (nF, nW, gal, staMi, washMi, scale) => {
+      const fF = (nF ? fuelFee : 0) * scale;
+      const wF = (nW ? washFee : 0) * scale;
+      const sMin = (nF ? fuelBaseMin + fuelPerGalMin * gal : 0) + (nW ? washTimeMin : 0);
+      const tCharge = roundMoneyValue(sMin * companyRate);
+      const staSur = nF ? roundMoneyValue(staMi * perMileRate) : 0;
+      const washSur = nW ? roundMoneyValue(Math.max(0, washMi - washDetourFree) * perMileRate) : 0;
+      const tot = fF + wF;
+      const stripe = tot > 0 ? roundMoneyValue(tot * RETURN_RECOVERY_RATE + RETURN_RECOVERY_FIXED) : 0;
+      const netOf = (fee) => (tot > 0 ? Math.max(0, fee - stripe * (fee / tot)) : 0);
+      const feeShareW = roundMoneyValue(netOf(fF) * fuelSharePct + netOf(wF) * washSharePct);
+      const workerPay = roundMoneyValue(feeShareW + sMin * workerRate + (nF ? staMi * washDetourRate : 0) + (nW ? washMi * washDetourRate : 0));
+      const serviceRev = roundMoneyValue(fF + wF + tCharge + staSur + washSur);
+      return { companyNet: roundMoneyValue(serviceRev - workerPay), workerPay };
+    };
+
+    const mix = [
+      { nF: true,  nW: false, jobs: simNum('mix-fuel-jobs', 0), gal: simNum('mix-fuel-gal', 0), sta: simNum('mix-fuel-sta', 0), wash: 0 },
+      { nF: false, nW: true,  jobs: simNum('mix-wash-jobs', 0), gal: 0,                         sta: 0,                         wash: simNum('mix-wash-wash', 0) },
+      { nF: true,  nW: true,  jobs: simNum('mix-both-jobs', 0), gal: simNum('mix-both-gal', 0), sta: simNum('mix-both-sta', 0), wash: simNum('mix-both-wash', 0) },
+    ];
+    const totalJobs = mix.reduce((s, m) => s + (m.jobs > 0 ? m.jobs : 0), 0);
+
+    if (totalJobs <= 0) {
+      goalOut.innerHTML = note('Enter how many jobs of each type you expect per year to see the yearly projection.');
     } else {
-      goalOut.innerHTML = '';
+      const annualAt = (scale) => {
+        let co = 0, wo = 0;
+        for (const m of mix) {
+          if (m.jobs <= 0) continue;
+          const e = jobEconomics(m.nF, m.nW, m.gal, m.sta, m.wash, scale);
+          co += e.companyNet * m.jobs;
+          wo += e.workerPay * m.jobs;
+        }
+        return { company: roundMoneyValue(co), worker: roundMoneyValue(wo) };
+      };
+      const base = annualAt(1);
+      const goalRow = (label, val, strong) => `<div class="sim-row${strong ? ' sim-row-total' : ''}"><span>${label}</span><span>${val}</span></div>`;
+      const yr = (n) => `$${Math.round(n).toLocaleString()}`;
+
+      let out = `<div class="sim-card sim-card-company" style="margin-top:.5rem">
+        <h5>Projected year — ${totalJobs.toLocaleString()} jobs</h5>
+        ${note('Blended across your job mix at the current rates.')}
+        ${goalRow('Company net', `${yr(base.company)}/yr`, true)}
+        ${goalRow('Worker pay (all drivers)', `${yr(base.worker)}/yr`)}`;
+
+      const targetYear = simNum('mix-target-year', 0);
+      if (targetYear > 0) {
+        const a1 = base.company;
+        const slope = annualAt(2).company - a1; // company $/yr per unit of fee scale
+        let scale = slope > 0 ? 1 + (targetYear - a1) / slope : 1;
+        if (!Number.isFinite(scale) || scale < 0) scale = 0;
+        const rec = annualAt(scale);
+        const alreadyMet = a1 >= targetYear;
+        out += `<hr style="border:0;border-top:1px solid var(--admin-line,#e5e7eb);margin:10px 0">
+          <h5>To net ${yr(targetYear)}/yr</h5>
+          ${note(alreadyMet ? 'Your current pricing already clears this target — you could lower fees.' : 'Recommended fees to close the gap (scales the fuel + wash service fees together):')}
+          ${goalRow('Recommended fuel service fee', `${money(roundMoneyValue(fuelFee * scale))} <span style="color:#60716d">(now ${money(fuelFee)})</span>`)}
+          ${goalRow('Recommended wash service fee', `${money(roundMoneyValue(washFee * scale))} <span style="color:#60716d">(now ${money(washFee)})</span>`)}
+          ${goalRow('Company net', `${yr(rec.company)}/yr`, true)}
+          ${goalRow('Worker pay (all drivers)', `${yr(rec.worker)}/yr`)}
+          ${note('Set these fuel/wash fees in the groups above to apply.')}`;
+      } else {
+        out += note('Add a target company net to get a recommended fee.');
+      }
+      out += '</div>';
+      goalOut.innerHTML = out;
     }
   }
 }
@@ -7709,7 +8103,7 @@ function runPricingSimulator() {
 // Recompute the simulator whenever a scenario input or a pricing-form rate changes.
 ['input', 'change'].forEach((evt) => document.addEventListener(evt, (event) => {
   const id = event.target?.id || '';
-  if (id.startsWith('sim-') || id.startsWith('sp-')) runPricingSimulator();
+  if (id.startsWith('sim-') || id.startsWith('sp-') || id.startsWith('mix-')) runPricingSimulator();
 }));
 
 // Gather the time-comp pricing params for admin_update_service_pricing. Falls back
@@ -7937,51 +8331,10 @@ document.querySelector('#admin-password-form')?.addEventListener('submit', async
 });
 
 // ── Admin Change Username ────────────────────────────────────────────
-document.querySelector('#admin-username-form')?.addEventListener('submit', async (event) => {
-  event.preventDefault();
-  const statusEl = document.querySelector('#admin-username-status');
-  const submitBtn = event.target.querySelector('[type="submit"]');
-
-  const currentPassword = document.querySelector('#admin-username-current-password')?.value || '';
-  const newUsername = (document.querySelector('#admin-new-username')?.value || '').trim();
-
-  if (newUsername.length < 3) {
-    if (statusEl) statusEl.textContent = 'New username must be at least 3 characters.';
-    return;
-  }
-
-  if (statusEl) statusEl.textContent = 'Updating username...';
-  if (submitBtn) submitBtn.disabled = true;
-
-  try {
-    // Username is matched case-insensitively at login, so hash the lowercased value.
-    const [currentHash, newUsernameHash] = await Promise.all([
-      sha256Hex(currentPassword),
-      sha256Hex(newUsername.toLowerCase()),
-    ]);
-
-    const { error } = await db.rpc('admin_change_username', {
-      p_token: adminToken(),
-      p_current_password_hash: currentHash,
-      p_new_username_hash: newUsernameHash,
-    });
-
-    if (error) throw error;
-
-    event.target.reset();
-    if (statusEl) statusEl.textContent = 'Username updated. Use it next time you log in.';
-  } catch (err) {
-    const msg = err?.message || '';
-    if (msg.includes('INVALID_CURRENT_PASSWORD')) {
-      if (statusEl) statusEl.textContent = 'Current password is incorrect.';
-    } else {
-      console.error('Admin username change failed:', err);
-      if (statusEl) statusEl.textContent = `Could not update username: ${msg || err}`;
-    }
-  } finally {
-    if (submitBtn) submitBtn.disabled = false;
-  }
-});
+// (Removed the legacy #admin-username-form handler: that form was never rendered,
+// and it called admin_change_username with the obsolete p_current_password_hash
+// param — broken since migration 202606261900 switched it to verify the current
+// USERNAME. The live username change is #account-username-form below.)
 
 // ── Services Pricing Form Submit ─────────────────────────────────────
 document.querySelector('#services-settings-form')?.addEventListener('submit', async (event) => {

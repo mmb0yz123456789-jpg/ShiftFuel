@@ -2319,6 +2319,96 @@ font-size: 0.85rem;
 .payroll-table td:nth-child(3), .payroll-table th:nth-child(3) { text-align: center; }
 @media (max-width: 640px) { .payroll-summary-grid { grid-template-columns: 1fr; } }
 
+/* ── Payout tracker (Payroll tab) ── */
+.payroll-paid-summary {
+  margin: 12px 0 0;
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: var(--brand-dark, #1a3a2a);
+}
+.payroll-table td.payroll-payment-cell { text-align: right; white-space: nowrap; }
+.payout-pay-btn { min-height: 36px; padding: 7px 14px; font-size: 0.85rem; }
+.payout-paid-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 5px 11px;
+  border-radius: 999px;
+  background: #e7f5ec;
+  color: #1a7a45;
+  font-size: 0.82rem;
+  font-weight: 800;
+}
+.payout-undo-link {
+  margin-left: 8px;
+  padding: 0;
+  background: none;
+  border: none;
+  color: #6b7280;
+  font-size: 0.8rem;
+  font-weight: 700;
+  text-decoration: underline;
+  cursor: pointer;
+}
+.payout-undo-link:hover { color: var(--sf-danger, #b42318); }
+
+/* Record-payment modal */
+.sf-payout-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(6, 39, 39, 0.55);
+}
+.sf-payout-modal-backdrop[hidden] { display: none; }
+.sf-payout-modal {
+  width: min(420px, 100%);
+  display: grid;
+  gap: 14px;
+  padding: 26px;
+  background: #fff;
+  border-radius: 18px;
+  box-shadow: 0 26px 60px rgba(6, 39, 39, 0.28);
+}
+.sf-payout-modal h3 { margin: 0; color: var(--brand-dark, #1a3a2a); font-size: 1.25rem; }
+.sf-payout-modal-sub { margin: 0; color: #5f6f6d; font-size: 0.92rem; }
+.sf-payout-modal label {
+  display: grid;
+  gap: 6px;
+  font-size: 0.85rem;
+  font-weight: 800;
+  color: var(--brand-dark, #1a3a2a);
+}
+.sf-payout-modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 4px; }
+.sf-payout-modal #payout-modal-status { margin: 0; min-height: 18px; color: var(--sf-danger, #b42318); font-size: 0.85rem; font-weight: 700; }
+
+/* Stripe payouts + fuel card block on admin worker profiles */
+.admin-stripe-block {
+  margin-top: 18px;
+  padding-top: 16px;
+  border-top: 1px solid #eef2ef;
+}
+.admin-stripe-block .admin-sched-title { margin: 0 0 10px; }
+.admin-stripe-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 10px 0;
+}
+.admin-stripe-row + .admin-stripe-row { border-top: 1px dashed #eef2ef; }
+.admin-stripe-info { min-width: 0; }
+.admin-stripe-info strong { color: var(--brand-dark, #1a3a2a); font-size: 0.95rem; }
+.admin-stripe-info .field-help { margin: 2px 0 0; }
+.admin-stripe-row .button { flex: 0 0 auto; min-height: 38px; padding: 8px 14px; font-size: 0.85rem; white-space: nowrap; }
+.admin-stripe-status { margin: 8px 0 0; min-height: 16px; font-weight: 700; }
+.payout-stripe-btn { min-height: 36px; padding: 7px 12px; font-size: 0.82rem; }
+@media (max-width: 560px) {
+  .admin-stripe-row { flex-direction: column; align-items: stretch; }
+  .admin-stripe-row .button { width: 100%; }
+}
+
 .booking-field-grid .span-2 {
   grid-column: span 2;
 }

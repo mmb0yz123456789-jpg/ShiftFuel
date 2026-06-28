@@ -49,13 +49,7 @@ const workerScheduleStatus = document.querySelector('#worker-schedule-status');
 const workerDaysGrid = document.querySelector('#worker-days-grid');
 const workerDaysOffCalendar = document.querySelector('#worker-days-off-calendar');
 const workerDaysOffSummary = document.querySelector('#worker-days-off-summary');
-const openWorkdaysPanel = document.querySelector('#open-workdays-panel');
-const closeWorkdaysPanel = document.querySelector('#close-workdays-panel');
-const workdaysPanel = document.querySelector('#workdays-panel');
 const saveWorkdaysButton = document.querySelector('#save-workdays');
-const openDaysOffPanel = document.querySelector('#open-days-off-panel');
-const closeDaysOffPanel = document.querySelector('#close-days-off-panel');
-const daysOffPanel = document.querySelector('#days-off-panel');
 const saveDaysOffButton = document.querySelector('#save-days-off');
 const workerJobList = document.querySelector('#worker-job-list');
 const workerReviewList = document.querySelector('#worker-review-list');
@@ -1339,65 +1333,23 @@ function monthLabel(date) {
 }
 
 async function ensureWorkerProfile() {
-  const storedEmployeeId = SESSION_WORKER_ID || localStorage.getItem(`shiftfuel_worker_id_${SESSION_WORKER_NAME}`);
-
-  if (storedEmployeeId) {
-    let { data: stored, error: storedError } = await workerDb
-      .from('employees_public')
-      .select('id,employee_code,full_name,phone,photo_url,original_photo_url,cropped_photo_url,photo_zoom,photo_position_x,photo_position_y,home_location,started_at,active,background_verified')
-      .eq('id', storedEmployeeId)
-      .limit(1);
-
-    if (storedError) {
-      const fallback = await workerDb
-        .from('employees_public')
-        .select('id,employee_code,full_name,phone,photo_url,original_photo_url,cropped_photo_url,home_location,started_at,active')
-        .eq('id', storedEmployeeId)
-        .limit(1);
-
-      stored = fallback.data;
-      storedError = fallback.error;
-    }
-
-    if (!storedError && stored?.length) {
-      return {
-        photo_url: '',
-        photo_zoom: 1,
-        photo_position_x: 0,
-        photo_position_y: 0,
-        started_at: '',
-        ...stored[0],
-      };
-    }
-  }
-
-  let { data, error } = await workerDb
-    .from('employees_public')
-    .select('id,employee_code,full_name,phone,photo_url,original_photo_url,cropped_photo_url,photo_zoom,photo_position_x,photo_position_y,home_location,started_at,active')
-    .eq('full_name', SESSION_WORKER_NAME)
-    .limit(1);
-
-  if (error) {
-    const fallback = await workerDb
-      .from('employees_public')
-      .select('id,employee_code,full_name,phone,photo_url,original_photo_url,cropped_photo_url,home_location,started_at,active')
-      .eq('full_name', SESSION_WORKER_NAME)
-      .limit(1);
-
-    data = fallback.data;
-    error = fallback.error;
-  }
+  // The session token identifies the worker, so load THIS worker's own profile
+  // (incl. their phone) through a token-gated RPC instead of the anon-readable
+  // employees_public view. See worker_my_profile + migration 202606271830.
+  const { data: profile, error } = await workerDb.rpc('worker_my_profile', {
+    p_token: SESSION_WORKER_TOKEN,
+  });
 
   if (error) throw error;
 
-  if (data?.length) {
+  if (profile && profile.id) {
     return {
       photo_url: '',
       photo_zoom: 1,
       photo_position_x: 0,
       photo_position_y: 0,
       started_at: '',
-      ...data[0],
+      ...profile,
     };
   }
 
@@ -3313,32 +3265,6 @@ function renderWorkerInspectionPanel(request) {
 // Receipt-confirmation panel shown at service_complete.
 // Worker reviews totals and clicks "Receipts recorded" â†’ advances to receipts_recorded.
 // Does NOT capture payment â€” that happens later at vehicle_returned/inspection_recorded.
-function renderWorkerReceiptConfirmPanel(request) {
-  const receiptTotals = receiptTotalsFromNotes(request);
-  const workerReceiptTotal = receiptTotals.fuel + receiptTotals.wash;
-
-  return `
-    <div class="complete-panel" data-complete-for="${escapeHtml(request.id)}">
-      <h4>Confirm receipt totals</h4>
-      <div class="request-details">
-        ${serviceNeedsFuel(request) ? `<p><strong>Fuel receipt total:</strong> ${money(receiptTotals.fuel)}</p>` : ''}
-        ${serviceNeedsWash(request) ? `<p><strong>Car wash receipt total:</strong> ${money(receiptTotals.wash)}</p>` : ''}
-        <p><strong>Receipt total entered:</strong> ${money(workerReceiptTotal)}</p>
-      </div>
-      <label class="checkbox-label">
-        <input class="confirm-complete-totals" type="checkbox">
-        <span>I confirm the saved receipt totals are correct.</span>
-      </label>
-      <div class="admin-button-row">
-        <button class="button primary worker-update-status" data-id="${escapeHtml(request.id)}" data-status="receipts_recorded" type="button">Receipts recorded</button>
-        ${serviceNeedsFuel(request) ? `<button class="button secondary show-total-edit" data-id="${escapeHtml(request.id)}" data-edit-total="fuel" type="button">Fuel Incorrect</button>` : ''}
-        ${serviceNeedsWash(request) ? `<button class="button secondary show-total-edit" data-id="${escapeHtml(request.id)}" data-edit-total="wash" type="button">Car Wash Incorrect</button>` : ''}
-      </div>
-      <div class="total-edit-panel" data-total-edit-for="${escapeHtml(request.id)}" hidden></div>
-    </div>
-  `;
-}
-
 function renderWorkerCompletePanel(request) {
   const receiptTotals = receiptTotalsFromNotes(request);
   const workerReceiptTotal = receiptTotals.fuel + receiptTotals.wash;
@@ -5488,4 +5414,111 @@ loadVehiclePsiGuides().finally(loadWorkerProfile);
     .worker-portal-page .guided-step .admin-button-row .button.danger { order: 3 !important; }
   `;
   document.head.appendChild(style);
+})();
+
+// ── Payouts & fuel card (worker self-service: Phase 2/3) ─────────────────────
+// Lets a worker onboard their Stripe Connect (direct-deposit) account and view
+// the virtual fuel/car-wash card their admin issued. Both read straight from
+// the serverless functions using the worker session token.
+(function () {
+  const token = sessionStorage.getItem('shiftfuel_worker_token') || '';
+  if (!token) return;
+
+  async function callApi(path, action, extra) {
+    const res = await fetch(path, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action, caller_token: token, ...(extra || {}) }),
+    });
+    let data = {};
+    try { data = await res.json(); } catch { /* ignore */ }
+    return { ok: res.ok, data };
+  }
+
+  function fmtCardNumber(number, last4) {
+    if (number) return number.replace(/(.{4})/g, '$1 ').trim();
+    return `•••• •••• •••• ${last4 || '••••'}`;
+  }
+
+  async function refreshConnect() {
+    const status = document.getElementById('worker-connect-status');
+    const help = document.getElementById('worker-connect-help');
+    const btn = document.getElementById('worker-connect-btn');
+    if (!status || !help || !btn) return;
+    try {
+      const { data } = await callApi('/api/payouts', 'connect_status', {});
+      if (data.ready) {
+        status.textContent = 'Active';
+        status.className = 'worker-payout-status is-ready';
+        help.textContent = 'Your bank is connected. Payouts arrive by direct deposit.';
+        btn.hidden = false; btn.textContent = 'Manage payout account';
+      } else if (data.account_id) {
+        status.textContent = 'Finish setup';
+        status.className = 'worker-payout-status is-pending';
+        help.textContent = 'You started setup but haven’t finished. Tap below to complete it.';
+        btn.hidden = false; btn.textContent = 'Finish payout setup';
+      } else {
+        status.textContent = 'Not set up';
+        status.className = 'worker-payout-status is-pending';
+        help.textContent = 'Set up your bank to get paid by direct deposit.';
+        btn.hidden = false; btn.textContent = 'Set up payout account';
+      }
+    } catch {
+      status.textContent = 'Unavailable';
+      status.className = 'worker-payout-status is-pending';
+    }
+  }
+
+  async function startOnboarding(btn) {
+    const original = btn.textContent;
+    btn.disabled = true; btn.textContent = 'Opening…';
+    try {
+      const { data } = await callApi('/api/payouts', 'connect_onboarding_link', {});
+      if (data.url) { window.location.href = data.url; return; }
+      window.alert(data.error || 'Could not start payout setup. Please try again.');
+    } catch {
+      window.alert('Could not start payout setup. Please try again.');
+    }
+    btn.disabled = false; btn.textContent = original;
+  }
+
+  async function refreshFuelCard() {
+    const status = document.getElementById('worker-fuelcard-status');
+    const body = document.getElementById('worker-fuelcard-body');
+    if (!status || !body) return;
+    try {
+      const { data } = await callApi('/api/fuel-cards', 'card_details', {});
+      if (!data.has_card) {
+        status.textContent = 'Not issued';
+        status.className = 'worker-payout-status is-pending';
+        body.innerHTML = '<p class="field-help">Your virtual fuel &amp; car-wash card will appear here once your admin issues it.</p>';
+        return;
+      }
+      const frozen = data.status !== 'active';
+      status.textContent = frozen ? 'Frozen' : 'Active';
+      status.className = 'worker-payout-status ' + (frozen ? 'is-pending' : 'is-ready');
+      const exp = `${String(data.exp_month || '').padStart(2, '0')}/${String(data.exp_year || '').slice(-2)}`;
+      body.innerHTML = `
+        <div class="worker-fuel-card-visual${frozen ? ' is-frozen' : ''}">
+          <div class="wfc-brand">ShiftFuel · Fuel &amp; Wash</div>
+          <div class="wfc-number">${fmtCardNumber(data.number, data.last4)}</div>
+          <div class="wfc-row"><span>Exp ${exp}</span>${data.cvc ? `<span>CVC ${data.cvc}</span>` : ''}</div>
+        </div>
+        <p class="field-help">Fuel &amp; car-wash purchases only${data.per_transaction_cap ? `, up to $${data.per_transaction_cap} per transaction` : ''}.${data.number ? ' <strong>Test card — sandbox only.</strong>' : ''}</p>`;
+    } catch {
+      status.textContent = 'Unavailable';
+      status.className = 'worker-payout-status is-pending';
+    }
+  }
+
+  function init() {
+    const btn = document.getElementById('worker-connect-btn');
+    if (!btn) return; // earnings markup not present
+    btn.addEventListener('click', () => startOnboarding(btn));
+    refreshConnect();
+    refreshFuelCard();
+  }
+
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
+  else init();
 })();

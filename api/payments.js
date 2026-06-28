@@ -415,8 +415,12 @@ async function handleCreateIntent(body, res) {
     try {
       pi = await stripe.paymentIntents.create(paymentIntentParams);
     } catch (createErr) {
+      // Some Stripe accounts aren't enabled for incremental authorization and
+      // reject the request outright ("not eligible for the requested card
+      // features" / flexible-payments). Treat any of these as "drop the option
+      // and retry" — the base manual-capture hold works without it.
       const incrementalParamRejected = createErr.code === 'parameter_unknown'
-        || /request_incremental_authorization|payment_method_options/i.test(String(createErr.message || ''));
+        || /request_incremental_authorization|payment_method_options|not eligible|card features|flexible[ -]?payments/i.test(String(createErr.message || ''));
       if (!incrementalParamRejected) throw createErr;
       console.warn('[payments/create_intent] Incremental authorization option rejected; retrying without it:', createErr.message);
       delete paymentIntentParams.payment_method_options;

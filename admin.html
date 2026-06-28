@@ -115,7 +115,7 @@
 	  
 	  <nav class="admin-page-tabs" aria-label="Admin pages">
 		<button class="admin-page-tab active" data-page="dashboard">Dashboard</button>
-		<button class="admin-page-tab" data-page="requests">Requests</button>
+		<button class="admin-page-tab" data-page="requests">Find</button>
 		<button class="admin-page-tab" data-page="workers">Workers <span id="worker-count-badge" class="page-tab-badge">0</span></button>
 		<button class="admin-page-tab" data-page="payroll">Payroll</button>
 		<button class="admin-page-tab" data-page="services">Services</button>
@@ -150,7 +150,7 @@
 		
 		<nav class="admin-menu-links">
 		  <a href="#" data-page="dashboard" class="admin-menu-item">Dashboard</a>
-		  <a href="#" data-page="requests" class="admin-menu-item">Requests</a>
+		  <a href="#" data-page="requests" class="admin-menu-item">Find</a>
 		  <a href="#" data-page="workers" class="admin-menu-item">Workers</a>
 		  <a href="#" data-page="payroll" class="admin-menu-item">Payroll</a>
 		  <a href="#" data-page="services" class="admin-menu-item">Services</a>
@@ -280,6 +280,16 @@
             <button id="reauth-needed-refresh-btn" class="button secondary" type="button">Refresh</button>
           </div>
           <div id="reauth-needed-list" class="pending-auth-list"></div>
+        </div>
+      </section>
+
+      <section class="section admin-section admin-find-section" data-page-section="requests" data-tab-panel="requests">
+        <div class="admin-queue-card admin-find-card">
+          <div class="admin-find-bar">
+            <svg class="admin-find-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+            <input id="admin-find-input" type="search" placeholder="Find a request or person — name, phone, email, plate, ticket #" autocomplete="off">
+          </div>
+          <div id="admin-find-results" class="admin-find-results" hidden></div>
         </div>
       </section>
 
@@ -776,8 +786,8 @@
         <span>Home</span>
       </button>
       <button class="app-tab" data-tab data-tab-action=".admin-page-tabs [data-page='requests']" type="button">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="5" y="4" width="14" height="17" rx="1.6"/><path d="M9 8h6M9 12h6M9 16h4"/></svg>
-        <span>Requests</span>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+        <span>Find</span>
       </button>
       <button class="app-tab" data-tab data-tab-action=".admin-page-tabs [data-page='workers']" type="button">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="9" cy="8" r="3"/><path d="M2.5 19c0-3 2.9-5.5 6.5-5.5s6.5 2.5 6.5 5.5"/><circle cx="17" cy="8.5" r="2.3"/><path d="M15.5 13.6c2.7.4 4.5 2.4 4.5 5"/></svg>

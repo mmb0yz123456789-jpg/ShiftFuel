@@ -101,6 +101,16 @@
     return `${Math.max(0, Math.round(metres / 0.3048))} ft`;
   }
 
+  // Mapbox Standard light preset chosen from the worker's local clock, so the map
+  // is bright in the day and dark at night automatically.
+  function lightPresetForNow() {
+    const h = new Date().getHours();
+    if (h >= 5 && h < 7) return 'dawn';
+    if (h >= 7 && h < 17) return 'day';
+    if (h >= 17 && h < 19) return 'dusk';
+    return 'night';
+  }
+
   function loadAssets() {
     if (assetsPromise) return assetsPromise;
     assetsPromise = new Promise((resolve, reject) => {
@@ -126,8 +136,8 @@
     const el = document.createElement('div');
     el.className = 'wrm-puck';
     el.innerHTML = `<svg viewBox="0 0 24 24" width="36" height="36" aria-hidden="true">
-      <circle cx="12" cy="12" r="11" fill="#1f7a45" opacity="0.18"/>
-      <path d="M12 3 L19 20 L12 15.5 L5 20 Z" fill="#1f7a45" stroke="#ffffff" stroke-width="1.4" stroke-linejoin="round"/>
+      <circle cx="12" cy="12" r="11" fill="#2f6bef" opacity="0.2"/>
+      <path d="M12 3 L19 20 L12 15.5 L5 20 Z" fill="#2f6bef" stroke="#ffffff" stroke-width="1.6" stroke-linejoin="round"/>
     </svg>`;
     return el;
   }
@@ -142,31 +152,41 @@
     modal.hidden = true;
     modal.innerHTML = `
       <div class="wrm-dialog">
-        <div class="wrm-header">
-          <div class="wrm-heading">
-            <strong class="wrm-title">Directions</strong>
-            <span class="wrm-eta"></span>
-          </div>
-          <button class="wrm-close" type="button" aria-label="Close">&times;</button>
-        </div>
-        <div class="wrm-banner" hidden>
-          <span class="wrm-banner-instruction"></span>
-          <span class="wrm-banner-distance"></span>
-        </div>
         <div class="wrm-map-wrap">
           <div class="wrm-map"></div>
+
+          <div class="wrm-banner" hidden>
+            <span class="wrm-banner-icon" aria-hidden="true"></span>
+            <div class="wrm-banner-text">
+              <span class="wrm-banner-distance"></span>
+              <span class="wrm-banner-instruction"></span>
+            </div>
+          </div>
+
+          <div class="wrm-speed" hidden>
+            <div class="wrm-speed-limit" hidden>
+              <b class="wrm-spd-limit"></b><span>mph</span>
+            </div>
+            <div class="wrm-speed-now"><b class="wrm-spd-now">0</b><span>mph</span></div>
+          </div>
+
+          <button class="wrm-close" type="button" aria-label="Close" hidden>
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
+          </button>
+
           <button class="wrm-recenter" type="button" hidden>
             <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg>
             Re-center
           </button>
-        </div>
-        <div class="wrm-actions">
-          <button class="button primary wrm-start-service" type="button" hidden>Start service</button>
+
+          <div class="wrm-bottom">
+            <span class="wrm-eta"></span>
+            <button class="wrm-start-service" type="button" hidden>Start service</button>
+          </div>
         </div>
       </div>`;
     document.body.appendChild(modal);
     modal.querySelector('.wrm-close').addEventListener('click', closeModal);
-    modal.addEventListener('click', (e) => { if (e.target === modal) closeModal(); });
     modal.querySelector('.wrm-recenter').addEventListener('click', () => {
       if (nav) { nav.follow = true; if (nav.lastLoc) applyNavCamera(nav.lastLoc, nav.lastBearing); }
       toggleRecenter(false);
@@ -289,7 +309,7 @@
     const coords = `${origin.lon},${origin.lat};${dest.lon},${dest.lat}`;
     // driving-traffic: live-traffic-aware ETA + routing for in-app navigation
     // (same Directions API + price tier as plain driving).
-    const url = `https://api.mapbox.com/directions/v5/mapbox/driving-traffic/${coords}?access_token=${MAPBOX_TOKEN}&geometries=geojson&overview=full&steps=true`;
+    const url = `https://api.mapbox.com/directions/v5/mapbox/driving-traffic/${coords}?access_token=${MAPBOX_TOKEN}&geometries=geojson&overview=full&steps=true&annotations=maxspeed`;
     try {
       const r = await fetch(url);
       if (!r.ok) return null;
@@ -304,10 +324,17 @@
       map.getSource('wrm-route').setData(geojson);
     } else {
       map.addSource('wrm-route', { type: 'geojson', data: geojson });
+      // Bright-blue route with a darker casing, like the native nav line. `slot`
+      // tucks it under labels/3D on the Standard style (ignored on other styles).
       map.addLayer({
-        id: 'wrm-route', type: 'line', source: 'wrm-route',
+        id: 'wrm-route-casing', type: 'line', source: 'wrm-route', slot: 'middle',
         layout: { 'line-join': 'round', 'line-cap': 'round' },
-        paint: { 'line-color': '#1f7a45', 'line-width': 7, 'line-opacity': 0.9 },
+        paint: { 'line-color': '#1b4fc4', 'line-width': 11, 'line-opacity': 0.9 },
+      });
+      map.addLayer({
+        id: 'wrm-route', type: 'line', source: 'wrm-route', slot: 'middle',
+        layout: { 'line-join': 'round', 'line-cap': 'round' },
+        paint: { 'line-color': '#4a90ff', 'line-width': 7, 'line-opacity': 1 },
       });
     }
   }
@@ -326,6 +353,7 @@
     nav.steps = (route.legs && route.legs[0] && route.legs[0].steps) || [];
     nav.stepIndex = 0;
     nav.routeCoords = (route.geometry.coordinates || []).map((c) => ({ lon: c[0], lat: c[1] }));
+    nav.maxspeed = (route.legs && route.legs[0] && route.legs[0].annotation && route.legs[0].annotation.maxspeed) || [];
     nav.lastReroute = Date.now();
     if (nav.follow === undefined) nav.follow = true;
   }
@@ -346,6 +374,54 @@
       duration: 700,
       essential: true,
     });
+  }
+
+  // Turn-arrow for the banner: an up-arrow rotated to the maneuver direction, or a
+  // destination pin on arrival — the way a car GPS shows the next turn.
+  function maneuverRotation(step) {
+    const mod = (step?.maneuver?.modifier || '').toLowerCase();
+    const angles = { 'sharp left': -135, left: -90, 'slight left': -40, straight: 0, 'slight right': 40, right: 90, 'sharp right': 135, uturn: 180 };
+    return mod in angles ? angles[mod] : 0;
+  }
+  function setBannerIcon(iconEl, step) {
+    if (!iconEl) return;
+    if ((step?.maneuver?.type || '').toLowerCase() === 'arrive') {
+      iconEl.style.transform = '';
+      iconEl.innerHTML = `<svg viewBox="0 0 24 24" width="30" height="30" fill="#fff" aria-hidden="true"><path d="M12 21s7-6.3 7-11a7 7 0 1 0-14 0c0 4.7 7 11 7 11z"/><circle cx="12" cy="10" r="2.4" fill="#2f6bef"/></svg>`;
+      return;
+    }
+    iconEl.innerHTML = `<svg viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="#fff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20V6M6 12l6-6 6 6"/></svg>`;
+    iconEl.style.transform = `rotate(${maneuverRotation(step)}deg)`;
+  }
+
+  // Posted speed limit for the worker's current segment, from the route's maxspeed
+  // annotation. Best-effort: null when Mapbox has no data for that road.
+  function currentSpeedLimit(loc) {
+    if (!loc || !nav?.maxspeed?.length || !nav?.routeCoords?.length) return null;
+    let min = Infinity, idx = 0;
+    for (let i = 0; i < nav.routeCoords.length; i++) {
+      const d = haversine(loc, nav.routeCoords[i]);
+      if (d < min) { min = d; idx = i; }
+    }
+    const seg = nav.maxspeed[Math.min(idx, nav.maxspeed.length - 1)];
+    if (!seg || seg.none || seg.unknown || seg.speed == null) return null;
+    const mph = seg.unit === 'km/h' ? Math.round(seg.speed * 0.621371) : Math.round(seg.speed);
+    return mph > 0 ? mph : null;
+  }
+
+  // Update the speed widget: current speed from the device GPS + posted limit.
+  function updateSpeed(speedMps, loc) {
+    const modal = document.getElementById('worker-route-modal');
+    if (!modal) return;
+    const nowEl = modal.querySelector('.wrm-spd-now');
+    const limitWrap = modal.querySelector('.wrm-speed-limit');
+    const limitEl = modal.querySelector('.wrm-spd-limit');
+    if (nowEl && Number.isFinite(speedMps) && speedMps >= 0) {
+      nowEl.textContent = String(Math.round(speedMps * 2.23694));
+    }
+    const lim = currentSpeedLimit(loc);
+    if (lim && limitWrap && limitEl) { limitEl.textContent = String(lim); limitWrap.hidden = false; }
+    else if (limitWrap) limitWrap.hidden = true;
   }
 
   // Update the next-turn banner: advance past any maneuver we've reached, then show
@@ -369,9 +445,11 @@
     }
 
     const step = nav.steps[nav.stepIndex];
-    instrEl.textContent = step?.maneuver?.instruction || 'Continue to the destination';
+    setBannerIcon(modal.querySelector('.wrm-banner-icon'), step);
     const m = step?.maneuver?.location;
+    // Distance to the next maneuver leads (big); the road/instruction sits below.
     distEl.textContent = (workerLoc && m) ? formatDistance(haversine(workerLoc, { lon: m[0], lat: m[1] })) : '';
+    instrEl.textContent = step?.name || step?.maneuver?.instruction || 'Continue to the destination';
   }
 
   function minDistanceToRoute(point) {
@@ -423,6 +501,7 @@
         if (nav.follow) applyNavCamera(loc, nav.lastBearing);
       }
       updateBanner(loc);
+      updateSpeed(pos.coords.speed, loc);
       maybeReroute(loc);
     }, () => {}, { enableHighAccuracy: true, maximumAge: 5000, timeout: 15000 });
   }
@@ -465,17 +544,23 @@
     const isReturn = destType === 'return';
     const isHandoff = destType === 'handoff';
     const modal = ensureModal();
-    const titleEl = modal.querySelector('.wrm-title');
     const etaEl = modal.querySelector('.wrm-eta');
     const banner = modal.querySelector('.wrm-banner');
     const startBtn = modal.querySelector('.wrm-start-service');
-    titleEl.textContent = isStation ? 'Drive to gas station'
-      : isWash ? 'Drive to the car wash'
-      : isReturn ? 'Drive the car back to its spot'
-      : isHandoff ? 'Meet the customer for keys'
-      : 'Directions to service address';
+    const closeBtn = modal.querySelector('.wrm-close');
     etaEl.textContent = 'Loading map…';
     banner.hidden = true;
+    // Exit stays available while loading / on the info-only legs; once a "Start
+    // service" action takes over (auto-arrival legs) it becomes the only way out.
+    if (closeBtn) closeBtn.hidden = false;
+    const speedWidget = modal.querySelector('.wrm-speed');
+    if (speedWidget) {
+      speedWidget.hidden = true;
+      const spdNow = speedWidget.querySelector('.wrm-spd-now');
+      if (spdNow) spdNow.textContent = '0';
+      const spdLimit = speedWidget.querySelector('.wrm-speed-limit');
+      if (spdLimit) spdLimit.hidden = true;
+    }
     if (startBtn) startBtn.hidden = true;
     toggleRecenter(false);
     stopNavWatch();
@@ -522,20 +607,31 @@
 
     mapboxgl.accessToken = MAPBOX_TOKEN;
     const mapEl = modal.querySelector('.wrm-map');
+    // Light by day, dark at night (matches the basemap preset below) so the brief
+    // pre-tiles flash doesn't fight the map.
+    const preset = lightPresetForNow();
+    mapEl.style.background = (preset === 'day' || preset === 'dawn') ? '#e6eae6' : '#11131a';
     if (map) { map.remove(); map = null; }
     map = new mapboxgl.Map({
       container: mapEl,
-      style: 'mapbox://styles/mapbox/navigation-day-v1',
+      // Mapbox Standard renders real 3D buildings at a tilt; the time-of-day light
+      // preset (set on load) gives the day/night look. This is the closest a web
+      // map gets to the native Navigation SDK view.
+      style: 'mapbox://styles/mapbox/standard',
       center: [dest.lon, dest.lat],
       zoom: 13,
       pitch: 0,
     });
-    map.addControl(new mapboxgl.NavigationControl({ showCompass: true }), 'top-right');
+    // No default zoom/compass control — the floating recenter button handles it.
     // Pause auto-follow when the worker pans the map; show a Re-center button.
     map.on('dragstart', () => { if (nav) { nav.follow = false; toggleRecenter(true); } });
 
     map.on('load', async () => {
       map.resize();
+      // Day/night basemap by the local clock + real 3D buildings (both built into
+      // Standard); POI labels off for a clean driving view.
+      try { map.setConfigProperty('basemap', 'lightPreset', preset); } catch (_) {}
+      try { map.setConfigProperty('basemap', 'showPointOfInterestLabels', false); } catch (_) {}
       destMarker = new mapboxgl.Marker({ color: '#b42318' }).setLngLat([dest.lon, dest.lat])
         .setPopup(new mapboxgl.Popup().setText(dest.label || (isStation ? 'Gas station' : 'Service address'))).addTo(map);
 
@@ -568,7 +664,12 @@
         startBtn.textContent = isReturn ? 'Vehicle returned' : 'Start service';
         startBtn.hidden = !nav.autoArrive;
       }
+      // On a service-drive leg the floating Start button is the only exit (no top
+      // bar / close, by design). On info-only legs keep the close button.
+      if (closeBtn) closeBtn.hidden = nav.autoArrive;
       updateBanner(workerLoc);
+      const speedWidget = modal.querySelector('.wrm-speed');
+      if (speedWidget) speedWidget.hidden = false;
 
       // Enter the follow-camera facing the start of the route.
       const ahead = nav.routeCoords[1] || nav.routeCoords[0];
@@ -585,32 +686,58 @@
     const style = document.createElement('style');
     style.id = 'worker-route-map-style';
     style.textContent = `
-      .wrm-overlay { position: fixed; inset: 0; z-index: 1000; background: #fff; display: flex; }
+      .wrm-overlay { position: fixed; inset: 0; z-index: 1000; background: #11131a; display: flex; }
       .wrm-overlay[hidden] { display: none; }
-      .wrm-dialog { background: #fff; width: 100%; height: 100%; display: flex;
-        flex-direction: column; overflow: hidden; }
-      .wrm-header { display: flex; align-items: center; justify-content: space-between;
-        padding: calc(14px + env(safe-area-inset-top)) 16px 14px; border-bottom: 1px solid #eef2ef; }
-      .wrm-title { display: block; color: #0d3b3b; }
-      .wrm-eta { font-size: .85rem; color: #1f7a45; font-weight: 700; }
-      .wrm-close { border: none; background: none; font-size: 1.8rem; line-height: 1; cursor: pointer; color: #6b7280; }
-      .wrm-banner { display: flex; align-items: center; justify-content: space-between; gap: 12px;
-        padding: 14px 16px; background: #0d3b3b; color: #fff; }
-      .wrm-banner[hidden] { display: none; }
-      .wrm-banner-instruction { font-weight: 800; font-size: 1.02rem; line-height: 1.3; }
-      .wrm-banner-distance { font-weight: 800; font-size: .95rem; color: #bfe3cf; white-space: nowrap; }
-      .wrm-map-wrap { position: relative; flex: 1; min-height: 0; }
-      .wrm-map { width: 100%; height: 100%; background: #1a1a2e; }
+      .wrm-dialog { width: 100%; height: 100%; position: relative; overflow: hidden; background: #11131a; }
+      /* Full-bleed: the map fills the screen; everything else floats over it. */
+      .wrm-map-wrap { position: absolute; inset: 0; }
+      .wrm-map { width: 100%; height: 100%; background: #11131a; }
       .wrm-puck { width: 36px; height: 36px; }
-      .wrm-recenter { position: absolute; right: 12px; bottom: 12px; z-index: 2;
-        display: inline-flex; align-items: center; gap: 6px;
-        padding: 9px 14px; border-radius: 999px; border: 1px solid #d7e3de;
+      /* Floating maneuver banner (top). */
+      .wrm-banner { position: absolute; top: calc(env(safe-area-inset-top) + 12px); left: 12px; right: 12px; z-index: 4;
+        display: flex; align-items: center; gap: 16px; padding: 18px 20px;
+        background: #2f6bef; color: #fff; border-radius: 18px; box-shadow: 0 10px 30px rgba(0,0,0,.42); }
+      .wrm-banner[hidden] { display: none; }
+      .wrm-banner-icon { flex: 0 0 auto; width: 42px; height: 42px;
+        display: inline-flex; align-items: center; justify-content: center; transition: transform .2s ease; }
+      .wrm-banner-text { display: flex; flex-direction: column; line-height: 1.12; min-width: 0; }
+      .wrm-banner-distance { font-weight: 800; font-size: 2rem; }
+      .wrm-banner-instruction { font-weight: 600; font-size: 1.05rem; color: rgba(255,255,255,.92);
+        overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      /* Speed widget: posted-limit sign + current-speed pill, top-left under banner. */
+      .wrm-speed { position: absolute; left: 14px; top: calc(env(safe-area-inset-top) + 108px); z-index: 3;
+        display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }
+      .wrm-speed[hidden] { display: none; }
+      .wrm-speed-limit { background: #fff; border: 3px solid #15151a; border-radius: 12px;
+        padding: 4px 12px 6px; text-align: center; line-height: 1; box-shadow: 0 4px 14px rgba(0,0,0,.32); }
+      .wrm-speed-limit[hidden] { display: none; }
+      .wrm-speed-limit b { display: block; font-size: 1.5rem; font-weight: 900; color: #111; }
+      .wrm-speed-limit span { font-size: .6rem; font-weight: 800; text-transform: uppercase; letter-spacing: .04em; color: #444; }
+      .wrm-speed-now { background: rgba(18,18,22,.9); color: #fff; border-radius: 12px;
+        padding: 5px 14px 6px; text-align: center; line-height: 1; box-shadow: 0 4px 14px rgba(0,0,0,.32); }
+      .wrm-speed-now b { display: block; font-size: 1.4rem; font-weight: 900; }
+      .wrm-speed-now span { font-size: .58rem; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: rgba(255,255,255,.7); }
+      /* Close (info-only legs) — round button, top-right under banner. */
+      .wrm-close { position: absolute; right: 14px; top: calc(env(safe-area-inset-top) + 108px); z-index: 4;
+        width: 46px; height: 46px; border-radius: 50%; border: none; cursor: pointer;
+        background: rgba(20,20,26,.85); color: #fff; display: inline-flex; align-items: center; justify-content: center;
+        box-shadow: 0 4px 14px rgba(0,0,0,.35); }
+      .wrm-close[hidden] { display: none; }
+      /* Recenter — round-ish floating button on the right, above the bottom bar. */
+      .wrm-recenter { position: absolute; right: 14px; bottom: calc(env(safe-area-inset-bottom) + 116px); z-index: 4;
+        display: inline-flex; align-items: center; gap: 6px; padding: 11px 16px; border-radius: 999px; border: none;
         background: #fff; color: #0d3b3b; font-weight: 800; font-size: .85rem;
-        box-shadow: 0 4px 14px rgba(6,39,39,.18); cursor: pointer; }
+        box-shadow: 0 4px 14px rgba(0,0,0,.3); cursor: pointer; }
       .wrm-recenter[hidden] { display: none; }
-      .wrm-actions { padding: 12px 16px calc(12px + env(safe-area-inset-bottom));
-        display: grid; gap: 8px; border-top: 1px solid #eef2ef; }
-      .wrm-actions .button { display: block; width: 100%; text-align: center; text-decoration: none; }
+      /* Bottom floating area: ETA pill + the always-present Start button. */
+      .wrm-bottom { position: absolute; left: 12px; right: 12px; bottom: calc(env(safe-area-inset-bottom) + 14px); z-index: 4;
+        display: flex; flex-direction: column; align-items: stretch; gap: 10px; }
+      .wrm-eta { align-self: flex-start; background: rgba(20,20,26,.85); color: #fff; font-weight: 700;
+        font-size: .85rem; padding: 7px 14px; border-radius: 999px; box-shadow: 0 4px 14px rgba(0,0,0,.3); }
+      .wrm-start-service { width: 100%; padding: 17px; border: none; border-radius: 16px;
+        background: #1f7a45; color: #fff; font-weight: 800; font-size: 1.08rem;
+        box-shadow: 0 10px 28px rgba(0,0,0,.42); cursor: pointer; }
+      .wrm-start-service:active { transform: scale(.99); }
       .wrm-start-service[hidden] { display: none; }
     `;
     document.head.appendChild(style);

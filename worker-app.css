@@ -1271,3 +1271,62 @@
   padding-top: 20px;
   border-top: 1px solid rgba(13, 59, 59, 0.1);
 }
+
+/* Schedule tab: Work Days and Days Off are each a collapsible accordion. */
+.worker-acc { padding: 0; }
+.worker-acc + .worker-acc {
+  margin-top: 4px;
+  border-top: 1px solid rgba(13, 59, 59, 0.1);
+}
+.worker-acc-head {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  padding: 14px 2px; cursor: pointer; list-style: none; user-select: none;
+  font-size: 1.02rem; font-weight: 700; color: var(--sf-teal, #0d3b3b);
+}
+.worker-acc-head::-webkit-details-marker { display: none; }
+.worker-acc-head::marker { display: none; }
+.worker-acc-chevron { color: #6b7d78; transition: transform 0.18s ease; flex-shrink: 0; }
+.worker-acc[open] > .worker-acc-head .worker-acc-chevron { transform: rotate(180deg); }
+.worker-acc-body { padding: 0 0 8px; }
+.worker-acc-body > .button.primary { width: 100%; margin-top: 14px; }
+
+/* ── Payouts & fuel card (Earnings tab — Phase 2/3) ─────────────────────── */
+.worker-payout-card {
+  padding: 16px;
+  margin-bottom: 12px;
+  background: #fff;
+  border: 1px solid #e6ece8;
+  border-radius: 14px;
+}
+.worker-payout-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 6px;
+}
+.worker-payout-head h3 { margin: 0; font-size: 1.02rem; color: #0d3b3b; }
+.worker-payout-status {
+  padding: 4px 11px;
+  border-radius: 999px;
+  font-size: 0.76rem;
+  font-weight: 800;
+  background: #eef2f0;
+  color: #5f6f6d;
+}
+.worker-payout-status.is-ready { background: #e7f5ec; color: #1a7a45; }
+.worker-payout-status.is-pending { background: #fff3e0; color: #b4690e; }
+.worker-payout-card .button { width: 100%; margin-top: 10px; }
+
+.worker-fuel-card-visual {
+  margin-top: 4px;
+  padding: 18px;
+  border-radius: 14px;
+  color: #eaf2ea;
+  background: linear-gradient(135deg, #0d3b3b, #072a2a);
+  box-shadow: 0 10px 24px rgba(6, 39, 39, 0.22);
+}
+.worker-fuel-card-visual.is-frozen { opacity: 0.6; filter: grayscale(0.4); }
+.wfc-brand { font-size: 0.78rem; font-weight: 800; letter-spacing: 0.04em; color: #a7bfa6; text-transform: uppercase; }
+.wfc-number { margin: 14px 0 12px; font-size: 1.32rem; font-weight: 800; letter-spacing: 0.06em; font-variant-numeric: tabular-nums; }
+.wfc-row { display: flex; justify-content: space-between; font-size: 0.86rem; font-weight: 700; color: #cfe0cf; }
