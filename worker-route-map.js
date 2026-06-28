@@ -9,8 +9,8 @@
 // so the app IS the GPS — there's no native "Open in Maps" handoff.
 //
 // Cost control (Mapbox is billed per request): we call the Directions API once per
-// leg and again ONLY when the worker strays off-route (rate-limited), never on every
-// GPS tick; and we keep a single map instance per open rather than recreating it.
+// leg and again only when the worker moves meaningfully, time has passed, or they
+// stray off-route (rate-limited), never on every GPS tick.
 (() => {
   if (!document.body?.classList.contains('worker-portal-page')) return;
 
@@ -19,6 +19,8 @@
   const OFF_ROUTE_METERS = 60;            // re-route once the worker strays this far from the line
   const ADVANCE_STEP_METERS = 28;         // advance the next-turn banner within this radius of a maneuver
   const REROUTE_MIN_INTERVAL_MS = 12000;  // never re-request Directions more often than this
+  const REROUTE_MOVE_METERS = 75;         // refresh route after meaningful movement
+  const REROUTE_REFRESH_MS = 25000;       // refresh periodically while actively navigating
   // The car wash we currently use — geocoded on demand for the wash service leg.
   const CAR_WASH = { name: 'The Car Spa', address: '602 Main St, Wilmington, DE 19804' };
   const NAV_ZOOM = 16.7;                  // close, street-level follow zoom
@@ -30,6 +32,7 @@
   // transition in worker.js (window.ShiftFuelOnNavAction) and closes the map.
   const LEG_BUTTON = {
     address: 'Key received',
+    vehicle_pickup: '',
     wash: 'Start service',
     station: 'Start service',
     return: "I'm back at the service address",
@@ -257,6 +260,56 @@
     return (Number.isFinite(lat) && Number.isFinite(lon)) ? { lat, lon } : null;
   }
 
+  function routeLegFor(request, workerLoc) {
+    if (window.ShiftFuelRouteLeg?.getCurrentRouteLeg) {
+      return window.ShiftFuelRouteLeg.getCurrentRouteLeg(request, workerLoc);
+    }
+    return {
+      origin: workerLoc,
+      destination: null,
+      destinationType: null,
+      destinationLabel: '',
+      shouldShowMap: true,
+      shouldRecalculate: true,
+      buttonLabel: LEG_BUTTON.address,
+      nextStatus: null,
+    };
+  }
+
+  function isDevHost() {
+    return ['localhost', '127.0.0.1'].includes(location.hostname);
+  }
+
+  function devRouteLog(request, leg) {
+    if (!isDevHost()) return;
+    console.debug('[route-leg]', {
+      status: request?.status,
+      serviceType: request?.service_type,
+      destinationType: leg?.destinationType,
+      origin: leg?.origin,
+      destination: leg?.destination,
+      destinationLabel: leg?.destinationLabel,
+      buttonLabel: leg?.buttonLabel,
+      nextStatus: leg?.nextStatus,
+    });
+  }
+
+  async function resolveLegDestination(request, workerLoc, leg, fallbackDestType) {
+    const destType = leg?.destinationType || fallbackDestType || 'address';
+    if (leg?.destination) return { ...leg.destination, label: leg.destination.label || leg.destinationLabel };
+    if (destType === 'station') return resolveStationDest(request, workerLoc);
+    if (destType === 'wash') return resolveWashDest();
+    if (destType === 'return' || destType === 'vehicle_pickup') {
+      const spot = parseSpotCoords(request, 'vehicle_pickup_location') || parseSpotCoords(request, 'pickup_coords');
+      return spot ? { ...spot, label: "Vehicle's spot" } : resolveAddressDest(request);
+    }
+    if (destType === 'handoff' || destType === 'key_pickup') {
+      const spot = parseSpotCoords(request, 'key_pickup_location') || parseSpotCoords(request, 'handoff_coords');
+      return spot ? { ...spot, label: 'Key pickup' } : resolveAddressDest(request);
+    }
+    return resolveAddressDest(request);
+  }
+
   // The service-address destination (pickup / return drives).
   async function resolveAddressDest(request) {
     if (isRealCoord(request.address_lat) && isRealCoord(request.address_lon)) {
@@ -385,7 +438,7 @@
     etaEl.textContent = `${minutes} min · ${miles} mi`;
   }
 
-  function adoptRoute(route, dest) {
+  function adoptRoute(route, dest, origin) {
     nav = nav || {};
     nav.dest = dest;
     nav.steps = (route.legs && route.legs[0] && route.legs[0].steps) || [];
@@ -393,6 +446,8 @@
     nav.routeCoords = (route.geometry.coordinates || []).map((c) => ({ lon: c[0], lat: c[1] }));
     nav.maxspeed = (route.legs && route.legs[0] && route.legs[0].annotation && route.legs[0].annotation.maxspeed) || [];
     nav.lastReroute = Date.now();
+    nav.lastRouteOrigin = origin || nav.lastLoc || null;
+    nav.rerouting = false;
     if (nav.follow === undefined) nav.follow = true;
   }
 
@@ -505,17 +560,22 @@
   // Re-request directions only when the worker has clearly left the route, and no
   // more often than REROUTE_MIN_INTERVAL_MS — this keeps Directions usage tiny.
   async function maybeReroute(workerLoc) {
-    if (!nav) return;
+    if (!nav || nav.shouldRecalculate === false || nav.rerouting || !nav.dest) return;
     if (Date.now() - nav.lastReroute < REROUTE_MIN_INTERVAL_MS) return;
-    if (minDistanceToRoute(workerLoc) <= OFF_ROUTE_METERS) return;
+    const moved = haversine(nav.lastRouteOrigin, workerLoc);
+    const stale = Date.now() - nav.lastReroute >= REROUTE_REFRESH_MS;
+    const offRoute = minDistanceToRoute(workerLoc) > OFF_ROUTE_METERS;
+    if (moved < REROUTE_MOVE_METERS && !stale && !offRoute) return;
     nav.lastReroute = Date.now();
+    nav.rerouting = true;
     const route = await fetchDirections(workerLoc, nav.dest);
     if (route) {
       setRouteOnMap(route);
       setEta(route);
-      adoptRoute(route, nav.dest);
+      adoptRoute(route, nav.dest, workerLoc);
       updateBanner(workerLoc);
     }
+    if (nav) nav.rerouting = false;
   }
 
   function startNavWatch() {
@@ -582,10 +642,6 @@
   // ── Open the map for a job ────────────────────────────────────────────────────
   // destType: 'address' (pickup / return) or 'station' (fuel service drive).
   async function openRouteMap(request, destType) {
-    const isStation = destType === 'station';
-    const isWash = destType === 'wash';
-    const isReturn = destType === 'return';
-    const isHandoff = destType === 'handoff';
     const modal = ensureModal();
     const etaEl = modal.querySelector('.wrm-eta');
     const banner = modal.querySelector('.wrm-banner');
@@ -599,7 +655,7 @@
     if (startBtn) startBtn.classList.remove('is-arrived');
     // The leg's contextual button is the ONLY exit (shown immediately, even before
     // the route loads); no ✕ on any leg.
-    const legLabel = LEG_BUTTON[destType] || '';
+    let legLabel = LEG_BUTTON[destType] || '';
     if (startBtn) { startBtn.textContent = legLabel || 'Done'; startBtn.hidden = !legLabel; }
     if (closeBtn) closeBtn.hidden = !!legLabel;
     const speedWidget = modal.querySelector('.wrm-speed');
@@ -625,26 +681,29 @@
 
     // Worker location first — needed as the route origin and for the closest-station search.
     const workerLoc = await getWorkerLocation();
-    let dest;
-    if (isStation) {
-      dest = await resolveStationDest(request, workerLoc);
-    } else if (isWash) {
-      dest = await resolveWashDest();
-    } else if (isReturn) {
-      const spot = parseSpotCoords(request, 'pickup_coords');
-      dest = spot ? { ...spot, label: "Vehicle's spot" } : await resolveAddressDest(request);
-    } else if (isHandoff) {
-      const spot = parseSpotCoords(request, 'handoff_coords');
-      dest = spot ? { ...spot, label: 'Meeting spot' } : await resolveAddressDest(request);
-    } else {
-      dest = await resolveAddressDest(request);
+    const routeLeg = routeLegFor(request, workerLoc);
+    devRouteLog(request, routeLeg);
+    if (routeLeg && routeLeg.shouldShowMap === false) {
+      etaEl.textContent = 'No active route for this step.';
+      return;
     }
+
+    const effectiveDestType = routeLeg?.destinationType || destType || 'address';
+    legLabel = routeLeg?.buttonLabel ?? LEG_BUTTON[effectiveDestType] ?? legLabel;
+    if (startBtn) { startBtn.textContent = legLabel || 'Done'; startBtn.hidden = !legLabel; }
+    if (closeBtn) closeBtn.hidden = !!legLabel;
+
+    const isStation = effectiveDestType === 'station';
+    const isWash = effectiveDestType === 'wash';
+    const isReturn = effectiveDestType === 'return' || effectiveDestType === 'vehicle_pickup';
+    const isHandoff = effectiveDestType === 'handoff' || effectiveDestType === 'key_pickup';
+    const dest = await resolveLegDestination(request, workerLoc, routeLeg, destType);
     if (!dest) {
       etaEl.textContent = isStation ? 'Could not find a gas station nearby.' : 'Could not locate the destination.';
       return;
     }
     if (destChip) {
-      const destLabel = dest.label || (isStation ? 'Gas station' : isWash ? 'Car wash' : isReturn ? "Vehicle's spot" : isHandoff ? 'Key handoff' : 'Service address');
+      const destLabel = dest.label || routeLeg?.destinationLabel || (isStation ? 'Gas station' : isWash ? 'Car wash' : isReturn ? "Vehicle's spot" : isHandoff ? 'Key pickup' : 'Service address');
       destChip.querySelector('.wrm-dest-label').textContent = destLabel;
       destChip.hidden = false;
     }
@@ -687,7 +746,7 @@
       try { map.setConfigProperty('basemap', 'lightPreset', preset); } catch (_) {}
       try { map.setConfigProperty('basemap', 'showPointOfInterestLabels', false); } catch (_) {}
       destMarker = new mapboxgl.Marker({ color: '#b42318' }).setLngLat([dest.lon, dest.lat])
-        .setPopup(new mapboxgl.Popup().setText(dest.label || (isStation ? 'Gas station' : 'Service address'))).addTo(map);
+        .setPopup(new mapboxgl.Popup().setText(dest.label || routeLeg?.destinationLabel || (isStation ? 'Gas station' : 'Service address'))).addTo(map);
 
       if (!workerLoc) {
         etaEl.textContent = 'Turn on location to navigate.';
@@ -705,13 +764,15 @@
 
       setRouteOnMap(route);
       setEta(route);
-      adoptRoute(route, dest);
+      adoptRoute(route, dest, workerLoc);
       nav.requestId = request.id;
-      nav.destType = destType;
+      nav.destType = effectiveDestType;
+      nav.destKey = `${effectiveDestType}:${dest.lat.toFixed(6)},${dest.lon.toFixed(6)}`;
+      nav.shouldRecalculate = routeLeg?.shouldRecalculate !== false;
       // Auto-action only on the leg where the worker hasn't done the step yet:
       // station drive at vehicle_picked_up → start service; return drive at
       // receipts_recorded → vehicle returned. Reopening later won't auto-fire.
-      nav.autoArrive = ((isStation || isWash) && request.status === 'vehicle_picked_up')
+      nav.autoArrive = ((isStation || isWash) && ['vehicle_picked_up', 'wash_receipt_uploaded', 'fuel_receipt_uploaded'].includes(request.status))
         || (isReturn && request.status === 'receipts_recorded');
       nav.arrived = false;
       // The leg button + ✕-hidden are already set on open; nav.autoArrive (above)

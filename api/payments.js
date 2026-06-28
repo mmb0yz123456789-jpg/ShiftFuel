@@ -2035,6 +2035,11 @@ async function handleRefund(body, res) {
 
 async function handleMarkKeysReturned(body, res) {
   const { request_id, caller_token, key_returned_to_type, key_returned_to_name_or_location, key_returned_by } = body;
+  const keyReturnLat = Number(body.key_return_lat);
+  const keyReturnLng = Number(body.key_return_lng);
+  const keyReturnCoords = Number.isFinite(keyReturnLat) && Number.isFinite(keyReturnLng) && (keyReturnLat || keyReturnLng)
+    ? { key_return_lat: keyReturnLat, key_return_lng: keyReturnLng }
+    : {};
 
   if (!caller_token) return res.status(401).json({ error: 'Authorization required' });
   const authorized = await verifyAnyStaffToken(caller_token);
@@ -2122,6 +2127,7 @@ async function handleMarkKeysReturned(body, res) {
       key_returned_to_name_or_location: returnedToName,
       key_returned_at: timestamp,
       key_returned_by: key_returned_by || null,
+      ...keyReturnCoords,
       notes,
       updated_at: timestamp,
     };
@@ -2133,6 +2139,7 @@ async function handleMarkKeysReturned(body, res) {
       key_returned_to_name_or_location: returnedToName,
       key_returned_at: timestamp,
       key_returned_by: key_returned_by || null,
+      ...keyReturnCoords,
       notes,
       updated_at: timestamp,
     };
@@ -2148,7 +2155,7 @@ async function handleMarkKeysReturned(body, res) {
     const missingOptionalColumn = (error) => error && (
       error.code === 'PGRST204'
       || error.code === '42703'
-      || /column|schema cache|captured_amount|cancellation_fee|actual_fuel|actual_car_wash|payment_operating|net_target|rounded_customer/i.test(String(error.message || ''))
+      || /column|schema cache|captured_amount|cancellation_fee|actual_fuel|actual_car_wash|payment_operating|net_target|rounded_customer|key_return_lat|key_return_lng/i.test(String(error.message || ''))
     );
 
     if (missingOptionalColumn(result.error)) {
@@ -2229,14 +2236,26 @@ async function handleMarkKeysReturned(body, res) {
     return res.status(200).json({ status: 'canceled_return_completed', already_charged: true });
   }
 
-  const { error: updateErr } = await db.from('service_requests').update({
+  let { error: updateErr } = await db.from('service_requests').update({
     status: 'complete',
     key_returned_to_type,
     key_returned_to_name_or_location: returnedToName,
     key_returned_at: new Date().toISOString(),
     key_returned_by: key_returned_by || null,
+    ...keyReturnCoords,
     updated_at: new Date().toISOString(),
   }).eq('id', request_id);
+
+  if (updateErr && /column|schema cache|key_return_lat|key_return_lng/i.test(String(updateErr.message || ''))) {
+    ({ error: updateErr } = await db.from('service_requests').update({
+      status: 'complete',
+      key_returned_to_type,
+      key_returned_to_name_or_location: returnedToName,
+      key_returned_at: new Date().toISOString(),
+      key_returned_by: key_returned_by || null,
+      updated_at: new Date().toISOString(),
+    }).eq('id', request_id));
+  }
 
   if (updateErr) {
     console.error('[payments/mark_keys_returned] DB error:', updateErr.message);

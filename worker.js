@@ -2886,7 +2886,9 @@ function workerNavWashButton(request, primary = false) {
 // Navigation back to where the worker met the customer (handoff_coords), so they can
 // return the keys at the same spot. Only shown once that spot was captured.
 function workerNavHandoffButton(request) {
-  if (!/\[handoff_coords /.test(String(request.notes || ''))) return '';
+  const hasKeyPickup = Number.isFinite(Number(request.key_pickup_lat))
+    || /\[(handoff_coords|key_pickup_location) /.test(String(request.notes || ''));
+  if (!hasKeyPickup) return '';
   return `<button class="button secondary" data-route-map data-route-dest="handoff" data-id="${escapeHtml(request.id)}" type="button">Navigate to meet the customer</button>`;
 }
 
@@ -2979,36 +2981,34 @@ function renderWorkerJobActions(request) {
       // recorded, this branch falls through to the first service drive.
       nextAction = 'Inspect the vehicle at pickup before driving to service.';
       activePanel = renderWorkerInspectionPanel(request);
-    } else if (serviceNeedsFuel(request)) {
-      // Fuel first (covers fuel-only AND fuel+wash combos): drive to the gas station.
-      // Service auto-starts on arrival; manual "Start service" stays as a fallback.
-      nextAction = 'Drive to the gas station — service starts automatically when you arrive.';
-      actions.push(workerNavStationButton(request, true));
-      actions.push(`<button class="button secondary worker-update-status" data-id="${escapeHtml(request.id)}" data-status="service_in_progress" type="button">Start service</button>`);
     } else if (serviceNeedsWash(request)) {
-      // Wash-only job: drive to the car wash.
+      // Car wash first (covers wash-only AND fuel+wash combos).
       nextAction = 'Drive to the car wash — service starts automatically when you arrive.';
       actions.push(workerNavWashButton(request, true));
+      actions.push(`<button class="button secondary worker-update-status" data-id="${escapeHtml(request.id)}" data-status="service_in_progress" type="button">Start service</button>`);
+    } else if (serviceNeedsFuel(request)) {
+      // Fuel-only job: drive to the gas station.
+      nextAction = 'Drive to the gas station — service starts automatically when you arrive.';
+      actions.push(workerNavStationButton(request, true));
       actions.push(`<button class="button secondary worker-update-status" data-id="${escapeHtml(request.id)}" data-status="service_in_progress" type="button">Start service</button>`);
     } else {
       nextAction = 'Start the requested service.';
       actions.push(workerPrimaryStatusButton(request, 'Start service', 'service_in_progress'));
     }
   } else if (request.status === 'service_in_progress') {
-    // One service at a time: fuel first, then car wash. A combo job runs fuel
-    // before wash so the wash is the final appearance step before return.
-    if (serviceNeedsFuel(request) && !serviceDoneOrUnable(request, 'fuel')) {
-      nextAction = 'Complete the fuel service.';
-      actions.push(workerOpenFuelCardButton());
-      actions.push(workerPrimaryStatusButton(request, `Fuel complete â€” ${request.fuel_type || 'fuel'}`, 'fueling_complete'));
-      actions.push(workerServiceUnableButton(request, 'fuel'));
-      actions.push(workerNavStationButton(request));
-    } else if (serviceNeedsWash(request) && !serviceDoneOrUnable(request, 'wash')) {
+    // One service at a time: car wash first for combo jobs, then fuel.
+    if (serviceNeedsWash(request) && !serviceDoneOrUnable(request, 'wash')) {
       nextAction = 'Complete the car wash.';
       actions.push(workerOpenFuelCardButton());
       actions.push(workerPrimaryStatusButton(request, `Wash complete â€” ${request.wash_package_label || 'selected wash'}`, 'car_wash_complete'));
       actions.push(workerServiceUnableButton(request, 'wash'));
       actions.push(workerNavWashButton(request));
+    } else if (serviceNeedsFuel(request) && !serviceDoneOrUnable(request, 'fuel')) {
+      nextAction = 'Complete the fuel service.';
+      actions.push(workerOpenFuelCardButton());
+      actions.push(workerPrimaryStatusButton(request, `Fuel complete â€” ${request.fuel_type || 'fuel'}`, 'fueling_complete'));
+      actions.push(workerServiceUnableButton(request, 'fuel'));
+      actions.push(workerNavStationButton(request));
     }
   } else if (request.status === 'fueling_complete') {
     nextAction = `Upload the fuel receipt and enter the total for ${request.fuel_type || 'the selected fuel type'}.`;
@@ -3840,6 +3840,88 @@ async function workerSaveSpotNote(request, tag) {
   } catch (err) { console.warn('Could not save spot note:', err); }
 }
 
+function routeCoordTagForAction(action) {
+  return {
+    key_pickup: { noteTag: 'key_pickup_location', latKey: 'key_pickup_lat', lngKey: 'key_pickup_lng' },
+    vehicle_pickup: { noteTag: 'vehicle_pickup_location', latKey: 'vehicle_pickup_lat', lngKey: 'vehicle_pickup_lng' },
+    service_start: { noteTag: 'service_start_location', latKey: 'service_start_lat', lngKey: 'service_start_lng' },
+    vehicle_return: { noteTag: 'vehicle_return_location', latKey: 'vehicle_return_lat', lngKey: 'vehicle_return_lng' },
+    key_return: { noteTag: 'key_return_location', latKey: 'key_return_lat', lngKey: 'key_return_lng' },
+  }[action] || null;
+}
+
+function appendRouteCoordNote(notes, noteTag, coords) {
+  const current = String(notes || '');
+  if (!noteTag || current.includes(`[${noteTag} `) || !coords) return current;
+  const note = `[${noteTag} ${coords.lat.toFixed(6)},${coords.lon.toFixed(6)}]`;
+  return current ? `${current}\n${note}` : note;
+}
+
+async function workerCoordsForRequest(request) {
+  const fix = await workerCurrentCoords();
+  const lat = fix?.lat ?? Number(request?.last_latitude);
+  const lon = fix?.lon ?? Number(request?.last_longitude);
+  return Number.isFinite(lat) && Number.isFinite(lon) && (lat || lon) ? { lat, lon } : null;
+}
+
+function routeCoordUpdatePayload(action, coords) {
+  const meta = routeCoordTagForAction(action);
+  if (!meta || !coords) return {};
+  return {
+    [meta.latKey]: Number(coords.lat.toFixed(6)),
+    [meta.lngKey]: Number(coords.lon.toFixed(6)),
+  };
+}
+
+function hasRouteCoordPayload(pData) {
+  return [
+    'key_pickup_lat', 'key_pickup_lng',
+    'vehicle_pickup_lat', 'vehicle_pickup_lng',
+    'service_start_lat', 'service_start_lng',
+    'vehicle_return_lat', 'vehicle_return_lng',
+    'key_return_lat', 'key_return_lng',
+  ].some((key) => Object.prototype.hasOwnProperty.call(pData || {}, key));
+}
+
+async function workerUpdateRequestWithCoordinateFallback(id, pData) {
+  let { error } = await workerDb.rpc('worker_update_request', {
+    p_token: SESSION_WORKER_TOKEN,
+    p_request_id: id,
+    p_data: pData,
+  });
+
+  if (error && /key_pickup_|vehicle_pickup_|service_start_|vehicle_return_|key_return_|schema cache|column/i.test(String(error.message || ''))) {
+    const retryData = { ...pData };
+    [
+      'key_pickup_lat', 'key_pickup_lng',
+      'vehicle_pickup_lat', 'vehicle_pickup_lng',
+      'service_start_lat', 'service_start_lng',
+      'vehicle_return_lat', 'vehicle_return_lng',
+      'key_return_lat', 'key_return_lng',
+    ].forEach((key) => delete retryData[key]);
+    ({ error } = await workerDb.rpc('worker_update_request', {
+      p_token: SESSION_WORKER_TOKEN,
+      p_request_id: id,
+      p_data: retryData,
+    }));
+  }
+
+  if (error) throw error;
+
+  if (hasRouteCoordPayload(pData)) {
+    try {
+      const { error: coordErr } = await workerDb.rpc('worker_set_route_coordinates', {
+        p_token: SESSION_WORKER_TOKEN,
+        p_request_id: id,
+        p_data: pData,
+      });
+      if (coordErr) console.warn('Could not save route coordinate columns:', coordErr);
+    } catch (coordErr) {
+      console.warn('Could not save route coordinate columns:', coordErr);
+    }
+  }
+}
+
 // Persist an explicit destination coordinate onto the request notes once (e.g. the
 // gas station the in-app navigator resolved — including the nearest one for "closest
 // station" jobs — so the customer's "heading to the station" ETA has a target).
@@ -3859,14 +3941,19 @@ window.ShiftFuelSaveDest = function (requestId, tag, dest) {
   if (dest) workerSaveCoordsNote(requestId, tag, dest.lat, dest.lon);
 };
 
-async function updateWorkerJobStatus(id, status) {
-  const { error } = await workerDb.rpc('worker_update_request', {
-    p_token: SESSION_WORKER_TOKEN,
-    p_request_id: id,
-    p_data: { status },
-  });
+async function updateWorkerJobStatus(id, status, options = {}) {
+  const request = allWorkerJobs.find((item) => item.id === id);
+  const pData = { status };
+  if (options.coordAction && request) {
+    const meta = routeCoordTagForAction(options.coordAction);
+    const coords = await workerCoordsForRequest(request);
+    if (meta && coords) {
+      pData.notes = appendRouteCoordNote(request.notes, meta.noteTag, coords);
+      Object.assign(pData, routeCoordUpdatePayload(options.coordAction, coords));
+    }
+  }
 
-  if (error) throw error;
+  await workerUpdateRequestWithCoordinateFallback(id, pData);
   await loadWorkerJobs();
 
   // After receipts are confirmed on a fuel job, take the worker straight into
@@ -3874,7 +3961,7 @@ async function updateWorkerJobStatus(id, status) {
   // returned (mirror of the pickup→station auto-open). One-time on this transition.
   if (status === 'receipts_recorded') {
     const job = allWorkerJobs.find((item) => item.id === id);
-    if (job && serviceNeedsFuel(job) && window.ShiftFuelRouteMap?.open) {
+    if (job && (serviceNeedsFuel(job) || serviceNeedsWash(job)) && window.ShiftFuelRouteMap?.open) {
       window.ShiftFuelRouteMap.open(job, 'return');
     }
   }
@@ -3886,10 +3973,10 @@ async function updateWorkerJobStatus(id, status) {
 window.ShiftFuelOnNavArrive = function (requestId, destType) {
   const job = allWorkerJobs.find((j) => j.id === requestId);
   if (!job) return;
-  if ((destType === 'station' || destType === 'wash') && job.status === 'vehicle_picked_up') {
-    updateWorkerJobStatus(requestId, 'service_in_progress').catch((err) => console.warn('Auto-start service failed:', err));
+  if ((destType === 'station' || destType === 'wash') && ['vehicle_picked_up', 'wash_receipt_uploaded', 'fuel_receipt_uploaded'].includes(job.status)) {
+    updateWorkerJobStatus(requestId, 'service_in_progress', { coordAction: 'service_start' }).catch((err) => console.warn('Auto-start service failed:', err));
   } else if (destType === 'return' && job.status === 'receipts_recorded') {
-    updateWorkerJobStatus(requestId, 'returned_location_pending').catch((err) => console.warn('Auto-mark returned failed:', err));
+    updateWorkerJobStatus(requestId, 'returned_location_pending', { coordAction: 'vehicle_return' }).catch((err) => console.warn('Auto-mark returned failed:', err));
   }
 };
 
@@ -3900,13 +3987,13 @@ window.ShiftFuelOnNavAction = function (requestId, destType) {
   const job = allWorkerJobs.find((j) => j.id === requestId);
   if (!job) return;
   if (destType === 'address' && job.status === 'accepted') {
-    updateWorkerJobStatus(requestId, 'key_received').catch((err) => console.warn('Key received failed:', err));
+    updateWorkerJobStatus(requestId, 'key_received', { coordAction: 'key_pickup' }).catch((err) => console.warn('Key received failed:', err));
   } else if (destType === 'wash' || destType === 'station') {
     if (['vehicle_picked_up', 'wash_receipt_uploaded', 'fuel_receipt_uploaded'].includes(job.status)) {
-      updateWorkerJobStatus(requestId, 'service_in_progress').catch((err) => console.warn('Start service failed:', err));
+      updateWorkerJobStatus(requestId, 'service_in_progress', { coordAction: 'service_start' }).catch((err) => console.warn('Start service failed:', err));
     }
   } else if (destType === 'return' && job.status === 'receipts_recorded') {
-    updateWorkerJobStatus(requestId, 'returned_location_pending').catch((err) => console.warn('Vehicle returned failed:', err));
+    updateWorkerJobStatus(requestId, 'returned_location_pending', { coordAction: 'vehicle_return' }).catch((err) => console.warn('Vehicle returned failed:', err));
   }
 };
 
@@ -4026,24 +4113,27 @@ async function uploadWorkerPhotoSet(button) {
   const timestamp = new Date().toISOString();
   const note = photoTimestampNote(panel.dataset.photoStage, timestamp);
   let notes = request.notes ? `${request.notes}\n${note}` : note;
+  const routeCoordData = {};
   // Capture the car's exact spot from the worker's live GPS at pickup (they're
   // standing at the car). The return drive + the customer's "car coming back" ETA
   // target this spot — the geocoded address could be the building front, not the
   // car parked in the back of the lot.
-  if (panel.dataset.photoStage === 'pickup' && !/\[pickup_coords /.test(notes)) {
-    const lat = Number(request.last_latitude), lon = Number(request.last_longitude);
-    if (Number.isFinite(lat) && Number.isFinite(lon) && (lat || lon)) {
-      notes += `\n[pickup_coords ${lat.toFixed(6)},${lon.toFixed(6)}]`;
+  if (panel.dataset.photoStage === 'pickup') {
+    const coords = await workerCoordsForRequest(request);
+    if (coords) {
+      if (!/\[pickup_coords /.test(notes)) notes += `\n[pickup_coords ${coords.lat.toFixed(6)},${coords.lon.toFixed(6)}]`;
+      notes = appendRouteCoordNote(notes, 'vehicle_pickup_location', coords);
+      Object.assign(routeCoordData, routeCoordUpdatePayload('vehicle_pickup', coords));
+    }
+  } else if (panel.dataset.photoStage === 'dropoff') {
+    const coords = await workerCoordsForRequest(request);
+    if (coords) {
+      notes = appendRouteCoordNote(notes, 'vehicle_return_location', coords);
+      Object.assign(routeCoordData, routeCoordUpdatePayload('vehicle_return', coords));
     }
   }
   const nextStatus = panel.dataset.nextStatus;
-  const { error } = await workerDb.rpc('worker_update_request', {
-    p_token: SESSION_WORKER_TOKEN,
-    p_request_id: id,
-    p_data: { status: nextStatus, notes },
-  });
-
-  if (error) throw error;
+  await workerUpdateRequestWithCoordinateFallback(id, { status: nextStatus, notes, ...routeCoordData });
   await loadWorkerJobs();
 
   const updated = allWorkerJobs.find((item) => item.id === id) || request;
@@ -4475,6 +4565,7 @@ async function submitWorkerKeysReturned(button) {
   button.disabled = true;
   button.textContent = 'Saving...';
   if (statusEl) statusEl.textContent = '';
+  const keyReturnCoords = await workerCoordsForRequest(request);
 
   try {
     const res = await fetch('/api/payments', {
@@ -4487,6 +4578,8 @@ async function submitWorkerKeysReturned(button) {
         key_returned_to_type: toType,
         key_returned_to_name_or_location: toName,
         key_returned_by: currentEmployee?.full_name || 'Worker',
+        key_return_lat: keyReturnCoords?.lat ?? null,
+        key_return_lng: keyReturnCoords?.lon ?? null,
       }),
     });
     const data = await res.json().catch(() => ({}));
@@ -4626,7 +4719,12 @@ document.addEventListener('click', async (event) => {
       if (button.dataset.status === 'key_received') {
         await workerSaveSpotNote(allWorkerJobs.find((j) => j.id === button.dataset.id), 'handoff_coords');
       }
-      await updateWorkerJobStatus(button.dataset.id, button.dataset.status);
+      const coordAction = {
+        key_received: 'key_pickup',
+        service_in_progress: 'service_start',
+        returned_location_pending: 'vehicle_return',
+      }[button.dataset.status];
+      await updateWorkerJobStatus(button.dataset.id, button.dataset.status, coordAction ? { coordAction } : {});
       return;
     }
 
@@ -5710,6 +5808,21 @@ loadVehiclePsiGuides().finally(loadWorkerProfile);
     return `•••• •••• •••• ${last4 || '••••'}`;
   }
 
+  function walletHelpHtml(hasFullNumber) {
+    return `
+      <div class="worker-wallet-help" hidden>
+        <strong>Add to Apple Wallet</strong>
+        <ol>
+          <li>Open the Apple Wallet app.</li>
+          <li>Tap <strong>+</strong>, then choose <strong>Debit or Credit Card</strong>.</li>
+          <li>Choose <strong>Enter Card Details Manually</strong>.</li>
+          <li>Use the virtual card number, expiration, and CVC shown above.</li>
+        </ol>
+        <p class="field-help">${hasFullNumber ? 'Apple may ask for verification before the card can be used for tap-to-pay.' : 'Full card details are not available right now, so add-to-wallet may need to wait until Stripe returns the full virtual card details.'}</p>
+      </div>
+    `;
+  }
+
   async function refreshConnect() {
     const status = document.getElementById('worker-connect-status');
     const help = document.getElementById('worker-connect-help');
@@ -5782,7 +5895,9 @@ loadVehiclePsiGuides().finally(loadWorkerProfile);
             <div class="wfc-number">${fmtCardNumber(v.number, v.last4)}</div>
             <div class="wfc-row"><span>Exp ${exp}</span>${v.cvc ? `<span>CVC ${v.cvc}</span>` : ''}</div>
           </div>
-          <p class="field-help">Online &amp; in-app fuel/car-wash only${v.per_transaction_cap ? `, up to $${v.per_transaction_cap} per transaction` : ''}.${v.number ? ' <strong>Test card — sandbox only.</strong>' : ''}${frozen ? ' <strong>Frozen.</strong>' : ''}</p>`;
+          <p class="field-help">Online &amp; in-app fuel/car-wash only${v.per_transaction_cap ? `, up to $${v.per_transaction_cap} per transaction` : ''}.${v.number ? ' <strong>Test card — sandbox only.</strong>' : ''}${frozen ? ' <strong>Frozen.</strong>' : ''}</p>
+          <button class="button secondary worker-wallet-help-toggle" type="button">Add to Apple Wallet</button>
+          ${walletHelpHtml(Boolean(v.number && v.cvc))}`;
       }
       if (p.has_card) {
         const active = p.status === 'active';
@@ -5825,6 +5940,14 @@ loadVehiclePsiGuides().finally(loadWorkerProfile);
       fuelBody.addEventListener('click', (e) => {
         const act = e.target.closest('.worker-phys-activate-self');
         if (act) activatePhysical(act);
+        const wallet = e.target.closest('.worker-wallet-help-toggle');
+        if (wallet) {
+          const panel = fuelBody.querySelector('.worker-wallet-help');
+          if (panel) {
+            panel.hidden = !panel.hidden;
+            wallet.textContent = panel.hidden ? 'Add to Apple Wallet' : 'Hide Apple Wallet steps';
+          }
+        }
       });
     }
     refreshConnect();
