@@ -399,6 +399,13 @@ async function handleCreateIntent(body, res) {
 
   try {
     const stripe = getStripe();
+    // Do NOT request card "flexible payments" features (e.g.
+    // request_incremental_authorization). This account isn't enabled for them, and
+    // even `'if_available'` poisons the PaymentIntent so the client-side confirm
+    // fails with "not eligible for the requested card features" (the create itself
+    // succeeds, so a server retry never sees it). Plain manual-capture holds work;
+    // the optional top-up at capture (tryIncrementAuthorization) already degrades
+    // gracefully when incremental auth isn't available.
     const paymentIntentParams = {
       amount: parsedCents,
       currency: 'usd',
@@ -406,27 +413,8 @@ async function handleCreateIntent(body, res) {
       description: service_label || 'ShiftFuel service',
       receipt_email: customer_email || undefined,
       metadata: { customer_name: customer_name || '', service_label: service_label || '' },
-      payment_method_options: {
-        card: {
-          request_incremental_authorization: 'if_available',
-        },
-      },
     };
-    let pi;
-    try {
-      pi = await stripe.paymentIntents.create(paymentIntentParams);
-    } catch (createErr) {
-      // Some Stripe accounts aren't enabled for incremental authorization and
-      // reject the request outright ("not eligible for the requested card
-      // features" / flexible-payments). Treat any of these as "drop the option
-      // and retry" — the base manual-capture hold works without it.
-      const incrementalParamRejected = createErr.code === 'parameter_unknown'
-        || /request_incremental_authorization|payment_method_options|not eligible|card features|flexible[ -]?payments/i.test(String(createErr.message || ''));
-      if (!incrementalParamRejected) throw createErr;
-      console.warn('[payments/create_intent] Incremental authorization option rejected; retrying without it:', createErr.message);
-      delete paymentIntentParams.payment_method_options;
-      pi = await stripe.paymentIntents.create(paymentIntentParams);
-    }
+    const pi = await stripe.paymentIntents.create(paymentIntentParams);
     console.log('[payments/create_intent] Created', pi.id, 'amount:', parsedCents);
     await recordPendingAuthorization({
       payment_intent_id: pi.id,

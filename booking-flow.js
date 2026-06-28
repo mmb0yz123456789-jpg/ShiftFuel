@@ -3130,6 +3130,12 @@ function renderFlow(root) {
       bookingState.values.washPackage = "";
       // A non-fuel service has no station surcharge; clear any prior pick.
       if (!serviceNeedsFuel()) resetStationSelection();
+      // Changing the service changes the price AND which details are required, so
+      // re-lock every step after Service — the customer must re-flow through
+      // Service Details → Schedule → Handoff → Payment (and re-authorize the new
+      // amount) instead of jumping back to the stale Payment step.
+      const svcIdx = steps.indexOf("Service");
+      if (svcIdx >= 0 && unlockedIndex > svcIdx) unlockedIndex = svcIdx;
       renderServiceDetails(panel);
     }
     if (event.target.matches('[name="serviceDate"]')) {
