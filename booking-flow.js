@@ -290,10 +290,12 @@ let PRICE_PER_GALLON = 3.799;
 let FUEL_SERVICE_FEE = 15;
 let CAR_WASH_SERVICE_FEE = 15;
 let QUICK_CARE_FEE = 5;
-// Fuel + Wash bundle combined service fee. 0 = bundle off (pay both fees
-// separately). When set and cheaper than fuel + wash fees, both base fees scale
-// down to sum to this; see calculateTotals + the "Save X%" badge.
-let COMBINED_SERVICE_FEE = 0;
+// Fuel + Wash bundle, per leg. When a customer books both, they pay the bundled
+// fuel fee + bundled wash fee instead of the two full service fees. 0/0 = bundle
+// off. Worker shares for the bundle live worker-side (worker.js). See
+// calculateTotals + the "Save X%" badge.
+let BUNDLE_FUEL_FEE = 0;
+let BUNDLE_WASH_FEE = 0;
 // Time-comp rates (from public_get_service_pricing). timeRatePerMin defaults to 0
 // so the customer fee is unchanged until the admin sets it — safe to deploy first.
 const TIME_COMP_RATES = {
@@ -347,7 +349,8 @@ async function loadLivePricing() {
       FUEL_SERVICE_FEE = Number(serviceData.fuel_service_fee);
       CAR_WASH_SERVICE_FEE = Number(serviceData.wash_service_fee);
       QUICK_CARE_FEE = Number(serviceData.quick_inspection_fee);
-      COMBINED_SERVICE_FEE = Number(serviceData.combined_service_fee) || 0;
+      BUNDLE_FUEL_FEE = Number(serviceData.bundle_fuel_service_fee) || 0;
+      BUNDLE_WASH_FEE = Number(serviceData.bundle_wash_service_fee) || 0;
       // Time-comp rates. timeRatePerMin stays 0 (off) unless the column exists + is set.
       TIME_COMP_RATES.timeRatePerMin = Number(serviceData.time_rate_per_min) || 0;
       if (serviceData.fuel_time_base_min != null) TIME_COMP_RATES.fuelBaseMin = Number(serviceData.fuel_time_base_min);
@@ -499,18 +502,18 @@ function calculateTotals() {
   let fuelBaseFee = serviceNeedsFuel() ? FUEL_SERVICE_FEE : 0;
   let washBaseFee = serviceNeedsWash() ? CAR_WASH_SERVICE_FEE : 0;
   const quickFee = bookingState.values.quickCare ? QUICK_CARE_FEE : 0;
-  // Fuel + Wash bundle: when both services are booked and a combined service fee is
-  // set that beats paying both fees separately, scale the two base fees down so they
-  // sum to the combined fee. Everything downstream (card recovery, time cost, the
-  // per-fee worker share) then works unchanged and the worker shares the discount
-  // proportionally. MUST mirror api/payments.js calculateBookingAuthorization.
+  // Fuel + Wash bundle: when both services are booked and the bundled fuel + wash
+  // fees beat paying the two full fees, the customer pays the bundled fees instead.
+  // Each leg keeps its own fee so the worker's per-leg bundle share applies cleanly.
+  // MUST mirror api/payments.js calculateBookingAuthorization.
   const bundleFullFee = fuelBaseFee + washBaseFee;
+  const bundleSum = BUNDLE_FUEL_FEE + BUNDLE_WASH_FEE;
   const bundleActive = serviceNeedsFuel() && serviceNeedsWash()
-    && COMBINED_SERVICE_FEE > 0 && COMBINED_SERVICE_FEE < bundleFullFee;
-  const bundleSavingsPct = bundleActive ? Math.round((1 - COMBINED_SERVICE_FEE / bundleFullFee) * 100) : 0;
+    && bundleSum > 0 && bundleSum < bundleFullFee;
+  const bundleSavingsPct = bundleActive ? Math.round((1 - bundleSum / bundleFullFee) * 100) : 0;
   if (bundleActive) {
-    fuelBaseFee = Math.round(fuelBaseFee * (COMBINED_SERVICE_FEE / bundleFullFee) * 100) / 100;
-    washBaseFee = Math.round((COMBINED_SERVICE_FEE - fuelBaseFee) * 100) / 100;
+    fuelBaseFee = BUNDLE_FUEL_FEE;
+    washBaseFee = BUNDLE_WASH_FEE;
   }
   // Gas-station distance surcharge only applies to fuel services with a chosen
   // (non-closest) station. The server is authoritative; this mirrors it so the
@@ -593,7 +596,7 @@ function calculateTotals() {
     grossBeforeRounding,
     bundleActive,
     bundleSavingsPct,
-    combinedServiceFee: COMBINED_SERVICE_FEE,
+    combinedServiceFee: bundleSum,
   };
 }
 
@@ -602,8 +605,9 @@ function calculateTotals() {
 // so it just reflects the loaded settings (same math as the admin preview).
 function updateBundleBadges() {
   const full = (Number(FUEL_SERVICE_FEE) || 0) + (Number(CAR_WASH_SERVICE_FEE) || 0);
-  const active = full > 0 && COMBINED_SERVICE_FEE > 0 && COMBINED_SERVICE_FEE < full;
-  const pct = active ? Math.round((1 - COMBINED_SERVICE_FEE / full) * 100) : 0;
+  const bundleSum = (Number(BUNDLE_FUEL_FEE) || 0) + (Number(BUNDLE_WASH_FEE) || 0);
+  const active = full > 0 && bundleSum > 0 && bundleSum < full;
+  const pct = active ? Math.round((1 - bundleSum / full) * 100) : 0;
   document.querySelectorAll("[data-bundle-badge]").forEach((el) => {
     el.textContent = pct > 0 ? `Save ${pct}%` : "";
     el.hidden = pct <= 0;

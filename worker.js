@@ -739,6 +739,24 @@ let WORKER_MILEAGE_RATE = 0.725;
 // Independent worker share per service-fee type (admin-editable, from settings).
 // Default 0.5 each so payout is unchanged until the admin sets different values.
 let WORKER_FEE_SHARES = { fuel: 0.5, wash: 0.5, insp: 0.5 };
+// Fuel + Wash bundle: per-leg bundled fees + per-leg worker shares (admin-set).
+// On a combo job (fuel + wash) the worker earns these shares instead of the normal
+// per-fee shares above; bundle is "on" only when the legs sum > 0 and beat the two
+// full fees. 0/0 fees = off.
+let WORKER_BUNDLE = { fuelFee: 0, washFee: 0, fuelShare: 0.5, washShare: 0.5 };
+
+// The per-fee shares to use for a given job: a live Fuel + Wash combo earns the
+// bundle shares (when a bundle is configured + cheaper than the two fees apart);
+// every other job uses the standard per-fee shares.
+function effectiveFeeShares(request) {
+  const both = serviceNeedsFuel(request) && serviceNeedsWash(request);
+  const bundleSum = WORKER_BUNDLE.fuelFee + WORKER_BUNDLE.washFee;
+  const fullSum = BASE_FUEL_SERVICE_FEE + BASE_WASH_SERVICE_FEE;
+  if (both && bundleSum > 0 && bundleSum < fullSum) {
+    return { fuel: WORKER_BUNDLE.fuelShare, wash: WORKER_BUNDLE.washShare, insp: WORKER_FEE_SHARES.insp };
+  }
+  return WORKER_FEE_SHARES;
+}
 
 function roundMoneyValue(value) {
   return Math.round((Number(value) || 0) * 100) / 100;
@@ -792,6 +810,10 @@ async function loadWorkerPayRates() {
     if (data.fuel_fee_share != null) WORKER_FEE_SHARES.fuel = Number(data.fuel_fee_share);
     if (data.wash_fee_share != null) WORKER_FEE_SHARES.wash = Number(data.wash_fee_share);
     if (data.quick_care_fee_share != null) WORKER_FEE_SHARES.insp = Number(data.quick_care_fee_share);
+    if (data.bundle_fuel_service_fee != null) WORKER_BUNDLE.fuelFee = Number(data.bundle_fuel_service_fee);
+    if (data.bundle_wash_service_fee != null) WORKER_BUNDLE.washFee = Number(data.bundle_wash_service_fee);
+    if (data.bundle_fuel_fee_share != null) WORKER_BUNDLE.fuelShare = Number(data.bundle_fuel_fee_share);
+    if (data.bundle_wash_fee_share != null) WORKER_BUNDLE.washShare = Number(data.bundle_wash_fee_share);
     if (typeof runWorkerPayCalc === 'function') runWorkerPayCalc();
   } catch (e) {
     console.warn('Could not load worker pay rates from settings:', e);
@@ -870,7 +892,7 @@ function isCanceledAfterKeys(request) {
 // removed first (so time is paid once, via workerTimePay), then the remaining net
 // is split across the fees by each fee's time-stripped gross and each pays its own
 // share. At equal 50/50/50 shares this exactly equals the old single-share math.
-function workerFeeShareSplit(fuelFee, washFee, inspFee, timeCharge) {
+function workerFeeShareSplit(fuelFee, washFee, inspFee, timeCharge, shares = WORKER_FEE_SHARES) {
   const f = Number(fuelFee) || 0;
   const w = Number(washFee) || 0;
   const i = Number(inspFee) || 0;
@@ -890,9 +912,9 @@ function workerFeeShareSplit(fuelFee, washFee, inspFee, timeCharge) {
   const gSum = gFuel + gWash + gInsp;
   if (gSum <= 0) return 0;
   return roundMoneyValue(
-    net * (gFuel / gSum) * WORKER_FEE_SHARES.fuel +
-    net * (gWash / gSum) * WORKER_FEE_SHARES.wash +
-    net * (gInsp / gSum) * WORKER_FEE_SHARES.insp
+    net * (gFuel / gSum) * shares.fuel +
+    net * (gWash / gSum) * shares.wash +
+    net * (gInsp / gSum) * shares.insp
   );
 }
 
@@ -908,7 +930,7 @@ function workerNetPayout(request) {
   if (completed) {
     const fees = feeSummary(request);
     payout += workerMileagePay(request) + workerTimePay(request) + workerWashDetourPay(request);
-    payout += workerFeeShareSplit(fees.fuel, fees.wash, fees.inspection, frozenTimeCharge(request));
+    payout += workerFeeShareSplit(fees.fuel, fees.wash, fees.inspection, frozenTimeCharge(request), effectiveFeeShares(request));
   } else if (isCanceledAfterKeys(request) && request.payment_status === 'cancellation_fee_paid') {
     // Cancellation-after-keys: 50% of the cancellation fee collected (no per-type split).
     const cancelGross = Number(request.cancellation_fee ?? request.cancellation_fee_amount ?? 0);
@@ -925,7 +947,7 @@ function workerNetPayout(request) {
 // for the "you'll make ~$X" line in the Jobs tab.
 function workerEstimatedPayout(request) {
   const fees = feeSummary(request);
-  let payout = workerFeeShareSplit(fees.fuel, fees.wash, fees.inspection, frozenTimeCharge(request));
+  let payout = workerFeeShareSplit(fees.fuel, fees.wash, fees.inspection, frozenTimeCharge(request), effectiveFeeShares(request));
   payout += workerMileagePay(request) + workerTimePay(request) + workerWashDetourPay(request);
   return roundMoneyValue(Math.max(0, payout));
 }
@@ -995,11 +1017,21 @@ function runWorkerPayCalc() {
   const stationMiles = wcalcNum('wcalc-station-miles');
   const washMiles = wcalcNum('wcalc-wash-miles');
 
-  const fuelFee = needsFuel ? BASE_FUEL_SERVICE_FEE : 0;
-  const washFee = needsWash ? BASE_WASH_SERVICE_FEE : 0;
+  let fuelFee = needsFuel ? BASE_FUEL_SERVICE_FEE : 0;
+  let washFee = needsWash ? BASE_WASH_SERVICE_FEE : 0;
   const inspFee = quick ? BASE_QUICK_INSPECTION_FEE : 0;
+  // Fuel + Wash combo earns the bundled fees + bundle shares (when the bundle beats
+  // the two fees apart); otherwise the standard fees + per-fee shares.
+  const calcBundleSum = WORKER_BUNDLE.fuelFee + WORKER_BUNDLE.washFee;
+  const calcBundleActive = needsFuel && needsWash && calcBundleSum > 0 && calcBundleSum < (fuelFee + washFee);
+  let calcShares = WORKER_FEE_SHARES;
+  if (calcBundleActive) {
+    fuelFee = WORKER_BUNDLE.fuelFee;
+    washFee = WORKER_BUNDLE.washFee;
+    calcShares = { fuel: WORKER_BUNDLE.fuelShare, wash: WORKER_BUNDLE.washShare, insp: WORKER_FEE_SHARES.insp };
+  }
   // Per-type fee shares (no time folded into these base fees), matching real payout.
-  const feeShare = workerFeeShareSplit(fuelFee, washFee, inspFee, 0);
+  const feeShare = workerFeeShareSplit(fuelFee, washFee, inspFee, 0, calcShares);
   const serviceMin = (needsFuel ? TIME_COMP.fuelBaseMin + TIME_COMP.fuelPerGallonMin * gallons : 0) + (needsWash ? TIME_COMP.washMin : 0);
   const rate = workerTimeRate();
   const timePay = roundMoneyValue(serviceMin * rate);
@@ -2989,19 +3021,14 @@ function renderWorkerJobActions(request) {
     actions.push(workerServiceUnableButton(request, 'fuel'));
     actions.push(workerNavStationButton(request));
   } else if (request.status === 'receipts_recorded' || request.status === 'service_complete') {
-    // Service + receipt entry done. No confirm gate here — drive the car back. The
-    // single receipt confirmation happens at the end (Complete & Capture Payment).
+    // Service + receipt entry done — drive the car back. Same for fuel, car wash,
+    // OR combo: the worker always drove the vehicle to a facility (gas station /
+    // The Car Spa), so it always needs the navigated return. Nav auto-marks
+    // returned on arrival; the manual "Vehicle returned" button stays as a fallback.
     // ('service_complete' is only reachable by jobs created before this change.)
-    if (serviceNeedsFuel(request)) {
-      // Fuel job: drive the car back. Lead with navigation; it auto-marks returned
-      // on arrival. Manual "Vehicle returned" stays as a fallback.
-      nextAction = 'Drive the vehicle back to the service address — it marks returned automatically when you arrive.';
-      actions.push(workerNavReturnButton(request, true));
-      actions.push(`<button class="button secondary worker-update-status" data-id="${escapeHtml(request.id)}" data-status="returned_location_pending" type="button">Vehicle returned</button>`);
-    } else {
-      nextAction = 'Mark the vehicle as returned once it is back.';
-      actions.push(workerPrimaryStatusButton(request, 'Vehicle returned', 'returned_location_pending'));
-    }
+    nextAction = 'Drive the vehicle back to the service address — it marks returned automatically when you arrive.';
+    actions.push(workerNavReturnButton(request, true));
+    actions.push(`<button class="button secondary worker-update-status" data-id="${escapeHtml(request.id)}" data-status="returned_location_pending" type="button">Vehicle returned</button>`);
   } else if (request.status === 'returned_location_pending') {
     nextAction = 'Record where the vehicle was returned before return photos.';
     activePanel = renderWorkerReturnLocationPanel(request);
@@ -4102,7 +4129,8 @@ async function saveWorkerFinalTotal(button) {
       window.ShiftFuelRouteMap.open(updatedJob, 'station');
     } else if (newStatus === 'fuel_receipt_uploaded' && serviceNeedsWash(updatedJob)) {
       window.ShiftFuelRouteMap.open(updatedJob, 'wash');
-    } else if (newStatus === 'receipts_recorded' && serviceNeedsFuel(updatedJob)) {
+    } else if (newStatus === 'receipts_recorded') {
+      // Final receipt in → drive the car back, for fuel, wash, OR combo.
       window.ShiftFuelRouteMap.open(updatedJob, 'return');
     }
   }

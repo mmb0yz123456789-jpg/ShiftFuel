@@ -59,6 +59,21 @@ async function loadServicePricing() {
     setPriceText("wash-shine-protect", data.wash_shine_protect_price);
     setPriceText("wash-shine", data.wash_shine_price);
     setPriceText("wash-double", data.wash_double_wash_price);
+
+    // Fuel + Wash bundle promo banner: show it only when the bundled fuel + wash
+    // fees beat the two full service fees (same active-bundle rule as booking).
+    const banner = document.querySelector("[data-bundle-banner]");
+    if (banner) {
+      const full = (Number(data.fuel_service_fee) || 0) + (Number(data.wash_service_fee) || 0);
+      const bundleSum = (Number(data.bundle_fuel_service_fee) || 0) + (Number(data.bundle_wash_service_fee) || 0);
+      const pct = full > 0 && bundleSum > 0 && bundleSum < full ? Math.round((1 - bundleSum / full) * 100) : 0;
+      if (pct > 0) {
+        banner.innerHTML = `<span class="bundle-landing-badge">Save ${pct}%</span> <span>Book <strong>Fuel + Car Wash</strong> together and pay one combined service fee.</span>`;
+        banner.hidden = false;
+      } else {
+        banner.hidden = true;
+      }
+    }
   } catch (error) {
     console.warn("Could not load service pricing:", error);
   }

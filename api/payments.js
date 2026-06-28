@@ -119,15 +119,17 @@ function calculateBookingAuthorization(row, opts = {}) {
   let fuelBaseFee = needsFuel ? num(s.fuelServiceFee, BOOKING_FUEL_SERVICE_FEE) : 0;
   let washBaseFee = needsWash ? num(s.washServiceFee, BOOKING_CAR_WASH_SERVICE_FEE) : 0;
   const quickFee = row.quick_inspection ? num(s.quickInspectionFee, BOOKING_QUICK_CARE_FEE) : 0;
-  // Fuel + Wash bundle: when both services are booked and a combined service fee is
-  // set that beats the two fees separately, scale the base fees down so they sum to
-  // it. MUST mirror booking-flow.js calculateTotals or the price-match rejects the
-  // booking ("Payment total changed").
-  const combinedServiceFee = num(s.combinedServiceFee, 0);
+  // Fuel + Wash bundle: when both services are booked and the bundled fuel + wash
+  // fees beat the two full fees, the customer pays the bundled fees instead. MUST
+  // mirror booking-flow.js calculateTotals or the price-match rejects the booking
+  // ("Payment total changed").
+  const bundleFuelFee = num(s.bundleFuelFee, 0);
+  const bundleWashFee = num(s.bundleWashFee, 0);
+  const bundleSum = bundleFuelFee + bundleWashFee;
   const bundleFullFee = fuelBaseFee + washBaseFee;
-  if (needsFuel && needsWash && combinedServiceFee > 0 && combinedServiceFee < bundleFullFee) {
-    fuelBaseFee = roundMoney(fuelBaseFee * (combinedServiceFee / bundleFullFee));
-    washBaseFee = roundMoney(combinedServiceFee - fuelBaseFee);
+  if (needsFuel && needsWash && bundleSum > 0 && bundleSum < bundleFullFee) {
+    fuelBaseFee = roundMoney(bundleFuelFee);
+    washBaseFee = roundMoney(bundleWashFee);
   }
   // "Customer choice" gas-station distance surcharge — server-authoritative,
   // never trusted from the client. Folded into the net so it grosses up like
@@ -206,11 +208,11 @@ async function getServerPricingSettings(db) {
       'double-wash': BOOKING_WASH_PACKAGES['double-wash'].price,
     },
     timeRatePerMin: 0, fuelTimeBaseMin: 3, fuelTimePerGalMin: 0.5, washTimeMin: 20,
-    combinedServiceFee: 0,
+    bundleFuelFee: 0, bundleWashFee: 0,
   };
   try {
     const { data } = await db.from('service_pricing_settings')
-      .select('fuel_service_fee,wash_service_fee,quick_inspection_fee,wash_buff_shine_price,wash_shine_protect_price,wash_shine_price,wash_double_wash_price,time_rate_per_min,fuel_time_base_min,fuel_time_per_gallon_min,wash_time_min,combined_service_fee')
+      .select('fuel_service_fee,wash_service_fee,quick_inspection_fee,wash_buff_shine_price,wash_shine_protect_price,wash_shine_price,wash_double_wash_price,time_rate_per_min,fuel_time_base_min,fuel_time_per_gallon_min,wash_time_min,bundle_fuel_service_fee,bundle_wash_service_fee')
       .eq('id', 1).maybeSingle();
     if (!data) return fallback;
     const n = (v, d) => (v != null && Number.isFinite(Number(v)) ? Number(v) : d);
@@ -228,7 +230,8 @@ async function getServerPricingSettings(db) {
       fuelTimeBaseMin: n(data.fuel_time_base_min, 3),
       fuelTimePerGalMin: n(data.fuel_time_per_gallon_min, 0.5),
       washTimeMin: n(data.wash_time_min, 20),
-      combinedServiceFee: n(data.combined_service_fee, 0),
+      bundleFuelFee: n(data.bundle_fuel_service_fee, 0),
+      bundleWashFee: n(data.bundle_wash_service_fee, 0),
     };
   } catch (_) {
     return fallback;

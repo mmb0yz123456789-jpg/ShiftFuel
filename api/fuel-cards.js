@@ -319,6 +319,9 @@ module.exports = async (req, res) => {
     return await handler(req, body, res);
   } catch (err) {
     console.error(`[fuel-cards/${action}] Unhandled error:`, err.message);
-    return res.status(500).json({ error: 'An unexpected error occurred. Please try again.' });
+    // Staff-only endpoint — surface the real reason (e.g. Stripe "Issuing not
+    // enabled", an unset STRIPE_SECRET_KEY, or a missing employees column from an
+    // un-run migration) so the admin can fix it instead of seeing a blind 500.
+    return res.status(500).json({ error: err.message || 'An unexpected error occurred. Please try again.' });
   }
 };

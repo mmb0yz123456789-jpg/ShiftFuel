@@ -6974,6 +6974,38 @@ legend {
   display: none;
 }
 
+/* Fuel + Wash bundle promo banner on the landing Services section. */
+.bundle-landing-banner {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  max-width: 760px;
+  margin: 0 auto 22px;
+  padding: 12px 18px;
+  border-radius: 14px;
+  background: #e8f7ee;
+  border: 1px solid #bfe6cd;
+  color: #0d3b3b;
+  font-size: 0.95rem;
+  text-decoration: none;
+  transition: filter 0.15s ease;
+}
+
+.bundle-landing-banner:hover { filter: brightness(0.97); }
+.bundle-landing-banner[hidden] { display: none; }
+
+.bundle-landing-badge {
+  padding: 3px 12px;
+  border-radius: 999px;
+  background: #137a3f;
+  color: #fff;
+  font-weight: 800;
+  font-size: 0.82rem;
+  white-space: nowrap;
+}
+
 /* File upload controls */
 
 .file-button-control {

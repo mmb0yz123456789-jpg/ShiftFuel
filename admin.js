@@ -911,11 +911,25 @@ let WORKER_MILEAGE_RATE = 0.725;        // worker per-mile detour pay; set from 
 // Independent worker share per service-fee type (admin-editable, from settings).
 // Default 0.5 each so payout is unchanged until the admin sets different values.
 let ADMIN_FEE_SHARES = { fuel: 0.5, wash: 0.5, insp: 0.5 };
+// Mirror of worker.js WORKER_BUNDLE — per-leg bundled fees + worker shares.
+let ADMIN_BUNDLE = { fuelFee: 0, washFee: 0, fuelShare: 0.5, washShare: 0.5 };
+
+// Effective per-fee shares for a job (mirror of worker.js effectiveFeeShares): a
+// Fuel + Wash combo earns the bundle shares when a bundle is configured + cheaper.
+function adminEffectiveFeeShares(request) {
+  const both = serviceNeedsFuel(request) && serviceNeedsWash(request);
+  const bundleSum = ADMIN_BUNDLE.fuelFee + ADMIN_BUNDLE.washFee;
+  const fullSum = BASE_FUEL_SERVICE_FEE + BASE_WASH_SERVICE_FEE;
+  if (both && bundleSum > 0 && bundleSum < fullSum) {
+    return { fuel: ADMIN_BUNDLE.fuelShare, wash: ADMIN_BUNDLE.washShare, insp: ADMIN_FEE_SHARES.insp };
+  }
+  return ADMIN_FEE_SHARES;
+}
 
 // Mirror of workerFeeShareSplit in worker.js — worker's cut of the service fees
 // with an independent share per fee type. Card + folded service-time removed first,
 // then the net is split by each fee's time-stripped gross. Equal shares == old math.
-function adminFeeShareSplit(fuelFee, washFee, inspFee, timeCharge) {
+function adminFeeShareSplit(fuelFee, washFee, inspFee, timeCharge, shares = ADMIN_FEE_SHARES) {
   const f = Number(fuelFee) || 0;
   const w = Number(washFee) || 0;
   const i = Number(inspFee) || 0;
@@ -934,9 +948,9 @@ function adminFeeShareSplit(fuelFee, washFee, inspFee, timeCharge) {
   const gSum = gFuel + gWash + gInsp;
   if (gSum <= 0) return 0;
   return roundMoneyValue(
-    net * (gFuel / gSum) * ADMIN_FEE_SHARES.fuel +
-    net * (gWash / gSum) * ADMIN_FEE_SHARES.wash +
-    net * (gInsp / gSum) * ADMIN_FEE_SHARES.insp
+    net * (gFuel / gSum) * shares.fuel +
+    net * (gWash / gSum) * shares.wash +
+    net * (gInsp / gSum) * shares.insp
   );
 }
 
@@ -1041,7 +1055,7 @@ function computeWorkerPayoutForRequest(request) {
     // Time pay (minutes at the worker's rate) + car-wash detour mileage + station mileage.
     payout += workerMileagePay(request) + adminWorkerTimePay(request) + adminWorkerWashDetourPay(request);
     // Per-type service-fee share (time folded out so it's paid once). Mirrors worker.js.
-    payout += adminFeeShareSplit(fees.fuel, fees.wash, fees.inspection, adminFrozenTimeCharge(request));
+    payout += adminFeeShareSplit(fees.fuel, fees.wash, fees.inspection, adminFrozenTimeCharge(request), adminEffectiveFeeShares(request));
   } else if (isCanceledAfterKeys(request) && request.payment_status === 'cancellation_fee_paid') {
     // 50% of the cancellation fee the company actually collected (no per-type split).
     const cancelGross = Number(request.cancellation_fee ?? request.cancellation_fee_amount ?? 0);
@@ -7834,8 +7848,12 @@ function renderServicesSettingsList() {
         <details class="svc-acc">
           <summary class="svc-acc-head"><span>🎁 Fuel + Wash bundle</span>${chevron}</summary>
           <div class="svc-acc-body">
+            <p class="tbp-intro" style="margin-bottom:4px">When a customer books fuel <em>and</em> a wash, they pay these two bundled fees instead of the full fuel + wash fees, and the driver earns the bundle shares below. Set both fees to $0 to turn the bundle off.</p>
             <div class="pricing-group-grid">
-              <label>Combined service fee ($) <span class="tbp-tag tbp-tag-customer">customer pays</span><input id="sp-combined-fee" type="number" step="0.01" min="0"><span class="tbp-hint">Charged instead of the fuel + wash service fees when a customer books both. Set $0 to turn the bundle off.</span></label>
+              <label>Bundle fuel fee ($) <span class="tbp-tag tbp-tag-customer">customer pays</span><input id="sp-bundle-fuel-fee" type="number" step="0.01" min="0"><span class="tbp-hint">The fuel leg's price inside the combo.</span></label>
+              <label>Bundle fuel — worker share (%) <span class="tbp-tag tbp-tag-worker">worker earns</span><input id="sp-bundle-fuel-share" type="number" step="1" min="0" max="100"><span class="tbp-hint">Driver's cut of the bundle fuel fee (net of card).</span></label>
+              <label>Bundle wash fee ($) <span class="tbp-tag tbp-tag-customer">customer pays</span><input id="sp-bundle-wash-fee" type="number" step="0.01" min="0"><span class="tbp-hint">The wash leg's price inside the combo.</span></label>
+              <label>Bundle wash — worker share (%) <span class="tbp-tag tbp-tag-worker">worker earns</span><input id="sp-bundle-wash-share" type="number" step="1" min="0" max="100"><span class="tbp-hint">Driver's cut of the bundle wash fee (net of card).</span></label>
             </div>
             <div id="sp-bundle-savings" class="bundle-savings-preview" aria-live="polite"></div>
           </div>
@@ -7995,17 +8013,22 @@ function runPricingSimulator() {
   let fuelFee = needsFuel ? simNum('sim-fuel-fee', BASE_FUEL_SERVICE_FEE) : 0;
   let washFee = needsWash ? simNum('sim-wash-fee', BASE_WASH_SERVICE_FEE) : 0;
   const inspFee = quick ? simNum('sim-insp-fee', BASE_QUICK_INSPECTION_FEE) : 0;
-  // Fuel + Wash bundle combined fee (from the Services form; 0 = off). Keep the
-  // raw, ungated fuel/wash fees so the annual mix-planner can cost each job type on
-  // its own (its "both" rows apply the bundle per-row). The single-scenario sim
-  // below uses the bundle-adjusted fees when both services are on.
-  const simCombinedFee = simNum('sp-combined-fee', 0);
+  // Fuel + Wash bundle, per leg (from the Services form; 0/0 = off). Keep the raw,
+  // ungated fuel/wash fees so the annual mix-planner can cost each job type on its
+  // own (its "both" rows apply the bundle per-row). The single-scenario sim below
+  // uses the bundle leg fees + bundle worker shares when both services are on.
+  const simBundleFuelFee = simNum('sp-bundle-fuel-fee', 0);
+  const simBundleWashFee = simNum('sp-bundle-wash-fee', 0);
+  const simBundleFuelShare = simNum('sp-bundle-fuel-share', 50) / 100;
+  const simBundleWashShare = simNum('sp-bundle-wash-share', 50) / 100;
+  const simBundleSum = simBundleFuelFee + simBundleWashFee;
   const rawFuelFee = simNum('sim-fuel-fee', BASE_FUEL_SERVICE_FEE);
   const rawWashFee = simNum('sim-wash-fee', BASE_WASH_SERVICE_FEE);
   const simBundleFull = fuelFee + washFee;
-  if (needsFuel && needsWash && simCombinedFee > 0 && simCombinedFee < simBundleFull) {
-    fuelFee = roundMoneyValue(fuelFee * (simCombinedFee / simBundleFull));
-    washFee = roundMoneyValue(simCombinedFee - fuelFee);
+  const simBundleActive = needsFuel && needsWash && simBundleSum > 0 && simBundleSum < simBundleFull;
+  if (simBundleActive) {
+    fuelFee = simBundleFuelFee;
+    washFee = simBundleWashFee;
   }
   const washPrice = needsWash ? simNum(document.getElementById('sim-wash-pkg')?.value || 'sp-wash-buff-shine', 0) : 0;
   const companyRate = simNum('sim-company-rate', adminCompanyTimeRatePerMin);
@@ -8037,8 +8060,13 @@ function runPricingSimulator() {
   // one per-transaction cost, so apportion it across the fee lines by amount,
   // then apply that line's own worker share to its net (same split logic as the
   // customer-side recovery). At 50/50/50 this matches the old single-share math.
-  const fuelSharePct = simNum('sim-fuel-share', 50) / 100;
-  const washSharePct = simNum('sim-wash-share', 50) / 100;
+  // A live bundle swaps in the per-leg bundle worker shares for fuel + wash. Keep
+  // the raw (non-bundle) shares too — the mix planner applies the bundle per "both"
+  // row itself, so it can't use a scenario-wide override.
+  const rawFuelSharePct = simNum('sim-fuel-share', 50) / 100;
+  const rawWashSharePct = simNum('sim-wash-share', 50) / 100;
+  const fuelSharePct = simBundleActive ? simBundleFuelShare : rawFuelSharePct;
+  const washSharePct = simBundleActive ? simBundleWashShare : rawWashSharePct;
   const inspSharePct = simNum('sim-insp-share', 50) / 100;
   const feeGross = fuelFee + washFee + inspFee;
   const feeStripe = feeGross > 0 ? roundMoneyValue(feeGross * RETURN_RECOVERY_RATE + RETURN_RECOVERY_FIXED) : 0;
@@ -8122,14 +8150,16 @@ function runPricingSimulator() {
     const jobEconomics = (nF, nW, gal, staMi, washMi, scale) => {
       let fF = (nF ? rawFuelFee : 0) * scale;
       let wF = (nW ? rawWashFee : 0) * scale;
-      // Fuel + Wash jobs use the bundle combined fee (scaled with the goal-seek so
-      // the discount % holds as fees move). Mirrors the booking/server scaling.
+      let fShare = rawFuelSharePct;
+      let wShare = rawWashSharePct;
+      // Fuel + Wash combo: bundle leg fees + bundle worker shares (scaled with the
+      // goal-seek so the discount % holds as fees move). Mirrors booking/worker.
       if (nF && nW) {
-        const full = fF + wF;
-        const comb = simCombinedFee * scale;
-        if (comb > 0 && comb < full) {
-          fF = roundMoneyValue(fF * (comb / full));
-          wF = roundMoneyValue(comb - fF);
+        const bf = simBundleFuelFee * scale;
+        const bw = simBundleWashFee * scale;
+        if ((bf + bw) > 0 && (bf + bw) < (fF + wF)) {
+          fF = bf; wF = bw;
+          fShare = simBundleFuelShare; wShare = simBundleWashShare;
         }
       }
       const sMin = (nF ? fuelBaseMin + fuelPerGalMin * gal : 0) + (nW ? washTimeMin : 0);
@@ -8139,7 +8169,7 @@ function runPricingSimulator() {
       const tot = fF + wF;
       const stripe = tot > 0 ? roundMoneyValue(tot * RETURN_RECOVERY_RATE + RETURN_RECOVERY_FIXED) : 0;
       const netOf = (fee) => (tot > 0 ? Math.max(0, fee - stripe * (fee / tot)) : 0);
-      const feeShareW = roundMoneyValue(netOf(fF) * fuelSharePct + netOf(wF) * washSharePct);
+      const feeShareW = roundMoneyValue(netOf(fF) * fShare + netOf(wF) * wShare);
       const workerPay = roundMoneyValue(feeShareW + sMin * workerRate + (nF ? staMi * washDetourRate : 0) + (nW ? washMi * washDetourRate : 0));
       const serviceRev = roundMoneyValue(fF + wF + tCharge + staSur + washSur);
       return { companyNet: roundMoneyValue(serviceRev - workerPay), workerPay };
@@ -8204,7 +8234,7 @@ function runPricingSimulator() {
 ['input', 'change'].forEach((evt) => document.addEventListener(evt, (event) => {
   const id = event.target?.id || '';
   if (id.startsWith('sim-') || id.startsWith('sp-') || id.startsWith('mix-')) runPricingSimulator();
-  if (id === 'sp-fuel-fee' || id === 'sp-wash-fee' || id === 'sp-combined-fee') updateBundleSavingsPreview();
+  if (id === 'sp-fuel-fee' || id === 'sp-wash-fee' || id.startsWith('sp-bundle-')) updateBundleSavingsPreview();
 }));
 
 // Gather the time-comp pricing params for admin_update_service_pricing. Falls back
@@ -8223,32 +8253,44 @@ function timeCompPricingParams() {
     p_fuel_fee_share: v('sp-fuel-share', 50) / 100,
     p_wash_fee_share: v('sp-wash-share', 50) / 100,
     p_quick_care_fee_share: v('sp-quick-share', 50) / 100,
-    // Fuel + Wash bundle combined fee (0 = off).
-    p_combined_service_fee: v('sp-combined-fee', 0),
+    // Fuel + Wash bundle, per leg (0/0 fees = off). Keep combined = sum for any
+    // legacy reader. Shares: form stores whole percents, DB stores fractions.
+    p_bundle_fuel_service_fee: v('sp-bundle-fuel-fee', 0),
+    p_bundle_wash_service_fee: v('sp-bundle-wash-fee', 0),
+    p_bundle_fuel_fee_share: v('sp-bundle-fuel-share', 50) / 100,
+    p_bundle_wash_fee_share: v('sp-bundle-wash-share', 50) / 100,
+    p_combined_service_fee: v('sp-bundle-fuel-fee', 0) + v('sp-bundle-wash-fee', 0),
   };
 }
 
-// Live "Save X%" preview in the Bundle accordion, so the admin sees the discount
-// the customer will see as they tweak the fuel/wash/combined fees. Same math as
-// booking-flow.js updateBundleBadges.
+// Live breakdown + "Save X%" preview in the Bundle accordion, so the admin sees the
+// combined customer price, the saving, and each leg's worker cut as they tune the
+// fields. Same active-bundle math as booking-flow.js updateBundleBadges.
 function updateBundleSavingsPreview() {
   const out = document.getElementById('sp-bundle-savings');
   if (!out) return;
   const num = (id) => Number(document.getElementById(id)?.value);
-  const fuel = Number.isFinite(num('sp-fuel-fee')) ? num('sp-fuel-fee') : 0;
-  const wash = Number.isFinite(num('sp-wash-fee')) ? num('sp-wash-fee') : 0;
-  const combined = Number.isFinite(num('sp-combined-fee')) ? num('sp-combined-fee') : 0;
+  const val = (id) => (Number.isFinite(num(id)) ? num(id) : 0);
+  const fuel = val('sp-fuel-fee');
+  const wash = val('sp-wash-fee');
+  const bFuel = val('sp-bundle-fuel-fee');
+  const bWash = val('sp-bundle-wash-fee');
+  const bFuelShare = val('sp-bundle-fuel-share');
+  const bWashShare = val('sp-bundle-wash-share');
+  const combined = roundMoneyValue(bFuel + bWash);
   const full = fuel + wash;
   if (combined <= 0) {
     out.innerHTML = `<p class="sim-note">Bundle off — customers booking both pay the full ${money(full)} (fuel ${money(fuel)} + wash ${money(wash)}).</p>`;
     return;
   }
+  const breakdown = `<p class="sim-note">Combined customer price <strong>${money(combined)}</strong> = bundle fuel ${money(bFuel)} (driver ${Math.round(bFuelShare)}%) + bundle wash ${money(bWash)} (driver ${Math.round(bWashShare)}%).</p>`;
   if (combined >= full) {
-    out.innerHTML = `<p class="sim-note">⚠️ Combined fee (${money(combined)}) is not below fuel + wash (${money(full)}), so there's no saving — the bundle won't apply. Lower it to discount.</p>`;
+    out.innerHTML = `${breakdown}<p class="sim-note">⚠️ ${money(combined)} is not below the separate fees (${money(full)}), so there's no saving and the bundle won't apply. Lower a leg to discount.</p>`;
     return;
   }
   const pct = Math.round((1 - combined / full) * 100);
   out.innerHTML = `<div class="bundle-savings-badge">Customers save ${pct}%</div>
+    ${breakdown}
     <p class="sim-note">Booking both = ${money(combined)} instead of ${money(full)} (saves ${money(roundMoneyValue(full - combined))}). The "Save ${pct}%" badge shows on the Fuel + Car Wash option.</p>`;
 }
 
@@ -8347,6 +8389,10 @@ function applyServicePricing(data) {
   if (data.fuel_fee_share != null) ADMIN_FEE_SHARES.fuel = Number(data.fuel_fee_share);
   if (data.wash_fee_share != null) ADMIN_FEE_SHARES.wash = Number(data.wash_fee_share);
   if (data.quick_care_fee_share != null) ADMIN_FEE_SHARES.insp = Number(data.quick_care_fee_share);
+  if (data.bundle_fuel_service_fee != null) ADMIN_BUNDLE.fuelFee = Number(data.bundle_fuel_service_fee);
+  if (data.bundle_wash_service_fee != null) ADMIN_BUNDLE.washFee = Number(data.bundle_wash_service_fee);
+  if (data.bundle_fuel_fee_share != null) ADMIN_BUNDLE.fuelShare = Number(data.bundle_fuel_fee_share);
+  if (data.bundle_wash_fee_share != null) ADMIN_BUNDLE.washShare = Number(data.bundle_wash_fee_share);
   CR_FEES = {
     fuelConvenience: Number(data.fuel_service_fee),
     washConvenience: Number(data.wash_service_fee),
@@ -8381,7 +8427,10 @@ async function loadServicePricing() {
     if (v('sp-fuel-share')) v('sp-fuel-share').value = Math.round(Number(data.fuel_fee_share ?? 0.5) * 100);
     if (v('sp-wash-share')) v('sp-wash-share').value = Math.round(Number(data.wash_fee_share ?? 0.5) * 100);
     if (v('sp-quick-share')) v('sp-quick-share').value = Math.round(Number(data.quick_care_fee_share ?? 0.5) * 100);
-    if (v('sp-combined-fee')) v('sp-combined-fee').value = Number(data.combined_service_fee ?? 0).toFixed(2);
+    if (v('sp-bundle-fuel-fee')) v('sp-bundle-fuel-fee').value = Number(data.bundle_fuel_service_fee ?? 0).toFixed(2);
+    if (v('sp-bundle-wash-fee')) v('sp-bundle-wash-fee').value = Number(data.bundle_wash_service_fee ?? 0).toFixed(2);
+    if (v('sp-bundle-fuel-share')) v('sp-bundle-fuel-share').value = Math.round(Number(data.bundle_fuel_fee_share ?? 0.5) * 100);
+    if (v('sp-bundle-wash-share')) v('sp-bundle-wash-share').value = Math.round(Number(data.bundle_wash_fee_share ?? 0.5) * 100);
     if (v('sp-wash-buff-shine')) v('sp-wash-buff-shine').value = Number(data.wash_buff_shine_price).toFixed(2);
     if (v('sp-wash-shine-protect')) v('sp-wash-shine-protect').value = Number(data.wash_shine_protect_price).toFixed(2);
     if (v('sp-wash-shine')) v('sp-wash-shine').value = Number(data.wash_shine_price).toFixed(2);
