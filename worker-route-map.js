@@ -32,7 +32,7 @@
     address: 'Key received',
     wash: 'Start service',
     station: 'Start service',
-    return: 'Vehicle returned',
+    return: "I'm back at the service address",
     handoff: 'Keys returned',
   };
 
@@ -181,6 +181,11 @@
             <div class="wrm-speed-now"><b class="wrm-spd-now">0</b><span>mph</span></div>
           </div>
 
+          <div class="wrm-dest-chip" hidden>
+            <span class="wrm-dest-dot" aria-hidden="true"></span>
+            <span class="wrm-dest-label"></span>
+          </div>
+
           <button class="wrm-close" type="button" aria-label="Close" hidden>
             <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
           </button>
@@ -320,7 +325,7 @@
     const coords = `${origin.lon},${origin.lat};${dest.lon},${dest.lat}`;
     // driving-traffic: live-traffic-aware ETA + routing for in-app navigation
     // (same Directions API + price tier as plain driving).
-    const url = `https://api.mapbox.com/directions/v5/mapbox/driving-traffic/${coords}?access_token=${MAPBOX_TOKEN}&geometries=geojson&overview=full&steps=true&annotations=maxspeed`;
+    const url = `https://api.mapbox.com/directions/v5/mapbox/driving-traffic/${coords}?access_token=${MAPBOX_TOKEN}&geometries=geojson&overview=full&steps=true&annotations=maxspeed,congestion`;
     try {
       const r = await fetch(url);
       if (!r.ok) return null;
@@ -330,22 +335,39 @@
   }
 
   function setRouteOnMap(route) {
-    const geojson = { type: 'Feature', geometry: route.geometry };
-    if (map.getSource('wrm-route')) {
-      map.getSource('wrm-route').setData(geojson);
-    } else {
-      map.addSource('wrm-route', { type: 'geojson', data: geojson });
-      // Bright-blue route with a darker casing, like the native nav line. `slot`
-      // tucks it under labels/3D on the Standard style (ignored on other styles).
-      map.addLayer({
-        id: 'wrm-route-casing', type: 'line', source: 'wrm-route', slot: 'middle',
-        layout: { 'line-join': 'round', 'line-cap': 'round' },
-        paint: { 'line-color': '#1b4fc4', 'line-width': 11, 'line-opacity': 0.9 },
+    const coords = route.geometry?.coordinates || [];
+    const congestion = route.legs?.[0]?.annotation?.congestion || [];
+    const features = [];
+    for (let i = 0; i < coords.length - 1; i++) {
+      const level = ['low', 'moderate', 'heavy', 'severe'].includes(congestion[i]) ? congestion[i] : 'low';
+      features.push({
+        type: 'Feature',
+        properties: { level },
+        geometry: { type: 'LineString', coordinates: [coords[i], coords[i + 1]] },
       });
+    }
+    const geojson = { type: 'FeatureCollection', features };
+    if (map.getSource('wrm-route-traffic')) {
+      map.getSource('wrm-route-traffic').setData(geojson);
+    } else {
+      map.addSource('wrm-route-traffic', { type: 'geojson', data: geojson });
       map.addLayer({
-        id: 'wrm-route', type: 'line', source: 'wrm-route', slot: 'middle',
+        id: 'wrm-route-casing', type: 'line', source: 'wrm-route-traffic', slot: 'middle',
         layout: { 'line-join': 'round', 'line-cap': 'round' },
-        paint: { 'line-color': '#4a90ff', 'line-width': 7, 'line-opacity': 1 },
+        paint: { 'line-color': '#133f93', 'line-width': 12, 'line-opacity': 0.82 },
+      });
+      [
+        ['low', '#2f7df6'],
+        ['moderate', '#f5a623'],
+        ['heavy', '#f05a28'],
+        ['severe', '#cf2f2f'],
+      ].forEach(([level, color]) => {
+        map.addLayer({
+          id: `wrm-route-${level}`, type: 'line', source: 'wrm-route-traffic', slot: 'middle',
+          filter: ['==', ['get', 'level'], level],
+          layout: { 'line-join': 'round', 'line-cap': 'round' },
+          paint: { 'line-color': color, 'line-width': 8, 'line-opacity': 1 },
+        });
       });
     }
   }
@@ -376,12 +398,14 @@
     // Push the puck into the lower third so the road ahead fills the screen — the
     // way a car GPS frames the drive.
     const h = map.getContainer()?.clientHeight || 0;
+    const topPad = Math.max(168, Math.round(h * 0.38));
+    const bottomPad = Math.max(170, Math.round(h * 0.18));
     map.easeTo({
       center: [loc.lon, loc.lat],
       zoom: NAV_ZOOM,
       pitch: NAV_PITCH,
       bearing: Number.isFinite(bearingDeg) ? bearingDeg : map.getBearing(),
-      padding: { top: Math.round(h * 0.55), bottom: 0, left: 0, right: 0 },
+      padding: { top: topPad, bottom: bottomPad, left: 18, right: 18 },
       duration: 700,
       essential: true,
     });
@@ -531,14 +555,17 @@
     const isReturn = destType === 'return';
     const modal = document.getElementById('worker-route-modal');
     if (modal) {
+      modal.classList.add('is-arrived');
       const banner = modal.querySelector('.wrm-banner');
       const instrEl = modal.querySelector('.wrm-banner-instruction');
       const distEl = modal.querySelector('.wrm-banner-distance');
+      const startBtn = modal.querySelector('.wrm-start-service');
       if (banner) banner.hidden = false;
+      if (distEl) distEl.textContent = 'Arrived';
       if (instrEl) instrEl.textContent = isReturn
-        ? "Back at the car's spot — marking the vehicle returned…"
+        ? 'Back at the service address — opening return location step…'
         : `Arrived at ${destType === 'wash' ? 'the car wash' : 'the gas station'} — starting service…`;
-      if (distEl) distEl.textContent = '';
+      if (startBtn) startBtn.classList.add('is-arrived');
     }
     stopNavWatch();
     setTimeout(() => {
@@ -559,8 +586,12 @@
     const banner = modal.querySelector('.wrm-banner');
     const startBtn = modal.querySelector('.wrm-start-service');
     const closeBtn = modal.querySelector('.wrm-close');
+    const destChip = modal.querySelector('.wrm-dest-chip');
+    modal.classList.remove('is-arrived', 'is-night');
     etaEl.textContent = 'Loading map…';
     banner.hidden = true;
+    if (destChip) destChip.hidden = true;
+    if (startBtn) startBtn.classList.remove('is-arrived');
     // The leg's contextual button is the ONLY exit (shown immediately, even before
     // the route loads); no ✕ on any leg.
     const legLabel = LEG_BUTTON[destType] || '';
@@ -607,6 +638,11 @@
       etaEl.textContent = isStation ? 'Could not find a gas station nearby.' : 'Could not locate the destination.';
       return;
     }
+    if (destChip) {
+      const destLabel = dest.label || (isStation ? 'Gas station' : isWash ? 'Car wash' : isReturn ? "Vehicle's spot" : isHandoff ? 'Key handoff' : 'Service address');
+      destChip.querySelector('.wrm-dest-label').textContent = destLabel;
+      destChip.hidden = false;
+    }
 
     // Remember the resolved service destination so the customer's "heading to the
     // station / car wash" ETA has a target (covers "closest station" jobs and the
@@ -622,6 +658,7 @@
     // Light by day, dark at night (matches the basemap preset below) so the brief
     // pre-tiles flash doesn't fight the map.
     const preset = lightPresetForNow();
+    modal.classList.toggle('is-night', preset === 'night' || preset === 'dusk');
     mapEl.style.background = (preset === 'day' || preset === 'dawn') ? '#e6eae6' : '#11131a';
     if (map) { map.remove(); map = null; }
     map = new mapboxgl.Map({
@@ -701,18 +738,18 @@
       .wrm-map { position: absolute; inset: 0; z-index: 0; width: 100%; height: 100%; background: #11131a; }
       .wrm-puck { width: 36px; height: 36px; }
       /* Floating maneuver banner (top). */
-      .wrm-banner { position: absolute; top: calc(env(safe-area-inset-top) + 12px); left: 12px; right: 12px; z-index: 4;
-        display: flex; align-items: center; gap: 16px; padding: 18px 20px;
-        background: #2f6bef; color: #fff; border-radius: 18px; box-shadow: 0 10px 30px rgba(0,0,0,.42); }
+      .wrm-banner { position: absolute; top: calc(env(safe-area-inset-top) + 10px); left: 12px; right: 12px; z-index: 5;
+        display: flex; align-items: center; gap: 14px; padding: 14px 18px;
+        background: linear-gradient(135deg, #2f6bef, #2563e9); color: #fff; border-radius: 20px; box-shadow: 0 12px 34px rgba(24,74,180,.35); }
       .wrm-banner[hidden] { display: none; }
-      .wrm-banner-icon { flex: 0 0 auto; width: 42px; height: 42px;
+      .wrm-banner-icon { flex: 0 0 auto; width: 38px; height: 38px;
         display: inline-flex; align-items: center; justify-content: center; transition: transform .2s ease; }
       .wrm-banner-text { display: flex; flex-direction: column; line-height: 1.12; min-width: 0; }
-      .wrm-banner-distance { font-weight: 800; font-size: 2rem; }
-      .wrm-banner-instruction { font-weight: 600; font-size: 1.05rem; color: rgba(255,255,255,.92);
+      .wrm-banner-distance { font-weight: 900; font-size: 1.74rem; letter-spacing: 0; }
+      .wrm-banner-instruction { font-weight: 700; font-size: .98rem; color: rgba(255,255,255,.92);
         overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
       /* Speed widget: posted-limit sign + current-speed pill, top-left under banner. */
-      .wrm-speed { position: absolute; left: 14px; top: calc(env(safe-area-inset-top) + 108px); z-index: 3;
+      .wrm-speed { position: absolute; left: 14px; top: calc(env(safe-area-inset-top) + 96px); z-index: 4;
         display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }
       .wrm-speed[hidden] { display: none; }
       .wrm-speed-limit { background: #fff; border: 3px solid #15151a; border-radius: 12px;
@@ -724,6 +761,13 @@
         padding: 5px 14px 6px; text-align: center; line-height: 1; box-shadow: 0 4px 14px rgba(0,0,0,.32); }
       .wrm-speed-now b { display: block; font-size: 1.4rem; font-weight: 900; }
       .wrm-speed-now span { font-size: .58rem; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: rgba(255,255,255,.7); }
+      .wrm-dest-chip { position: absolute; right: 14px; top: calc(env(safe-area-inset-top) + 98px); z-index: 4;
+        max-width: min(52vw, 260px); display: inline-flex; align-items: center; gap: 8px;
+        padding: 9px 12px; border-radius: 999px; background: rgba(255,255,255,.94);
+        color: #0d3b3b; font-weight: 800; font-size: .82rem; box-shadow: 0 8px 22px rgba(0,0,0,.18); }
+      .wrm-dest-chip[hidden] { display: none; }
+      .wrm-dest-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .wrm-dest-dot { width: 9px; height: 9px; border-radius: 999px; background: #b42318; box-shadow: 0 0 0 4px rgba(180,35,24,.14); flex: 0 0 auto; }
       /* Close (info-only legs) — round button, top-right under banner. */
       .wrm-close { position: absolute; right: 14px; top: calc(env(safe-area-inset-top) + 108px); z-index: 4;
         width: 46px; height: 46px; border-radius: 50%; border: none; cursor: pointer;
@@ -744,16 +788,16 @@
         bottom: 0;
         z-index: 9999;
         padding: 12px 16px calc(12px + env(safe-area-inset-bottom));
-        background: rgba(255, 255, 255, 0.96);
-        box-shadow: 0 -8px 24px rgba(0,0,0,0.16);
+        background: linear-gradient(180deg, rgba(255,255,255,.82), rgba(255,255,255,.98) 34%);
+        box-shadow: 0 -10px 30px rgba(0,0,0,0.18);
         display: flex;
         flex-direction: column;
         align-items: stretch;
         gap: 10px;
         box-sizing: border-box;
       }
-      .wrm-eta { align-self: flex-start; background: rgba(20,20,26,.85); color: #fff; font-weight: 700;
-        font-size: .85rem; padding: 7px 14px; border-radius: 999px; box-shadow: 0 4px 14px rgba(0,0,0,.3); }
+      .wrm-eta { align-self: flex-start; background: rgba(20,20,26,.88); color: #fff; font-weight: 800;
+        font-size: .86rem; padding: 8px 15px; border-radius: 999px; box-shadow: 0 6px 18px rgba(0,0,0,.25); backdrop-filter: blur(10px); }
       .map-step-action-bar button {
         width: 100%;
         min-height: 52px;
@@ -762,10 +806,18 @@
         font-weight: 700;
       }
       .wrm-start-service { padding: 17px; border: none;
-        background: #1f7a45; color: #fff; font-weight: 800; font-size: 1.08rem;
-        box-shadow: 0 10px 28px rgba(0,0,0,.42); cursor: pointer; }
+        background: linear-gradient(135deg, #1f7a45, #17683a); color: #fff; font-weight: 800; font-size: 1.08rem;
+        box-shadow: 0 12px 28px rgba(16,92,50,.32); cursor: pointer; }
       .wrm-start-service:active { transform: scale(.99); }
+      .wrm-start-service.is-arrived { animation: wrm-arrive-pulse 1s ease-in-out infinite; }
       .wrm-start-service[hidden] { display: none; }
+      .wrm-overlay.is-arrived .wrm-banner { background: linear-gradient(135deg, #1f7a45, #1b8a4a); }
+      .wrm-overlay.is-night .map-step-action-bar { background: linear-gradient(180deg, rgba(17,19,26,.62), rgba(17,19,26,.96) 34%); }
+      .wrm-overlay.is-night .wrm-dest-chip { background: rgba(25,28,36,.88); color: #fff; }
+      @keyframes wrm-arrive-pulse {
+        0%, 100% { box-shadow: 0 12px 28px rgba(16,92,50,.32); transform: scale(1); }
+        50% { box-shadow: 0 16px 36px rgba(31,122,69,.48); transform: scale(1.01); }
+      }
     `;
     document.head.appendChild(style);
   }

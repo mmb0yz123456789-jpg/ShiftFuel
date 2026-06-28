@@ -329,7 +329,6 @@ const workerOpenStatuses = [
   'inspection_recorded',
   'final_payment_processed',
   'awaiting_key_return',
-  'keys_returned',
   'return_requested',
   'customer_return_requested',
   'cancelled_pending_key_return',
@@ -367,6 +366,10 @@ function hasPickupPhotoSet(request) {
 
 function hasDropoffPhotoSet(request) {
   return String(request?.notes || '').includes('[dropoff_time');
+}
+
+function hasKeysReturnedRecorded(request) {
+  return /\[keys_returned\b|\[return_keys_recorded\b|\[return_fee_charge\b/.test(String(request?.notes || ''));
 }
 
 function isActiveCustomerReturnWorkflow(request) {
@@ -2972,35 +2975,34 @@ function renderWorkerJobActions(request) {
       // recorded, this branch falls through to the first service drive.
       nextAction = 'Inspect the vehicle at pickup before driving to service.';
       activePanel = renderWorkerInspectionPanel(request);
-    } else if (serviceNeedsWash(request)) {
-      // Wash first (covers wash-only AND fuel+wash combos): drive to the car wash.
-      // Service auto-starts on arrival; manual "Start service" stays as a fallback.
-      nextAction = 'Drive to the car wash — service starts automatically when you arrive.';
-      actions.push(workerNavWashButton(request, true));
-      actions.push(`<button class="button secondary worker-update-status" data-id="${escapeHtml(request.id)}" data-status="service_in_progress" type="button">Start service</button>`);
     } else if (serviceNeedsFuel(request)) {
-      // Fuel-only job: drive to the gas station.
+      // Fuel first (covers fuel-only AND fuel+wash combos): drive to the gas station.
+      // Service auto-starts on arrival; manual "Start service" stays as a fallback.
       nextAction = 'Drive to the gas station — service starts automatically when you arrive.';
       actions.push(workerNavStationButton(request, true));
+      actions.push(`<button class="button secondary worker-update-status" data-id="${escapeHtml(request.id)}" data-status="service_in_progress" type="button">Start service</button>`);
+    } else if (serviceNeedsWash(request)) {
+      // Wash-only job: drive to the car wash.
+      nextAction = 'Drive to the car wash — service starts automatically when you arrive.';
+      actions.push(workerNavWashButton(request, true));
       actions.push(`<button class="button secondary worker-update-status" data-id="${escapeHtml(request.id)}" data-status="service_in_progress" type="button">Start service</button>`);
     } else {
       nextAction = 'Start the requested service.';
       actions.push(workerPrimaryStatusButton(request, 'Start service', 'service_in_progress'));
     }
   } else if (request.status === 'service_in_progress') {
-    // One service at a time — car wash FIRST, then fuel. A combo job runs wash →
-    // fuel: the wash leg shows here, and once it's recorded the fuel leg appears
-    // (via the wash_receipt_uploaded step). Nav for each leg sits below "unable".
-    if (serviceNeedsWash(request) && !serviceDoneOrUnable(request, 'wash')) {
-      nextAction = 'Complete the car wash.';
-      actions.push(workerPrimaryStatusButton(request, `Wash complete â€” ${request.wash_package_label || 'selected wash'}`, 'car_wash_complete'));
-      actions.push(workerServiceUnableButton(request, 'wash'));
-      actions.push(workerNavWashButton(request));
-    } else if (serviceNeedsFuel(request) && !serviceDoneOrUnable(request, 'fuel')) {
+    // One service at a time: fuel first, then car wash. A combo job runs fuel
+    // before wash so the wash is the final appearance step before return.
+    if (serviceNeedsFuel(request) && !serviceDoneOrUnable(request, 'fuel')) {
       nextAction = 'Complete the fuel service.';
       actions.push(workerPrimaryStatusButton(request, `Fuel complete â€” ${request.fuel_type || 'fuel'}`, 'fueling_complete'));
       actions.push(workerServiceUnableButton(request, 'fuel'));
       actions.push(workerNavStationButton(request));
+    } else if (serviceNeedsWash(request) && !serviceDoneOrUnable(request, 'wash')) {
+      nextAction = 'Complete the car wash.';
+      actions.push(workerPrimaryStatusButton(request, `Wash complete â€” ${request.wash_package_label || 'selected wash'}`, 'car_wash_complete'));
+      actions.push(workerServiceUnableButton(request, 'wash'));
+      actions.push(workerNavWashButton(request));
     }
   } else if (request.status === 'fueling_complete') {
     nextAction = `Upload the fuel receipt and enter the total for ${request.fuel_type || 'the selected fuel type'}.`;
@@ -3024,11 +3026,11 @@ function renderWorkerJobActions(request) {
     // Service + receipt entry done — drive the car back. Same for fuel, car wash,
     // OR combo: the worker always drove the vehicle to a facility (gas station /
     // The Car Spa), so it always needs the navigated return. Nav auto-marks
-    // returned on arrival; the manual "Vehicle returned" button stays as a fallback.
+    // arrival at the service address; the manual button stays as a fallback.
     // ('service_complete' is only reachable by jobs created before this change.)
     nextAction = 'Drive the vehicle back to the service address — it marks returned automatically when you arrive.';
     actions.push(workerNavReturnButton(request, true));
-    actions.push(`<button class="button secondary worker-update-status" data-id="${escapeHtml(request.id)}" data-status="returned_location_pending" type="button">Vehicle returned</button>`);
+    actions.push(`<button class="button secondary worker-update-status" data-id="${escapeHtml(request.id)}" data-status="returned_location_pending" type="button">I'm back at the service address</button>`);
   } else if (request.status === 'returned_location_pending') {
     nextAction = 'Record where the vehicle was returned before return photos.';
     activePanel = renderWorkerReturnLocationPanel(request);
@@ -3085,7 +3087,7 @@ function renderWorkerJobActions(request) {
 }
 
 function workerServiceUnableButton(request, type) {
-  const label = type === 'fuel' ? 'Fuel unable' : 'Car wash unable';
+  const label = type === 'fuel' ? "Can't complete fuel" : "Can't complete wash";
   return `<button class="button danger show-service-unable" data-id="${escapeHtml(request.id)}" data-service-type="${escapeHtml(type)}" type="button">${label}</button>`;
 }
 
@@ -4481,11 +4483,21 @@ async function submitWorkerKeysReturned(button) {
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) {
+      if (/not awaiting key return/i.test(String(data.error || ''))) {
+        if (statusEl) statusEl.textContent = 'Keys already recorded. Refreshing...';
+        allWorkerJobs = allWorkerJobs.filter((job) => job.id !== id);
+        button.closest('.worker-current-job-card, .worker-schedule-card, .worker-job-card, .request-card')?.remove();
+        await loadWorkerJobs();
+        await loadWorkerReviews();
+        return;
+      }
       button.disabled = false;
       button.textContent = 'Keys returned';
       if (statusEl) statusEl.textContent = `Error: ${data.error || 'Could not save. Please try again.'}`;
       return;
     }
+    allWorkerJobs = allWorkerJobs.filter((job) => job.id !== id);
+    button.closest('.worker-current-job-card, .worker-schedule-card, .worker-job-card, .request-card')?.remove();
     await loadWorkerJobs();
     await loadWorkerReviews();
   } catch (err) {
@@ -5440,7 +5452,7 @@ loadVehiclePsiGuides().finally(loadWorkerProfile);
       await originalSendWorkerToCustomerPayment(button);
 
       // If the capture succeeded, worker.js reloads jobs. Move the row back into the worker queue as Awaiting key return.
-      if (id && request && request.status !== 'awaiting_key_return') {
+      if (id && request && request.status !== 'awaiting_key_return' && !hasKeysReturnedRecorded(request)) {
         const timestamp = new Date().toISOString();
         const note = `[payment_captured_key_return_needed ${timestamp}] Final payment captured. Worker must return keys before the request is marked complete.`;
         const notes = request.notes ? `${request.notes}\n${note}` : note;
@@ -5465,7 +5477,7 @@ loadVehiclePsiGuides().finally(loadWorkerProfile);
       const request = Array.isArray(allWorkerJobs) ? allWorkerJobs.find((item) => item.id === id) : null;
       await originalCompleteWorkerRequest(button);
 
-      if (id && request && request.status !== 'awaiting_key_return') {
+      if (id && request && request.status !== 'awaiting_key_return' && !hasKeysReturnedRecorded(request)) {
         const timestamp = new Date().toISOString();
         const note = `[totals_confirmed_key_return_needed ${timestamp}] Worker confirmed final totals. Keys must be returned before the request is marked complete.`;
         const notes = request.notes ? `${request.notes}\n${note}` : note;
