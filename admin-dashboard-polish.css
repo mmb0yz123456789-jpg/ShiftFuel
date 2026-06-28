@@ -251,6 +251,19 @@
 .pricing-mix-table input { width: 100%; min-width: 64px; padding: 6px 8px; }
 .pricing-mix-table .mix-na { color: #9bb0ab; text-align: center; }
 
+/* ---- Fuel + Wash bundle: live "Save X%" preview in the Services accordion ---- */
+.bundle-savings-preview { margin-top: 8px; }
+.bundle-savings-badge {
+  display: inline-block;
+  padding: 4px 12px;
+  border-radius: 999px;
+  background: #e8f7ee;
+  color: #137a3f;
+  font-weight: 800;
+  font-size: 0.85rem;
+  letter-spacing: 0.02em;
+}
+
 /* ---- GPS-verified route map (ticket detail proof) ------- */
 .ticket-route-proof {
   margin: 4px 0 6px;

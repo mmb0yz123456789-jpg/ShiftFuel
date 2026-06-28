@@ -7795,7 +7795,7 @@ function renderServicesSettingsList() {
   list.innerHTML = `
     <p class="tbp-intro" style="margin-bottom:12px">Each service is its own section. Tags show who each amount touches: <span class="tbp-tag tbp-tag-customer">customer pays</span> = on the customer's bill · <span class="tbp-tag tbp-tag-worker">worker earns</span> = paid to the driver.</p>
 
-    <details class="svc-acc" open>
+    <details class="svc-acc">
       <summary class="svc-acc-head"><span>⛽ Fuel</span>${chevron}</summary>
       <div class="svc-acc-body">
             <div class="pricing-group-grid">
@@ -7828,6 +7828,16 @@ function renderServicesSettingsList() {
               <label>Car wash time (min)<input id="sp-wash-time" type="number" step="1" min="0"><span class="tbp-hint">Flat minutes for a car wash (billed via the time rate).</span></label>
               <label>Wash detour free miles<input id="sp-wash-detour-free" type="number" step="0.5" min="0"><span class="tbp-hint">First N round-trip wash miles are free to the customer (the driver is still paid for every mile).</span></label>
             </div>
+          </div>
+        </details>
+
+        <details class="svc-acc">
+          <summary class="svc-acc-head"><span>🎁 Fuel + Wash bundle</span>${chevron}</summary>
+          <div class="svc-acc-body">
+            <div class="pricing-group-grid">
+              <label>Combined service fee ($) <span class="tbp-tag tbp-tag-customer">customer pays</span><input id="sp-combined-fee" type="number" step="0.01" min="0"><span class="tbp-hint">Charged instead of the fuel + wash service fees when a customer books both. Set $0 to turn the bundle off.</span></label>
+            </div>
+            <div id="sp-bundle-savings" class="bundle-savings-preview" aria-live="polite"></div>
           </div>
         </details>
 
@@ -7982,9 +7992,21 @@ function runPricingSimulator() {
   // Rates come from the simulator's own editable inputs (pre-filled from saved
   // settings), so the sandbox is self-contained and a blank settings form can't
   // zero it out. Defaults fall back to the loaded pricing constants.
-  const fuelFee = needsFuel ? simNum('sim-fuel-fee', BASE_FUEL_SERVICE_FEE) : 0;
-  const washFee = needsWash ? simNum('sim-wash-fee', BASE_WASH_SERVICE_FEE) : 0;
+  let fuelFee = needsFuel ? simNum('sim-fuel-fee', BASE_FUEL_SERVICE_FEE) : 0;
+  let washFee = needsWash ? simNum('sim-wash-fee', BASE_WASH_SERVICE_FEE) : 0;
   const inspFee = quick ? simNum('sim-insp-fee', BASE_QUICK_INSPECTION_FEE) : 0;
+  // Fuel + Wash bundle combined fee (from the Services form; 0 = off). Keep the
+  // raw, ungated fuel/wash fees so the annual mix-planner can cost each job type on
+  // its own (its "both" rows apply the bundle per-row). The single-scenario sim
+  // below uses the bundle-adjusted fees when both services are on.
+  const simCombinedFee = simNum('sp-combined-fee', 0);
+  const rawFuelFee = simNum('sim-fuel-fee', BASE_FUEL_SERVICE_FEE);
+  const rawWashFee = simNum('sim-wash-fee', BASE_WASH_SERVICE_FEE);
+  const simBundleFull = fuelFee + washFee;
+  if (needsFuel && needsWash && simCombinedFee > 0 && simCombinedFee < simBundleFull) {
+    fuelFee = roundMoneyValue(fuelFee * (simCombinedFee / simBundleFull));
+    washFee = roundMoneyValue(simCombinedFee - fuelFee);
+  }
   const washPrice = needsWash ? simNum(document.getElementById('sim-wash-pkg')?.value || 'sp-wash-buff-shine', 0) : 0;
   const companyRate = simNum('sim-company-rate', adminCompanyTimeRatePerMin);
   // Time params still come from the Time-Based Pay settings (rarely changed).
@@ -8098,8 +8120,18 @@ function runPricingSimulator() {
   if (goalOut) {
     // Per-job company net + worker pay for one service type at a given fee scale.
     const jobEconomics = (nF, nW, gal, staMi, washMi, scale) => {
-      const fF = (nF ? fuelFee : 0) * scale;
-      const wF = (nW ? washFee : 0) * scale;
+      let fF = (nF ? rawFuelFee : 0) * scale;
+      let wF = (nW ? rawWashFee : 0) * scale;
+      // Fuel + Wash jobs use the bundle combined fee (scaled with the goal-seek so
+      // the discount % holds as fees move). Mirrors the booking/server scaling.
+      if (nF && nW) {
+        const full = fF + wF;
+        const comb = simCombinedFee * scale;
+        if (comb > 0 && comb < full) {
+          fF = roundMoneyValue(fF * (comb / full));
+          wF = roundMoneyValue(comb - fF);
+        }
+      }
       const sMin = (nF ? fuelBaseMin + fuelPerGalMin * gal : 0) + (nW ? washTimeMin : 0);
       const tCharge = roundMoneyValue(sMin * companyRate);
       const staSur = nF ? roundMoneyValue(staMi * perMileRate) : 0;
@@ -8172,6 +8204,7 @@ function runPricingSimulator() {
 ['input', 'change'].forEach((evt) => document.addEventListener(evt, (event) => {
   const id = event.target?.id || '';
   if (id.startsWith('sim-') || id.startsWith('sp-') || id.startsWith('mix-')) runPricingSimulator();
+  if (id === 'sp-fuel-fee' || id === 'sp-wash-fee' || id === 'sp-combined-fee') updateBundleSavingsPreview();
 }));
 
 // Gather the time-comp pricing params for admin_update_service_pricing. Falls back
@@ -8190,7 +8223,33 @@ function timeCompPricingParams() {
     p_fuel_fee_share: v('sp-fuel-share', 50) / 100,
     p_wash_fee_share: v('sp-wash-share', 50) / 100,
     p_quick_care_fee_share: v('sp-quick-share', 50) / 100,
+    // Fuel + Wash bundle combined fee (0 = off).
+    p_combined_service_fee: v('sp-combined-fee', 0),
   };
+}
+
+// Live "Save X%" preview in the Bundle accordion, so the admin sees the discount
+// the customer will see as they tweak the fuel/wash/combined fees. Same math as
+// booking-flow.js updateBundleBadges.
+function updateBundleSavingsPreview() {
+  const out = document.getElementById('sp-bundle-savings');
+  if (!out) return;
+  const num = (id) => Number(document.getElementById(id)?.value);
+  const fuel = Number.isFinite(num('sp-fuel-fee')) ? num('sp-fuel-fee') : 0;
+  const wash = Number.isFinite(num('sp-wash-fee')) ? num('sp-wash-fee') : 0;
+  const combined = Number.isFinite(num('sp-combined-fee')) ? num('sp-combined-fee') : 0;
+  const full = fuel + wash;
+  if (combined <= 0) {
+    out.innerHTML = `<p class="sim-note">Bundle off — customers booking both pay the full ${money(full)} (fuel ${money(fuel)} + wash ${money(wash)}).</p>`;
+    return;
+  }
+  if (combined >= full) {
+    out.innerHTML = `<p class="sim-note">⚠️ Combined fee (${money(combined)}) is not below fuel + wash (${money(full)}), so there's no saving — the bundle won't apply. Lower it to discount.</p>`;
+    return;
+  }
+  const pct = Math.round((1 - combined / full) * 100);
+  out.innerHTML = `<div class="bundle-savings-badge">Customers save ${pct}%</div>
+    <p class="sim-note">Booking both = ${money(combined)} instead of ${money(full)} (saves ${money(roundMoneyValue(full - combined))}). The "Save ${pct}%" badge shows on the Fuel + Car Wash option.</p>`;
 }
 
 function showPricingPendingBanner(fuelData, pricingData) {
@@ -8322,6 +8381,7 @@ async function loadServicePricing() {
     if (v('sp-fuel-share')) v('sp-fuel-share').value = Math.round(Number(data.fuel_fee_share ?? 0.5) * 100);
     if (v('sp-wash-share')) v('sp-wash-share').value = Math.round(Number(data.wash_fee_share ?? 0.5) * 100);
     if (v('sp-quick-share')) v('sp-quick-share').value = Math.round(Number(data.quick_care_fee_share ?? 0.5) * 100);
+    if (v('sp-combined-fee')) v('sp-combined-fee').value = Number(data.combined_service_fee ?? 0).toFixed(2);
     if (v('sp-wash-buff-shine')) v('sp-wash-buff-shine').value = Number(data.wash_buff_shine_price).toFixed(2);
     if (v('sp-wash-shine-protect')) v('sp-wash-shine-protect').value = Number(data.wash_shine_protect_price).toFixed(2);
     if (v('sp-wash-shine')) v('sp-wash-shine').value = Number(data.wash_shine_price).toFixed(2);
@@ -8339,6 +8399,7 @@ async function loadServicePricing() {
     if (v('sim-wash-share')) v('sim-wash-share').value = Math.round(Number(data.wash_fee_share ?? 0.5) * 100);
     if (v('sim-insp-share')) v('sim-insp-share').value = Math.round(Number(data.quick_care_fee_share ?? 0.5) * 100);
     if (typeof runPricingSimulator === 'function') runPricingSimulator();
+    if (typeof updateBundleSavingsPreview === 'function') updateBundleSavingsPreview();
     return data;
   } catch {
     // Non-fatal — form keeps its defaults.

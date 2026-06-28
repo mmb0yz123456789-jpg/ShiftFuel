@@ -374,6 +374,21 @@ function isActiveCustomerReturnWorkflow(request) {
     && !['awaiting_key_return', 'keys_returned', 'complete', 'canceled_return_completed'].includes(request?.status);
 }
 
+// Once the worker taps "Start service" the job is committed — a return-request that
+// slips in (race) is DEFERRED: the worker finishes the in-progress service and
+// records its receipt first, then the cancel/return surfaces. These are the
+// "actively servicing / just finished, recording" statuses; once a receipt is
+// saved (wash_receipt_uploaded / fuel_receipt_uploaded / receipts_recorded) the
+// cancel surfaces. (Combo: only the in-progress service is finished, not the next.)
+const WORKER_CANCEL_DEFER_STATUSES = new Set([
+  'service_in_progress', 'fueling_in_progress', 'car_wash_in_progress',
+  'car_wash_after_fuel_in_progress', 'fueling_after_wash_in_progress',
+  'fueling_complete', 'car_wash_complete', 'fuel_and_wash_complete',
+]);
+function workerCancelDeferredMidService(request) {
+  return WORKER_CANCEL_DEFER_STATUSES.has(request?.status);
+}
+
 function workerJobBelongsToCurrentEmployee(job) {
   if (!currentEmployee) return false;
 
@@ -2861,7 +2876,9 @@ function renderWorkerJobActions(request) {
   const actions = [];
   let activePanel = '';
   let nextAction = '';
-  const hasReturnRequest = isActiveCustomerReturnWorkflow(request);
+  // Defer a return-request while the worker is actively mid-service — they finish
+  // and record the in-progress service first; the cancel surfaces once it's done.
+  const hasReturnRequest = isActiveCustomerReturnWorkflow(request) && !workerCancelDeferredMidService(request);
 
   if (hasReturnRequest) {
     const returnBanner = `
@@ -4076,7 +4093,11 @@ async function saveWorkerFinalTotal(button) {
   // receipt drives to the gas station; the final receipt drives the car back.
   const newStatus = updates.status;
   const updatedJob = allWorkerJobs.find((item) => item.id === id);
-  if (updatedJob && window.ShiftFuelRouteMap?.open) {
+  // If a return-request was deferred during this service, DON'T auto-open the next
+  // service leg now that it's recorded — let the cancel/return workflow surface so
+  // the worker returns the vehicle instead of starting the next service.
+  const cancelNowPending = updatedJob && isActiveCustomerReturnWorkflow(updatedJob);
+  if (updatedJob && !cancelNowPending && window.ShiftFuelRouteMap?.open) {
     if (newStatus === 'wash_receipt_uploaded' && serviceNeedsFuel(updatedJob)) {
       window.ShiftFuelRouteMap.open(updatedJob, 'station');
     } else if (newStatus === 'fuel_receipt_uploaded' && serviceNeedsWash(updatedJob)) {

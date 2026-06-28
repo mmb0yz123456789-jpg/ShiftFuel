@@ -344,16 +344,31 @@ const CANCELLATION_MODAL_COPY = {
   accepted: "Are you sure you want to cancel this request? No cancellation fee will be charged.",
   key_received: "Are you sure you want to cancel this request? A $15 cancellation fee applies because your key has already been received.",
 };
-const CANCELLATION_MODAL_COPY_SERVICE_STARTED = "Are you sure you want to cancel this request? A $15 cancellation fee, Stripe processing fee, and any submitted receipt totals for services already started or completed may apply.";
+const CANCELLATION_MODAL_COPY_SERVICE_STARTED = "Are you sure you want to cancel? Your specialist has your vehicle and is heading to the service. A $15 cancellation fee plus any costs already incurred may apply. (Once the service itself begins, it can no longer be cancelled.)";
+// Worker has the vehicle and is en route to the service but HASN'T started it yet
+// — still cancelable (fee + costs).
 const CANCELLATION_SERVICE_STARTED_STATUSES = new Set([
-  'vehicle_picked_up', 'fueling_in_progress', 'car_wash_in_progress', 'service_in_progress',
-  'partial_service_complete', 'pickup_vehicle_photo_uploaded', 'pickup_odometer_photo_uploaded',
-  'pickup_fuel_gauge_photo_uploaded', 'fueling_complete', 'fuel_receipt_uploaded',
-  'car_wash_complete', 'wash_receipt_uploaded', 'car_wash_after_fuel_in_progress',
-  'fueling_after_wash_in_progress', 'wash_receipt_after_fuel_uploaded', 'fuel_receipt_after_wash_uploaded',
-  'service_complete', 'receipts_recorded',
+  'vehicle_picked_up', 'pickup_vehicle_photo_uploaded', 'pickup_odometer_photo_uploaded',
+  'pickup_fuel_gauge_photo_uploaded',
 ]);
+// Once the service is actually underway (or done) it can't be cancelled — the
+// specialist finishes it and the customer is charged for the completed service.
+const CANCELLATION_SERVICE_STARTED_BLOCKED_MSG = "Your specialist has already started the service, so it can't be cancelled now. They'll finish it and you'll be charged for the completed service.";
 const CANCELLATION_BLOCKED_MESSAGES = {
+  service_in_progress: CANCELLATION_SERVICE_STARTED_BLOCKED_MSG,
+  fueling_in_progress: CANCELLATION_SERVICE_STARTED_BLOCKED_MSG,
+  car_wash_in_progress: CANCELLATION_SERVICE_STARTED_BLOCKED_MSG,
+  partial_service_complete: CANCELLATION_SERVICE_STARTED_BLOCKED_MSG,
+  fueling_complete: CANCELLATION_SERVICE_STARTED_BLOCKED_MSG,
+  fuel_receipt_uploaded: CANCELLATION_SERVICE_STARTED_BLOCKED_MSG,
+  car_wash_complete: CANCELLATION_SERVICE_STARTED_BLOCKED_MSG,
+  wash_receipt_uploaded: CANCELLATION_SERVICE_STARTED_BLOCKED_MSG,
+  car_wash_after_fuel_in_progress: CANCELLATION_SERVICE_STARTED_BLOCKED_MSG,
+  fueling_after_wash_in_progress: CANCELLATION_SERVICE_STARTED_BLOCKED_MSG,
+  wash_receipt_after_fuel_uploaded: CANCELLATION_SERVICE_STARTED_BLOCKED_MSG,
+  fuel_receipt_after_wash_uploaded: CANCELLATION_SERVICE_STARTED_BLOCKED_MSG,
+  service_complete: CANCELLATION_SERVICE_STARTED_BLOCKED_MSG,
+  receipts_recorded: CANCELLATION_SERVICE_STARTED_BLOCKED_MSG,
   vehicle_returned: "This request can no longer be cancelled because the vehicle has already been returned.",
   complete: "This request is already complete.",
   denied: "This request has already been denied.",
@@ -2322,6 +2337,7 @@ function renderPendingCompletionCard(request) {
             <span>I agree that ShiftFuel Concierge may pick up, service, and return my vehicle using the instructions I provided.</span>
           </label>
           <p class="field-help">By booking, you agree to provide accurate vehicle, key, parking, fuel, and service instructions. ShiftFuel documents pickup and return condition with photos and will contact you if a requested service cannot be completed.</p>
+          <p class="field-help">You may cancel before your specialist begins the service (a $15 fee applies once your key has been received). Once the service itself has started, it can no longer be cancelled and you will be charged for the completed service.</p>
           <p class="field-help">The amount shown before payment is an authorization hold only. ShiftFuel captures the final amount after service is completed based on actual receipts and selected services, and any unused hold is released by your card issuer. Online card authorizations are typically valid for about 7 days; after final capture or release, your bank or credit card company may take a few business days to show the final amount or released hold on your account.</p>
         </fieldset>
 

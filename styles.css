@@ -6955,6 +6955,25 @@ legend {
   margin-left: auto;
 }
 
+/* Fuel + Wash bundle "Save X%" badge on the service-selection card. */
+.bundle-save-badge {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: #e8f7ee;
+  color: #137a3f;
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  vertical-align: middle;
+  white-space: nowrap;
+}
+
+.bundle-save-badge[hidden] {
+  display: none;
+}
+
 /* File upload controls */
 
 .file-button-control {

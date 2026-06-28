@@ -194,7 +194,7 @@ const stepCopy = {
       <div class="choice-grid">
         <label class="choice-card"><input data-required type="radio" name="serviceType" value="fuel"><span><strong>Fuel Fill-Up</strong><small>Fuel service only.</small></span></label>
         <label class="choice-card"><input data-required type="radio" name="serviceType" value="wash"><span><strong>Car Wash</strong><small>Car wash service only.</small></span></label>
-        <label class="choice-card"><input data-required type="radio" name="serviceType" value="fuel_wash"><span><strong>Fuel + Car Wash</strong><small>Bundle both services.</small></span></label>
+        <label class="choice-card"><input data-required type="radio" name="serviceType" value="fuel_wash"><span><strong>Fuel + Car Wash <span class="bundle-save-badge" data-bundle-badge hidden></span></strong><small>Bundle both services.</small></span></label>
       </div>
       <label class="choice-card booking-addon-card">
         <input type="checkbox" name="quickCare" value="quick-care">
@@ -290,6 +290,10 @@ let PRICE_PER_GALLON = 3.799;
 let FUEL_SERVICE_FEE = 15;
 let CAR_WASH_SERVICE_FEE = 15;
 let QUICK_CARE_FEE = 5;
+// Fuel + Wash bundle combined service fee. 0 = bundle off (pay both fees
+// separately). When set and cheaper than fuel + wash fees, both base fees scale
+// down to sum to this; see calculateTotals + the "Save X%" badge.
+let COMBINED_SERVICE_FEE = 0;
 // Time-comp rates (from public_get_service_pricing). timeRatePerMin defaults to 0
 // so the customer fee is unchanged until the admin sets it — safe to deploy first.
 const TIME_COMP_RATES = {
@@ -343,6 +347,7 @@ async function loadLivePricing() {
       FUEL_SERVICE_FEE = Number(serviceData.fuel_service_fee);
       CAR_WASH_SERVICE_FEE = Number(serviceData.wash_service_fee);
       QUICK_CARE_FEE = Number(serviceData.quick_inspection_fee);
+      COMBINED_SERVICE_FEE = Number(serviceData.combined_service_fee) || 0;
       // Time-comp rates. timeRatePerMin stays 0 (off) unless the column exists + is set.
       TIME_COMP_RATES.timeRatePerMin = Number(serviceData.time_rate_per_min) || 0;
       if (serviceData.fuel_time_base_min != null) TIME_COMP_RATES.fuelBaseMin = Number(serviceData.fuel_time_base_min);
@@ -360,6 +365,8 @@ async function loadLivePricing() {
   } catch (err) {
     console.error("Could not load live pricing, using defaults:", err);
   }
+  // Pricing may arrive after the flow first rendered — refresh the bundle badge.
+  updateBundleBadges();
 }
 
 const livePricingReady = loadLivePricing();
@@ -489,9 +496,22 @@ function calculateTotals() {
   const fuelEstimate = authorizationFuelGallons * PRICE_PER_GALLON;
   const washPackage = serviceNeedsWash() ? selectedWashPackage() : null;
   const washAmount = washPackage ? washPackage.price : 0;
-  const fuelBaseFee = serviceNeedsFuel() ? FUEL_SERVICE_FEE : 0;
-  const washBaseFee = serviceNeedsWash() ? CAR_WASH_SERVICE_FEE : 0;
+  let fuelBaseFee = serviceNeedsFuel() ? FUEL_SERVICE_FEE : 0;
+  let washBaseFee = serviceNeedsWash() ? CAR_WASH_SERVICE_FEE : 0;
   const quickFee = bookingState.values.quickCare ? QUICK_CARE_FEE : 0;
+  // Fuel + Wash bundle: when both services are booked and a combined service fee is
+  // set that beats paying both fees separately, scale the two base fees down so they
+  // sum to the combined fee. Everything downstream (card recovery, time cost, the
+  // per-fee worker share) then works unchanged and the worker shares the discount
+  // proportionally. MUST mirror api/payments.js calculateBookingAuthorization.
+  const bundleFullFee = fuelBaseFee + washBaseFee;
+  const bundleActive = serviceNeedsFuel() && serviceNeedsWash()
+    && COMBINED_SERVICE_FEE > 0 && COMBINED_SERVICE_FEE < bundleFullFee;
+  const bundleSavingsPct = bundleActive ? Math.round((1 - COMBINED_SERVICE_FEE / bundleFullFee) * 100) : 0;
+  if (bundleActive) {
+    fuelBaseFee = Math.round(fuelBaseFee * (COMBINED_SERVICE_FEE / bundleFullFee) * 100) / 100;
+    washBaseFee = Math.round((COMBINED_SERVICE_FEE - fuelBaseFee) * 100) / 100;
+  }
   // Gas-station distance surcharge only applies to fuel services with a chosen
   // (non-closest) station. The server is authoritative; this mirrors it so the
   // authorized total matches.
@@ -571,7 +591,23 @@ function calculateTotals() {
     recovery,
     netTarget,
     grossBeforeRounding,
+    bundleActive,
+    bundleSavingsPct,
+    combinedServiceFee: COMBINED_SERVICE_FEE,
   };
+}
+
+// Paint the "Save X%" badge on the Fuel + Car Wash option whenever a combined
+// bundle fee beats paying the two fees separately. Pure function of admin pricing,
+// so it just reflects the loaded settings (same math as the admin preview).
+function updateBundleBadges() {
+  const full = (Number(FUEL_SERVICE_FEE) || 0) + (Number(CAR_WASH_SERVICE_FEE) || 0);
+  const active = full > 0 && COMBINED_SERVICE_FEE > 0 && COMBINED_SERVICE_FEE < full;
+  const pct = active ? Math.round((1 - COMBINED_SERVICE_FEE / full) * 100) : 0;
+  document.querySelectorAll("[data-bundle-badge]").forEach((el) => {
+    el.textContent = pct > 0 ? `Save ${pct}%` : "";
+    el.hidden = pct <= 0;
+  });
 }
 
 function timeLabel(hour, minute) {
@@ -3047,6 +3083,8 @@ function renderFlow(root) {
       renderPaymentSummary(panel);
       renderReviewSummary(panel);
     });
+
+    updateBundleBadges();
 
     const activePanel = root.querySelector(".booking-accordion-card.is-active");
     if (activePanel?.dataset.currentStep === "Schedule" && bookingState.values.serviceDate) {

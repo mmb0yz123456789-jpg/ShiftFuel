@@ -116,9 +116,19 @@ function calculateBookingAuthorization(row, opts = {}) {
   const washBase = needsWash ? (BOOKING_WASH_PACKAGES[row.wash_package] || null) : null;
   const washPackage = washBase ? { label: washBase.label, price: num(s.washPrices && s.washPrices[row.wash_package], washBase.price) } : null;
   const washAmount = washPackage ? washPackage.price : 0;
-  const fuelBaseFee = needsFuel ? num(s.fuelServiceFee, BOOKING_FUEL_SERVICE_FEE) : 0;
-  const washBaseFee = needsWash ? num(s.washServiceFee, BOOKING_CAR_WASH_SERVICE_FEE) : 0;
+  let fuelBaseFee = needsFuel ? num(s.fuelServiceFee, BOOKING_FUEL_SERVICE_FEE) : 0;
+  let washBaseFee = needsWash ? num(s.washServiceFee, BOOKING_CAR_WASH_SERVICE_FEE) : 0;
   const quickFee = row.quick_inspection ? num(s.quickInspectionFee, BOOKING_QUICK_CARE_FEE) : 0;
+  // Fuel + Wash bundle: when both services are booked and a combined service fee is
+  // set that beats the two fees separately, scale the base fees down so they sum to
+  // it. MUST mirror booking-flow.js calculateTotals or the price-match rejects the
+  // booking ("Payment total changed").
+  const combinedServiceFee = num(s.combinedServiceFee, 0);
+  const bundleFullFee = fuelBaseFee + washBaseFee;
+  if (needsFuel && needsWash && combinedServiceFee > 0 && combinedServiceFee < bundleFullFee) {
+    fuelBaseFee = roundMoney(fuelBaseFee * (combinedServiceFee / bundleFullFee));
+    washBaseFee = roundMoney(combinedServiceFee - fuelBaseFee);
+  }
   // "Customer choice" gas-station distance surcharge — server-authoritative,
   // never trusted from the client. Folded into the net so it grosses up like
   // every other line item.
@@ -196,10 +206,11 @@ async function getServerPricingSettings(db) {
       'double-wash': BOOKING_WASH_PACKAGES['double-wash'].price,
     },
     timeRatePerMin: 0, fuelTimeBaseMin: 3, fuelTimePerGalMin: 0.5, washTimeMin: 20,
+    combinedServiceFee: 0,
   };
   try {
     const { data } = await db.from('service_pricing_settings')
-      .select('fuel_service_fee,wash_service_fee,quick_inspection_fee,wash_buff_shine_price,wash_shine_protect_price,wash_shine_price,wash_double_wash_price,time_rate_per_min,fuel_time_base_min,fuel_time_per_gallon_min,wash_time_min')
+      .select('fuel_service_fee,wash_service_fee,quick_inspection_fee,wash_buff_shine_price,wash_shine_protect_price,wash_shine_price,wash_double_wash_price,time_rate_per_min,fuel_time_base_min,fuel_time_per_gallon_min,wash_time_min,combined_service_fee')
       .eq('id', 1).maybeSingle();
     if (!data) return fallback;
     const n = (v, d) => (v != null && Number.isFinite(Number(v)) ? Number(v) : d);
@@ -217,6 +228,7 @@ async function getServerPricingSettings(db) {
       fuelTimeBaseMin: n(data.fuel_time_base_min, 3),
       fuelTimePerGalMin: n(data.fuel_time_per_gallon_min, 0.5),
       washTimeMin: n(data.wash_time_min, 20),
+      combinedServiceFee: n(data.combined_service_fee, 0),
     };
   } catch (_) {
     return fallback;
@@ -1396,11 +1408,17 @@ const CANCELLATION_BASE_FEE = 15;
 function cancellationOutcomeForStatus(status) {
   const noFeeStatuses = ['pending', 'request_received', 'accepted'];
   const flatFeeStatuses = ['key_received'];
+  // Worker has the vehicle and is en route to the service but HASN'T started it
+  // yet — still cancelable (fee + costs).
   const feePlusCostsStatuses = [
-    'vehicle_picked_up', 'fueling_in_progress', 'car_wash_in_progress',
-    'service_in_progress', 'partial_service_complete',
-    // Existing pickup/fueling/wash sub-statuses also mean service has started.
+    'vehicle_picked_up',
     'pickup_vehicle_photo_uploaded', 'pickup_odometer_photo_uploaded', 'pickup_fuel_gauge_photo_uploaded',
+  ];
+  // Service is actually underway (or done): once "Start service" is tapped it can't
+  // be cancelled — the worker finishes it and the customer is charged for the
+  // completed service. (Worker-side defers any in-flight return-request to here.)
+  const serviceStartedBlocked = [
+    'fueling_in_progress', 'car_wash_in_progress', 'service_in_progress', 'partial_service_complete',
     'fueling_complete', 'fuel_receipt_uploaded', 'car_wash_complete', 'wash_receipt_uploaded',
     'car_wash_after_fuel_in_progress', 'fueling_after_wash_in_progress',
     'wash_receipt_after_fuel_uploaded', 'fuel_receipt_after_wash_uploaded',
@@ -1431,6 +1449,9 @@ function cancellationOutcomeForStatus(status) {
 
   if (blockedMessages[status]) {
     return { cancelable: false, message: blockedMessages[status] };
+  }
+  if (serviceStartedBlocked.includes(status)) {
+    return { cancelable: false, message: "Your specialist has already started the service, so it can't be cancelled now. They'll finish it and you'll be charged for the completed service." };
   }
   if (noFeeStatuses.includes(status)) {
     // Canceled before any key handoff — nothing to return, fully closed.
