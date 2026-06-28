@@ -59,18 +59,27 @@ function clientIp(req) {
   return (fwd ? String(fwd).split(',')[0].trim() : '') || req.socket?.remoteAddress || '0.0.0.0';
 }
 
-// Issuing cardholders must accept the card-program terms before ANY card can be
-// activated/used — without it Stripe reports "outstanding requirements". SANDBOX:
-// we record acceptance here so cards work. LIVE: the worker must genuinely accept
-// (surface a terms step in their app, like the Connect payout onboarding).
-async function acceptCardholderTerms(stripe, cardholderId, ip) {
-  try {
-    await stripe.issuing.cardholders.update(cardholderId, {
-      individual: { card_issuing: { user_terms_acceptance: { date: Math.floor(Date.now() / 1000), ip: ip || '0.0.0.0' } } },
-    });
-  } catch (err) {
-    console.warn('[fuel-cards] cardholder terms acceptance failed:', err.message);
-  }
+// The individual details Stripe Issuing requires before a card can be issued/used:
+// a split first/last name and acceptance of the card-program terms (without these
+// Stripe reports "outstanding requirements"). SANDBOX: we record acceptance here so
+// cards work. LIVE: the worker must genuinely accept (surface a terms step in their
+// app, like the Connect payout onboarding).
+function cardholderIndividual(employee, ip) {
+  const parts = String(employee.full_name || '').trim().split(/\s+/).filter(Boolean);
+  const first = parts[0] || 'ShiftFuel';
+  const last = parts.length > 1 ? parts.slice(1).join(' ') : (parts[0] || 'Worker');
+  return {
+    first_name: first,
+    last_name: last,
+    card_issuing: { user_terms_acceptance: { date: Math.floor(Date.now() / 1000), ip: ip || '0.0.0.0' } },
+  };
+}
+
+// Backfill an EXISTING cardholder with the required name + terms so its
+// outstanding requirements clear and cards can be issued/activated.
+async function syncCardholder(stripe, employee, ip) {
+  if (!employee.stripe_cardholder_id) return;
+  await stripe.issuing.cardholders.update(employee.stripe_cardholder_id, { individual: cardholderIndividual(employee, ip) });
 }
 
 // Workers may only read their OWN card; admins may target anyone.
@@ -104,7 +113,7 @@ async function ensureCardholder(stripe, db, employee, ip) {
   // An existing cardholder may predate terms acceptance — record it now so cards
   // can be activated/used.
   if (employee.stripe_cardholder_id) {
-    await acceptCardholderTerms(stripe, employee.stripe_cardholder_id, ip);
+    await syncCardholder(stripe, employee, ip);
     return employee.stripe_cardholder_id;
   }
 
@@ -114,7 +123,7 @@ async function ensureCardholder(stripe, db, employee, ip) {
     email: employee.email || undefined,
     phone_number: toE164(employee.phone),
     billing: { address: companyBillingAddress() },
-    individual: { card_issuing: { user_terms_acceptance: { date: Math.floor(Date.now() / 1000), ip: ip || '0.0.0.0' } } },
+    individual: cardholderIndividual(employee, ip),
     metadata: { employee_id: employee.id, source: 'shiftfuel' },
   });
 
@@ -136,7 +145,9 @@ const HANDLERS = {
     const db = getSupabaseAdmin();
     const employee = await loadEmployee(db, body.employee_id);
     if (!employee) return res.status(404).json({ error: 'Worker not found' });
+    const stripe = getStripe();
     if (employee.stripe_card_id) {
+      if (employee.stripe_cardholder_id) await syncCardholder(stripe, employee, clientIp(req));
       return res.status(200).json({
         card_id: employee.stripe_card_id,
         last4: employee.stripe_card_last4,
@@ -145,7 +156,6 @@ const HANDLERS = {
       });
     }
 
-    const stripe = getStripe();
     const cardholderId = await ensureCardholder(stripe, db, employee, clientIp(req));
 
     // If Stripe still needs more before a card can be issued (e.g. DOB, name, ID),
@@ -332,7 +342,7 @@ const HANDLERS = {
     const stripe = getStripe();
     // Clear the cardholder's terms-acceptance requirement first, otherwise Stripe
     // refuses to activate ("outstanding requirements").
-    if (employee.stripe_cardholder_id) await acceptCardholderTerms(stripe, employee.stripe_cardholder_id, clientIp(req));
+    if (employee.stripe_cardholder_id) await syncCardholder(stripe, employee, clientIp(req));
     const card = await stripe.issuing.cards.update(employee.stripe_phys_card_id, { status: 'active' });
     await db
       .from('employees')

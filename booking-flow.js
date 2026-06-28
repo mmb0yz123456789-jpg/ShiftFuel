@@ -696,7 +696,7 @@ function availableTimeOptions() {
 
 // Earliest-pickup options: plain 30-minute slots across the service window (it's a
 // soft "keys available from" bound, not a capacity-gated slot). Past times on the
-// service date are disabled.
+// service date are omitted so customers don't see lapsed choices.
 function pickupTimeOptions() {
   const selectedDate = bookingState.values.serviceDate || "";
   const isToday = selectedDate === todayValue();
@@ -707,7 +707,7 @@ function pickupTimeOptions() {
       if (hour === 22 && minute > 0) continue;
       const value = timeValue(hour, minute);
       const past = isToday && new Date(`${selectedDate || todayValue()}T${value}:00`) <= now;
-      opts.push({ value, label: timeLabel(hour, minute), disabled: past });
+      if (!past) opts.push({ value, label: timeLabel(hour, minute), disabled: false });
     }
   }
   return opts;

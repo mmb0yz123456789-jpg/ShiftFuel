@@ -190,7 +190,7 @@
             Re-center
           </button>
 
-          <div class="wrm-bottom">
+          <div class="wrm-bottom map-step-action-bar">
             <span class="wrm-eta"></span>
             <button class="wrm-start-service" type="button" hidden>Start service</button>
           </div>
@@ -574,7 +574,6 @@
       const spdLimit = speedWidget.querySelector('.wrm-speed-limit');
       if (spdLimit) spdLimit.hidden = true;
     }
-    if (startBtn) startBtn.hidden = true;
     toggleRecenter(false);
     stopNavWatch();
     nav = null;
@@ -698,8 +697,8 @@
       .wrm-overlay[hidden] { display: none; }
       .wrm-dialog { width: 100%; height: 100%; position: relative; overflow: hidden; background: #11131a; }
       /* Full-bleed: the map fills the screen; everything else floats over it. */
-      .wrm-map-wrap { position: absolute; inset: 0; }
-      .wrm-map { width: 100%; height: 100%; background: #11131a; }
+      .wrm-map-wrap { position: absolute; inset: 0; overflow: visible; }
+      .wrm-map { position: absolute; inset: 0; z-index: 0; width: 100%; height: 100%; background: #11131a; }
       .wrm-puck { width: 36px; height: 36px; }
       /* Floating maneuver banner (top). */
       .wrm-banner { position: absolute; top: calc(env(safe-area-inset-top) + 12px); left: 12px; right: 12px; z-index: 4;
@@ -737,12 +736,32 @@
         background: #fff; color: #0d3b3b; font-weight: 800; font-size: .85rem;
         box-shadow: 0 4px 14px rgba(0,0,0,.3); cursor: pointer; }
       .wrm-recenter[hidden] { display: none; }
-      /* Bottom floating area: ETA pill + the always-present Start button. */
-      .wrm-bottom { position: absolute; left: 12px; right: 12px; bottom: calc(env(safe-area-inset-bottom) + 14px); z-index: 4;
-        display: flex; flex-direction: column; align-items: stretch; gap: 10px; }
+      /* Bottom fixed action area: force the step button above Mapbox layers. */
+      .map-step-action-bar {
+        position: fixed;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        z-index: 9999;
+        padding: 12px 16px calc(12px + env(safe-area-inset-bottom));
+        background: rgba(255, 255, 255, 0.96);
+        box-shadow: 0 -8px 24px rgba(0,0,0,0.16);
+        display: flex;
+        flex-direction: column;
+        align-items: stretch;
+        gap: 10px;
+        box-sizing: border-box;
+      }
       .wrm-eta { align-self: flex-start; background: rgba(20,20,26,.85); color: #fff; font-weight: 700;
         font-size: .85rem; padding: 7px 14px; border-radius: 999px; box-shadow: 0 4px 14px rgba(0,0,0,.3); }
-      .wrm-start-service { width: 100%; padding: 17px; border: none; border-radius: 16px;
+      .map-step-action-bar button {
+        width: 100%;
+        min-height: 52px;
+        border-radius: 16px;
+        font-size: 16px;
+        font-weight: 700;
+      }
+      .wrm-start-service { padding: 17px; border: none;
         background: #1f7a45; color: #fff; font-weight: 800; font-size: 1.08rem;
         box-shadow: 0 10px 28px rgba(0,0,0,.42); cursor: pointer; }
       .wrm-start-service:active { transform: scale(.99); }
