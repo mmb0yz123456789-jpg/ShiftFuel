@@ -841,12 +841,12 @@
         box-shadow: 0 4px 14px rgba(0,0,0,.35); }
       .wrm-close[hidden] { display: none; }
       /* Recenter — round-ish floating button on the right, above the bottom bar. */
-      .wrm-recenter { position: absolute; right: 14px; bottom: calc(env(safe-area-inset-bottom) + 116px); z-index: 4;
-        display: inline-flex; align-items: center; gap: 6px; padding: 11px 16px; border-radius: 999px; border: none;
+      .wrm-recenter { position: absolute; left: 16px; bottom: calc(env(safe-area-inset-bottom) + 118px); z-index: 4;
+        max-width: calc(100vw - 92px); display: inline-flex; align-items: center; gap: 6px; padding: 11px 16px; border-radius: 999px; border: none;
         background: #fff; color: #0d3b3b; font-weight: 800; font-size: .85rem;
         box-shadow: 0 4px 14px rgba(0,0,0,.3); cursor: pointer; }
       .wrm-recenter[hidden] { display: none; }
-      .wrm-bottom-close { position: fixed; right: 16px; bottom: calc(env(safe-area-inset-bottom) + 128px); z-index: 10000;
+      .wrm-bottom-close { position: fixed; right: 16px; bottom: calc(env(safe-area-inset-bottom) + 126px); z-index: 10000;
         width: 42px; height: 42px; border-radius: 999px; border: none; cursor: pointer;
         background: rgba(20,20,26,.86); color: #fff; display: inline-flex; align-items: center; justify-content: center;
         box-shadow: 0 8px 22px rgba(0,0,0,.28); backdrop-filter: blur(10px); }

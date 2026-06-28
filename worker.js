@@ -2422,19 +2422,29 @@ function renderWorkerDashboardToday(focusJobs, upcomingJobs) {
     container.innerHTML = '<div class="worker-state-card worker-state-empty"><p>No jobs scheduled today. You’re all caught up.</p></div>';
     return;
   }
-  const focusHtml = focusJobs.map(renderWorkerCurrentJobCard).join('');
+  const focusHtml = focusJobs.length
+    ? focusJobs.map(renderWorkerCurrentJobCard).join('')
+    : '<div class="worker-state-card worker-state-empty"><p>No jobs scheduled today. You’re all caught up.</p></div>';
   const upcomingHtml = upcomingJobs.length ? `
-    <div class="worker-upcoming-block">
-      <h3 class="worker-upcoming-heading">Upcoming &middot; ${upcomingJobs.length}</h3>
-      ${upcomingJobs.map(renderWorkerUpcomingRow).join('')}
-    </div>` : '';
+    <details class="worker-upcoming-block worker-upcoming-accordion">
+      <summary class="worker-upcoming-summary">
+        <span>Upcoming Jobs</span>
+        <strong>${upcomingJobs.length}</strong>
+      </summary>
+      <div class="worker-upcoming-list">
+        ${upcomingJobs.map(renderWorkerUpcomingRow).join('')}
+      </div>
+    </details>` : '';
   container.innerHTML = focusHtml + upcomingHtml;
 }
 
 // Quiet, action-free row for a claimed job you can't start yet (one job at a time).
 function renderWorkerUpcomingRow(request) {
   const initial = escapeHtml(((request.customer_name || 'C').trim().charAt(0) || 'C').toUpperCase());
-  const when = workerReturnByLabel(request);
+  const today = new Date().toISOString().slice(0, 10);
+  const day = request.service_date && request.service_date !== today ? workerFormatScheduleDate(request.service_date) : '';
+  const returnBy = workerReturnByLabel(request);
+  const when = [day, returnBy].filter(Boolean).join(' · ');
   const sub = [workerVehicleSummary(request), request.service_label || request.service_type]
     .filter(Boolean).map(escapeHtml).join(' &middot; ');
   const address = workerFormatAddress(request);
@@ -3690,6 +3700,7 @@ async function loadWorkerJobs(silent = false) {
   // Completed today comes from a separate source — the open-requests RPC excludes
   // completed jobs, so this card would otherwise always be empty.
   const completedToday = await loadWorkerCompletedToday();
+  const today = new Date().toISOString().slice(0, 10);
 
   const profileIncomplete = !currentEmployee.phone;
 
@@ -3702,12 +3713,20 @@ async function loadWorkerJobs(silent = false) {
   //  • pendingAccepted  = jobs you've accepted but NOT started yet (status 'accepted').
   // While you have a job needing action you can't start or claim another, so the
   // dashboard shows ONE focus card with actions and the rest as a quiet Upcoming list.
-  const activeJobs = claimedJobs.filter((job) => workerProgressStepForStatus(job.status) >= 2);
-  const pendingAccepted = claimedJobs.filter((job) => workerProgressStepForStatus(job.status) < 2);
-  const needsAction = [...cancelledReturnJobs, ...activeJobs];
+  const todayClaimedJobs = claimedJobs.filter((job) => job.service_date === today);
+  const futureClaimedJobs = claimedJobs.filter((job) => job.service_date && job.service_date > today);
+  const todayCancelledReturnJobs = cancelledReturnJobs.filter((job) => job.service_date === today);
+  const activeJobs = todayClaimedJobs.filter((job) => workerProgressStepForStatus(job.status) >= 2);
+  const pendingAccepted = todayClaimedJobs.filter((job) => workerProgressStepForStatus(job.status) < 2);
+  const needsAction = [...todayCancelledReturnJobs, ...activeJobs];
   const hasActiveJob = needsAction.length > 0;
+  const hasBlockingActiveJob = cancelledReturnJobs.length > 0
+    || claimedJobs.some((job) => workerProgressStepForStatus(job.status) >= 2);
   const focusJobs = hasActiveJob ? needsAction : pendingAccepted.slice(0, 1);
-  const upcomingJobs = hasActiveJob ? pendingAccepted : pendingAccepted.slice(1);
+  const upcomingJobs = [
+    ...(hasActiveJob ? pendingAccepted : pendingAccepted.slice(1)),
+    ...futureClaimedJobs,
+  ];
 
   workerJobList.innerHTML = `
     ${profileIncomplete ? `
@@ -3718,8 +3737,8 @@ async function loadWorkerJobs(silent = false) {
       </div>
     ` : ''}
     <section class="worker-jobs-section">
-      <h3>Available to Claim${(!hasActiveJob && availableJobs.length) ? ` (${availableJobs.length})` : ''}</h3>
-      ${hasActiveJob
+      <h3>Available to Claim${(!hasBlockingActiveJob && availableJobs.length) ? ` (${availableJobs.length})` : ''}</h3>
+      ${hasBlockingActiveJob
         ? `<div class="worker-state-card worker-state-empty"><p>Finish your current job before claiming another.</p></div>`
         : (availableJobs.length
           ? renderWorkerJobTable(availableJobs, 'available')
@@ -3731,7 +3750,7 @@ async function loadWorkerJobs(silent = false) {
   `;
 
   renderWorkerDashboardToday(focusJobs, upcomingJobs);
-  renderWorkerUpcomingSchedule(pendingAccepted);
+  renderWorkerUpcomingSchedule(claimedJobs);
   renderWorkerEarnings(completedToday);
   renderWorkerTodayCounts({
     // The job you're handling now (the focus card) counts as Accepted — unless it's
@@ -3740,7 +3759,7 @@ async function loadWorkerJobs(silent = false) {
     accepted: focusJobs.filter((job) => job.status !== 'cancelled_pending_key_return').length,
     upcoming: upcomingJobs.length,
     completed: completedToday.length,
-    cancelled: cancelledReturnJobs.length,
+    cancelled: todayCancelledReturnJobs.length,
   });
   updateWorkerProgressTimeline(myJobs);
 

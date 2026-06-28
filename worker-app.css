@@ -347,11 +347,55 @@
   font-weight: 800 !important;
 }
 
-/* ---- Upcoming list on the dashboard (jobs you can't start until the current one is done) ---- */
+/* ---- Upcoming list on the dashboard (claimed jobs outside the active Today card) ---- */
 .worker-portal-page .worker-upcoming-block { margin-top: 16px; }
-.worker-portal-page .worker-upcoming-heading {
-  font-size: 0.78rem !important; text-transform: uppercase; letter-spacing: 0.05em;
-  color: #8a9893; margin: 0 0 8px !important;
+.worker-portal-page .worker-upcoming-accordion {
+  border: 1px solid rgba(13, 59, 59, 0.1);
+  border-radius: 14px;
+  background: #fff;
+  box-shadow: 0 8px 22px rgba(13, 59, 59, 0.06);
+  overflow: hidden;
+}
+.worker-portal-page .worker-upcoming-summary {
+  list-style: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 50px;
+  padding: 0 14px;
+  color: #123c38;
+  font-size: 0.9rem;
+  font-weight: 800;
+  cursor: pointer;
+}
+.worker-portal-page .worker-upcoming-summary::-webkit-details-marker { display: none; }
+.worker-portal-page .worker-upcoming-summary::after {
+  content: '';
+  width: 8px;
+  height: 8px;
+  border-right: 2px solid #6c7d79;
+  border-bottom: 2px solid #6c7d79;
+  transform: rotate(45deg);
+  transition: transform 0.18s ease;
+}
+.worker-portal-page .worker-upcoming-accordion[open] .worker-upcoming-summary::after {
+  transform: rotate(225deg);
+}
+.worker-portal-page .worker-upcoming-summary strong {
+  margin-left: auto;
+  min-width: 28px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: #eef6f1;
+  color: #147a5a;
+  font-size: 0.82rem;
+}
+.worker-portal-page .worker-upcoming-list {
+  padding: 0 12px 12px;
 }
 .worker-portal-page .worker-upcoming-row {
   display: grid !important;
@@ -364,6 +408,7 @@
   padding: 12px 14px !important;
   margin-bottom: 10px !important;
 }
+.worker-portal-page .worker-upcoming-list .worker-upcoming-row:last-child { margin-bottom: 0 !important; }
 .worker-portal-page .worker-upcoming-row { align-items: start !important; }
 .worker-portal-page .worker-upcoming-main { display: grid; gap: 3px; min-width: 0; }
 .worker-portal-page .worker-upcoming-main .worker-card-sub { color: #60716d; font-size: 0.85rem; }
