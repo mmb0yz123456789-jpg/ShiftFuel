@@ -272,16 +272,17 @@
     refreshGpsPanels();
   }
 
+  // GPS now runs silently in the background (it streams the worker's location to
+  // the customer). The old always-on "Live GPS tracking" panel is gone — we only
+  // surface a prompt when location is actually OFF (denied/blocked), so the worker
+  // can re-enable it; otherwise there's nothing to show.
   function panelHtml(request) {
-    const active = activeWatches.has(request.id);
     return `
-      <section class="gps-tracking-panel${active ? ' is-tracking' : ''}" data-request-id="${request.id}">
-        <h4>Live GPS tracking</h4>
-        <p class="field-help">Required — your phone GPS stays on until the key/vehicle is returned.</p>
-        <div class="admin-button-row" ${active ? 'hidden' : ''}>
-          <button class="button primary start-gps-tracking" data-request-id="${request.id}" type="button">Resume GPS tracking</button>
+      <section class="gps-tracking-panel gps-blocked" data-request-id="${request.id}">
+        <p class="gps-tracking-status field-help">Location sharing is off — the customer can't see your live location. Turn location on, then tap Resume.</p>
+        <div class="admin-button-row">
+          <button class="button primary start-gps-tracking" data-request-id="${request.id}" type="button">Resume location</button>
         </div>
-        <p class="gps-tracking-status field-help">${active ? 'GPS tracking is active for this request.' : 'GPS tracking is required — tap Resume if it does not start automatically.'}</p>
       </section>
     `;
   }
@@ -301,13 +302,15 @@
         return;
       }
 
-      if (!existing) {
+      // Only show the prompt when location is genuinely blocked; otherwise keep the
+      // card clean and let GPS run in the background.
+      const blocked = blockedRequests.has(request.id);
+      if (!blocked) {
+        if (existing) existing.remove();
+      } else if (!existing) {
         const guided = card.querySelector('.guided-step');
         if (guided) guided.insertAdjacentHTML('afterend', panelHtml(request));
         else card.insertAdjacentHTML('beforeend', panelHtml(request));
-      } else {
-        const row = existing.querySelector('.admin-button-row');
-        if (row) row.hidden = activeWatches.has(request.id);
       }
 
       // Mandatory tracking: keep GPS on for the whole active job. Resume it if it is not

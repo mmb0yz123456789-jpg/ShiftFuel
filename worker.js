@@ -2844,11 +2844,17 @@ function filePicker(label, className, extraAttributes = '', accept = 'image/*') 
   return `
     <label class="file-button-control">
       <span>${escapeHtml(label)}</span>
-      <input class="${className}" ${extraAttributes} type="file" accept="${accept}">
-      <span class="button primary file-button-text">Choose file</span>
-      <span class="selected-file-name">No file chosen</span>
+      <input class="${className}" ${extraAttributes} type="file" accept="${accept}" capture="environment">
+      <span class="button primary file-button-text">Take photo</span>
+      <span class="selected-file-name">No photo yet</span>
     </label>
   `;
+}
+
+// Inspection now happens at pickup; it's detected by its note (the status no
+// longer carries it). Mirrors how receipts/coords are read from notes.
+function hasInspectionRecorded(request) {
+  return /Quick inspection recorded/i.test(String(request?.notes || ''));
 }
 
 function renderWorkerJobActions(request) {
@@ -2912,7 +2918,12 @@ function renderWorkerJobActions(request) {
   } else if (request.status === 'vehicle_picked_up') {
     // Gateway: worker confirms they are beginning the service.
     // The customer tracker advances to "Service in progress" after this click.
-    if (serviceNeedsWash(request)) {
+    if (request.quick_inspection && !hasInspectionRecorded(request)) {
+      // Inspection happens at pickup now (before driving to any service). Once it's
+      // recorded, this branch falls through to the first service drive.
+      nextAction = 'Inspect the vehicle at pickup before driving to service.';
+      activePanel = renderWorkerInspectionPanel(request);
+    } else if (serviceNeedsWash(request)) {
       // Wash first (covers wash-only AND fuel+wash combos): drive to the car wash.
       // Service auto-starts on arrival; manual "Start service" stays as a fallback.
       nextAction = 'Drive to the car wash — service starts automatically when you arrive.';
@@ -2984,13 +2995,11 @@ function renderWorkerJobActions(request) {
     nextAction = 'Upload the return photo set below.';
     activePanel = renderWorkerPhotoPanel(request, 'dropoff');
   } else if (request.status === 'vehicle_returned') {
-    if (request.quick_inspection) {
-      nextAction = 'Complete inspection if selected, otherwise process final payment.';
-      actions.push(workerPrimaryStatusButton(request, 'Vehicle inspection', 'inspection_needed'));
-    } else {
-      nextAction = 'Confirm the saved totals, then capture the final payment automatically.';
-      activePanel = renderWorkerCompletePanel(request);
-    }
+    // Car is back → drive to meet the customer for keys (auto-opens after the last
+    // return photo). The final step confirms totals, documents who got the keys,
+    // and captures payment + completes — all in one.
+    nextAction = 'Return the keys to the customer, then capture payment to finish.';
+    activePanel = renderWorkerFinalKeysPanel(request);
   } else if (request.status === 'inspection_needed') {
     nextAction = 'Complete the vehicle inspection below.';
     activePanel = renderWorkerInspectionPanel(request);
@@ -3226,40 +3235,93 @@ function renderWorkerInspectionPanel(request) {
 
   const suggested = frontPsi !== '' ? String(frontPsi) : '';
   const echoInit = suggested || '—';
-  // One tire row: the pressure the worker set + a live echo of the confirmed
-  // door-jamb number so they can match each tire to spec.
-  const tireRow = (label, cls) => `
-    <div class="inspection-tire-row">
+  const TOTAL_STEPS = 6;
+  // One tire step: the pressure the worker set + a live echo of the confirmed
+  // door-jamb number so they can match each tire to spec. Shown one at a time
+  // (like the pickup-photo flow) — fill it, tap Next, the following tire appears.
+  const tireStep = (idx, label, cls) => `
+    <div class="inspection-step" data-step="${idx}" hidden>
+      <p class="inspection-step-count">Step ${idx + 1} of ${TOTAL_STEPS}</p>
       <label>${label} — pressure set (PSI)
-        <input class="${cls}" type="number" min="0" step="1" placeholder="${escapeHtml(suggested || '35')}">
+        <input class="${cls}" type="number" min="0" step="1" inputmode="numeric" placeholder="${escapeHtml(suggested || '35')}">
       </label>
       <p class="field-help inspection-doorjamb-ref">Door-jamb target: <strong class="doorjamb-echo">${escapeHtml(echoInit)}</strong> PSI</p>
+      <div class="inspection-step-nav">
+        <button class="button secondary inspection-back" type="button">Back</button>
+        <button class="button primary inspection-next" type="button">Next</button>
+      </div>
     </div>`;
 
   return `
-    <div class="inspection-panel" data-inspection-for="${escapeHtml(request.id)}">
+    <div class="inspection-panel" data-inspection-for="${escapeHtml(request.id)}" data-step-current="0">
       <h4>Quick vehicle inspection</h4>
       <p class="field-help psi-guide-note">${escapeHtml(guideText.replace(/\s+/g, ' ').trim())}</p>
-      <label>Confirm door-jamb PSI (read it off the driver-door sticker)
-        <input class="inspection-doorjamb" type="number" min="0" step="1" value="${escapeHtml(suggested)}" placeholder="35">
-      </label>
-      ${tireRow('Driver front tire', 'inspection-tire-df')}
-      ${tireRow('Passenger front tire', 'inspection-tire-pf')}
-      ${tireRow('Passenger rear tire', 'inspection-tire-pr')}
-      ${tireRow('Driver rear tire', 'inspection-tire-dr')}
-      <label>Diagnosis code
-        <input class="inspection-trouble-code" type="text" placeholder="P0304">
-      </label>
-      <div class="trouble-code-output" aria-live="polite">
-        <p class="field-help">Type a code to preview what the customer will see.</p>
+
+      <div class="inspection-step" data-step="0">
+        <p class="inspection-step-count">Step 1 of ${TOTAL_STEPS}</p>
+        <label>Confirm door-jamb PSI (read it off the driver-door sticker)
+          <input class="inspection-doorjamb" type="number" min="0" step="1" inputmode="numeric" value="${escapeHtml(suggested)}" placeholder="35">
+        </label>
+        <div class="inspection-step-nav">
+          <button class="button primary inspection-next" type="button">Start tires</button>
+        </div>
       </div>
-      <label class="checkbox-label">
-        <input class="inspection-washer-fluid" type="checkbox">
-        <span>Checked / filled windshield washer fluid</span>
-      </label>
-      <button class="button primary save-inspection" data-id="${escapeHtml(request.id)}" type="button">Save inspection details</button>
+
+      ${tireStep(1, 'Driver front tire', 'inspection-tire-df')}
+      ${tireStep(2, 'Passenger front tire', 'inspection-tire-pf')}
+      ${tireStep(3, 'Passenger rear tire', 'inspection-tire-pr')}
+      ${tireStep(4, 'Driver rear tire', 'inspection-tire-dr')}
+
+      <div class="inspection-step" data-step="5" hidden>
+        <p class="inspection-step-count">Step 6 of ${TOTAL_STEPS}</p>
+        <label>Diagnosis code
+          <input class="inspection-trouble-code" type="text" placeholder="P0304">
+        </label>
+        <div class="trouble-code-output" aria-live="polite">
+          <p class="field-help">Type a code to preview what the customer will see.</p>
+        </div>
+        <label class="checkbox-label">
+          <input class="inspection-washer-fluid" type="checkbox">
+          <span>Checked / filled windshield washer fluid</span>
+        </label>
+        <div class="inspection-step-nav">
+          <button class="button secondary inspection-back" type="button">Back</button>
+          <button class="button primary save-inspection" data-id="${escapeHtml(request.id)}" type="button">Save inspection details</button>
+        </div>
+      </div>
     </div>
   `;
+}
+
+// Walk the quick-inspection wizard one field per screen: door-jamb PSI, then each
+// tire, then the diagnosis code. A pressure reading is required before leaving a
+// PSI step so an inspection can't be saved half-empty.
+function advanceInspectionStep(button) {
+  const panel = button.closest('.inspection-panel');
+  if (!panel) return;
+  const steps = Array.from(panel.querySelectorAll('.inspection-step'));
+  if (!steps.length) return;
+  const current = Number(panel.dataset.stepCurrent || 0);
+  const goingNext = button.classList.contains('inspection-next');
+
+  if (goingNext) {
+    const psiInput = steps[current]?.querySelector(
+      '.inspection-doorjamb, .inspection-tire-df, .inspection-tire-pf, .inspection-tire-pr, .inspection-tire-dr'
+    );
+    if (psiInput && !(Number(psiInput.value) > 0)) {
+      alert('Enter the PSI reading for this step before continuing.');
+      psiInput.focus();
+      return;
+    }
+  }
+
+  const next = goingNext
+    ? Math.min(current + 1, steps.length - 1)
+    : Math.max(current - 1, 0);
+  steps.forEach((step, idx) => { step.hidden = idx !== next; });
+  panel.dataset.stepCurrent = String(next);
+  const focusTarget = steps[next]?.querySelector('input:not([type="checkbox"])');
+  if (focusTarget) focusTarget.focus();
 }
 
 // Receipt-confirmation panel shown at service_complete.
@@ -3326,6 +3388,68 @@ function renderWorkerKeysReturnedPanel(request) {
       <p class="keys-returned-status form-status"></p>
     </div>
   `;
+}
+
+// Final step of a normal job: at the key hand-off, confirm the receipt totals,
+// document who got the keys, and capture payment — all together. Carries the
+// .complete-panel class so the existing capture validation/handlers work on it.
+function renderWorkerFinalKeysPanel(request) {
+  const receiptTotals = receiptTotalsFromNotes(request);
+  const customerName = escapeHtml(request.customer_name || 'Customer');
+  return `
+    <div class="complete-panel keys-final-panel" data-complete-for="${escapeHtml(request.id)}" data-keys-for="${escapeHtml(request.id)}">
+      <h4>Return keys &amp; finish</h4>
+      <p class="field-help">Confirm the totals, note who got the keys, then capture payment to complete the job.</p>
+      <div class="request-details">
+        ${serviceNeedsFuel(request) ? `<p><strong>Fuel receipt total:</strong> ${money(receiptTotals.fuel)}</p>` : ''}
+        ${serviceNeedsWash(request) ? `<p><strong>Car wash receipt total:</strong> ${money(receiptTotals.wash)}</p>` : ''}
+      </div>
+      <label class="checkbox-label">
+        <input class="confirm-complete-totals" type="checkbox">
+        <span>I confirm the saved receipt totals are correct.</span>
+      </label>
+      <label>Keys returned to
+        <select class="key-returned-to-type">
+          <option value="">Select recipient</option>
+          <option value="customer">Customer - ${customerName}</option>
+          <option value="other">Other person or location</option>
+        </select>
+      </label>
+      <label class="key-returned-other-wrap" hidden>
+        Person or location
+        <input class="key-returned-other-name" type="text" placeholder="e.g. Security desk, Front desk, Ashley Smith">
+      </label>
+      <div class="admin-button-row">
+        <button class="button primary worker-keys-capture" data-id="${escapeHtml(request.id)}" type="button">Capture payment &amp; finish</button>
+        ${serviceNeedsFuel(request) ? `<button class="button secondary show-total-edit" data-id="${escapeHtml(request.id)}" data-edit-total="fuel" type="button">Fuel Incorrect</button>` : ''}
+        ${serviceNeedsWash(request) ? `<button class="button secondary show-total-edit" data-id="${escapeHtml(request.id)}" data-edit-total="wash" type="button">Car Wash Incorrect</button>` : ''}
+      </div>
+      <div class="total-edit-panel" data-total-edit-for="${escapeHtml(request.id)}" hidden></div>
+      <p class="keys-returned-status form-status"></p>
+    </div>
+  `;
+}
+
+// Final "Keys returned" action: document the recipient, then run the existing,
+// tested capture (or no-capture) path which validates totals + inspection and
+// completes the job.
+async function workerKeysCapture(button) {
+  const id = button.dataset.id;
+  const request = allWorkerJobs.find((item) => item.id === id);
+  const panel = button.closest('.keys-final-panel');
+  if (!request || !panel) return;
+  const type = panel.querySelector('.key-returned-to-type')?.value;
+  const otherName = (panel.querySelector('.key-returned-other-name')?.value || '').trim();
+  if (!type) { alert('Select who the keys were returned to.'); return; }
+  if (type === 'other' && !otherName) { alert('Enter who or where the keys were returned to.'); return; }
+  const recipient = type === 'customer' ? `the customer (${request.customer_name || 'customer'})` : otherName;
+  if (!/\[keys_returned\b/.test(String(request.notes || ''))) {
+    const note = `[keys_returned] Keys returned to ${recipient}.`;
+    request.notes = request.notes ? `${request.notes}\n${note}` : note;
+  }
+  const needsCapture = request.payment_intent_id && request.payment_status !== 'captured';
+  if (needsCapture) await sendWorkerToCustomerPayment(button);
+  else await completeWorkerRequest(button);
 }
 
 function renderWorkerTotalEditForm(request, type) {
@@ -3715,6 +3839,23 @@ window.ShiftFuelOnNavArrive = function (requestId, destType) {
   }
 };
 
+// Called when the worker taps the nav screen's bottom button — the single exit on
+// every leg. Maps the leg to its forward transition. 'handoff' just closes the map
+// (the keys-returned panel is already on the card to document who got the keys).
+window.ShiftFuelOnNavAction = function (requestId, destType) {
+  const job = allWorkerJobs.find((j) => j.id === requestId);
+  if (!job) return;
+  if (destType === 'address' && job.status === 'accepted') {
+    updateWorkerJobStatus(requestId, 'key_received').catch((err) => console.warn('Key received failed:', err));
+  } else if (destType === 'wash' || destType === 'station') {
+    if (['vehicle_picked_up', 'wash_receipt_uploaded', 'fuel_receipt_uploaded'].includes(job.status)) {
+      updateWorkerJobStatus(requestId, 'service_in_progress').catch((err) => console.warn('Start service failed:', err));
+    }
+  } else if (destType === 'return' && job.status === 'receipts_recorded') {
+    updateWorkerJobStatus(requestId, 'returned_location_pending').catch((err) => console.warn('Vehicle returned failed:', err));
+  }
+};
+
 async function saveWorkerServiceUnable(button) {
   const id = button.dataset.id;
   const panel = button.closest('.service-unable-panel');
@@ -3851,14 +3992,20 @@ async function uploadWorkerPhotoSet(button) {
   if (error) throw error;
   await loadWorkerJobs();
 
-  // Pickup photos done → take the worker straight into navigation to the first
-  // service destination (gas station, or car wash for wash-only). Arriving there
-  // auto-starts the service (see ShiftFuelOnNavArrive).
-  if (panel.dataset.photoStage === 'pickup' && window.ShiftFuelRouteMap?.open) {
-    const updated = allWorkerJobs.find((item) => item.id === id) || request;
+  const updated = allWorkerJobs.find((item) => item.id === id) || request;
+  // Pickup photos done → drive to the first service. BUT if an inspection is due,
+  // it happens first (the card shows it); the service nav opens after the
+  // inspection is saved (see saveWorkerInspection).
+  if (panel.dataset.photoStage === 'pickup' && window.ShiftFuelRouteMap?.open
+      && !(updated.quick_inspection && !hasInspectionRecorded(updated))) {
     // Car wash first (covers combos); fall back to the gas station for fuel-only.
-    if (serviceNeedsWash(request)) window.ShiftFuelRouteMap.open(updated, 'wash');
-    else if (serviceNeedsFuel(request)) window.ShiftFuelRouteMap.open(updated, 'station');
+    if (serviceNeedsWash(updated)) window.ShiftFuelRouteMap.open(updated, 'wash');
+    else if (serviceNeedsFuel(updated)) window.ShiftFuelRouteMap.open(updated, 'station');
+  }
+  // Return (drop-off) photos done → drive to where we met the customer to hand the
+  // keys back. The "Keys returned" leg's button captures payment + completes.
+  if (panel.dataset.photoStage === 'dropoff' && updated.status === 'vehicle_returned' && window.ShiftFuelRouteMap?.open) {
+    window.ShiftFuelRouteMap.open(updated, 'handoff');
   }
 }
 
@@ -3924,6 +4071,20 @@ async function saveWorkerFinalTotal(button) {
 
   if (error) throw error;
   await loadWorkerJobs();
+
+  // Receipt recorded → auto-open the next nav leg (mirrors pickup→wash): a wash
+  // receipt drives to the gas station; the final receipt drives the car back.
+  const newStatus = updates.status;
+  const updatedJob = allWorkerJobs.find((item) => item.id === id);
+  if (updatedJob && window.ShiftFuelRouteMap?.open) {
+    if (newStatus === 'wash_receipt_uploaded' && serviceNeedsFuel(updatedJob)) {
+      window.ShiftFuelRouteMap.open(updatedJob, 'station');
+    } else if (newStatus === 'fuel_receipt_uploaded' && serviceNeedsWash(updatedJob)) {
+      window.ShiftFuelRouteMap.open(updatedJob, 'wash');
+    } else if (newStatus === 'receipts_recorded' && serviceNeedsFuel(updatedJob)) {
+      window.ShiftFuelRouteMap.open(updatedJob, 'return');
+    }
+  }
 }
 
 async function saveWorkerReturnLocation(button) {
@@ -4017,14 +4178,28 @@ async function saveWorkerInspection(button) {
   ].join(' ');
   const notes = request.notes ? `${request.notes}\n${note}` : note;
 
+  // Inspection is a pickup step now — record the note and stay at vehicle_picked_up
+  // so the card falls through to the first service drive. (Old jobs that reached the
+  // legacy inspection_needed status still advance to inspection_recorded.)
+  const pData = { notes };
+  if (request.status === 'inspection_needed') pData.status = 'inspection_recorded';
+
   const { error } = await workerDb.rpc('worker_update_request', {
     p_token: SESSION_WORKER_TOKEN,
     p_request_id: id,
-    p_data: { notes, status: 'inspection_recorded' },
+    p_data: pData,
   });
 
   if (error) throw error;
   await loadWorkerJobs();
+
+  // Inspection done at pickup → drive to the first service (wash first for combos,
+  // else the gas station). Mirrors the pickup-photos auto-open.
+  const updated = allWorkerJobs.find((item) => item.id === id) || request;
+  if (updated.status === 'vehicle_picked_up' && window.ShiftFuelRouteMap?.open) {
+    if (serviceNeedsWash(updated)) window.ShiftFuelRouteMap.open(updated, 'wash');
+    else if (serviceNeedsFuel(updated)) window.ShiftFuelRouteMap.open(updated, 'station');
+  }
 }
 
 async function saveWorkerTotalEdit(button) {
@@ -4084,7 +4259,7 @@ function workerCompleteValidation(button) {
     alert('Check the confirmation box after verifying the saved totals.');
     return null;
   }
-  if (request.quick_inspection && request.status !== 'inspection_recorded' && !isReturnWorkflow) {
+  if (request.quick_inspection && !hasInspectionRecorded(request) && !isReturnWorkflow) {
     alert('Complete the quick inspection before completing this request.');
     return null;
   }
@@ -4415,6 +4590,11 @@ document.addEventListener('click', async (event) => {
       return;
     }
 
+    if (button.classList.contains('inspection-next') || button.classList.contains('inspection-back')) {
+      advanceInspectionStep(button);
+      return;
+    }
+
     if (button.classList.contains('save-inspection')) {
       await saveWorkerInspection(button);
       return;
@@ -4478,6 +4658,11 @@ document.addEventListener('click', async (event) => {
       return;
     }
 
+    if (button.classList.contains('worker-keys-capture')) {
+      await workerKeysCapture(button);
+      return;
+    }
+
     if (button.classList.contains('send-to-customer-payment')) {
       await sendWorkerToCustomerPayment(button);
       return;
@@ -4524,7 +4709,7 @@ document.addEventListener('change', (event) => {
   }
 
   if (event.target.matches('.key-returned-to-type')) {
-    const panel = event.target.closest('.keys-returned-panel');
+    const panel = event.target.closest('.keys-returned-panel, .keys-final-panel');
     const otherWrap = panel?.querySelector('.key-returned-other-wrap');
     const otherInput = panel?.querySelector('.key-returned-other-name');
     const isOther = event.target.value === 'other';
@@ -5210,11 +5395,15 @@ loadVehiclePsiGuides().finally(loadWorkerProfile);
         const timestamp = new Date().toISOString();
         const note = `[payment_captured_key_return_needed ${timestamp}] Final payment captured. Worker must return keys before the request is marked complete.`;
         const notes = request.notes ? `${request.notes}\n${note}` : note;
-        await workerDb.rpc('worker_update_request', {
+        // NOTE: supabase rpc() is thenable but has no .catch — it resolves to
+        // { error }. Chaining .catch threw "catch is not a function" and surfaced a
+        // false "Worker job action failed" even though the job completed.
+        const { error: keyReturnError } = await workerDb.rpc('worker_update_request', {
           p_token: SESSION_WORKER_TOKEN,
           p_request_id: id,
           p_data: { status: 'awaiting_key_return', notes, updated_at: timestamp },
-        }).catch((error) => console.warn('Could not move captured job to key return step:', error));
+        });
+        if (keyReturnError) console.warn('Could not move captured job to key return step:', keyReturnError);
         await loadWorkerJobs().catch(() => {});
       }
     };
@@ -5231,11 +5420,12 @@ loadVehiclePsiGuides().finally(loadWorkerProfile);
         const timestamp = new Date().toISOString();
         const note = `[totals_confirmed_key_return_needed ${timestamp}] Worker confirmed final totals. Keys must be returned before the request is marked complete.`;
         const notes = request.notes ? `${request.notes}\n${note}` : note;
-        await workerDb.rpc('worker_update_request', {
+        const { error: keyReturnError } = await workerDb.rpc('worker_update_request', {
           p_token: SESSION_WORKER_TOKEN,
           p_request_id: id,
           p_data: { status: 'awaiting_key_return', notes, updated_at: timestamp },
-        }).catch((error) => console.warn('Could not move completed job to key return step:', error));
+        });
+        if (keyReturnError) console.warn('Could not move completed job to key return step:', keyReturnError);
         await loadWorkerJobs().catch(() => {});
       }
     };

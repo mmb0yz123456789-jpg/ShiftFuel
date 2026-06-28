@@ -25,6 +25,17 @@
   const NAV_PITCH = 62;                   // 3D tilt for the driving view
   const ARRIVE_METERS = 45;               // auto "arrived" radius at the destination
 
+  // Every leg is the same full-screen nav with ONE bottom button = the only exit
+  // (no close). The label is the action for that leg; tapping it runs the matching
+  // transition in worker.js (window.ShiftFuelOnNavAction) and closes the map.
+  const LEG_BUTTON = {
+    address: 'Key received',
+    wash: 'Start service',
+    station: 'Start service',
+    return: 'Vehicle returned',
+    handoff: 'Keys returned',
+  };
+
   let assetsPromise = null;
   let map = null;
   let destMarker = null;
@@ -197,7 +208,7 @@
       const rid = nav?.requestId;
       const dt = nav?.destType;
       closeModal();
-      if (rid && typeof window.ShiftFuelOnNavArrive === 'function') window.ShiftFuelOnNavArrive(rid, dt);
+      if (rid && typeof window.ShiftFuelOnNavAction === 'function') window.ShiftFuelOnNavAction(rid, dt);
     });
     return modal;
   }
@@ -550,9 +561,11 @@
     const closeBtn = modal.querySelector('.wrm-close');
     etaEl.textContent = 'Loading map…';
     banner.hidden = true;
-    // Exit stays available while loading / on the info-only legs; once a "Start
-    // service" action takes over (auto-arrival legs) it becomes the only way out.
-    if (closeBtn) closeBtn.hidden = false;
+    // The leg's contextual button is the ONLY exit (shown immediately, even before
+    // the route loads); no ✕ on any leg.
+    const legLabel = LEG_BUTTON[destType] || '';
+    if (startBtn) { startBtn.textContent = legLabel || 'Done'; startBtn.hidden = !legLabel; }
+    if (closeBtn) closeBtn.hidden = !!legLabel;
     const speedWidget = modal.querySelector('.wrm-speed');
     if (speedWidget) {
       speedWidget.hidden = true;
@@ -660,13 +673,8 @@
       nav.autoArrive = ((isStation || isWash) && request.status === 'vehicle_picked_up')
         || (isReturn && request.status === 'receipts_recorded');
       nav.arrived = false;
-      if (startBtn) {
-        startBtn.textContent = isReturn ? 'Vehicle returned' : 'Start service';
-        startBtn.hidden = !nav.autoArrive;
-      }
-      // On a service-drive leg the floating Start button is the only exit (no top
-      // bar / close, by design). On info-only legs keep the close button.
-      if (closeBtn) closeBtn.hidden = nav.autoArrive;
+      // The leg button + ✕-hidden are already set on open; nav.autoArrive (above)
+      // only governs the GPS auto-advance for the wash/return legs.
       updateBanner(workerLoc);
       const speedWidget = modal.querySelector('.wrm-speed');
       if (speedWidget) speedWidget.hidden = false;

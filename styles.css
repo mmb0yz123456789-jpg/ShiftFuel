@@ -6925,6 +6925,36 @@ legend {
   color: var(--sf-muted);
 }
 
+/* Quick-inspection wizard: one field per screen (door-jamb PSI, then each tire). */
+.inspection-step {
+  display: grid;
+  gap: 12px;
+}
+
+.inspection-step[hidden] {
+  display: none;
+}
+
+.inspection-step-count {
+  margin: 0;
+  font-size: 0.8rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--sf-teal);
+}
+
+.inspection-step-nav {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  margin-top: 4px;
+}
+
+.inspection-step-nav .button.primary {
+  margin-left: auto;
+}
+
 /* File upload controls */
 
 .file-button-control {

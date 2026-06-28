@@ -1511,13 +1511,17 @@ async function verifyReturningCustomer(panel) {
     let options = requestsToReturningOptions(requests);
 
     if (phone && email) {
-      const saved = await window.ShiftFuelSupabase.rpc("public_returning_customer_options", {
-        p_phone: phone,
-        p_email: email,
-      }).catch((savedError) => {
+      let saved = { data: null, error: null };
+      try {
+        saved = await window.ShiftFuelSupabase.rpc("public_returning_customer_options", {
+          p_phone: phone,
+          p_email: email,
+        });
+      } catch (savedError) {
+        // supabase rpc() is thenable with no .catch — wrap so a real throw (network)
+        // is handled and we fall back to the request-derived options below.
         console.warn("Saved returning options lookup failed:", savedError);
-        return { data: null, error: savedError };
-      });
+      }
       if (!saved.error && saved.data) {
         const savedOptions = savedOptionsToReturningOptions(saved.data);
         if (savedOptions.addresses.length || savedOptions.vehicles.length) options = savedOptions;
@@ -3125,17 +3129,20 @@ function renderFlow(root) {
     if (!panel) return;
     savePanelValues(panel);
     if (!["Payment", "Review"].includes(panel.dataset.currentStep)) invalidatePaymentAuthorization();
+    // Any change in Service or Service Details affects the price and/or which later
+    // steps are valid — re-lock every step after this one so the customer re-flows
+    // (and re-authorizes the new amount) instead of landing back on a stale Payment.
+    // Covers service type, fuel type/range, wash package, chosen station, quick care.
+    if (["Service", "Service Details"].includes(panel.dataset.currentStep)) {
+      const stepIdx = Number(panel.dataset.stepIndex);
+      if (Number.isFinite(stepIdx) && unlockedIndex > stepIdx) unlockedIndex = stepIdx;
+    }
     if (event.target.matches('[name="serviceType"]')) {
       bookingState.values.fuelPreference = "";
       bookingState.values.washPackage = "";
       // A non-fuel service has no station surcharge; clear any prior pick.
       if (!serviceNeedsFuel()) resetStationSelection();
-      // Changing the service changes the price AND which details are required, so
-      // re-lock every step after Service — the customer must re-flow through
-      // Service Details → Schedule → Handoff → Payment (and re-authorize the new
-      // amount) instead of jumping back to the stale Payment step.
-      const svcIdx = steps.indexOf("Service");
-      if (svcIdx >= 0 && unlockedIndex > svcIdx) unlockedIndex = svcIdx;
+      // (downstream steps are re-locked by the Service/Service Details guard above)
       renderServiceDetails(panel);
     }
     if (event.target.matches('[name="serviceDate"]')) {

@@ -519,6 +519,11 @@
 .admin-find-result .find-ticket-result-header { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .admin-find-result .find-ticket-name { font-weight: 800; color: var(--admin-ink, #0b2321); }
 .admin-find-result .find-ticket-meta { font-size: 0.82rem; color: #60716d; }
+/* On the Find tab on a phone, show only the search — drop the browse queue card.
+   (Desktop keeps the queue below the search.) */
+@media (max-width: 760px) {
+  body[data-admin-page="requests"] .admin-queue-section { display: none; }
+}
 .tbp-group {
   border: 1px solid var(--admin-line, #e5e7eb); border-radius: 12px;
   padding: 14px 16px; margin-bottom: 14px; border-left-width: 4px;
