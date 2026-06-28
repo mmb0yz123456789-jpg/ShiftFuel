@@ -1330,3 +1330,20 @@
 .wfc-brand { font-size: 0.78rem; font-weight: 800; letter-spacing: 0.04em; color: #a7bfa6; text-transform: uppercase; }
 .wfc-number { margin: 14px 0 12px; font-size: 1.32rem; font-weight: 800; letter-spacing: 0.06em; font-variant-numeric: tabular-nums; }
 .wfc-row { display: flex; justify-content: space-between; font-size: 0.86rem; font-weight: 700; color: #cfe0cf; }
+
+.worker-phys-card-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid #e6ece8;
+}
+.worker-phys-card-row strong { color: #0d3b3b; font-size: 0.95rem; }
+.worker-phys-card-row .field-help { margin: 2px 0 0; }
+.worker-phys-card-row .button { flex: 0 0 auto; width: auto; margin: 0; min-height: 38px; padding: 8px 14px; font-size: 0.85rem; }
+@media (max-width: 480px) {
+  .worker-phys-card-row { flex-direction: column; align-items: stretch; }
+  .worker-phys-card-row .button { width: 100%; }
+}

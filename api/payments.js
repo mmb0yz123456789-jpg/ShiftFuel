@@ -36,6 +36,7 @@ const PAYMENTS_RATE_LIMITS = {
   create_scheduled_booking:  { limit: 20, windowSeconds: 60 },
   create_intent:             { limit: 30, windowSeconds: 60 },
   create_setup_intent:       { limit: 30, windowSeconds: 60 },
+  admin_login:               { limit: 7,  windowSeconds: 900 },
 };
 
 // Actions that should fire a push once the handler has updated the DB. The event
@@ -2694,9 +2695,38 @@ async function handleAdminVoidAuthorization(body, res) {
   }
 }
 
+// Admin login is folded into this router (instead of a separate api/admin-login.js)
+// to stay under the Hobby-plan serverless-function limit. It's per-IP throttled via
+// PAYMENTS_RATE_LIMITS['admin_login'] and mints the session through the
+// service-role-only admin_create_session RPC (so the anon key can't brute force it).
+async function handleAdminLogin(body, res) {
+  const { username_hash, password_hash } = body;
+  if (typeof username_hash !== 'string' || typeof password_hash !== 'string'
+      || !username_hash || !password_hash) {
+    return res.status(400).json({ error: 'Missing credentials' });
+  }
+  try {
+    const db = getSupabaseAdmin();
+    const { data: token, error } = await db.rpc('admin_create_session', {
+      p_username_hash: username_hash,
+      p_password_hash: password_hash,
+    });
+    if (error) {
+      if ((error.message || '').includes('ACCOUNT_LOCKED')) return res.status(423).json({ error: 'ACCOUNT_LOCKED' });
+      return res.status(401).json({ error: 'INVALID_CREDENTIALS' });
+    }
+    if (!token) return res.status(401).json({ error: 'INVALID_CREDENTIALS' });
+    return res.status(200).json({ token });
+  } catch (err) {
+    console.error('[payments/admin_login] error:', err.message);
+    return res.status(500).json({ error: 'Login failed. Please try again.' });
+  }
+}
+
 // ── Main router ───────────────────────────────────────────────────────────────
 
 const HANDLERS = {
+  admin_login:                       handleAdminLogin,
   admin_list_pending_authorizations: handleAdminListPendingAuthorizations,
   admin_list_reauth_needed:          handleAdminListReauthNeeded,
   admin_retry_scheduled_auth:        handleAdminRetryScheduledAuth,

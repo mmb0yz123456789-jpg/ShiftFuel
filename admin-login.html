@@ -179,13 +179,14 @@
       message.textContent = "Signing in...";
 
       try {
-        // Login now goes through /api/admin-login, which throttles brute force
-        // PER IP. The raw password never leaves the browser — only the SHA-256
-        // hashes are sent, same as before.
-        const resp = await fetch("/api/admin-login", {
+        // Login goes through the /api/payments router (action: admin_login), which
+        // throttles brute force PER IP. Folded into that function to stay under the
+        // Vercel Hobby serverless-function limit. The raw password never leaves the
+        // browser — only the SHA-256 hashes are sent, same as before.
+        const resp = await fetch("/api/payments", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ username_hash: usernameHash, password_hash: passwordHash }),
+          body: JSON.stringify({ action: "admin_login", username_hash: usernameHash, password_hash: passwordHash }),
         });
         const result = await resp.json().catch(() => ({}));
 

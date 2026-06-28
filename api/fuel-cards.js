@@ -67,11 +67,18 @@ async function resolveCaller(token, requestedEmployeeId) {
 async function loadEmployee(db, employeeId) {
   const { data, error } = await db
     .from('employees')
-    .select('id, full_name, email, phone, stripe_cardholder_id, stripe_card_id, stripe_card_last4, stripe_card_status')
+    .select('id, full_name, email, phone, stripe_cardholder_id, stripe_card_id, stripe_card_last4, stripe_card_status, stripe_phys_card_id, stripe_phys_card_last4, stripe_phys_card_status')
     .eq('id', employeeId)
     .maybeSingle();
   if (error) throw new Error(error.message);
   return data;
+}
+
+function perTxnCapFrom(card) {
+  return (card.spending_controls
+    && card.spending_controls.spending_limits
+    && card.spending_controls.spending_limits[0]
+    && card.spending_controls.spending_limits[0].amount / 100) || null;
 }
 
 async function ensureCardholder(stripe, db, employee) {
@@ -143,6 +150,7 @@ const HANDLERS = {
   },
 
   // ── Worker (own) or admin: card details for the in-profile display ────────
+  // Returns both the virtual (online) card and the physical (pump) card.
   async card_details(req, body, res) {
     const caller = await resolveCaller(body.caller_token, body.employee_id);
     if (!caller || !caller.employeeId) return res.status(401).json({ error: 'Unauthorized' });
@@ -150,56 +158,146 @@ const HANDLERS = {
     const db = getSupabaseAdmin();
     const employee = await loadEmployee(db, caller.employeeId);
     if (!employee) return res.status(404).json({ error: 'Worker not found' });
-    if (!employee.stripe_card_id) return res.status(200).json({ has_card: false });
 
     const stripe = getStripe();
-    // Expanding number+cvc only works in TEST mode; in live it's silently omitted.
-    let card;
-    try {
-      card = await stripe.issuing.cards.retrieve(employee.stripe_card_id, { expand: ['number', 'cvc'] });
-    } catch (err) {
-      card = await stripe.issuing.cards.retrieve(employee.stripe_card_id);
+    const sync = {};
+
+    // Virtual card — expand number/cvc (TEST mode only) so it can be displayed.
+    let virtual = { has_card: false };
+    if (employee.stripe_card_id) {
+      let card;
+      try {
+        card = await stripe.issuing.cards.retrieve(employee.stripe_card_id, { expand: ['number', 'cvc'] });
+      } catch (err) {
+        card = await stripe.issuing.cards.retrieve(employee.stripe_card_id);
+      }
+      if (card.status && card.status !== employee.stripe_card_status) sync.stripe_card_status = card.status;
+      virtual = {
+        has_card: true,
+        card_id: card.id,
+        brand: card.brand,
+        last4: card.last4,
+        exp_month: card.exp_month,
+        exp_year: card.exp_year,
+        status: card.status,
+        number: card.number || null,
+        cvc: card.cvc || null,
+        per_transaction_cap: perTxnCapFrom(card),
+      };
     }
 
-    // Keep the stored status in sync.
-    if (card.status && card.status !== employee.stripe_card_status) {
-      await db.from('employees').update({ stripe_card_status: card.status }).eq('id', employee.id);
+    // Physical card — no PAN displayed (it's printed on the card).
+    let physical = { has_card: false };
+    if (employee.stripe_phys_card_id) {
+      const card = await stripe.issuing.cards.retrieve(employee.stripe_phys_card_id);
+      if (card.status && card.status !== employee.stripe_phys_card_status) sync.stripe_phys_card_status = card.status;
+      physical = {
+        has_card: true,
+        card_id: card.id,
+        brand: card.brand,
+        last4: card.last4,
+        status: card.status,
+        per_transaction_cap: perTxnCapFrom(card),
+      };
     }
 
-    return res.status(200).json({
-      has_card: true,
-      card_id: card.id,
-      brand: card.brand,
-      last4: card.last4,
-      exp_month: card.exp_month,
-      exp_year: card.exp_year,
-      status: card.status,
-      number: card.number || null, // present in test mode only
-      cvc: card.cvc || null,        // present in test mode only
-      per_transaction_cap: (card.spending_controls
-        && card.spending_controls.spending_limits
-        && card.spending_controls.spending_limits[0]
-        && card.spending_controls.spending_limits[0].amount / 100) || null,
-    });
+    if (Object.keys(sync).length) await db.from('employees').update(sync).eq('id', employee.id);
+
+    // Keep the legacy top-level virtual fields for backward compatibility.
+    return res.status(200).json({ ...virtual, virtual, physical });
   },
 
-  // ── ADMIN: freeze / unfreeze ──────────────────────────────────────────────
+  // ── ADMIN: freeze / unfreeze (virtual by default, or physical) ────────────
   async set_card_status(req, body, res) {
     const isAdmin = await verifyAdminToken(body.caller_token);
     if (!isAdmin) return res.status(401).json({ error: 'Unauthorized' });
     if (!body.employee_id) return res.status(400).json({ error: 'Missing employee_id' });
 
+    const which = body.which === 'physical' ? 'physical' : 'virtual';
     const status = body.status === 'inactive' ? 'inactive' : 'active';
     const db = getSupabaseAdmin();
     const employee = await loadEmployee(db, body.employee_id);
     if (!employee) return res.status(404).json({ error: 'Worker not found' });
-    if (!employee.stripe_card_id) return res.status(400).json({ error: 'Worker has no card to update.' });
+
+    const cardId = which === 'physical' ? employee.stripe_phys_card_id : employee.stripe_card_id;
+    if (!cardId) return res.status(400).json({ error: 'Worker has no card to update.' });
 
     const stripe = getStripe();
-    const card = await stripe.issuing.cards.update(employee.stripe_card_id, { status });
+    const card = await stripe.issuing.cards.update(cardId, { status });
+    const col = which === 'physical' ? 'stripe_phys_card_status' : 'stripe_card_status';
+    const tsCol = which === 'physical' ? 'stripe_phys_card_updated_at' : 'stripe_card_updated_at';
+    await db.from('employees').update({ [col]: card.status, [tsCol]: new Date().toISOString() }).eq('id', employee.id);
+
+    return res.status(200).json({ status: card.status, which });
+  },
+
+  // ── ADMIN: order a physical card mailed to the company address ────────────
+  async order_physical_card(req, body, res) {
+    const isAdmin = await verifyAdminToken(body.caller_token);
+    if (!isAdmin) return res.status(401).json({ error: 'Unauthorized' });
+    if (!body.employee_id) return res.status(400).json({ error: 'Missing employee_id' });
+
+    const db = getSupabaseAdmin();
+    const employee = await loadEmployee(db, body.employee_id);
+    if (!employee) return res.status(404).json({ error: 'Worker not found' });
+    if (employee.stripe_phys_card_id) {
+      return res.status(200).json({
+        card_id: employee.stripe_phys_card_id,
+        last4: employee.stripe_phys_card_last4,
+        status: employee.stripe_phys_card_status,
+        already_existed: true,
+      });
+    }
+
+    const stripe = getStripe();
+    const cardholderId = await ensureCardholder(stripe, db, employee);
+    const capDollars = Number(body.per_transaction_cap) > 0 ? Number(body.per_transaction_cap) : DEFAULT_PER_TXN_CAP;
+
+    // Physical cards are created `inactive` and ship to the address below; they
+    // get activated once received. They carry the same fuel/wash + cap controls.
+    const card = await stripe.issuing.cards.create({
+      cardholder: cardholderId,
+      currency: 'usd',
+      type: 'physical',
+      shipping: {
+        name: employee.full_name || 'ShiftFuel Worker',
+        address: companyBillingAddress(),
+      },
+      spending_controls: {
+        allowed_categories: FUEL_WASH_CATEGORIES,
+        spending_limits: [{ amount: Math.round(capDollars * 100), interval: 'per_authorization' }],
+      },
+      metadata: { employee_id: employee.id, source: 'shiftfuel' },
+    });
+
     await db
       .from('employees')
-      .update({ stripe_card_status: card.status, stripe_card_updated_at: new Date().toISOString() })
+      .update({
+        stripe_phys_card_id: card.id,
+        stripe_phys_card_last4: card.last4,
+        stripe_phys_card_status: card.status,
+        stripe_phys_card_updated_at: new Date().toISOString(),
+      })
+      .eq('id', employee.id);
+
+    return res.status(200).json({ card_id: card.id, last4: card.last4, status: card.status });
+  },
+
+  // ── Admin or worker (own): activate a physical card once it's received ────
+  async activate_physical_card(req, body, res) {
+    const caller = await resolveCaller(body.caller_token, body.employee_id);
+    if (!caller || !caller.employeeId) return res.status(401).json({ error: 'Unauthorized' });
+
+    const db = getSupabaseAdmin();
+    const employee = await loadEmployee(db, caller.employeeId);
+    if (!employee) return res.status(404).json({ error: 'Worker not found' });
+    if (!employee.stripe_phys_card_id) return res.status(400).json({ error: 'No physical card to activate.' });
+
+    const stripe = getStripe();
+    const card = await stripe.issuing.cards.update(employee.stripe_phys_card_id, { status: 'active' });
+    await db
+      .from('employees')
+      .update({ stripe_phys_card_status: card.status, stripe_phys_card_updated_at: new Date().toISOString() })
       .eq('id', employee.id);
 
     return res.status(200).json({ status: card.status });

@@ -2546,6 +2546,9 @@ function normalizeEmployee(employee) {
     stripe_card_id: employee.stripe_card_id || '',
     stripe_card_last4: employee.stripe_card_last4 || '',
     stripe_card_status: employee.stripe_card_status || '',
+    stripe_phys_card_id: employee.stripe_phys_card_id || '',
+    stripe_phys_card_last4: employee.stripe_phys_card_last4 || '',
+    stripe_phys_card_status: employee.stripe_phys_card_status || '',
   };
 }
 
@@ -2907,7 +2910,22 @@ function renderWorkerProfileCard(employee) {
           </div>
           ${employee.stripe_card_id
             ? `<button class="button secondary worker-card-toggle" data-id="${escapeHtml(employee.id)}" data-status="${escapeHtml(employee.stripe_card_status || 'active')}" type="button" ${isLocal ? 'disabled' : ''}>${employee.stripe_card_status === 'inactive' ? 'Unfreeze card' : 'Freeze card'}</button>`
-            : `<button class="button primary worker-issue-card" data-id="${escapeHtml(employee.id)}" type="button" ${isLocal ? 'disabled' : ''}>Issue fuel card</button>`}
+            : `<button class="button primary worker-issue-card" data-id="${escapeHtml(employee.id)}" type="button" ${isLocal ? 'disabled' : ''}>Issue virtual card</button>`}
+        </div>
+        <div class="admin-stripe-row">
+          <div class="admin-stripe-info">
+            <strong>Physical card (tap at the pump)</strong>
+            <p class="field-help">${employee.stripe_phys_card_id
+              ? (employee.stripe_phys_card_status === 'active'
+                  ? `Active · •••• ${escapeHtml(employee.stripe_phys_card_last4 || '')} — ready to tap/insert.`
+                  : `Ordered · •••• ${escapeHtml(employee.stripe_phys_card_last4 || '')} — activate once it arrives.`)
+              : 'Real card mailed to the company address. Same fuel/wash + $150 cap. No app needed.'}</p>
+          </div>
+          ${!employee.stripe_phys_card_id
+            ? `<button class="button primary worker-order-phys" data-id="${escapeHtml(employee.id)}" type="button" ${isLocal ? 'disabled' : ''}>Order physical card</button>`
+            : (employee.stripe_phys_card_status === 'active'
+                ? `<button class="button secondary worker-phys-toggle" data-id="${escapeHtml(employee.id)}" data-status="active" type="button" ${isLocal ? 'disabled' : ''}>Freeze card</button>`
+                : `<button class="button primary worker-phys-activate" data-id="${escapeHtml(employee.id)}" type="button" ${isLocal ? 'disabled' : ''}>Activate card</button>`)}
         </div>
         <p class="field-help admin-stripe-status" data-worker-id="${escapeHtml(employee.id)}"></p>
       </div>
@@ -6538,12 +6556,62 @@ document.addEventListener('click', async (event) => {
     const next = toggleBtn.dataset.status === 'inactive' ? 'active' : 'inactive';
     toggleBtn.disabled = true;
     setStripeStatus(id, next === 'inactive' ? 'Freezing card…' : 'Unfreezing card…');
-    const { ok, data } = await postStaffApi('/api/fuel-cards', { action: 'set_card_status', employee_id: id, status: next });
+    const { ok, data } = await postStaffApi('/api/fuel-cards', { action: 'set_card_status', employee_id: id, which: 'virtual', status: next });
     if (!ok) {
       setStripeStatus(id, data.error || 'Could not update the card.', true);
       toggleBtn.disabled = false;
     } else {
       setStripeStatus(id, data.status === 'inactive' ? 'Card frozen.' : 'Card active.');
+      loadEmployees();
+    }
+    return;
+  }
+
+  const orderPhysBtn = event.target.closest('.worker-order-phys');
+  if (orderPhysBtn) {
+    const id = orderPhysBtn.dataset.id;
+    if (!window.confirm('Order a physical fuel & car-wash card mailed to the company address? (Same $150 per-transaction cap.)')) return;
+    orderPhysBtn.disabled = true;
+    setStripeStatus(id, 'Ordering physical card…');
+    const { ok, data } = await postStaffApi('/api/fuel-cards', { action: 'order_physical_card', employee_id: id });
+    if (!ok) {
+      setStripeStatus(id, data.error || 'Could not order the card.', true);
+      orderPhysBtn.disabled = false;
+    } else {
+      setStripeStatus(id, `Physical card ordered · •••• ${data.last4 || ''}. Activate it once it arrives.`);
+      loadEmployees();
+    }
+    return;
+  }
+
+  const physActivateBtn = event.target.closest('.worker-phys-activate');
+  if (physActivateBtn) {
+    const id = physActivateBtn.dataset.id;
+    physActivateBtn.disabled = true;
+    setStripeStatus(id, 'Activating card…');
+    const { ok, data } = await postStaffApi('/api/fuel-cards', { action: 'activate_physical_card', employee_id: id });
+    if (!ok) {
+      setStripeStatus(id, data.error || 'Could not activate the card.', true);
+      physActivateBtn.disabled = false;
+    } else {
+      setStripeStatus(id, 'Physical card active — ready to tap at the pump.');
+      loadEmployees();
+    }
+    return;
+  }
+
+  const physToggleBtn = event.target.closest('.worker-phys-toggle');
+  if (physToggleBtn) {
+    const id = physToggleBtn.dataset.id;
+    const next = physToggleBtn.dataset.status === 'inactive' ? 'active' : 'inactive';
+    physToggleBtn.disabled = true;
+    setStripeStatus(id, next === 'inactive' ? 'Freezing card…' : 'Unfreezing card…');
+    const { ok, data } = await postStaffApi('/api/fuel-cards', { action: 'set_card_status', employee_id: id, which: 'physical', status: next });
+    if (!ok) {
+      setStripeStatus(id, data.error || 'Could not update the card.', true);
+      physToggleBtn.disabled = false;
+    } else {
+      setStripeStatus(id, data.status === 'inactive' ? 'Physical card frozen.' : 'Physical card active.');
       loadEmployees();
     }
     return;

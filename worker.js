@@ -5488,26 +5488,61 @@ loadVehiclePsiGuides().finally(loadWorkerProfile);
     if (!status || !body) return;
     try {
       const { data } = await callApi('/api/fuel-cards', 'card_details', {});
-      if (!data.has_card) {
+      const v = data.virtual || (data.has_card ? data : { has_card: false });
+      const p = data.physical || { has_card: false };
+
+      if (!v.has_card && !p.has_card) {
         status.textContent = 'Not issued';
         status.className = 'worker-payout-status is-pending';
-        body.innerHTML = '<p class="field-help">Your virtual fuel &amp; car-wash card will appear here once your admin issues it.</p>';
+        body.innerHTML = '<p class="field-help">Your fuel &amp; car-wash card will appear here once your admin issues it.</p>';
         return;
       }
-      const frozen = data.status !== 'active';
-      status.textContent = frozen ? 'Frozen' : 'Active';
-      status.className = 'worker-payout-status ' + (frozen ? 'is-pending' : 'is-ready');
-      const exp = `${String(data.exp_month || '').padStart(2, '0')}/${String(data.exp_year || '').slice(-2)}`;
-      body.innerHTML = `
-        <div class="worker-fuel-card-visual${frozen ? ' is-frozen' : ''}">
-          <div class="wfc-brand">ShiftFuel · Fuel &amp; Wash</div>
-          <div class="wfc-number">${fmtCardNumber(data.number, data.last4)}</div>
-          <div class="wfc-row"><span>Exp ${exp}</span>${data.cvc ? `<span>CVC ${data.cvc}</span>` : ''}</div>
-        </div>
-        <p class="field-help">Fuel &amp; car-wash purchases only${data.per_transaction_cap ? `, up to $${data.per_transaction_cap} per transaction` : ''}.${data.number ? ' <strong>Test card — sandbox only.</strong>' : ''}</p>`;
+
+      const anyActive = (v.has_card && v.status === 'active') || (p.has_card && p.status === 'active');
+      status.textContent = anyActive ? 'Active' : 'Pending';
+      status.className = 'worker-payout-status ' + (anyActive ? 'is-ready' : 'is-pending');
+
+      let html = '';
+      if (v.has_card) {
+        const frozen = v.status !== 'active';
+        const exp = `${String(v.exp_month || '').padStart(2, '0')}/${String(v.exp_year || '').slice(-2)}`;
+        html += `
+          <div class="worker-fuel-card-visual${frozen ? ' is-frozen' : ''}">
+            <div class="wfc-brand">ShiftFuel · Virtual · Fuel &amp; Wash</div>
+            <div class="wfc-number">${fmtCardNumber(v.number, v.last4)}</div>
+            <div class="wfc-row"><span>Exp ${exp}</span>${v.cvc ? `<span>CVC ${v.cvc}</span>` : ''}</div>
+          </div>
+          <p class="field-help">Online &amp; in-app fuel/car-wash only${v.per_transaction_cap ? `, up to $${v.per_transaction_cap} per transaction` : ''}.${v.number ? ' <strong>Test card — sandbox only.</strong>' : ''}${frozen ? ' <strong>Frozen.</strong>' : ''}</p>`;
+      }
+      if (p.has_card) {
+        const active = p.status === 'active';
+        html += `
+          <div class="worker-phys-card-row">
+            <div>
+              <strong>Physical card (tap at the pump)</strong>
+              <p class="field-help">•••• ${p.last4 || '••••'} · ${active ? 'Active — ready to tap or insert.' : 'On the way — activate it when it arrives.'}</p>
+            </div>
+            ${active ? '' : '<button class="button primary worker-phys-activate-self" type="button">Activate card</button>'}
+          </div>`;
+      }
+      body.innerHTML = html;
     } catch {
       status.textContent = 'Unavailable';
       status.className = 'worker-payout-status is-pending';
+    }
+  }
+
+  async function activatePhysical(btn) {
+    btn.disabled = true;
+    const original = btn.textContent;
+    btn.textContent = 'Activating…';
+    const { ok, data } = await callApi('/api/fuel-cards', 'activate_physical_card', {});
+    if (ok && data.status === 'active') {
+      refreshFuelCard();
+    } else {
+      btn.disabled = false;
+      btn.textContent = original;
+      window.alert(data.error || 'Could not activate the card. Please try again.');
     }
   }
 
@@ -5515,6 +5550,13 @@ loadVehiclePsiGuides().finally(loadWorkerProfile);
     const btn = document.getElementById('worker-connect-btn');
     if (!btn) return; // earnings markup not present
     btn.addEventListener('click', () => startOnboarding(btn));
+    const fuelBody = document.getElementById('worker-fuelcard-body');
+    if (fuelBody) {
+      fuelBody.addEventListener('click', (e) => {
+        const act = e.target.closest('.worker-phys-activate-self');
+        if (act) activatePhysical(act);
+      });
+    }
     refreshConnect();
     refreshFuelCard();
   }
