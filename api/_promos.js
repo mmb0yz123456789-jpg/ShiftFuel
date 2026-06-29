@@ -57,9 +57,10 @@ function serviceFeesFromRow(row) {
 function computeDiscount(promo, base) {
   const b = Math.max(0, Number(base) || 0);
   if (b <= 0) return 0;
-  let d = promo.discount_type === 'percent'
-    ? b * (Number(promo.discount_value) / 100)
-    : Number(promo.discount_value);
+  let d = 0;
+  if (promo.discount_type === 'percent') d = b * (Number(promo.discount_value) / 100);
+  else if (promo.discount_type === 'free_addon') d = b;
+  else d = Number(promo.discount_value);
   if (!Number.isFinite(d) || d <= 0) return 0;
   return roundMoney(Math.min(d, b)); // never discount more than the base
 }
@@ -156,7 +157,7 @@ function serviceMatchesPromo(promo, serviceType) {
   return normalized ? services.includes(normalized) : true;
 }
 
-async function promoAudienceAllowed({ db, promo, phone, email, isAccount }) {
+async function promoAudienceAllowed({ db, promo, phone, email, isAccount, customerId = '' }) {
   const target = promoTargetAudience(promo);
   if (target === 'everyone') return { ok: true };
   if (target === 'account') {
@@ -166,11 +167,13 @@ async function promoAudienceAllowed({ db, promo, phone, email, isAccount }) {
     return isAccount ? { ok: false, reason: 'This code is for guest bookings.' } : { ok: true };
   }
   if (target === 'specific') {
+    const promoCustomerId = String(promo.specific_customer_id || '').trim();
+    const customerIdMatches = promoCustomerId && promoCustomerId === String(customerId || '').trim();
     const promoPhone = cleanPhone(promo.specific_customer_phone);
     const promoEmail = cleanEmail(promo.specific_customer_email);
     const phoneMatches = promoPhone && promoPhone === cleanPhone(phone);
     const emailMatches = promoEmail && promoEmail === cleanEmail(email);
-    return phoneMatches || emailMatches
+    return customerIdMatches || phoneMatches || emailMatches
       ? { ok: true }
       : { ok: false, reason: 'This code is not assigned to this customer.' };
   }
@@ -200,7 +203,7 @@ async function fetchPromo(db, code) {
 
 // Full server-side validation. `amounts` is the price breakdown (from a row via
 // amountsFromRow, or sent by the browser). Returns { ok, reason, promo, discount }.
-async function validatePromoForCustomer({ db, code, phone, email, amounts, isAccount = false, serviceType = '' }) {
+async function validatePromoForCustomer({ db, code, phone, email, amounts, isAccount = false, serviceType = '', customerId = '' }) {
   const a = amounts || {};
   const orderTotal = num(a.total);
   const promo = await fetchPromo(db, code);
@@ -223,7 +226,7 @@ async function validatePromoForCustomer({ db, code, phone, email, amounts, isAcc
 
   if (!serviceMatchesPromo(promo, serviceType)) return { ok: false, reason: 'This code does not apply to the selected service.' };
 
-  const audience = await promoAudienceAllowed({ db, promo, phone, email, isAccount });
+  const audience = await promoAudienceAllowed({ db, promo, phone, email, isAccount, customerId });
   if (!audience.ok) return audience;
 
   if (Number(promo.per_customer_limit) > 0) {
@@ -239,7 +242,7 @@ async function validatePromoForCustomer({ db, code, phone, email, amounts, isAcc
   return { ok: true, promo, discount };
 }
 
-async function eligiblePromosForCustomer({ db, phone, email, isAccount = true, serviceType = '' }) {
+async function eligiblePromosForCustomer({ db, phone, email, isAccount = true, serviceType = '', customerId = '' }) {
   const { data } = await db.from('promo_codes').select('*').eq('active', true).order('created_at', { ascending: false }).limit(50);
   const rows = Array.isArray(data) ? data : [];
   const now = Date.now();
@@ -249,7 +252,7 @@ async function eligiblePromosForCustomer({ db, phone, email, isAccount = true, s
     if (promo.expires_at && new Date(promo.expires_at).getTime() < now) continue;
     if (promo.max_redemptions != null && Number(promo.redemption_count) >= Number(promo.max_redemptions)) continue;
     if (!serviceMatchesPromo(promo, serviceType)) continue;
-    const audience = await promoAudienceAllowed({ db, promo, phone, email, isAccount });
+    const audience = await promoAudienceAllowed({ db, promo, phone, email, isAccount, customerId });
     if (!audience.ok) continue;
     if (Number(promo.per_customer_limit) > 0) {
       const used = await customerRedemptionCount(db, promo.id, phone, email);

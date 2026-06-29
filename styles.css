@@ -819,6 +819,16 @@ font-size: 0.85rem;
   letter-spacing: 0.08em;
 }
 
+.customer-dashboard-subtitle {
+  margin: 8px 0 0;
+  color: var(--sf-muted);
+  max-width: 620px;
+}
+
+.customer-account-loaded .customer-account-hero {
+  display: none;
+}
+
 .customer-dashboard-actions {
   display: flex;
   flex-wrap: wrap;
@@ -2374,6 +2384,24 @@ font-size: 0.85rem;
 
 .customer-promo-card {
   gap: 10px;
+}
+
+.customer-card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.customer-card-actions .button {
+  min-height: 38px;
+  padding: 8px 12px;
+  font-size: 0.85rem;
+}
+
+.customer-card-actions .button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
 }
 
 .customer-promo-code {

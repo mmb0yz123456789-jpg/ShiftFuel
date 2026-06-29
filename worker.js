@@ -211,6 +211,10 @@ document.addEventListener('keydown', (e) => {
 document.querySelector('#worker-mobile-avatar-btn')?.addEventListener('click', openWorkerProfilePanel);
 document.querySelector('#close-worker-profile-panel')?.addEventListener('click', closeWorkerProfilePanel);
 workerProfilePanelOverlay?.addEventListener('click', closeWorkerProfilePanel);
+document.querySelector('#panel-view-profile')?.addEventListener('click', () => {
+  closeWorkerProfilePanel();
+  switchWorkerTab('profile');
+});
 document.querySelector('#panel-signout')?.addEventListener('click', () => {
   closeWorkerProfilePanel();
   document.querySelector('#worker-signout-btn')?.click();
@@ -1475,6 +1479,33 @@ function refreshWorkerPasteButtons() {
   workerDaysGrid?.querySelectorAll('.worker-paste-day').forEach((button) => {
     button.disabled = !copiedWorkerDaySchedule;
   });
+}
+
+function setWorkerDayAvailability(dayOfWeek, enabled) {
+  const row = workerDaysGrid?.querySelector(`.worker-day-row[data-day-of-week="${dayOfWeek}"]`);
+  const checkbox = row?.querySelector('.worker-day-enabled');
+  if (!row || !checkbox) return false;
+  checkbox.checked = enabled;
+  row.classList.toggle('is-unavailable', !enabled);
+  return true;
+}
+
+function copyMondayScheduleToAllDays() {
+  const monday = workerDaysGrid?.querySelector('.worker-day-row[data-day-of-week="1"]');
+  if (!monday || !workerDaysGrid) return false;
+  const startsAt = monday.querySelector('.worker-day-start')?.value || '09:00';
+  const endsAt = monday.querySelector('.worker-day-end')?.value || '17:00';
+  const enabled = Boolean(monday.querySelector('.worker-day-enabled')?.checked);
+  workerDaysGrid.querySelectorAll('.worker-day-row').forEach((row) => {
+    const startInput = row.querySelector('.worker-day-start');
+    const endInput = row.querySelector('.worker-day-end');
+    const checkbox = row.querySelector('.worker-day-enabled');
+    if (startInput) startInput.value = startsAt;
+    if (endInput) endInput.value = endsAt;
+    if (checkbox) checkbox.checked = enabled;
+    row.classList.toggle('is-unavailable', !enabled);
+  });
+  return true;
 }
 
 function setWorkerCopyMode(mode) {
@@ -5391,6 +5422,24 @@ workerDaysGrid?.addEventListener('click', (event) => {
     refreshWorkerPasteButtons();
     setWorkerCopyMode('copy');
     setScheduleStatus(`Pasted ${pastedSchedule.startsAt} to ${pastedSchedule.endsAt}. Copy another day to paste again.`);
+  }
+});
+
+document.querySelector('#worker-available-today')?.addEventListener('click', () => {
+  if (setWorkerDayAvailability(new Date().getDay(), true)) {
+    setScheduleStatus('Marked today available. Save availability to keep this change.');
+  }
+});
+
+document.querySelector('#worker-unavailable-today')?.addEventListener('click', () => {
+  if (setWorkerDayAvailability(new Date().getDay(), false)) {
+    setScheduleStatus('Marked today unavailable. Save availability to keep this change.');
+  }
+});
+
+document.querySelector('#worker-copy-monday-all')?.addEventListener('click', () => {
+  if (copyMondayScheduleToAllDays()) {
+    setScheduleStatus('Copied Monday to all days. Save availability to keep this change.');
   }
 });
 

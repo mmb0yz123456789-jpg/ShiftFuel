@@ -574,7 +574,9 @@ function calculateTotals() {
     const base = promoDiscountBase({ fuelFee, washFee, quickFee, washAmount, total: subtotal }, promo.applies_to);
     if (base > 0) {
       const dv = Number(promo.discount_value) || 0;
-      promoDiscount = promo.discount_type === "percent" ? base * (dv / 100) : dv;
+      if (promo.discount_type === "percent") promoDiscount = base * (dv / 100);
+      else if (promo.discount_type === "free_addon") promoDiscount = base;
+      else promoDiscount = dv;
       promoDiscount = Math.round(Math.min(Math.max(0, promoDiscount), base) * 100) / 100;
     }
   }
@@ -3360,6 +3362,7 @@ function renderFlow(root) {
             wash_price: t.washAmount, order_total: t.subtotal,
             service_type: bookingState.values.serviceType || "",
             is_account: Boolean(getCustomerAccountSession()),
+            customer_id: bookingState.returning.requests[0]?.customer_id || "",
           }),
         });
         const data = await r.json().catch(() => ({}));

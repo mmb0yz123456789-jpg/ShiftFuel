@@ -46,6 +46,7 @@ module.exports = async (req, res) => {
         },
         isAccount: !!body.is_account,
         serviceType: body.service_type || '',
+        customerId: body.customer_id || '',
       });
       if (!result.ok) return res.status(200).json({ ok: false, valid: false, reason: result.reason });
       return res.status(200).json({
@@ -73,6 +74,7 @@ module.exports = async (req, res) => {
         email: body.email,
         isAccount: !!body.is_account,
         serviceType: body.service_type || '',
+        customerId: body.customer_id || '',
       });
       return res.status(200).json({
         ok: true,
@@ -84,6 +86,7 @@ module.exports = async (req, res) => {
           discount_value: p.discount_value,
           applies_to: p.applies_to || 'service_fees',
           target_audience: p.target_audience || (p.audience === 'all' ? 'everyone' : p.audience),
+          specific_customer_id: p.specific_customer_id || '',
           expires_at: p.expires_at || null,
         })),
       });
@@ -108,9 +111,9 @@ module.exports = async (req, res) => {
       const p = body.promo || {};
       const code = normalizeCode(p.code);
       if (!code) return res.status(400).json({ error: 'Code is required' });
-      if (!['percent', 'fixed'].includes(p.discount_type)) return res.status(400).json({ error: 'Invalid discount type' });
-      const value = Number(p.discount_value);
-      if (!Number.isFinite(value) || value <= 0) return res.status(400).json({ error: 'Discount value must be greater than 0' });
+      if (!['percent', 'fixed', 'free_addon'].includes(p.discount_type)) return res.status(400).json({ error: 'Invalid discount type' });
+      const value = p.discount_type === 'free_addon' ? 0 : Number(p.discount_value);
+      if (!Number.isFinite(value) || (p.discount_type !== 'free_addon' && value <= 0)) return res.status(400).json({ error: 'Discount value must be greater than 0' });
       if (p.discount_type === 'percent' && value > 100) return res.status(400).json({ error: 'Percentage cannot exceed 100' });
       const targetAudience = p.target_audience || (p.audience === 'all' ? 'everyone' : p.audience) || 'everyone';
       if (!TARGET_AUDIENCES.includes(targetAudience)) return res.status(400).json({ error: 'Invalid target audience' });
@@ -125,11 +128,12 @@ module.exports = async (req, res) => {
         description: p.description ? String(p.description).trim() : null,
         discount_type: p.discount_type,
         discount_value: value,
-        applies_to: p.applies_to || 'service_fees',
+        applies_to: p.discount_type === 'free_addon' ? 'inspection' : (p.applies_to || 'service_fees'),
         audience: legacyAudienceForTarget(targetAudience),
         target_audience: targetAudience,
         eligible_services: eligibleServices.length ? eligibleServices : ['all'],
         inactive_days_threshold: targetAudience === 'inactive' ? Math.max(1, parseInt(p.inactive_days_threshold, 10) || 30) : null,
+        specific_customer_id: targetAudience === 'specific' && p.specific_customer_id ? String(p.specific_customer_id).trim() : null,
         specific_customer_phone: targetAudience === 'specific' && p.specific_customer_phone ? String(p.specific_customer_phone).replace(/\D/g, '').slice(-10) : null,
         specific_customer_email: targetAudience === 'specific' && p.specific_customer_email ? String(p.specific_customer_email).trim().toLowerCase() : null,
         min_order_amount: Math.max(0, Number(p.min_order_amount) || 0),

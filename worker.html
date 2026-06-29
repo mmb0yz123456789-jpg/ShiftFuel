@@ -107,9 +107,11 @@
   <body class="worker-portal-page">
     <script>
       const workerSessionExpires = Number(sessionStorage.getItem("shiftfuel_worker_expires") || 0);
-      if (!sessionStorage.getItem("shiftfuel_worker") || (workerSessionExpires && workerSessionExpires < Date.now())) {
+      const workerToken = sessionStorage.getItem("shiftfuel_worker_token");
+      if (!sessionStorage.getItem("shiftfuel_worker") || !workerToken || (workerSessionExpires && workerSessionExpires < Date.now())) {
         sessionStorage.removeItem("shiftfuel_worker");
         sessionStorage.removeItem("shiftfuel_worker_id");
+        sessionStorage.removeItem("shiftfuel_worker_token");
         sessionStorage.removeItem("shiftfuel_worker_expires");
         window.location.href = "/worker/login";
       }
@@ -173,6 +175,7 @@
           <button class="wacc-close" id="close-worker-profile-panel" type="button" aria-label="Close">&times;</button>
         </div>
         <div class="worker-profile-panel-actions">
+          <button class="button secondary" id="panel-view-profile" type="button">View profile</button>
           <button class="button secondary" id="panel-enable-alerts" type="button">Enable alerts</button>
           <button class="button secondary" id="panel-break-toggle" type="button" hidden>Take a break</button>
           <button class="button secondary" id="panel-change-password" type="button">Change password</button>
@@ -332,6 +335,11 @@
             <details id="workdays-panel" class="worker-availability-window worker-acc" open>
               <summary class="worker-acc-head"><span>Work Days &amp; Shift Times</span><svg class="worker-acc-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></summary>
               <div class="worker-acc-body">
+                <div class="worker-schedule-quick-actions">
+                  <button class="button secondary" id="worker-available-today" type="button">Available today</button>
+                  <button class="button secondary" id="worker-unavailable-today" type="button">Unavailable today</button>
+                  <button class="button secondary" id="worker-copy-monday-all" type="button">Copy Monday to all days</button>
+                </div>
                 <div id="worker-days-grid" class="worker-days-grid"></div>
                 <button id="save-workdays" class="button primary" type="button">Save availability</button>
               </div>

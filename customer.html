@@ -76,24 +76,26 @@
           <div>
             <p class="customer-dashboard-kicker">My Account</p>
             <h2 data-customer-greeting>Your dashboard</h2>
+            <p class="customer-dashboard-subtitle">Book a saved vehicle, track active services, or review your recent requests.</p>
           </div>
           <div class="customer-dashboard-actions">
-            <a class="button primary" href="returning.html#booking-flow">Book again</a>
-            <a class="button secondary" href="track.html">Track as guest</a>
+            <a class="button primary" href="returning.html#booking-flow">Book saved vehicle</a>
+            <a class="button secondary" href="#account-active-services">Track current service</a>
+            <a class="button secondary" href="#account-saved-details">Manage vehicles &amp; addresses</a>
             <button class="button secondary" type="button" data-customer-sign-out>Sign out</button>
           </div>
         </div>
         <div class="customer-dashboard-summary" data-customer-account-summary></div>
         <div class="customer-dashboard-stats" data-customer-stats></div>
         <div class="customer-dashboard-layout">
-          <section class="customer-dashboard-section customer-dashboard-section-primary">
+          <section class="customer-dashboard-section customer-dashboard-section-primary" id="account-active-services">
             <div class="customer-section-heading">
               <h3>Current and upcoming services</h3>
               <span data-active-count>0</span>
             </div>
             <div class="customer-card-list" data-active-requests></div>
           </section>
-          <section class="customer-dashboard-section">
+          <section class="customer-dashboard-section" id="account-saved-details">
             <div class="customer-section-heading">
               <h3>Saved vehicles</h3>
               <span data-vehicle-count>0</span>

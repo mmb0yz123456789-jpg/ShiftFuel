@@ -514,6 +514,66 @@
 .svc-acc-body label:has(.tbp-tag-worker) input { border-color: #86efac; background: #f0fdf4; }
 .svc-acc-body label:has(.tbp-tag-worker) input:focus { border-color: #16a34a; box-shadow: 0 0 0 3px rgba(22, 101, 52, 0.15); outline: none; }
 
+.services-settings-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin: -4px 0 12px;
+}
+
+.services-settings-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border: 1px solid rgba(13, 59, 59, 0.12);
+  border-radius: 999px;
+  background: #fff;
+  color: #60716d;
+  padding: 7px 11px;
+  font-size: 0.84rem;
+}
+
+.services-settings-legend strong {
+  color: var(--admin-ink, #0b2321);
+}
+
+.admin-worker-mobile-section {
+  border: 1px solid rgba(13, 59, 59, 0.1);
+  border-radius: 14px;
+  background: #fff;
+  margin-top: 12px;
+  overflow: hidden;
+}
+
+.admin-worker-mobile-section > summary {
+  cursor: pointer;
+  list-style: none;
+  padding: 13px 14px;
+  color: var(--admin-ink, #0b2321);
+  font-weight: 900;
+}
+
+.admin-worker-mobile-section > summary::-webkit-details-marker { display: none; }
+.admin-worker-mobile-section > summary::marker { display: none; }
+.admin-worker-mobile-section-body { padding: 0 14px 14px; }
+
+@media (min-width: 761px) {
+  .admin-worker-mobile-section {
+    border: 0;
+    border-radius: 0;
+    margin-top: 0;
+    overflow: visible;
+  }
+
+  .admin-worker-mobile-section > summary {
+    display: none;
+  }
+
+  .admin-worker-mobile-section-body {
+    padding: 0;
+  }
+}
+
 /* ---- Find page: unified search (requests + people) ------- */
 .admin-find-card { padding: 14px 16px; }
 .admin-find-bar {

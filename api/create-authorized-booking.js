@@ -438,7 +438,14 @@ module.exports = async function handler(req, res) {
         const amounts = amountsFromRow(body);
         amounts.total = preDiscountTotal;
         const result = await validatePromoForCustomer({
-          db, code: body.promo_code, phone: body.customer_phone, email: body.customer_email, amounts,
+          db,
+          code: body.promo_code,
+          phone: body.customer_phone,
+          email: body.customer_email,
+          amounts,
+          isAccount: !!body.customer_id,
+          customerId: body.customer_id || '',
+          serviceType: body.service_type || '',
         });
         if (!result.ok) {
           return res.status(409).json({ error: `Promo code ${String(body.promo_code).toUpperCase()}: ${result.reason} Please re-check your total before booking.` });

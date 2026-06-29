@@ -1327,6 +1327,21 @@
 
 /* Availability (Schedule tab): Work Days then the Days Off calendar, stacked. */
 .worker-availability-window { padding-top: 4px; }
+.worker-schedule-quick-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+.worker-schedule-quick-actions .button {
+  min-height: 40px;
+  padding: 9px 12px;
+  font-size: 0.86rem;
+}
+.worker-day-row.is-unavailable {
+  opacity: 0.58;
+  background: #f6f8f7;
+}
 .worker-availability-window > .button.primary {
   width: 100%;
   margin-top: 14px;
@@ -1360,6 +1375,13 @@
 .worker-acc[open] > .worker-acc-head .worker-acc-chevron { transform: rotate(180deg); }
 .worker-acc-body { padding: 0 0 8px; }
 .worker-acc-body > .button.primary { width: 100%; margin-top: 14px; }
+
+@media (max-width: 720px) {
+  .worker-schedule-quick-actions {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+}
 
 /* ── Payouts & fuel card (Earnings tab — Phase 2/3) ─────────────────────── */
 .worker-payout-card {

@@ -833,7 +833,14 @@ async function resolveBookingPromo(db, body, row, serverPricing) {
   const amounts = amountsFromRow(row);
   amounts.total = Number(body.promo_order_total) || (serverPricing.amount_cents / 100);
   const result = await validatePromoForCustomer({
-    db, code: body.promo_code, phone: row.customer_phone, email: row.customer_email, amounts,
+    db,
+    code: body.promo_code,
+    phone: row.customer_phone,
+    email: row.customer_email,
+    amounts,
+    isAccount: !!row.customer_id,
+    customerId: row.customer_id || '',
+    serviceType: row.service_type || '',
   });
   if (!result.ok) {
     return { error: `Promo code ${String(body.promo_code).toUpperCase()}: ${result.reason} Please re-check your total before booking.` };

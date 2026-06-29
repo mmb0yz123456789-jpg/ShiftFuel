@@ -2777,7 +2777,15 @@ function renderWorkerProfiles() {
       </tbody>
     </table>
   `;
+  collapseWorkerSectionsForMobile();
   wireAdminPhotoEditor();
+}
+
+function collapseWorkerSectionsForMobile() {
+  if (!window.matchMedia('(max-width: 760px)').matches) return;
+  workerProfileList?.querySelectorAll('.admin-worker-mobile-section').forEach((section) => {
+    section.open = section.classList.contains('admin-worker-profile-section');
+  });
 }
 
 function renderWorkerProfileRow(employee) {
@@ -2830,6 +2838,9 @@ function renderWorkerProfileCard(employee) {
         </div>
       </div>
 
+      <details class="admin-worker-mobile-section admin-worker-profile-section" open>
+        <summary>Profile</summary>
+        <div class="admin-worker-mobile-section-body">
       <div class="worker-profile-preview">
         ${(() => {
           const displayUrl  = employee.cropped_photo_url  || employee.photo_url || '';
@@ -2901,9 +2912,12 @@ function renderWorkerProfileCard(employee) {
         }
       </div>
       <p class="field-help admin-worker-status">${isLocal ? 'Run the Supabase worker upgrade before saving this worker.' : ''}</p>
+        </div>
+      </details>
 
-      <div class="admin-stripe-block" data-worker-id="${escapeHtml(employee.id)}">
-        <h4 class="admin-sched-title">Payouts &amp; fuel card</h4>
+      <details class="admin-worker-mobile-section" open>
+        <summary>Payouts &amp; fuel card</summary>
+        <div class="admin-worker-mobile-section-body admin-stripe-block" data-worker-id="${escapeHtml(employee.id)}">
         <div class="admin-stripe-row">
           <div class="admin-stripe-info">
             <strong>Direct deposit (Stripe Connect)</strong>
@@ -2942,10 +2956,12 @@ function renderWorkerProfileCard(employee) {
                 : `<button class="button primary worker-phys-activate" data-id="${escapeHtml(employee.id)}" type="button" ${isLocal ? 'disabled' : ''}>Activate card</button>`)}
         </div>
         <p class="field-help admin-stripe-status" data-worker-id="${escapeHtml(employee.id)}"></p>
-      </div>
+        </div>
+      </details>
 
-      <div class="admin-sched-block">
-        <h4 class="admin-sched-title">Weekly schedule</h4>
+      <details class="admin-worker-mobile-section" open>
+        <summary>Weekly schedule</summary>
+        <div class="admin-worker-mobile-section-body admin-sched-block">
         <p class="field-help">Set the days and hours this worker is available. The booking site uses this to decide who can cover a time slot.</p>
         <div class="admin-sched-grid" data-worker-id="${escapeHtml(employee.id)}">
           ${isLocal
@@ -6268,7 +6284,8 @@ function renderPayroll() {
       <div class="payroll-worker-card-head">
         <strong>${escapeHtml(e.name)}</strong>
         <span>${e.jobs} job${e.jobs === 1 ? '' : 's'}</span>
-      </div>
+        </div>
+      </details>
       <dl>
         <div><dt>Station mileage</dt><dd>${money(roundMoneyValue(e.mileage))}</dd></div>
         <div><dt>Driven (GPS)</dt><dd>${e.drivenMiles ? e.drivenMiles.toFixed(1) + ' mi' : 'None'}</dd></div>
@@ -7928,6 +7945,7 @@ function renderServicesSettingsList() {
 
     <details class="pricing-sim" id="pricing-sim">
       <summary><strong>Pricing &amp; payout simulator</strong></summary>
+      <p class="field-help">Simulator only estimates pricing and payouts. It does not affect live bookings.</p>
       <p class="field-help">A sandbox to see what a job would cost the customer, what the worker earns, and how long it takes. It uses the rates above (edit them to test scenarios) and the numbers you type here — no live Mapbox or booking data.</p>
       <div class="pricing-sim-inputs">
         <label>Service
@@ -8613,6 +8631,18 @@ document.querySelector('#services-settings-form')?.addEventListener('submit', as
   }
 });
 
+document.addEventListener('toggle', (event) => {
+  const detail = event.target;
+  if (!(detail instanceof HTMLDetailsElement)) return;
+  if (!detail.classList.contains('svc-acc') || !detail.open) return;
+  if (!window.matchMedia('(max-width: 760px)').matches) return;
+  const servicesSection = detail.closest('[data-page-section="services"], #services-settings-list');
+  if (!servicesSection) return;
+  servicesSection.querySelectorAll('details.svc-acc[open]').forEach((item) => {
+    if (item !== detail && !item.contains(detail)) item.open = false;
+  });
+}, true);
+
 // ====================== ADMIN MOBILE MENU ======================
 const avatarBtn = document.getElementById('admin-avatar-btn');
 const mobileMenu = document.getElementById('admin-mobile-menu');
@@ -8796,6 +8826,7 @@ async function promoApi(payload) {
 }
 
 function promoDiscountLabel(p) {
+  if (p.discount_type === 'free_addon') return 'Free add-on';
   return p.discount_type === 'percent' ? `${Number(p.discount_value)}% off` : `${money(p.discount_value)} off`;
 }
 function promoAudienceLabel(a) {
@@ -8886,6 +8917,7 @@ function openPromoForm(promo) {
   const selectedServices = Array.isArray(promo?.eligible_services) && promo.eligible_services.length ? promo.eligible_services : ['all'];
   [...g('#promo-eligible-services').options].forEach((option) => { option.selected = selectedServices.includes(option.value); });
   g('#promo-inactive-days').value = promo?.inactive_days_threshold || '';
+  g('#promo-specific-customer-id').value = promo?.specific_customer_id || '';
   g('#promo-specific-phone').value = promo?.specific_customer_phone || '';
   g('#promo-specific-email').value = promo?.specific_customer_email || '';
   g('#promo-min-order').value = promo?.min_order_amount || '';
@@ -8914,6 +8946,7 @@ promoForm?.addEventListener('submit', async (e) => {
     target_audience: g('#promo-audience').value,
     eligible_services: [...g('#promo-eligible-services').selectedOptions].map((option) => option.value),
     inactive_days_threshold: g('#promo-inactive-days').value,
+    specific_customer_id: g('#promo-specific-customer-id').value,
     specific_customer_phone: g('#promo-specific-phone').value,
     specific_customer_email: g('#promo-specific-email').value,
     min_order_amount: g('#promo-min-order').value,

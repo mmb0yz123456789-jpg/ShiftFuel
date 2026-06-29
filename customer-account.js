@@ -11,6 +11,8 @@ const historyMount = document.querySelector("[data-service-history]");
 const promosMount = document.querySelector("[data-customer-promos]");
 const accountSummary = document.querySelector("[data-customer-account-summary]");
 const greeting = document.querySelector("[data-customer-greeting]");
+let activeAccountSession = null;
+let activeAccountData = { requests: [], addresses: [], vehicles: [] };
 
 const terminalStatuses = new Set([
   "complete",
@@ -142,7 +144,7 @@ async function loadAccountData(session) {
   return { requests, addresses, vehicles };
 }
 
-async function loadEligiblePromos(session) {
+async function loadEligiblePromos(session, customerId = "") {
   try {
     const res = await fetch("/api/promos", {
       method: "POST",
@@ -152,6 +154,7 @@ async function loadEligiblePromos(session) {
         phone: session.phone,
         email: session.email,
         is_account: true,
+        customer_id: customerId,
       }),
     });
     const data = await res.json().catch(() => ({}));
@@ -175,6 +178,7 @@ function requestCard(request, type = "active") {
   const vehicle = [request.vehicle_year, request.vehicle_make, request.vehicle_model].filter(Boolean).join(" ");
   const service = request.service_label || request.service_type || "ShiftFuel service";
   const trackHref = `track.html?request=${encodeURIComponent(publicNumber(request.id))}`;
+  const repeatHref = `returning.html?repeat=${encodeURIComponent(publicNumber(request.id))}#booking-flow`;
   return `
     <article class="customer-request-card customer-request-card-${type}">
       <div>
@@ -187,6 +191,7 @@ function requestCard(request, type = "active") {
         <div><dt>Vehicle</dt><dd>${escapeHtml(vehicle || "Vehicle details saved")}</dd></div>
       </dl>
       <a class="button secondary" href="${trackHref}">Open tracking</a>
+      ${type === "history" ? `<a class="button secondary" href="${repeatHref}">Repeat service</a>` : ""}
     </article>
   `;
 }
@@ -199,6 +204,11 @@ function vehicleCard(vehicle) {
       <span>${vehicle.vehicle_color ? `Color: ${escapeHtml(vehicle.vehicle_color)}` : "Color not saved"}</span>
       <span>${vehicle.license_plate ? `Plate: ${escapeHtml(vehicle.license_plate)}` : "Plate not saved"}</span>
       ${vehicle.fuel_type ? `<span>Fuel: ${escapeHtml(vehicle.fuel_type)}</span>` : ""}
+      <div class="customer-card-actions">
+        <a class="button secondary" href="returning.html#booking-flow">Book this vehicle</a>
+        <button class="button secondary" type="button" data-edit-vehicle="${escapeHtml(vehicle.id)}">Edit</button>
+        <button class="button secondary" type="button" data-delete-vehicle="${escapeHtml(vehicle.id)}">Delete</button>
+      </div>
     </article>
   `;
 }
@@ -212,12 +222,18 @@ function addressCard(address) {
       ${line2 ? `<span>${escapeHtml(line2)}</span>` : ""}
       ${address.parking_location ? `<span>Parking: ${escapeHtml(address.parking_location)}</span>` : ""}
       ${address.key_handoff_details ? `<span>Keys: ${escapeHtml(address.key_handoff_details)}</span>` : ""}
+      <div class="customer-card-actions">
+        <a class="button secondary" href="returning.html#booking-flow">Use this address</a>
+        <button class="button secondary" type="button" data-edit-address="${escapeHtml(address.id)}">Edit</button>
+        <button class="button secondary" type="button" data-delete-address="${escapeHtml(address.id)}">Delete</button>
+      </div>
     </article>
   `;
 }
 
 function promoDiscountLabel(promo) {
   const value = Number(promo.discount_value) || 0;
+  if (promo.discount_type === "free_addon") return "Free add-on";
   return promo.discount_type === "percent" ? `${value}% off` : `$${value.toFixed(2)} off`;
 }
 
@@ -249,6 +265,8 @@ function renderStats(active, history, addresses, vehicles) {
 }
 
 function renderAccount(session, data, promos = []) {
+  activeAccountSession = session;
+  activeAccountData = data;
   const requests = [...data.requests].sort((a, b) => new Date(b.created_at || b.service_date || 0) - new Date(a.created_at || a.service_date || 0));
   const active = requests.filter((request) => !terminalStatuses.has(request.status));
   const history = requests.filter((request) => terminalStatuses.has(request.status));
@@ -282,7 +300,7 @@ function renderAccount(session, data, promos = []) {
   renderStats(active, history, data.addresses, data.vehicles);
   activeMount.innerHTML = active.length
     ? active.map((request) => requestCard(request, "active")).join("")
-    : emptyCard("No active services right now.", `<a class="button primary" href="returning.html#booking-flow">Book again</a>`);
+    : emptyCard("No active services right now.", `<a class="button primary" href="returning.html#booking-flow">Book a saved vehicle</a>`);
   vehiclesMount.innerHTML = data.vehicles.length
     ? data.vehicles.map(vehicleCard).join("")
     : emptyCard("No saved vehicles yet. Your next completed booking will save one for faster future booking.");
@@ -302,23 +320,131 @@ function renderAccount(session, data, promos = []) {
       </article>
       <article class="customer-data-card">
         <strong>Promos</strong>
-        <span>${promoCopy}</span>
+        <span>No promos available right now. Check back later for account offers and service reminders.</span>
       </article>
     `;
 
   dashboard.hidden = false;
+  document.body.classList.add("customer-account-loaded");
   loginForm?.classList.add("is-compact");
+}
+
+async function refreshAccount() {
+  if (!activeAccountSession) return;
+  await openAccount(activeAccountSession);
+}
+
+function promptValue(label, current = "") {
+  const value = window.prompt(label, current || "");
+  return value == null ? null : value.trim();
+}
+
+async function updateSavedVehicle(vehicle) {
+  const vehicleYear = promptValue("Vehicle year", vehicle.vehicle_year || "");
+  if (vehicleYear == null) return;
+  const vehicleMake = promptValue("Vehicle make", vehicle.vehicle_make || "");
+  if (vehicleMake == null) return;
+  const vehicleModel = promptValue("Vehicle model", vehicle.vehicle_model || "");
+  if (vehicleModel == null) return;
+  const vehicleColor = promptValue("Vehicle color", vehicle.vehicle_color || "");
+  if (vehicleColor == null) return;
+  const licensePlate = promptValue("License plate", vehicle.license_plate || "");
+  if (licensePlate == null) return;
+  const fuelType = promptValue("Fuel type", vehicle.fuel_type || "");
+  if (fuelType == null) return;
+
+  setStatus("warning", "Saving vehicle...");
+  const { error } = await customerDb.rpc("public_update_saved_vehicle", {
+    p_vehicle_id: vehicle.id,
+    p_phone: activeAccountSession.phone,
+    p_email: activeAccountSession.email,
+    p_data: {
+      customer_name: activeAccountSession.name || "",
+      vehicle_year: vehicleYear,
+      vehicle_make: vehicleMake,
+      vehicle_model: vehicleModel,
+      vehicle_color: vehicleColor,
+      license_plate: licensePlate,
+      fuel_type: fuelType,
+    },
+  });
+  if (error) throw error;
+  setStatus("success", "Vehicle updated.");
+  await refreshAccount();
+}
+
+async function updateSavedAddress(address) {
+  const street = promptValue("Street address", address.address_street || address.hospital || "");
+  if (street == null) return;
+  const unit = promptValue("Unit/suite/apartment", address.address_apt || "");
+  if (unit == null) return;
+  const city = promptValue("City", address.address_city || "");
+  if (city == null) return;
+  const state = promptValue("State", address.address_state || "DE");
+  if (state == null) return;
+  const zip = promptValue("ZIP code", address.address_zip || "");
+  if (zip == null) return;
+  const parking = promptValue("Parking details", address.parking_location || "");
+  if (parking == null) return;
+  const keys = promptValue("Key handoff details", address.key_handoff_details || "");
+  if (keys == null) return;
+
+  setStatus("warning", "Saving address...");
+  const { error } = await customerDb.rpc("public_update_saved_address", {
+    p_address_id: address.id,
+    p_phone: activeAccountSession.phone,
+    p_email: activeAccountSession.email,
+    p_data: {
+      customer_name: activeAccountSession.name || "",
+      hospital: [street, city, state, zip].filter(Boolean).join(", "),
+      address_street: street,
+      address_apt: unit,
+      address_city: city,
+      address_state: state,
+      address_zip: zip,
+      parking_location: parking,
+      key_handoff_details: keys,
+    },
+  });
+  if (error) throw error;
+  setStatus("success", "Address updated.");
+  await refreshAccount();
+}
+
+async function deleteSavedVehicle(vehicleId) {
+  if (!window.confirm("Delete this saved vehicle from My Account?")) return;
+  setStatus("warning", "Deleting vehicle...");
+  const { error } = await customerDb.rpc("public_soft_delete_saved_vehicle", {
+    p_vehicle_id: vehicleId,
+    p_phone: activeAccountSession.phone,
+    p_email: activeAccountSession.email,
+  });
+  if (error) throw error;
+  setStatus("success", "Vehicle deleted.");
+  await refreshAccount();
+}
+
+async function deleteSavedAddress(addressId) {
+  if (!window.confirm("Delete this saved service address from My Account?")) return;
+  setStatus("warning", "Deleting address...");
+  const { error } = await customerDb.rpc("public_soft_delete_saved_address", {
+    p_address_id: addressId,
+    p_phone: activeAccountSession.phone,
+    p_email: activeAccountSession.email,
+  });
+  if (error) throw error;
+  setStatus("success", "Address deleted.");
+  await refreshAccount();
 }
 
 async function openAccount(session) {
   setStatus("warning", "Loading your account...");
-  const [data, promos] = await Promise.all([
-    loadAccountData(session),
-    loadEligiblePromos(session),
-  ]);
+  const data = await loadAccountData(session);
   if (!data.requests.length && !data.addresses.length && !data.vehicles.length) {
     throw new Error("We could not find saved customer details for that phone and email.");
   }
+  const customerId = data.requests.find((request) => request.customer_id)?.customer_id || "";
+  const promos = await loadEligiblePromos(session, customerId);
   const name = customerNameFrom(data.requests, data);
   const nextSession = { ...session, name };
   writeSession(nextSession);
@@ -353,10 +479,41 @@ loginForm?.addEventListener("submit", async (event) => {
 
 document.querySelector("[data-customer-sign-out]")?.addEventListener("click", () => {
   clearSession();
+  activeAccountSession = null;
+  activeAccountData = { requests: [], addresses: [], vehicles: [] };
   dashboard.hidden = true;
+  document.body.classList.remove("customer-account-loaded");
   loginForm?.classList.remove("is-compact");
   loginForm?.reset();
   setStatus("warning", "Signed out on this device.");
+});
+
+dashboard?.addEventListener("click", async (event) => {
+  const vehicleEdit = event.target.closest("[data-edit-vehicle]");
+  const vehicleDelete = event.target.closest("[data-delete-vehicle]");
+  const addressEdit = event.target.closest("[data-edit-address]");
+  const addressDelete = event.target.closest("[data-delete-address]");
+  if (!vehicleEdit && !vehicleDelete && !addressEdit && !addressDelete) return;
+  if (!activeAccountSession || !customerDb) {
+    setStatus("error", "Open My Account before editing saved details.");
+    return;
+  }
+  try {
+    if (vehicleEdit) {
+      const vehicle = activeAccountData.vehicles.find((item) => String(item.id) === String(vehicleEdit.dataset.editVehicle));
+      if (vehicle) await updateSavedVehicle(vehicle);
+    } else if (vehicleDelete) {
+      await deleteSavedVehicle(vehicleDelete.dataset.deleteVehicle);
+    } else if (addressEdit) {
+      const address = activeAccountData.addresses.find((item) => String(item.id) === String(addressEdit.dataset.editAddress));
+      if (address) await updateSavedAddress(address);
+    } else if (addressDelete) {
+      await deleteSavedAddress(addressDelete.dataset.deleteAddress);
+    }
+  } catch (error) {
+    console.error("[customer-account] saved detail update failed:", error);
+    setStatus("error", error.message || "Could not update saved details.");
+  }
 });
 
 (function initCustomerAccount() {
