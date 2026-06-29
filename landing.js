@@ -68,7 +68,7 @@ async function loadServicePricing() {
       const bundleSum = (Number(data.bundle_fuel_service_fee) || 0) + (Number(data.bundle_wash_service_fee) || 0);
       const pct = full > 0 && bundleSum > 0 && bundleSum < full ? Math.round((1 - bundleSum / full) * 100) : 0;
       if (pct > 0) {
-        banner.innerHTML = `<span class="bundle-landing-badge">Save ${pct}%</span> <span>Book <strong>Fuel + Car Wash</strong> together and pay one combined service fee.</span>`;
+        banner.innerHTML = `<span class="bundle-landing-badge">Save ${pct}%</span> <span>Book <strong>Fuel + Car Wash</strong> together and pay one combined service fee.</span> <span class="bundle-landing-action">Book combo service</span>`;
         banner.hidden = false;
       } else {
         banner.hidden = true;

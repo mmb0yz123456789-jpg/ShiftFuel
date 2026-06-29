@@ -6263,6 +6263,20 @@ function renderPayroll() {
       : '';
     return `${stripeBtn}<button type="button" class="button secondary payout-pay-btn" data-pay-employee="${escapeHtml(e.key)}" data-employee-id="${escapeHtml(e.employeeId || '')}" data-name="${escapeHtml(e.name)}" data-amount="${roundMoneyValue(e.total)}">Mark paid</button>`;
   };
+  const payrollCards = rows.map((e) => `
+    <article class="payroll-worker-card">
+      <div class="payroll-worker-card-head">
+        <strong>${escapeHtml(e.name)}</strong>
+        <span>${e.jobs} job${e.jobs === 1 ? '' : 's'}</span>
+      </div>
+      <dl>
+        <div><dt>Station mileage</dt><dd>${money(roundMoneyValue(e.mileage))}</dd></div>
+        <div><dt>Driven (GPS)</dt><dd>${e.drivenMiles ? e.drivenMiles.toFixed(1) + ' mi' : 'None'}</dd></div>
+        <div><dt>Earnings</dt><dd>${money(roundMoneyValue(e.total))}</dd></div>
+      </dl>
+      <div class="payroll-payment-cell">${statusCell(e)}</div>
+    </article>
+  `).join('');
 
   container.innerHTML = `
     <div class="payroll-summary-grid">
@@ -6280,6 +6294,7 @@ function renderPayroll() {
           ${rows.map((e) => `<tr><td>${escapeHtml(e.name)}</td><td>${e.jobs}</td><td>${money(roundMoneyValue(e.mileage))}</td><td>${e.drivenMiles ? e.drivenMiles.toFixed(1) + ' mi' : '—'}</td><td><strong>${money(roundMoneyValue(e.total))}</strong></td><td class="payroll-payment-cell">${statusCell(e)}</td></tr>`).join('')}
         </tbody>
       </table>
+      <div class="payroll-card-list">${payrollCards}</div>
     ` : `<div class="worker-state-card"><p>No worker earnings in this period yet.</p></div>`}
   `;
 }
@@ -7053,6 +7068,15 @@ function runAdminFind() {
     + ((!workers.length && !reqs.length) ? '<p class="find-tickets-empty">No matching requests or people.</p>' : '');
 }
 document.getElementById('admin-find-input')?.addEventListener('input', runAdminFind);
+document.querySelectorAll('[data-find-filter]').forEach((btn) => {
+  btn.addEventListener('click', () => {
+    const input = document.getElementById('admin-find-input');
+    if (!input) return;
+    input.value = btn.dataset.findFilter || '';
+    runAdminFind();
+    input.focus();
+  });
+});
 document.getElementById('admin-find-results')?.addEventListener('click', (event) => {
   const wbtn = event.target.closest('[data-find-worker]');
   if (wbtn) {
@@ -8775,7 +8799,16 @@ function promoDiscountLabel(p) {
   return p.discount_type === 'percent' ? `${Number(p.discount_value)}% off` : `${money(p.discount_value)} off`;
 }
 function promoAudienceLabel(a) {
-  return a === 'new' ? 'New customers' : a === 'returning' ? 'Returning customers' : 'All customers';
+  return {
+    everyone: 'Everyone',
+    account: 'My Account',
+    guest: 'Guests',
+    inactive: 'Inactive',
+    specific: 'Specific customer',
+    new: 'New customers',
+    returning: 'Returning customers',
+    all: 'All customers',
+  }[a || 'everyone'] || 'Everyone';
 }
 function promoAppliesLabel(a) {
   return {
@@ -8807,7 +8840,10 @@ function renderPromosList(promos) {
   promosList._promos = promos;
   promosList.innerHTML = promos.map((p) => {
     const limits = [];
+    const targetAudience = p.target_audience || (p.audience === 'all' ? 'everyone' : p.audience);
+    const services = Array.isArray(p.eligible_services) && p.eligible_services.length ? p.eligible_services : ['all'];
     if (Number(p.min_order_amount) > 0) limits.push(`min ${money(p.min_order_amount)}`);
+    if (p.starts_at) limits.push(`starts ${new Date(p.starts_at).toLocaleDateString()}`);
     if (Number(p.per_customer_limit) > 0) limits.push(`${p.per_customer_limit}/customer`);
     limits.push(p.max_redemptions != null ? `${p.redemption_count}/${p.max_redemptions} used` : `${p.redemption_count} used`);
     if (p.expires_at) limits.push(`exp ${new Date(p.expires_at).toLocaleDateString()}`);
@@ -8817,9 +8853,11 @@ function renderPromosList(promos) {
           <div class="promo-card-tags">
             <span class="promo-card-code">${escapeHtml(p.code)}</span>
             <span class="promo-card-badge">${escapeHtml(promoDiscountLabel(p))} ${escapeHtml(promoAppliesLabel(p.applies_to))}</span>
-            <span class="promo-card-badge promo-card-audience">${escapeHtml(promoAudienceLabel(p.audience))}</span>
+            <span class="promo-card-badge promo-card-audience">${escapeHtml(promoAudienceLabel(targetAudience))}</span>
+            <span class="promo-card-badge">${escapeHtml(services.includes('all') ? 'All services' : services.join(', '))}</span>
             ${p.active ? '' : '<span class="promo-card-badge promo-card-off">Inactive</span>'}
           </div>
+          ${p.name ? `<p class="promo-card-desc"><strong>${escapeHtml(p.name)}</strong></p>` : ''}
           ${p.description ? `<p class="promo-card-desc">${escapeHtml(p.description)}</p>` : ''}
           <p class="promo-card-meta">${escapeHtml(limits.join(' · '))}</p>
         </div>
@@ -8839,14 +8877,21 @@ function openPromoForm(promo) {
   const g = (id) => document.querySelector(id);
   g('#promo-id').value = promo?.id || '';
   g('#promo-code').value = promo?.code || '';
+  g('#promo-name').value = promo?.name || '';
   g('#promo-description').value = promo?.description || '';
   g('#promo-discount-type').value = promo?.discount_type || 'percent';
   g('#promo-discount-value').value = promo?.discount_value ?? '';
   g('#promo-applies-to').value = promo?.applies_to || 'service_fees';
-  g('#promo-audience').value = promo?.audience || 'all';
+  g('#promo-audience').value = promo?.target_audience || (promo?.audience === 'all' ? 'everyone' : promo?.audience) || 'everyone';
+  const selectedServices = Array.isArray(promo?.eligible_services) && promo.eligible_services.length ? promo.eligible_services : ['all'];
+  [...g('#promo-eligible-services').options].forEach((option) => { option.selected = selectedServices.includes(option.value); });
+  g('#promo-inactive-days').value = promo?.inactive_days_threshold || '';
+  g('#promo-specific-phone').value = promo?.specific_customer_phone || '';
+  g('#promo-specific-email').value = promo?.specific_customer_email || '';
   g('#promo-min-order').value = promo?.min_order_amount || '';
   g('#promo-per-customer').value = promo?.per_customer_limit ?? 1;
   g('#promo-max-redemptions').value = promo?.max_redemptions ?? '';
+  g('#promo-starts').value = promo?.starts_at ? String(promo.starts_at).slice(0, 10) : '';
   g('#promo-expires').value = promo?.expires_at ? String(promo.expires_at).slice(0, 10) : '';
   g('#promo-active').checked = promo ? !!promo.active : true;
   promoForm.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
@@ -8861,14 +8906,20 @@ promoForm?.addEventListener('submit', async (e) => {
   const promo = {
     id: g('#promo-id').value || undefined,
     code: g('#promo-code').value,
+    name: g('#promo-name').value,
     description: g('#promo-description').value,
     discount_type: g('#promo-discount-type').value,
     discount_value: g('#promo-discount-value').value,
     applies_to: g('#promo-applies-to').value,
-    audience: g('#promo-audience').value,
+    target_audience: g('#promo-audience').value,
+    eligible_services: [...g('#promo-eligible-services').selectedOptions].map((option) => option.value),
+    inactive_days_threshold: g('#promo-inactive-days').value,
+    specific_customer_phone: g('#promo-specific-phone').value,
+    specific_customer_email: g('#promo-specific-email').value,
     min_order_amount: g('#promo-min-order').value,
     per_customer_limit: g('#promo-per-customer').value,
     max_redemptions: g('#promo-max-redemptions').value,
+    starts_at: g('#promo-starts').value || null,
     expires_at: g('#promo-expires').value || null,
     active: g('#promo-active').checked,
   };

@@ -2367,6 +2367,28 @@ font-size: 0.85rem;
   cursor: pointer;
   text-decoration: underline;
 }
+
+.mobile-booking-summary-bar {
+  display: none;
+}
+
+.customer-promo-card {
+  gap: 10px;
+}
+
+.customer-promo-code {
+  display: inline-flex;
+  width: fit-content;
+  border-radius: 999px;
+  background: rgba(13, 59, 59, 0.08);
+  color: var(--sf-teal-dark);
+  font-weight: 800;
+  padding: 6px 10px;
+}
+
+.customer-promo-card .button {
+  width: fit-content;
+}
 .summary-discount-row {
   display: flex;
   align-items: center;
@@ -2467,6 +2489,41 @@ font-size: 0.85rem;
   .booking-summary-body { display: none; padding: 0 18px 22px; }
   .booking-summary-sidebar.is-open .booking-summary-body { display: grid; gap: 16px; }
   .booking-summary-body h3 { display: none; }
+
+  .mobile-booking-summary-bar {
+    position: fixed;
+    left: 12px;
+    right: 12px;
+    bottom: 12px;
+    z-index: 80;
+    width: calc(100% - 24px);
+    margin: 18px 12px 0;
+    min-height: 58px;
+    display: grid;
+    grid-template-columns: 1fr auto;
+    align-items: center;
+    gap: 2px 12px;
+    border: 1px solid rgba(13, 59, 59, 0.16);
+    border-radius: 18px;
+    background: rgba(255, 255, 255, 0.96);
+    box-shadow: 0 -10px 28px rgba(13, 59, 59, 0.16);
+    color: var(--sf-teal-dark);
+    padding: 10px 16px calc(10px + env(safe-area-inset-bottom));
+    text-align: left;
+  }
+
+  .mobile-booking-summary-bar span,
+  .mobile-booking-summary-bar em {
+    font-size: 0.76rem;
+    font-style: normal;
+    color: var(--text-2);
+  }
+
+  .mobile-booking-summary-bar strong {
+    grid-row: span 2;
+    font-size: 1.08rem;
+    font-weight: 900;
+  }
 
   .booking-progress-rail {
     justify-content: flex-start;
@@ -2692,7 +2749,39 @@ font-size: 0.85rem;
 .payroll-table td:last-child, .payroll-table th:last-child { text-align: right; }
 .payroll-table td:nth-child(2), .payroll-table th:nth-child(2),
 .payroll-table td:nth-child(3), .payroll-table th:nth-child(3) { text-align: center; }
-@media (max-width: 640px) { .payroll-summary-grid { grid-template-columns: 1fr; } }
+.payroll-card-list { display: none; }
+.payroll-worker-card {
+  border: 1px solid #d9e6df;
+  border-radius: 14px;
+  background: #fff;
+  padding: 14px;
+  box-shadow: 0 8px 20px rgba(12, 45, 38, 0.08);
+}
+.payroll-worker-card-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  align-items: baseline;
+}
+.payroll-worker-card-head strong { color: var(--brand-dark, #1a3a2a); }
+.payroll-worker-card-head span { color: #6b7280; font-size: 0.86rem; font-weight: 700; }
+.payroll-worker-card dl {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin: 12px 0;
+}
+.payroll-worker-card dt { color: #6b7280; font-size: 0.72rem; font-weight: 800; text-transform: uppercase; }
+.payroll-worker-card dd { margin: 2px 0 0; color: var(--brand-dark, #1a3a2a); font-weight: 900; }
+@media (max-width: 640px) {
+  .payroll-summary-grid { grid-template-columns: 1fr; }
+  .payroll-table { display: none; }
+  .payroll-card-list { display: grid; gap: 12px; margin-top: 12px; }
+  .payroll-worker-card dl { grid-template-columns: 1fr; }
+  .payroll-worker-card .payroll-payment-cell { text-align: left; white-space: normal; }
+  .payroll-worker-card .payout-pay-btn,
+  .payroll-worker-card .payout-stripe-btn { width: 100%; margin-top: 6px; }
+}
 
 /* ── Payout tracker (Payroll tab) ── */
 .payroll-paid-summary {

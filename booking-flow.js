@@ -111,6 +111,7 @@ const bookingState = {
     perMileRate: 0.75,
   },
   promo: { code: "", discount_type: "", discount_value: 0, applies_to: "" },
+  pendingPromoCode: "",
   submitted: false,
   submitting: false,
   submittedRequestNumber: "",
@@ -126,7 +127,7 @@ const stepCopy = {
       <div class="customer-account-prompt">
         <div>
           <strong>Have an account?</strong>
-          <span>Sign in to My Account to autofill saved vehicles and service addresses. Continue as guest if you prefer.</span>
+          <span>Open My Account to autofill saved vehicles, saved addresses, and recent booking details. You can also continue as a guest.</span>
         </div>
         <a class="button secondary" href="customer.html">Open My Account</a>
       </div>
@@ -1118,7 +1119,7 @@ function renderPromoBlock() {
   return `
     <div class="summary-promo">
       <div class="summary-promo-input">
-        <input type="text" data-promo-input placeholder="Promo code" autocomplete="off" autocapitalize="characters" spellcheck="false" maxlength="32">
+        <input type="text" data-promo-input placeholder="Promo code" autocomplete="off" autocapitalize="characters" spellcheck="false" maxlength="32" value="${escapeHtml(bookingState.pendingPromoCode || "")}">
         <button type="button" class="button secondary" data-promo-apply>Apply</button>
       </div>
       <p class="summary-promo-msg" data-promo-msg role="status"></p>
@@ -3077,6 +3078,11 @@ function renderFlow(root) {
         </div>
         ${renderSummarySidebar(steps, flowName, unlockedIndex)}
       </div>
+      <button type="button" class="mobile-booking-summary-bar" data-mobile-summary-jump>
+        <span>Estimated total</span>
+        <strong>${formatMoney(calculateTotals().discountedTotal || calculateTotals().estimatedTotal || 0)}</strong>
+        <em>View summary</em>
+      </button>
     `;
 
     steps.forEach((step, index) => {
@@ -3352,11 +3358,14 @@ function renderFlow(root) {
             action: "validate", code, phone: v.customerPhone, email: v.customerEmail,
             fuel_service: t.fuelFee, wash_service: t.washFee, inspection: t.quickFee,
             wash_price: t.washAmount, order_total: t.subtotal,
+            service_type: bookingState.values.serviceType || "",
+            is_account: Boolean(getCustomerAccountSession()),
           }),
         });
         const data = await r.json().catch(() => ({}));
         if (data && data.valid) {
           bookingState.promo = { code: data.code, discount_type: data.discount_type, discount_value: Number(data.discount_value) || 0, applies_to: data.applies_to || "service_fees" };
+          bookingState.pendingPromoCode = "";
           render();
         } else {
           if (msg) msg.textContent = (data && data.reason) || "That code isn't valid.";
@@ -3371,6 +3380,15 @@ function renderFlow(root) {
     if (event.target.closest("[data-promo-remove]")) {
       bookingState.promo = { code: "", discount_type: "", discount_value: 0, applies_to: "" };
       render();
+      return;
+    }
+
+    if (event.target.closest("[data-mobile-summary-jump]")) {
+      const summary = root.querySelector(".booking-summary-sidebar");
+      if (summary) {
+        summary.classList.add("is-open");
+        summary.scrollIntoView({ behavior: "smooth", block: "start" });
+      }
       return;
     }
 
@@ -3540,7 +3558,10 @@ function renderFlow(root) {
 function applyPreselectedService() {
   let requested = "";
   try {
-    requested = new URLSearchParams(window.location.search).get("service") || "";
+    const params = new URLSearchParams(window.location.search);
+    requested = params.get("service") || "";
+    const promo = params.get("promo") || "";
+    if (promo) bookingState.pendingPromoCode = promo.trim().toUpperCase().slice(0, 32);
   } catch (_) {
     requested = "";
   }

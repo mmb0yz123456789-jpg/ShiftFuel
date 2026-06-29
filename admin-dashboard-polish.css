@@ -307,6 +307,10 @@
   font-size: 0.92rem;
   font-weight: 400;
 }
+
+.promo-form-grid select[multiple] {
+  min-height: 112px;
+}
 .promo-form-grid input#promo-code { text-transform: uppercase; font-weight: 800; }
 .promo-active-label {
   flex-direction: row !important;
@@ -520,6 +524,14 @@
 .admin-find-bar:focus-within { border-color: var(--admin-green, #1f9d57); box-shadow: 0 0 0 3px rgba(31, 157, 87, 0.12); }
 .admin-find-icon { width: 20px; height: 20px; color: #6b7d78; flex: 0 0 auto; }
 .admin-find-bar input { flex: 1; border: 0; outline: none; background: transparent; font: inherit; font-size: 0.95rem; min-width: 0; }
+.admin-find-helper { margin: 8px 2px 0; }
+.admin-find-quick-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+.admin-find-quick-filters .button { padding: 8px 12px; font-size: 0.82rem; }
 .admin-find-results { margin-top: 12px; display: grid; gap: 8px; }
 .admin-find-group { margin: 8px 0 2px; font-size: 0.72rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.04em; color: #5b6f6b; }
 .admin-find-result {

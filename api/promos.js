@@ -9,7 +9,14 @@
 
 const { setCorsHeaders, getSupabaseAdmin, verifyAdminToken } = require('./_auth');
 const { enforceRateLimit } = require('./_rate-limit');
-const { normalizeCode, validatePromoForCustomer, APPLIES_TO } = require('./_promos');
+const {
+  normalizeCode,
+  validatePromoForCustomer,
+  eligiblePromosForCustomer,
+  legacyAudienceForTarget,
+  APPLIES_TO,
+  TARGET_AUDIENCES,
+} = require('./_promos');
 
 module.exports = async (req, res) => {
   setCorsHeaders(req, res);
@@ -37,6 +44,8 @@ module.exports = async (req, res) => {
           // Back-compat: older clients sent a single service_fees sum.
           total: Number(body.order_total) || 0,
         },
+        isAccount: !!body.is_account,
+        serviceType: body.service_type || '',
       });
       if (!result.ok) return res.status(200).json({ ok: false, valid: false, reason: result.reason });
       return res.status(200).json({
@@ -52,6 +61,35 @@ module.exports = async (req, res) => {
     } catch (err) {
       console.error('[promos/validate] error:', err.message);
       return res.status(200).json({ ok: false, valid: false, reason: 'Could not check that code right now.' });
+    }
+  }
+
+  if (action === 'eligible') {
+    if (await enforceRateLimit(req, res, 'promo_eligible', { limit: 20, windowSeconds: 60 })) return;
+    try {
+      const promos = await eligiblePromosForCustomer({
+        db,
+        phone: body.phone,
+        email: body.email,
+        isAccount: !!body.is_account,
+        serviceType: body.service_type || '',
+      });
+      return res.status(200).json({
+        ok: true,
+        promos: promos.slice(0, 8).map((p) => ({
+          code: p.code,
+          name: p.name || '',
+          description: p.description || '',
+          discount_type: p.discount_type,
+          discount_value: p.discount_value,
+          applies_to: p.applies_to || 'service_fees',
+          target_audience: p.target_audience || (p.audience === 'all' ? 'everyone' : p.audience),
+          expires_at: p.expires_at || null,
+        })),
+      });
+    } catch (err) {
+      console.error('[promos/eligible] error:', err.message);
+      return res.status(200).json({ ok: true, promos: [] });
     }
   }
 
@@ -74,19 +112,30 @@ module.exports = async (req, res) => {
       const value = Number(p.discount_value);
       if (!Number.isFinite(value) || value <= 0) return res.status(400).json({ error: 'Discount value must be greater than 0' });
       if (p.discount_type === 'percent' && value > 100) return res.status(400).json({ error: 'Percentage cannot exceed 100' });
-      if (!['all', 'new', 'returning'].includes(p.audience || 'all')) return res.status(400).json({ error: 'Invalid audience' });
+      const targetAudience = p.target_audience || (p.audience === 'all' ? 'everyone' : p.audience) || 'everyone';
+      if (!TARGET_AUDIENCES.includes(targetAudience)) return res.status(400).json({ error: 'Invalid target audience' });
       if (!APPLIES_TO.includes(p.applies_to || 'service_fees')) return res.status(400).json({ error: 'Invalid "applies to" option' });
+      const eligibleServices = Array.isArray(p.eligible_services) && p.eligible_services.length
+        ? p.eligible_services.map((item) => String(item || '').trim()).filter(Boolean)
+        : ['all'];
 
       const row = {
+        name: p.name ? String(p.name).trim() : null,
         code,
         description: p.description ? String(p.description).trim() : null,
         discount_type: p.discount_type,
         discount_value: value,
         applies_to: p.applies_to || 'service_fees',
-        audience: p.audience || 'all',
+        audience: legacyAudienceForTarget(targetAudience),
+        target_audience: targetAudience,
+        eligible_services: eligibleServices.length ? eligibleServices : ['all'],
+        inactive_days_threshold: targetAudience === 'inactive' ? Math.max(1, parseInt(p.inactive_days_threshold, 10) || 30) : null,
+        specific_customer_phone: targetAudience === 'specific' && p.specific_customer_phone ? String(p.specific_customer_phone).replace(/\D/g, '').slice(-10) : null,
+        specific_customer_email: targetAudience === 'specific' && p.specific_customer_email ? String(p.specific_customer_email).trim().toLowerCase() : null,
         min_order_amount: Math.max(0, Number(p.min_order_amount) || 0),
         per_customer_limit: Math.max(0, parseInt(p.per_customer_limit, 10) || 0),
         max_redemptions: (p.max_redemptions === '' || p.max_redemptions == null) ? null : Math.max(1, parseInt(p.max_redemptions, 10)),
+        starts_at: p.starts_at || null,
         expires_at: p.expires_at || null,
         active: p.active !== false,
         updated_at: new Date().toISOString(),

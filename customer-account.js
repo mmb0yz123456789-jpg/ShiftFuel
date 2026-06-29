@@ -142,6 +142,26 @@ async function loadAccountData(session) {
   return { requests, addresses, vehicles };
 }
 
+async function loadEligiblePromos(session) {
+  try {
+    const res = await fetch("/api/promos", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        action: "eligible",
+        phone: session.phone,
+        email: session.email,
+        is_account: true,
+      }),
+    });
+    const data = await res.json().catch(() => ({}));
+    return Array.isArray(data.promos) ? data.promos : [];
+  } catch (error) {
+    console.warn("[customer-account] promos unavailable:", error);
+    return [];
+  }
+}
+
 function emptyCard(message, action = "") {
   return `
     <article class="customer-empty-card">
@@ -196,6 +216,23 @@ function addressCard(address) {
   `;
 }
 
+function promoDiscountLabel(promo) {
+  const value = Number(promo.discount_value) || 0;
+  return promo.discount_type === "percent" ? `${value}% off` : `$${value.toFixed(2)} off`;
+}
+
+function promoCard(promo) {
+  const code = String(promo.code || "").trim().toUpperCase();
+  return `
+    <article class="customer-data-card customer-promo-card">
+      <strong>${escapeHtml(promo.name || code)}</strong>
+      <span>${escapeHtml(promo.description || promoDiscountLabel(promo))}</span>
+      <span class="customer-promo-code">${escapeHtml(code)} - ${escapeHtml(promoDiscountLabel(promo))}</span>
+      <a class="button secondary" href="returning.html?promo=${encodeURIComponent(code)}#booking-flow">Book with this promo</a>
+    </article>
+  `;
+}
+
 function renderStats(active, history, addresses, vehicles) {
   if (!statsMount) return;
   statsMount.innerHTML = [
@@ -211,7 +248,7 @@ function renderStats(active, history, addresses, vehicles) {
   `).join("");
 }
 
-function renderAccount(session, data) {
+function renderAccount(session, data, promos = []) {
   const requests = [...data.requests].sort((a, b) => new Date(b.created_at || b.service_date || 0) - new Date(a.created_at || a.service_date || 0));
   const active = requests.filter((request) => !terminalStatuses.has(request.status));
   const history = requests.filter((request) => terminalStatuses.has(request.status));
@@ -255,16 +292,19 @@ function renderAccount(session, data) {
   historyMount.innerHTML = history.length
     ? history.slice(0, 8).map((request) => requestCard(request, "history")).join("")
     : emptyCard("No completed service history is available for this phone and email yet.");
-  promosMount.innerHTML = `
-    <article class="customer-data-card">
-      <strong>${requests.length ? "Book again with saved details" : "Ready to book"}</strong>
-      <span>${requests.length ? "Use your returning customer account to reuse saved vehicles and addresses on the next booking." : "Start a new booking and enter any promo code during checkout."}</span>
-    </article>
-    <article class="customer-data-card">
-      <strong>Promos</strong>
-      <span>${promoCopy}</span>
-    </article>
-  `;
+  promosMount.innerHTML = promos.length
+    ? promos.map(promoCard).join("")
+    : `
+      <article class="customer-data-card">
+        <strong>${requests.length ? "Book again with saved details" : "Ready to book"}</strong>
+        <span>${requests.length ? "Use your returning customer account to reuse saved vehicles and addresses on the next booking." : "Start a new booking and enter any promo code during checkout."}</span>
+        <a class="button secondary" href="returning.html#booking-flow">Book again</a>
+      </article>
+      <article class="customer-data-card">
+        <strong>Promos</strong>
+        <span>${promoCopy}</span>
+      </article>
+    `;
 
   dashboard.hidden = false;
   loginForm?.classList.add("is-compact");
@@ -272,14 +312,17 @@ function renderAccount(session, data) {
 
 async function openAccount(session) {
   setStatus("warning", "Loading your account...");
-  const data = await loadAccountData(session);
+  const [data, promos] = await Promise.all([
+    loadAccountData(session),
+    loadEligiblePromos(session),
+  ]);
   if (!data.requests.length && !data.addresses.length && !data.vehicles.length) {
     throw new Error("We could not find saved customer details for that phone and email.");
   }
   const name = customerNameFrom(data.requests, data);
   const nextSession = { ...session, name };
   writeSession(nextSession);
-  renderAccount(nextSession, data);
+  renderAccount(nextSession, data, promos);
   setStatus("success", "Account loaded.");
 }
 

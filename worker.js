@@ -2728,7 +2728,7 @@ function updateWorkerProgressTimeline(myJobs) {
 
 function workerUpdateDescription(job) {
   if (job.payment_status === 'captured') return 'Job completed — payout added';
-  if (job.status === 'complete') return 'Payout added';
+  if (job.status === 'complete') return 'Job completed - payout added';
   return workerStatusLabels[job.status] || job.status || 'Status updated';
 }
 
@@ -3737,7 +3737,7 @@ async function loadWorkerJobs(silent = false) {
       </div>
     ` : ''}
     <section class="worker-jobs-section">
-      <h3>Available to Claim${(!hasBlockingActiveJob && availableJobs.length) ? ` (${availableJobs.length})` : ''}</h3>
+      <h3>Available jobs to claim${(!hasBlockingActiveJob && availableJobs.length) ? ` (${availableJobs.length})` : ''}</h3>
       ${hasBlockingActiveJob
         ? `<div class="worker-state-card worker-state-empty"><p>Finish your current job before claiming another.</p></div>`
         : (availableJobs.length

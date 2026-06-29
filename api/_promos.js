@@ -19,6 +19,7 @@ function roundMoney(n) {
 }
 
 const APPLIES_TO = ['service_fees', 'wash_and_fees', 'total', 'fuel_service', 'wash_service', 'inspection'];
+const TARGET_AUDIENCES = ['everyone', 'account', 'guest', 'inactive', 'specific', 'new', 'returning'];
 
 const num = (v) => Number(v) || 0;
 
@@ -72,11 +73,19 @@ function phoneLikePattern(phone) {
   return `%${last10.slice(0, 3)}%${last10.slice(3, 6)}%${last10.slice(6)}%`;
 }
 
+function cleanEmail(email) {
+  return String(email || '').trim().toLowerCase();
+}
+
+function cleanPhone(phone) {
+  return String(phone || '').replace(/\D/g, '').slice(-10);
+}
+
 // Has this phone/email booked before? Determines new vs returning audience.
 async function customerHasHistory(db, phone, email) {
-  const cleanEmail = String(email || '').trim();
-  if (cleanEmail) {
-    const { data } = await db.from('service_requests').select('id').ilike('customer_email', cleanEmail).limit(1);
+  const emailValue = cleanEmail(email);
+  if (emailValue) {
+    const { data } = await db.from('service_requests').select('id').ilike('customer_email', emailValue).limit(1);
     if (Array.isArray(data) && data.length) return true;
   }
   const pat = phoneLikePattern(phone);
@@ -87,13 +96,32 @@ async function customerHasHistory(db, phone, email) {
   return false;
 }
 
+async function customerLastCompletedAt(db, phone, email) {
+  const ors = [];
+  const emailValue = cleanEmail(email);
+  const pat = phoneLikePattern(phone);
+  if (emailValue) ors.push(`customer_email.ilike.${emailValue}`);
+  if (pat) ors.push(`customer_phone.ilike.${pat}`);
+  if (!ors.length) return null;
+  const { data } = await db
+    .from('service_requests')
+    .select('service_date,created_at,status')
+    .in('status', ['complete', 'final_payment_processed', 'closed_no_charge'])
+    .or(ors.join(','))
+    .order('service_date', { ascending: false })
+    .order('created_at', { ascending: false })
+    .limit(1);
+  const row = Array.isArray(data) ? data[0] : null;
+  return row ? (row.service_date || row.created_at || null) : null;
+}
+
 // How many times has this customer already redeemed this specific code?
 async function customerRedemptionCount(db, promoId, phone, email) {
-  const cleanEmail = String(email || '').trim().toLowerCase();
-  const cleanPhone = String(phone || '').replace(/\D/g, '');
+  const emailValue = cleanEmail(email);
+  const phoneValue = cleanPhone(phone);
   const ors = [];
-  if (cleanEmail) ors.push(`customer_email.eq.${cleanEmail}`);
-  if (cleanPhone.length >= 10) ors.push(`customer_phone.eq.${cleanPhone.slice(-10)}`);
+  if (emailValue) ors.push(`customer_email.eq.${emailValue}`);
+  if (phoneValue.length >= 10) ors.push(`customer_phone.eq.${phoneValue}`);
   if (!ors.length) return 0;
   const { data } = await db
     .from('promo_redemptions')
@@ -101,6 +129,66 @@ async function customerRedemptionCount(db, promoId, phone, email) {
     .eq('promo_code_id', promoId)
     .or(ors.join(','));
   return Array.isArray(data) ? data.length : 0;
+}
+
+function legacyAudienceForTarget(target) {
+  if (target === 'new' || target === 'returning') return target;
+  return 'all';
+}
+
+function promoTargetAudience(promo) {
+  const explicit = String(promo.target_audience || '').trim();
+  if (TARGET_AUDIENCES.includes(explicit)) return explicit;
+  if (promo.audience === 'new' || promo.audience === 'returning') return promo.audience;
+  return 'everyone';
+}
+
+function promoServices(promo) {
+  const raw = promo.eligible_services;
+  if (Array.isArray(raw) && raw.length) return raw.map((item) => String(item || '').trim()).filter(Boolean);
+  return ['all'];
+}
+
+function serviceMatchesPromo(promo, serviceType) {
+  const services = promoServices(promo);
+  if (!services.length || services.includes('all')) return true;
+  const normalized = String(serviceType || '').trim();
+  return normalized ? services.includes(normalized) : true;
+}
+
+async function promoAudienceAllowed({ db, promo, phone, email, isAccount }) {
+  const target = promoTargetAudience(promo);
+  if (target === 'everyone') return { ok: true };
+  if (target === 'account') {
+    return isAccount ? { ok: true } : { ok: false, reason: 'This code is for My Account customers.' };
+  }
+  if (target === 'guest') {
+    return isAccount ? { ok: false, reason: 'This code is for guest bookings.' } : { ok: true };
+  }
+  if (target === 'specific') {
+    const promoPhone = cleanPhone(promo.specific_customer_phone);
+    const promoEmail = cleanEmail(promo.specific_customer_email);
+    const phoneMatches = promoPhone && promoPhone === cleanPhone(phone);
+    const emailMatches = promoEmail && promoEmail === cleanEmail(email);
+    return phoneMatches || emailMatches
+      ? { ok: true }
+      : { ok: false, reason: 'This code is not assigned to this customer.' };
+  }
+  if (target === 'inactive') {
+    const lastCompleted = await customerLastCompletedAt(db, phone, email);
+    if (!lastCompleted) return { ok: false, reason: 'This code is for previous customers who have been inactive.' };
+    const threshold = Math.max(1, Number(promo.inactive_days_threshold) || 30);
+    const days = (Date.now() - new Date(lastCompleted).getTime()) / 86400000;
+    return days >= threshold
+      ? { ok: true }
+      : { ok: false, reason: `This code is for customers inactive for ${threshold}+ days.` };
+  }
+  if (target === 'new' || target === 'returning') {
+    const hasHistory = await customerHasHistory(db, phone, email);
+    if (target === 'new' && hasHistory) return { ok: false, reason: 'This code is for first-time customers only.' };
+    if (target === 'returning' && !hasHistory) return { ok: false, reason: 'This code is for returning customers only.' };
+  }
+  return { ok: true };
 }
 
 async function fetchPromo(db, code) {
@@ -112,7 +200,7 @@ async function fetchPromo(db, code) {
 
 // Full server-side validation. `amounts` is the price breakdown (from a row via
 // amountsFromRow, or sent by the browser). Returns { ok, reason, promo, discount }.
-async function validatePromoForCustomer({ db, code, phone, email, amounts }) {
+async function validatePromoForCustomer({ db, code, phone, email, amounts, isAccount = false, serviceType = '' }) {
   const a = amounts || {};
   const orderTotal = num(a.total);
   const promo = await fetchPromo(db, code);
@@ -133,15 +221,10 @@ async function validatePromoForCustomer({ db, code, phone, email, amounts }) {
     return { ok: false, reason: `This code needs a minimum order of $${Number(promo.min_order_amount).toFixed(2)}.` };
   }
 
-  if (promo.audience === 'new' || promo.audience === 'returning') {
-    const hasHistory = await customerHasHistory(db, phone, email);
-    if (promo.audience === 'new' && hasHistory) {
-      return { ok: false, reason: 'This code is for first-time customers only.' };
-    }
-    if (promo.audience === 'returning' && !hasHistory) {
-      return { ok: false, reason: 'This code is for returning customers only.' };
-    }
-  }
+  if (!serviceMatchesPromo(promo, serviceType)) return { ok: false, reason: 'This code does not apply to the selected service.' };
+
+  const audience = await promoAudienceAllowed({ db, promo, phone, email, isAccount });
+  if (!audience.ok) return audience;
 
   if (Number(promo.per_customer_limit) > 0) {
     const used = await customerRedemptionCount(db, promo.id, phone, email);
@@ -156,6 +239,27 @@ async function validatePromoForCustomer({ db, code, phone, email, amounts }) {
   return { ok: true, promo, discount };
 }
 
+async function eligiblePromosForCustomer({ db, phone, email, isAccount = true, serviceType = '' }) {
+  const { data } = await db.from('promo_codes').select('*').eq('active', true).order('created_at', { ascending: false }).limit(50);
+  const rows = Array.isArray(data) ? data : [];
+  const now = Date.now();
+  const eligible = [];
+  for (const promo of rows) {
+    if (promo.starts_at && new Date(promo.starts_at).getTime() > now) continue;
+    if (promo.expires_at && new Date(promo.expires_at).getTime() < now) continue;
+    if (promo.max_redemptions != null && Number(promo.redemption_count) >= Number(promo.max_redemptions)) continue;
+    if (!serviceMatchesPromo(promo, serviceType)) continue;
+    const audience = await promoAudienceAllowed({ db, promo, phone, email, isAccount });
+    if (!audience.ok) continue;
+    if (Number(promo.per_customer_limit) > 0) {
+      const used = await customerRedemptionCount(db, promo.id, phone, email);
+      if (used >= Number(promo.per_customer_limit)) continue;
+    }
+    eligible.push(promo);
+  }
+  return eligible;
+}
+
 // Record a redemption (digits-only phone + lowercase email, so the per-customer
 // cap matches reliably) and bump the total counter. Best-effort, never throws.
 async function recordPromoRedemption({ db, promo, requestId, phone, email, discount }) {
@@ -163,8 +267,8 @@ async function recordPromoRedemption({ db, promo, requestId, phone, email, disco
     await db.from('promo_redemptions').insert({
       promo_code_id: promo.id,
       request_id: requestId || null,
-      customer_phone: String(phone || '').replace(/\D/g, '').slice(-10) || null,
-      customer_email: String(email || '').trim().toLowerCase() || null,
+      customer_phone: cleanPhone(phone) || null,
+      customer_email: cleanEmail(email) || null,
       discount_amount: roundMoney(discount),
     });
     await db.from('promo_codes')
@@ -177,12 +281,15 @@ async function recordPromoRedemption({ db, promo, requestId, phone, email, disco
 
 module.exports = {
   APPLIES_TO,
+  TARGET_AUDIENCES,
   normalizeCode,
   roundMoney,
   amountsFromRow,
   discountBase,
   serviceFeesFromRow,
   computeDiscount,
+  legacyAudienceForTarget,
+  eligiblePromosForCustomer,
   validatePromoForCustomer,
   recordPromoRedemption,
 };
