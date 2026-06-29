@@ -132,6 +132,14 @@
   text-align: center !important;
   color: #60716d !important;
 }
+.worker-portal-page .worker-state-empty h3 {
+  margin: 0 0 6px !important;
+  color: var(--sf-teal, #0d3b3b) !important;
+  font-size: 1rem !important;
+}
+.worker-portal-page .worker-state-empty p {
+  margin: 0 !important;
+}
 
 /* Dashboard primary actions: full-width, app-sized taps. */
 .worker-portal-page .worker-portal-hero .actions {
@@ -857,13 +865,13 @@
   .worker-portal-page .worker-earn-tiles {
     display: grid;
     grid-template-columns: repeat(4, minmax(0, 1fr));
-    gap: 12px;
+    gap: 10px;
   }
   .worker-portal-page .worker-earn-tile {
     display: flex;
     flex-direction: column;
     gap: 4px;
-    padding: 14px 16px;
+    padding: 12px 14px;
     border-radius: 14px;
     background: rgba(13, 59, 59, 0.04);
     border: 1px solid rgba(13, 59, 59, 0.08);
@@ -880,7 +888,7 @@
     color: #6c7d79;
   }
   .worker-portal-page .worker-earn-tile-value {
-    font-size: 1.5rem;
+    font-size: 1.32rem;
     font-weight: 700;
     color: #11332f;
     line-height: 1.1;
@@ -950,15 +958,33 @@
   /* 2-column dashboard — same container width as the header so edges align. */
   .worker-portal-page .worker-dash-grid {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) 360px;
-    gap: 20px;
+    grid-template-columns: minmax(0, 1fr) 320px;
+    gap: 14px;
     width: min(var(--sf-page-width, 1600px), calc(100% - 40px));
     max-width: none;
-    margin: 18px auto 0;
+    margin: 12px auto 0;
     align-items: start;
   }
-  .worker-portal-page .worker-dash-main { min-width: 0; display: grid; gap: 16px; }
-  .worker-portal-page .worker-dash-aside { display: grid; gap: 16px; }
+  .worker-portal-page .worker-dash-main { min-width: 0; display: grid; gap: 12px; }
+  .worker-portal-page .worker-dash-aside { display: grid; gap: 12px; }
+  .worker-portal-page .worker-dash-grid .worker-dashboard-card,
+  .worker-portal-page .worker-dash-grid .worker-current-status-card,
+  .worker-portal-page .worker-dash-grid .worker-state-card {
+    padding: 14px !important;
+    margin-bottom: 0 !important;
+  }
+  .worker-portal-page .worker-dash-grid .worker-card-heading h2 {
+    margin-bottom: 10px !important;
+  }
+  .worker-portal-page .worker-dash-grid .worker-today-heading {
+    margin-bottom: 10px !important;
+  }
+  .worker-portal-page .worker-stat-grid-compact {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+  .worker-portal-page .worker-dashboard-card-compact {
+    padding-bottom: 12px !important;
+  }
   /* Job card top → 2 columns (identity | details) with a divider, like the render. */
   .worker-portal-page .worker-job-grid {
     display: grid;

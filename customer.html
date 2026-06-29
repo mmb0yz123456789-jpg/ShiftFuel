@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>My Account | ShiftFuel Concierge</title>
+    <link rel="manifest" href="manifest.webmanifest">
+    <meta name="apple-mobile-web-app-capable" content="no">
+    <meta name="apple-mobile-web-app-title" content="ShiftFuel">
+    <link rel="apple-touch-icon" href="icon-main.svg">
+    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="layout-width-polish.css">
+  </head>
+  <body class="landing-page customer-account-page">
+    <header class="site-header landing-header">
+      <a class="logo" href="index.html" aria-label="ShiftFuel Concierge home">
+        <span class="logo-mark">S</span>
+        <span>ShiftFuel Concierge</span>
+      </a>
+      <button class="mobile-menu-button" type="button" data-nav-toggle aria-expanded="false" aria-controls="site-nav">
+        <span>Menu</span>
+        <span aria-hidden="true">&#9776;</span>
+      </button>
+      <nav id="site-nav" class="nav" data-nav aria-label="Main navigation">
+        <a href="index.html#how">How It Works</a>
+        <a href="index.html#services">Services &amp; Pricing</a>
+        <a href="index.html#trust">Safety &amp; Trust</a>
+        <a class="nav-cta" href="book.html#booking-flow">Book Now</a>
+        <a class="nav-returning" href="customer.html" aria-current="page">My Account</a>
+        <a class="nav-outline" href="track.html">Track My Vehicle</a>
+      </nav>
+    </header>
+
+    <main class="booking-flow-shell customer-account-shell">
+      <section class="booking-flow-hero customer-account-hero">
+        <div class="booking-flow-hero-copy">
+          <p class="eyebrow">Customer account</p>
+          <h1>Book faster and track everything in one place.</h1>
+          <p>My Account is the optional home for returning customer booking and tracking. Guest booking and guest tracking are still available.</p>
+          <div class="landing-actions">
+            <a class="button primary" href="returning.html#booking-flow">Continue as returning customer</a>
+            <a class="button tertiary" href="book.html#booking-flow">Book as guest</a>
+            <a class="button returning" href="track.html">Track without logging in</a>
+          </div>
+        </div>
+        <figure class="booking-flow-hero-image">
+          <img src="https://images.unsplash.com/photo-1503376780353-7e6692767b70?auto=format&fit=crop&w=1200&q=80" alt="A vehicle ready for ShiftFuel concierge service">
+        </figure>
+      </section>
+
+      <section class="customer-account-panel" aria-label="Customer account sign in">
+        <div class="customer-account-panel-copy">
+          <h2>Access My Account</h2>
+          <p>Enter the phone number and email used on your bookings. This keeps guest booking and guest tracking available while giving returning customers a cleaner dashboard.</p>
+        </div>
+        <form class="customer-account-form" data-customer-login-form>
+          <label>
+            Phone number
+            <input name="phone" type="tel" inputmode="numeric" autocomplete="tel" placeholder="(302) 555-0100" required>
+          </label>
+          <label>
+            Email address
+            <input name="email" type="email" autocomplete="email" placeholder="you@example.com" required>
+          </label>
+          <button class="button primary" type="submit">Open My Account</button>
+          <p class="form-status" data-customer-account-status></p>
+        </form>
+      </section>
+
+      <section class="customer-dashboard" data-customer-dashboard hidden aria-label="My Account dashboard">
+        <div class="customer-dashboard-header">
+          <div>
+            <p class="customer-dashboard-kicker">My Account</p>
+            <h2 data-customer-greeting>Your dashboard</h2>
+          </div>
+          <div class="customer-dashboard-actions">
+            <a class="button primary" href="returning.html#booking-flow">Book again</a>
+            <a class="button secondary" href="track.html">Track as guest</a>
+            <button class="button secondary" type="button" data-customer-sign-out>Sign out</button>
+          </div>
+        </div>
+        <div class="customer-dashboard-stats" data-customer-stats></div>
+        <div class="customer-dashboard-layout">
+          <section class="customer-dashboard-section customer-dashboard-section-primary">
+            <div class="customer-section-heading">
+              <h3>Current and upcoming services</h3>
+              <span data-active-count>0</span>
+            </div>
+            <div class="customer-card-list" data-active-requests></div>
+          </section>
+          <section class="customer-dashboard-section">
+            <div class="customer-section-heading">
+              <h3>Saved vehicles</h3>
+              <span data-vehicle-count>0</span>
+            </div>
+            <div class="customer-card-list" data-saved-vehicles></div>
+          </section>
+          <section class="customer-dashboard-section">
+            <div class="customer-section-heading">
+              <h3>Saved service addresses</h3>
+              <span data-address-count>0</span>
+            </div>
+            <div class="customer-card-list" data-saved-addresses></div>
+          </section>
+          <section class="customer-dashboard-section">
+            <div class="customer-section-heading">
+              <h3>Service history</h3>
+              <span data-history-count>0</span>
+            </div>
+            <div class="customer-card-list" data-service-history></div>
+          </section>
+          <section class="customer-dashboard-section customer-dashboard-section-soft">
+            <div class="customer-section-heading">
+              <h3>Promos and reminders</h3>
+            </div>
+            <div class="customer-card-list" data-customer-promos></div>
+          </section>
+        </div>
+      </section>
+    </main>
+
+    <footer class="site-footer">
+      <div class="footer-main">
+        <p class="footer-copy">&copy; <span id="year"></span> ShiftFuel Concierge. All rights reserved.</p>
+        <nav class="footer-links" aria-label="Legal links">
+          <a href="privacy.html">Privacy Policy</a>
+          <a href="terms.html">Terms of Service</a>
+          <a href="liability-waiver.html">Liability Waiver</a>
+        </nav>
+      </div>
+    </footer>
+
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="supabase-client.js"></script>
+    <script src="customer-account.js"></script>
+  </body>
+</html>

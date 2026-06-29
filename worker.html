@@ -196,23 +196,6 @@
         <div class="worker-dash-grid">
           <div class="worker-dash-main">
 
-            <section class="section">
-              <div class="worker-card-heading"><h2>Today's Schedule</h2></div>
-              <div id="worker-today-counts" class="worker-today-counts"></div>
-            </section>
-
-            <!-- Earnings breakdown (desktop dashboard only) — the data-rich lead.
-                 The phone keeps its lean Earnings tab; the computer view surfaces
-                 today / week / month / all-time at a glance. -->
-            <section class="section worker-desktop-only">
-              <div class="worker-dashboard-card">
-                <div class="worker-card-heading"><h2>Earnings</h2></div>
-                <div id="worker-earnings-breakdown" class="worker-earnings-breakdown">
-                  <div class="worker-state-card worker-state-empty"><p>Loading earnings…</p></div>
-                </div>
-              </div>
-            </section>
-
             <!-- Today's jobs with step-by-step guidance — the home work surface. -->
             <section class="section worker-today-section">
               <div class="worker-card-heading worker-today-heading">
@@ -222,6 +205,11 @@
               <div id="worker-dashboard-today" class="worker-today-list">
                 <div class="worker-state-card worker-state-empty"><p>Loading today’s jobs…</p></div>
               </div>
+            </section>
+
+            <section class="section">
+              <div class="worker-card-heading"><h2>Today's Schedule</h2></div>
+              <div id="worker-today-counts" class="worker-today-counts"></div>
             </section>
 
             <!-- Upcoming agenda (desktop dashboard only) — claimed jobs dated
@@ -236,16 +224,12 @@
               </div>
             </section>
 
-            <!-- Quick stats (desktop dashboard only) — the 6-step tracker was
-                 redundant with the job card's status, so it's gone. -->
+            <!-- Performance (desktop dashboard only). Completed-job counts live in
+                 Today's Schedule and Earnings, so this stays focused on quality. -->
             <section class="section worker-desktop-only">
               <div class="worker-dashboard-card">
-                <div class="worker-card-heading"><h2>Quick Stats</h2></div>
-                <div class="worker-stat-grid">
-                  <div class="worker-stat-card">
-                    <span class="worker-stat-value" id="worker-stat-jobs-completed">0</span>
-                    <span class="worker-stat-label">Jobs Completed</span>
-                  </div>
+                <div class="worker-card-heading"><h2>Performance</h2></div>
+                <div class="worker-stat-grid worker-stat-grid-compact">
                   <div class="worker-stat-card">
                     <span class="worker-stat-value" id="worker-stat-ontime">&mdash;</span>
                     <span class="worker-stat-label">On-time Rate</span>
@@ -254,6 +238,16 @@
                     <span class="worker-stat-value" id="worker-stat-rating">&mdash;</span>
                     <span class="worker-stat-label">Customer Rating</span>
                   </button>
+                </div>
+              </div>
+            </section>
+
+            <!-- Earnings breakdown (desktop dashboard only). -->
+            <section class="section worker-desktop-only">
+              <div class="worker-dashboard-card worker-dashboard-card-compact">
+                <div class="worker-card-heading"><h2>Earnings</h2></div>
+                <div id="worker-earnings-breakdown" class="worker-earnings-breakdown">
+                  <div class="worker-state-card worker-state-empty"><p>Loading earnings…</p></div>
                 </div>
               </div>
             </section>
@@ -277,10 +271,8 @@
               <div class="worker-dashboard-card worker-current-status-card">
                 <div class="worker-card-heading"><h2>Current Status</h2></div>
                 <dl>
-                  <div><dt>Working since</dt><dd id="worker-working-since">Today</dd></div>
+                  <div><dt>Worker since</dt><dd id="worker-working-since">Today</dd></div>
                   <div><dt>Jobs today</dt><dd id="worker-current-jobs-today">0</dd></div>
-                  <div><dt>Rating</dt><dd id="worker-current-rating">&mdash;</dd></div>
-                  <div><dt>On-time rate</dt><dd id="worker-current-ontime">&mdash;</dd></div>
                 </dl>
               </div>
             </section>

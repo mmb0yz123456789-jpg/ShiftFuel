@@ -19,6 +19,34 @@ const FUEL_AUTHORIZATION_BUFFER_GALLONS = {
 };
 let verifiedTrackingContact = { phone: "", email: "" };
 
+function formatPhoneForTracking(value) {
+  const digits = String(value || "").replace(/\D/g, "").slice(0, 10);
+  if (digits.length <= 3) return digits;
+  if (digits.length <= 6) return `(${digits.slice(0, 3)}) ${digits.slice(3)}`;
+  return `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`;
+}
+
+(function prefillTrackingFromCustomerAccount() {
+  let session = null;
+  try {
+    session = JSON.parse(localStorage.getItem("shiftfuel_customer_account") || "null");
+  } catch (_) {
+    session = null;
+  }
+
+  const params = new URLSearchParams(window.location.search || "");
+  const request = params.get("request") || "";
+  if (session?.phone && trackingPhone && !trackingPhone.value) trackingPhone.value = formatPhoneForTracking(session.phone);
+  if (session?.email && trackingEmail && !trackingEmail.value) trackingEmail.value = String(session.email || "").trim().toLowerCase();
+  if (request && trackingId && !trackingId.value) trackingId.value = request;
+
+  if (request && session?.phone && session?.email) {
+    window.addEventListener("load", () => {
+      window.setTimeout(() => trackForm?.requestSubmit(), 100);
+    });
+  }
+})();
+
 // Unified terminal/closed status list — keep in sync with admin.js, worker.js,
 // and the SQL terminal-status list in supabase-production-rls-lockdown.sql.
 const terminalStatuses = ["complete", "denied", "customer_canceled", "canceled", "cancelled", "unable_to_complete", "auto_reversed", "closed_no_charge", "canceled_return_completed"];

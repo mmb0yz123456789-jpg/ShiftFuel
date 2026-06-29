@@ -2419,12 +2419,12 @@ function renderWorkerDashboardToday(focusJobs, upcomingJobs) {
   focusJobs = focusJobs || [];
   upcomingJobs = upcomingJobs || [];
   if (!focusJobs.length && !upcomingJobs.length) {
-    container.innerHTML = '<div class="worker-state-card worker-state-empty"><p>No jobs scheduled today. You’re all caught up.</p></div>';
+    container.innerHTML = '<div class="worker-state-card worker-state-empty"><h3>No jobs scheduled today</h3><p>You’re clear for now. New accepted jobs will appear here with the next action first.</p></div>';
     return;
   }
   const focusHtml = focusJobs.length
     ? focusJobs.map(renderWorkerCurrentJobCard).join('')
-    : '<div class="worker-state-card worker-state-empty"><p>No jobs scheduled today. You’re all caught up.</p></div>';
+    : '<div class="worker-state-card worker-state-empty"><h3>No jobs scheduled today</h3><p>Your upcoming accepted jobs are below. Today’s action card will appear here when it is time to work.</p></div>';
   const upcomingHtml = upcomingJobs.length ? `
     <details class="worker-upcoming-block worker-upcoming-accordion">
       <summary class="worker-upcoming-summary">
@@ -2490,7 +2490,7 @@ function renderWorkerEarnings(completed) {
   const container = document.querySelector('#worker-earnings-list');
   if (!container) return;
   if (!completed.length) {
-    container.innerHTML = '<div class="worker-state-card worker-state-empty"><p>No completed jobs yet today.</p></div>';
+    container.innerHTML = '<div class="worker-state-card worker-state-empty"><h3>No payouts added yet today</h3><p>Completed jobs and today’s payout totals will show here.</p></div>';
     return;
   }
   const total = completed.reduce((sum, job) => sum + workerNetPayout(job), 0);
@@ -2612,7 +2612,7 @@ function renderWorkerUpcomingSchedule(jobs) {
       return aKey.localeCompare(bKey);
     });
   if (!future.length) {
-    container.innerHTML = '<div class="worker-state-card worker-state-empty"><p>No upcoming jobs scheduled.</p></div>';
+    container.innerHTML = '<div class="worker-state-card worker-state-empty"><h3>No upcoming jobs</h3><p>Future accepted jobs will appear here by service date.</p></div>';
     return;
   }
 
@@ -2727,8 +2727,8 @@ function updateWorkerProgressTimeline(myJobs) {
 }
 
 function workerUpdateDescription(job) {
-  if (job.payment_status === 'captured') return 'Payment received';
-  if (job.status === 'complete') return 'Job completed';
+  if (job.payment_status === 'captured') return 'Job completed — payout added';
+  if (job.status === 'complete') return 'Payout added';
   return workerStatusLabels[job.status] || job.status || 'Status updated';
 }
 

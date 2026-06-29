@@ -123,6 +123,13 @@ const stepCopy = {
     title: "Customer Info",
     intro: "Tell us who is booking the service.",
     fields: `
+      <div class="customer-account-prompt">
+        <div>
+          <strong>Returning customer?</strong>
+          <span>Use My Account to book again faster with saved vehicles and service addresses.</span>
+        </div>
+        <a class="button secondary" href="customer.html">My Account</a>
+      </div>
       <div class="booking-field-grid">
         <label><span>First name <span class="required-mark">Required</span></span><input data-required name="firstName" type="text" autocomplete="given-name" placeholder="Jordan"></label>
         <label><span>Last name <span class="required-mark">Required</span></span><input data-required name="lastName" type="text" autocomplete="family-name" placeholder="Smith"></label>
@@ -3550,9 +3557,33 @@ function applyPreselectedService() {
   }
 }
 
+function applyCustomerAccountSession() {
+  let session = null;
+  try {
+    session = JSON.parse(localStorage.getItem("shiftfuel_customer_account") || "null");
+  } catch (_) {
+    session = null;
+  }
+  if (!session?.phone || !session?.email) return;
+
+  const phone = formatPhone(session.phone);
+  const email = String(session.email || "").trim().toLowerCase();
+  const nameParts = String(session.name || "").trim().split(/\s+/).filter(Boolean);
+
+  bookingState.values.customerPhone = bookingState.values.customerPhone || phone;
+  bookingState.values.customerEmail = bookingState.values.customerEmail || email;
+  bookingState.values.verifyPhone = bookingState.values.verifyPhone || phone;
+  bookingState.values.verifyEmail = bookingState.values.verifyEmail || email;
+  if (nameParts.length) {
+    bookingState.values.firstName = bookingState.values.firstName || nameParts[0];
+    bookingState.values.lastName = bookingState.values.lastName || nameParts.slice(1).join(" ");
+  }
+}
+
 async function initBookingFlow() {
   if (!flowRoot) return;
   await livePricingReady;
+  applyCustomerAccountSession();
   applyPreselectedService();
   renderFlow(flowRoot);
 }
