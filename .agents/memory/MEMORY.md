@@ -1,1 +1,1 @@
-- [ShiftFuel CJS API loading](shiftfuel-cjs-loading.md) — shiftfuel-api folder must have {"type":"commonjs"} package.json; loaded at runtime via createRequire, NOT bundled by esbuild.
+- [ShiftFuel CSS architecture](shiftfuel-css-arch.md) — mobile-ux.css is the final override layer; load it last in each HTML page.
