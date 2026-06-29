@@ -15,6 +15,7 @@ const apiDir = path.resolve(_dirname, "..", "shiftfuel-api");
 
 const address = _require(path.join(apiDir, "address.js"));
 const payments = _require(path.join(apiDir, "payments.js"));
+const createAuthorizedBooking = _require(path.join(apiDir, "create-authorized-booking.js"));
 const push = _require(path.join(apiDir, "push.js"));
 const promos = _require(path.join(apiDir, "promos.js"));
 const checkr = _require(path.join(apiDir, "checkr.js"));
@@ -51,6 +52,7 @@ router.options("/{*path}", (req: Request, res: Response) => {
 
 router.all("/address", vercelWrap(address));
 router.all("/payments", vercelWrap(payments));
+router.all("/create-authorized-booking", vercelWrap(createAuthorizedBooking));
 router.all("/push", vercelWrap(push));
 router.all("/promos", vercelWrap(promos));
 router.all("/checkr", vercelWrap(checkr));
