@@ -23,7 +23,35 @@ publicDir = "artifacts/shiftfuel/dist/public"
 serve = "static"
 
 [[services.production.rewrites]]
-from = "/*"
+from = "/staff/access"
+to = "/staff-access.html"
+
+[[services.production.rewrites]]
+from = "/join-the-team"
+to = "/hiring.html"
+
+[[services.production.rewrites]]
+from = "/apply"
+to = "/hiring.html"
+
+[[services.production.rewrites]]
+from = "/worker/login"
+to = "/worker-login.html"
+
+[[services.production.rewrites]]
+from = "/worker/dashboard"
+to = "/worker.html"
+
+[[services.production.rewrites]]
+from = "/admin/login"
+to = "/admin-login.html"
+
+[[services.production.rewrites]]
+from = "/admin/dashboard"
+to = "/admin.html"
+
+[[services.production.rewrites]]
+from = "/"
 to = "/index.html"
 
 [services.env]

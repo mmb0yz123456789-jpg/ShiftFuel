@@ -2,22 +2,48 @@ import { useEffect } from "react";
 
 // The ShiftFuel Concierge app is a vanilla HTML/JS multi-page app.
 // The static HTML files are served from the /public directory by Vite.
-// This React shell handles initial redirect logic and PWA bootstrapping.
-// All real app pages are .html files in /public.
+// This React shell handles the clean-URL → HTML redirects (mirroring vercel.json rewrites)
+// and the root / → index.html redirect.
+//
+// Vercel rewrites ported here:
+//   /staff/access       → /staff-access.html
+//   /join-the-team      → /hiring.html
+//   /apply              → /hiring.html
+//   /worker/login       → /worker-login.html
+//   /worker/dashboard   → /worker.html
+//   /admin/login        → /admin-login.html
+//   /admin/dashboard    → /admin.html
+//   /                   → /index.html
+
+const REWRITES: Record<string, string> = {
+  "/staff/access": "/staff-access.html",
+  "/join-the-team": "/hiring.html",
+  "/apply": "/hiring.html",
+  "/worker/login": "/worker-login.html",
+  "/worker/dashboard": "/worker.html",
+  "/admin/login": "/admin-login.html",
+  "/admin/dashboard": "/admin.html",
+};
 
 export default function App() {
   useEffect(() => {
-    // If the user hits "/" directly (not a specific .html page), redirect to index.html
     const path = window.location.pathname;
-    const base = import.meta.env.BASE_URL || "/";
 
-    // Normalize base (remove trailing slash for comparison)
-    const normalizedBase = base.replace(/\/$/, "");
-
-    // If we're at the base path or root, redirect to the landing page
-    if (path === normalizedBase || path === normalizedBase + "/" || path === "/") {
-      window.location.replace(base + "index.html");
+    // Handle clean-URL rewrites (mirror vercel.json)
+    const target = REWRITES[path] || REWRITES[path.replace(/\/$/, "")];
+    if (target) {
+      window.location.replace(target + window.location.search + window.location.hash);
+      return;
     }
+
+    // Root redirect to landing page
+    if (path === "/" || path === "") {
+      window.location.replace("/index.html");
+      return;
+    }
+
+    // Any other path that lands on this shell (e.g. a 404 in prod): go home
+    window.location.replace("/index.html");
   }, []);
 
   return (
