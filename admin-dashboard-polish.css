@@ -1,0 +1,632 @@
+/* ============================================================
+   ShiftFuel Admin — Dashboard visual polish layer
+   Loaded AFTER styles.css. Refines the existing --admin-* design
+   toward the reference dashboard mock. Additive overrides only:
+   no structural HTML or JS changes, no invented metrics.
+   ============================================================ */
+
+/* ---- Top bar: identity block (name + role + avatar) ------- */
+.admin-top-nav .portal-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+/* The avatar button becomes a pill that wraps the name/role + circle. */
+.admin-identity-btn.admin-avatar-btn {
+  width: auto;
+  height: auto;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  padding: 5px 7px 5px 16px;
+  gap: 12px;
+}
+.admin-identity-btn.admin-avatar-btn:hover,
+.admin-identity-btn.admin-avatar-btn:focus-visible {
+  background: rgba(255, 255, 255, 0.18);
+  outline: none;
+}
+
+.admin-identity-meta {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  line-height: 1.15;
+}
+.admin-identity-name {
+  color: #fff;
+  font-weight: 800;
+  font-size: 0.92rem;
+}
+.admin-identity-role {
+  color: rgba(255, 255, 255, 0.66);
+  font-size: 0.72rem;
+  font-weight: 600;
+}
+.admin-identity-avatar {
+  width: 38px;
+  height: 38px;
+  font-size: 0.9rem;
+}
+
+@media (max-width: 760px) {
+  .admin-identity-meta { display: none; }
+  .admin-identity-btn.admin-avatar-btn { padding: 0; background: transparent; }
+}
+
+/* ---- Top bar: nav tabs --------------------------------- */
+.admin-top-nav .admin-page-tab {
+  opacity: 0.78;
+  transition: opacity 0.15s ease, border-color 0.15s ease;
+}
+.admin-top-nav .admin-page-tab:hover {
+  opacity: 1;
+}
+.admin-top-nav .admin-page-tab.active {
+  border-bottom-color: #7cc99a;   /* fresh mint underline, matching the mock */
+  opacity: 1;
+}
+
+/* ---- Stat cards: icon-left, softer surface, hover lift --- */
+.admin-stat-grid {
+  gap: 14px;
+}
+.admin-stat-card {
+  justify-content: flex-start;
+  gap: 14px;
+  min-height: 96px;
+  padding: 18px;
+  border-radius: 16px;
+  border-color: rgba(6, 47, 45, 0.08);
+  box-shadow: 0 1px 2px rgba(11, 35, 33, 0.04), 0 10px 30px rgba(11, 35, 33, 0.05);
+  transition: transform 0.16s ease, box-shadow 0.16s ease, border-color 0.16s ease;
+}
+.admin-stat-card > div {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+/* Move the icon to the left of the label/value, as in the mock. */
+.admin-stat-card .admin-stat-icon {
+  order: -1;
+  flex: 0 0 46px;
+  width: 46px;
+  height: 46px;
+}
+.admin-stat-card .admin-stat-icon svg {
+  width: 24px;
+  height: 24px;
+}
+.admin-stat-label {
+  font-size: 0.74rem;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: #5b6f6b;
+}
+.admin-stat-value {
+  font-size: clamp(1.55rem, 2.4vw, 1.95rem);
+  letter-spacing: -0.01em;
+}
+.admin-stat-card--clickable:hover {
+  transform: translateY(-2px);
+  border-color: rgba(6, 47, 45, 0.16);
+  box-shadow: 0 2px 4px rgba(11, 35, 33, 0.05), 0 16px 38px rgba(11, 35, 33, 0.1);
+}
+
+/* ---- Sidebar cards: shared surface polish --------------- */
+.admin-side-card {
+  border-radius: 16px;
+  border-color: rgba(6, 47, 45, 0.08);
+  box-shadow: 0 1px 2px rgba(11, 35, 33, 0.04), 0 10px 30px rgba(11, 35, 33, 0.05);
+}
+.admin-side-card h2 {
+  font-size: 1rem;
+  letter-spacing: -0.01em;
+}
+
+/* ---- Worker snapshot: 2x2 stat tiles ------------------- */
+.worker-snapshot-list {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+.worker-snapshot-list li {
+  grid-template-columns: auto 1fr;
+  row-gap: 6px;
+  column-gap: 8px;
+  padding: 12px 14px;
+  border: 1px solid var(--admin-line);
+  border-radius: 12px;
+  background: #fbfdfc;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #5b6f6b;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+.worker-snapshot-list li:hover,
+.worker-snapshot-list li:focus-visible {
+  border-color: var(--admin-green);
+  background: var(--admin-mint);
+}
+.worker-snapshot-list li strong {
+  grid-column: 1 / -1;       /* big count drops to its own row */
+  font-size: 1.45rem;
+  font-weight: 900;
+  color: var(--admin-ink);
+}
+.worker-snapshot-list .dot {
+  width: 9px;
+  height: 9px;
+  align-self: center;
+}
+
+/* ---- Quick actions: row + chevron --------------------- */
+.admin-action-card {
+  position: relative;
+  padding-right: 40px;
+  transition: border-color 0.15s ease, background 0.15s ease, transform 0.15s ease;
+}
+.admin-action-card::after {
+  content: "";
+  position: absolute;
+  right: 17px;
+  top: 50%;
+  width: 8px;
+  height: 8px;
+  border-right: 2px solid #9bb0ab;
+  border-top: 2px solid #9bb0ab;
+  transform: translateY(-50%) rotate(45deg);
+  transition: border-color 0.15s ease, right 0.15s ease;
+}
+.admin-action-card:hover {
+  border-color: var(--admin-green);
+  background: var(--admin-mint);
+  transform: translateX(2px);
+}
+.admin-action-card:hover::after {
+  border-color: var(--admin-green);
+  right: 14px;
+}
+/* The Refresh action has no subtitle — keep the chevron from crowding it. */
+#admin-side-refresh-btn::after {
+  display: none;
+}
+
+/* ---- Business snapshot + summary metric tiles ---------- */
+.admin-hero-stats {
+  width: 100%;
+  justify-content: space-between;
+}
+.hero-stat-value {
+  font-size: 1.5rem;
+  font-weight: 900;
+  letter-spacing: -0.01em;
+}
+.admin-summary.compact .summary-card {
+  border-radius: 12px;
+  transition: border-color 0.15s ease, transform 0.15s ease;
+}
+.admin-summary.compact .summary-card:hover {
+  border-color: var(--admin-green);
+  transform: translateY(-1px);
+}
+
+/* ---- Bottom shortcut cards: hover lift ---------------- */
+.admin-shortcut-card {
+  border-radius: 16px;
+  transition: transform 0.16s ease, box-shadow 0.16s ease, border-color 0.16s ease;
+}
+.admin-shortcut-card:hover {
+  transform: translateY(-2px);
+  border-color: var(--admin-green);
+  box-shadow: 0 16px 38px rgba(11, 35, 33, 0.1);
+}
+
+/* ---- Request queue card: lift it onto the same surface - */
+.admin-queue-card {
+  border-radius: 16px;
+}
+
+/* ---- Annual planner job-mix table (pricing simulator) --- */
+.pricing-mix-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 6px 0 12px;
+  font-size: 0.85rem;
+}
+.pricing-mix-table th,
+.pricing-mix-table td {
+  padding: 6px 8px;
+  text-align: left;
+  border-bottom: 1px solid var(--admin-line, #e5e7eb);
+}
+.pricing-mix-table thead th {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  color: #5b6f6b;
+  font-weight: 800;
+}
+.pricing-mix-table tbody th { font-weight: 600; white-space: nowrap; }
+.pricing-mix-table input { width: 100%; min-width: 64px; padding: 6px 8px; }
+.pricing-mix-table .mix-na { color: #9bb0ab; text-align: center; }
+
+/* ---- Fuel + Wash bundle: live "Save X%" preview in the Services accordion ---- */
+.bundle-savings-preview { margin-top: 8px; }
+.bundle-savings-badge {
+  display: inline-block;
+  padding: 4px 12px;
+  border-radius: 999px;
+  background: #e8f7ee;
+  color: #137a3f;
+  font-weight: 800;
+  font-size: 0.85rem;
+  letter-spacing: 0.02em;
+}
+
+/* ---- GPS-verified route map (ticket detail proof) ------- */
+.ticket-route-proof {
+  margin: 4px 0 6px;
+}
+.ticket-route-map {
+  display: block;
+  width: 100%;
+  height: auto;
+  border: 1px solid var(--admin-line, rgba(6, 47, 45, 0.12));
+  border-radius: 12px;
+  background: #eef2f0; /* placeholder tone while the tiles load */
+}
+
+/* ---- Promo codes (Promos tab) ---------------------------- */
+.promo-form {
+  padding: 20px;
+  margin-bottom: 16px;
+  background: #fff;
+  border: 1px solid var(--admin-line, #e5e7eb);
+  border-radius: 14px;
+}
+.promo-form-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 14px;
+}
+.promo-form-grid label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--admin-ink, #1f2937);
+}
+.promo-form-grid input,
+.promo-form-grid select {
+  padding: 9px 11px;
+  border: 1px solid var(--border, #d1d5db);
+  border-radius: 8px;
+  font: inherit;
+  font-size: 0.92rem;
+  font-weight: 400;
+}
+
+.promo-form-grid select[multiple] {
+  min-height: 112px;
+}
+.promo-form-grid input#promo-code { text-transform: uppercase; font-weight: 800; }
+.promo-active-label {
+  flex-direction: row !important;
+  align-items: center;
+  gap: 8px !important;
+}
+.promo-active-label input { width: auto; }
+
+.promo-card {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  padding: 16px;
+  margin-bottom: 12px;
+  background: #fff;
+  border: 1px solid var(--admin-line, #e5e7eb);
+  border-radius: 14px;
+  box-shadow: 0 1px 2px rgba(11, 35, 33, 0.04);
+}
+.promo-card.is-inactive { opacity: 0.6; }
+.promo-card-tags { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.promo-card-code { font-size: 1.05rem; font-weight: 900; letter-spacing: 0.03em; color: var(--admin-ink, #0b2321); }
+.promo-card-badge {
+  display: inline-flex;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: var(--admin-mint, #e9f5ef);
+  color: var(--admin-green, #1f9d57);
+  font-size: 0.74rem;
+  font-weight: 800;
+}
+.promo-card-audience { background: rgba(13, 59, 59, 0.08); color: var(--admin-ink, #0b2321); }
+.promo-card-off { background: #fde8e8; color: #b91c1c; }
+.promo-card-desc { margin: 8px 0 2px; color: var(--text-2, #5b6f6b); font-size: 0.9rem; }
+.promo-card-meta { margin: 6px 0 0; color: var(--text-2, #6b7280); font-size: 0.8rem; }
+.promo-card-actions { display: flex; gap: 8px; flex-shrink: 0; }
+.promo-card-actions .button { padding: 7px 12px; font-size: 0.82rem; }
+
+@media (max-width: 640px) {
+  .promo-card-actions { width: 100%; }
+  .promo-card-actions .button { flex: 1; }
+}
+
+/* ---- "Needs your attention" collapsible accordion --------- */
+.action-needed-toggle { cursor: pointer; user-select: none; }
+.action-needed-toggle-right { display: flex; align-items: center; gap: 10px; }
+.action-needed-chevron { color: var(--text-2, #6b7280); transition: transform 0.18s ease; flex-shrink: 0; }
+.action-needed-toggle:hover .action-needed-chevron { color: var(--admin-ink, #0b2321); }
+.action-needed-toggle:focus-visible { outline: 2px solid var(--admin-green, #1f9d57); outline-offset: 2px; border-radius: 8px; }
+.admin-action-needed-section:not(.is-collapsed) .action-needed-chevron { transform: rotate(180deg); }
+.admin-action-needed-section.is-collapsed .action-needed-list { display: none; }
+
+/* ---- Services tab accordions ------------------------------ */
+.svc-acc {
+  border: 1px solid var(--admin-line, #e5e7eb);
+  border-radius: 14px;
+  background: #fff;
+  margin-bottom: 12px;
+  overflow: hidden;
+}
+.svc-acc-head {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  padding: 15px 18px;
+  cursor: pointer;
+  font-size: 1.05rem; font-weight: 800; color: var(--admin-ink, #0b2321);
+  list-style: none; user-select: none;
+}
+.svc-acc-head::-webkit-details-marker { display: none; }
+.svc-acc-head::marker { display: none; }
+.svc-chevron { color: var(--text-2, #6b7280); transition: transform 0.18s ease; flex-shrink: 0; }
+.svc-acc[open] > .svc-acc-head .svc-chevron { transform: rotate(180deg); }
+.svc-acc-body { padding: 0 18px 16px; display: grid; gap: 12px; }
+
+.svc-sub-acc { border-top: 1px solid var(--admin-line, #eef0ee); }
+.svc-sub-acc-head {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  padding: 13px 2px;
+  cursor: pointer;
+  font-size: 0.82rem; font-weight: 800; letter-spacing: 0.04em; text-transform: uppercase;
+  color: var(--text-2, #5b6f6b);
+  list-style: none; user-select: none;
+}
+.svc-sub-acc-head::-webkit-details-marker { display: none; }
+.svc-sub-acc-head::marker { display: none; }
+.svc-sub-acc-head .svc-chevron { width: 16px; height: 16px; }
+.svc-sub-acc[open] > .svc-sub-acc-head .svc-chevron { transform: rotate(180deg); }
+.svc-sub-acc-body { padding: 2px 2px 16px; display: grid; gap: 12px; }
+
+/* Inline per-employee weekly schedule editor (Workers tab card). */
+.admin-sched-block {
+  margin-top: 18px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border, #e5e7eb);
+}
+.admin-sched-title { margin: 0 0 4px; font-size: 1rem; }
+.admin-sched-grid { display: grid; gap: 8px; margin: 12px 0 4px; }
+.admin-sched-row {
+  display: grid;
+  grid-template-columns: minmax(120px, 1fr) minmax(0, 1fr) minmax(0, 1fr);
+  gap: 12px;
+  align-items: end;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: rgba(13, 59, 59, 0.03);
+  border: 1px solid rgba(13, 59, 59, 0.07);
+}
+.admin-sched-toggle { display: inline-flex; align-items: center; gap: 8px; align-self: center; margin: 0; font-weight: 600; }
+/* Pin the day checkbox to a sane size (mobile was rendering it oversized) + theme it. */
+.admin-sched-enabled { width: 18px; height: 18px; min-height: 0; flex: 0 0 auto; margin: 0; accent-color: var(--admin-green, #1f9d57); cursor: pointer; }
+.admin-sched-time { margin: 0; font-size: 0.82rem; color: #60716d; }
+.admin-sched-time input { width: 100%; }
+.admin-sched-status:not(:empty) { margin-top: 8px; color: var(--admin-green, #1f9d57); font-weight: 600; }
+@media (max-width: 640px) {
+  .admin-sched-row { grid-template-columns: 1fr 1fr; }
+  .admin-sched-toggle { grid-column: 1 / -1; }
+}
+/* Desktop: tidy one-line rows that read like a weekly table — day + toggle on
+   the left, then compact inline Start / End fields, all vertically centered. */
+@media (min-width: 761px) {
+  .admin-sched-grid { gap: 6px; }
+  .admin-sched-row {
+    grid-template-columns: 160px minmax(0, 1fr) minmax(0, 1fr);
+    align-items: center;
+    padding: 8px 14px;
+  }
+  .admin-sched-toggle { display: inline-flex; align-items: center; gap: 8px; font-weight: 600; }
+  .admin-sched-time {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    text-transform: uppercase;
+    letter-spacing: .02em;
+    font-size: .72rem;
+    font-weight: 700;
+  }
+  .admin-sched-time input {
+    width: auto;
+    flex: 0 1 160px;
+    max-width: 170px;
+    text-transform: none;
+    letter-spacing: normal;
+    font-weight: 400;
+  }
+  /* Dim a day's time fields when it's unchecked so the active days stand out. */
+  .admin-sched-row:has(.admin-sched-enabled:not(:checked)) .admin-sched-time { opacity: .45; }
+}
+
+/* ── Worker change-request queue (Workers tab) ── */
+.admin-change-requests:empty { display: none; }
+.admin-change-requests-card {
+  background: #fff;
+  border: 1px solid rgba(13,59,59,.1);
+  border-radius: 14px;
+  padding: 16px 18px;
+  margin-bottom: 18px;
+}
+.admin-change-requests-card .acr-count {
+  font-size: .72rem; font-weight: 800; color: #92600a;
+  background: #fef3c7; padding: 2px 9px; border-radius: 999px; margin-left: 6px;
+}
+.acr-list { display: grid; gap: 12px; }
+.acr-item { padding: 12px; border: 1px solid rgba(13,59,59,.08); border-radius: 12px; }
+.acr-item-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.acr-kind { display: block; font-size: .8rem; color: #60716d; margin-top: 2px; }
+.acr-ctx { margin: 6px 0 0; font-size: .82rem; color: #2c4a47; }
+.acr-details { margin: 6px 0 0; color: #2c4a47; }
+.acr-note { margin: 6px 0 0; font-size: .85rem; color: #60716d; }
+.acr-meta { margin: 6px 0 0; font-size: .76rem; color: #8a9692; }
+.acr-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; align-items: center; }
+.acr-note-input { flex: 1 1 200px; min-width: 0; padding: 7px 10px; border: 1px solid rgba(13,59,59,.18); border-radius: 8px; }
+.acr-actions .button { flex: 0 0 auto; }
+.wcr-badge { font-size: .72rem; font-weight: 800; padding: 3px 10px; border-radius: 999px; text-transform: uppercase; letter-spacing: .03em; white-space: nowrap; }
+.wcr-badge.is-pending { background: #fef3c7; color: #92600a; }
+.wcr-badge.is-approved { background: #dcfce7; color: #166534; }
+.wcr-badge.is-rejected { background: #fee2e2; color: #991b1b; }
+
+/* ── Home "View all requests" link (queue now lives on the Requests tab) ── */
+.admin-viewall-link {
+  display: inline-flex; align-items: center; gap: 6px;
+  margin-top: 10px;
+  background: none; border: 0; padding: 6px 2px;
+  color: var(--admin-green, #1f9d57); font-weight: 800; font-size: 0.9rem;
+  cursor: pointer;
+}
+.admin-viewall-link:hover { text-decoration: underline; }
+
+/* ── Time-Based Pay: grouped + color-coded explanations ── */
+.tbp-intro { font-size: .85rem; color: #4b5d59; margin: 0 0 14px; line-height: 1.5; }
+.tbp-tag {
+  display: inline-block; font-size: .66rem; font-weight: 800; text-transform: uppercase;
+  letter-spacing: .03em; padding: 2px 7px; border-radius: 999px; vertical-align: middle;
+}
+.tbp-tag-customer { background: #e0f2fe; color: #075985; }   /* blue = customer pays */
+.tbp-tag-worker   { background: #dcfce7; color: #166534; }   /* green = worker earns */
+/* Tint the editable box itself to match its tag: blue = customer pays, green =
+   worker earns. Scoped to the service-pricing groups. */
+.svc-acc-body label:has(.tbp-tag-customer) input { border-color: #7dd3fc; background: #f0f9ff; }
+.svc-acc-body label:has(.tbp-tag-customer) input:focus { border-color: #0284c7; box-shadow: 0 0 0 3px rgba(2, 132, 199, 0.15); outline: none; }
+.svc-acc-body label:has(.tbp-tag-worker) input { border-color: #86efac; background: #f0fdf4; }
+.svc-acc-body label:has(.tbp-tag-worker) input:focus { border-color: #16a34a; box-shadow: 0 0 0 3px rgba(22, 101, 52, 0.15); outline: none; }
+
+.services-settings-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin: -4px 0 12px;
+}
+
+.services-settings-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border: 1px solid rgba(13, 59, 59, 0.12);
+  border-radius: 999px;
+  background: #fff;
+  color: #60716d;
+  padding: 7px 11px;
+  font-size: 0.84rem;
+}
+
+.services-settings-legend strong {
+  color: var(--admin-ink, #0b2321);
+}
+
+.admin-worker-mobile-section {
+  border: 1px solid rgba(13, 59, 59, 0.1);
+  border-radius: 14px;
+  background: #fff;
+  margin-top: 12px;
+  overflow: hidden;
+}
+
+.admin-worker-mobile-section > summary {
+  cursor: pointer;
+  list-style: none;
+  padding: 13px 14px;
+  color: var(--admin-ink, #0b2321);
+  font-weight: 900;
+}
+
+.admin-worker-mobile-section > summary::-webkit-details-marker { display: none; }
+.admin-worker-mobile-section > summary::marker { display: none; }
+.admin-worker-mobile-section-body { padding: 0 14px 14px; }
+
+@media (min-width: 761px) {
+  .admin-worker-mobile-section {
+    border: 0;
+    border-radius: 0;
+    margin-top: 0;
+    overflow: visible;
+  }
+
+  .admin-worker-mobile-section > summary {
+    display: none;
+  }
+
+  .admin-worker-mobile-section-body {
+    padding: 0;
+  }
+}
+
+/* ---- Find page: unified search (requests + people) ------- */
+.admin-find-card { padding: 14px 16px; }
+.admin-find-bar {
+  display: flex; align-items: center; gap: 10px;
+  border: 1px solid var(--admin-line, #e5e7eb);
+  border-radius: 12px; padding: 11px 14px; background: #fff;
+}
+.admin-find-bar:focus-within { border-color: var(--admin-green, #1f9d57); box-shadow: 0 0 0 3px rgba(31, 157, 87, 0.12); }
+.admin-find-icon { width: 20px; height: 20px; color: #6b7d78; flex: 0 0 auto; }
+.admin-find-bar input { flex: 1; border: 0; outline: none; background: transparent; font: inherit; font-size: 0.95rem; min-width: 0; }
+.admin-find-helper { margin: 8px 2px 0; }
+.admin-find-quick-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+.admin-find-quick-filters .button { padding: 8px 12px; font-size: 0.82rem; }
+.admin-find-results { margin-top: 12px; display: grid; gap: 8px; }
+.admin-find-group { margin: 8px 0 2px; font-size: 0.72rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.04em; color: #5b6f6b; }
+.admin-find-result {
+  display: grid; gap: 3px; width: 100%; text-align: left;
+  padding: 12px 14px; border: 1px solid var(--admin-line, #e5e7eb);
+  border-radius: 12px; background: #fff; cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+.admin-find-result:hover { border-color: var(--admin-green, #1f9d57); background: var(--admin-mint, #eaf4ef); }
+.admin-find-result .find-ticket-result-header { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.admin-find-result .find-ticket-name { font-weight: 800; color: var(--admin-ink, #0b2321); }
+.admin-find-result .find-ticket-meta { font-size: 0.82rem; color: #60716d; }
+/* On the Find tab on a phone, show only the search — drop the browse queue card.
+   (Desktop keeps the queue below the search.) */
+@media (max-width: 760px) {
+  body[data-admin-page="requests"] .admin-queue-section { display: none; }
+}
+.tbp-group {
+  border: 1px solid var(--admin-line, #e5e7eb); border-radius: 12px;
+  padding: 14px 16px; margin-bottom: 14px; border-left-width: 4px;
+}
+.tbp-group-customer { border-left-color: #38bdf8; background: rgba(2, 132, 199, 0.03); }
+.tbp-group-worker   { border-left-color: #34d399; background: rgba(22, 101, 52, 0.03); }
+.tbp-group-head { margin: 0 0 4px; font-size: .98rem; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.tbp-group-sub { margin: 0 0 12px; font-size: .82rem; color: #60716d; line-height: 1.45; }
+.tbp-group .pricing-group-grid label { font-size: .82rem; font-weight: 700; color: var(--admin-ink, #1f2937); }
+.tbp-hint { display: block; margin-top: 4px; font-size: .76rem; font-weight: 400; color: #6b7d78; line-height: 1.4; }
+
+/* ── Save button row (now between effective date + simulator) ── */
+.pricing-save-row { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin: 16px 0; }
+.pricing-save-row .button { flex: 0 0 auto; }
+
+/* ── Simulator: spelled-out breakdown + colored columns ── */
+.sim-note { margin: 2px 0 8px; font-size: .76rem; color: #6b7d78; line-height: 1.4; }
+.sim-row + .sim-note { margin-top: -2px; padding-left: 2px; }
+.sim-card-customer { border-top: 3px solid #38bdf8; }
+.sim-card-worker   { border-top: 3px solid #34d399; }
+.sim-card-company  { border-top: 3px solid #fbbf24; }

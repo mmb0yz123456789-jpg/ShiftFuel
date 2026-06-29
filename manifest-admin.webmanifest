@@ -1,0 +1,19 @@
+{
+  "name": "ShiftFuel Admin",
+  "short_name": "SF Admin",
+  "description": "ShiftFuel Concierge — Admin Portal.",
+  "start_url": "/admin/login",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#1a1f3d",
+  "theme_color": "#1a1f3d",
+  "icons": [
+    {
+      "src": "icon-admin.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

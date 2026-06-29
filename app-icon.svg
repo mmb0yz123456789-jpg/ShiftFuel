@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="ShiftFuel">
+  <!-- Maskable-safe: key content kept within the central ~80% safe zone. -->
+  <rect width="512" height="512" rx="112" fill="#0d3b3b"/>
+  <circle cx="256" cy="256" r="168" fill="#12504d"/>
+  <text x="256" y="258" text-anchor="middle" dominant-baseline="central"
+        font-family="Georgia, 'Times New Roman', serif" font-weight="700"
+        font-size="240" fill="#eaf2ea">S</text>
+</svg>

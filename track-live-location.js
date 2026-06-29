@@ -1,0 +1,654 @@
+// Customer-facing optional live location panel.
+// Shows the assigned worker phone GPS only while an active request is being serviced.
+(() => {
+  if (!document.body?.classList.contains('track-page')) return;
+
+  const CLOSED_STATUSES = new Set([
+    'complete', 'completed', 'finalized', 'denied', 'customer_canceled', 'canceled',
+    'cancelled', 'unable_to_complete', 'auto_reversed', 'closed_no_charge', 'canceled_return_completed',
+  ]);
+
+  // Show the worker's live location for the whole time they hold the customer's
+  // key/vehicle: from key pickup, through service, and across the return trip,
+  // until the key/vehicle is physically handed back. (No 'accepted' — that's
+  // before the key is picked up.)
+  const ACTIVE_TRACKING_STATUSES = new Set([
+    'key_received',
+    'pickup_vehicle_photo_uploaded', 'pickup_odometer_photo_uploaded', 'pickup_fuel_gauge_photo_uploaded',
+    'vehicle_picked_up', 'service_in_progress',
+    'fueling_in_progress', 'car_wash_in_progress', 'partial_service_complete',
+    'fueling_complete', 'car_wash_complete', 'fuel_and_wash_complete',
+    'fuel_receipt_uploaded', 'wash_receipt_uploaded',
+    'service_complete', 'receipts_recorded',
+    // Return trip — keep showing the worker until the key/vehicle is returned.
+    'returned_location_pending', 'return_location_recorded', 'return_photos_needed',
+    'dropoff_vehicle_photo_uploaded', 'dropoff_odometer_photo_uploaded', 'dropoff_fuel_gauge_photo_uploaded',
+    'vehicle_returned', 'inspection_needed', 'inspection_recorded', 'final_payment_processed',
+    'awaiting_key_return',
+    // Payment waits that happen before the key is returned.
+    'pending_customer_payment', 'payment_issue', 'authorization_too_low',
+    // Cancellation / return that still requires handing the key/vehicle back.
+    'cancelled_pending_key_return', 'return_requested', 'customer_return_requested',
+  ]);
+
+  const liveState = new Map();
+  let lastCardSignature = '';
+
+  // Freshness thresholds for the live dot. Workers ping ~every 15s while moving
+  // and ~45s while stopped, so anything quiet beyond FRESH_MS means the app was
+  // backgrounded or closed — show an honest "last seen X ago" rather than a green
+  // "live" dot. The server stops returning points after ~3 min, so past that we
+  // re-show the last known point (aged) until STALE_MAX_MS, then hide it.
+  const FRESH_MS = 120000;      // <= 2 min quiet = still treated as live
+  const STALE_MAX_MS = 1200000; // > 20 min quiet = give up and show "not available"
+  function db() {
+    return window.ShiftFuelSupabase;
+  }
+
+  function cleanPhone(value) {
+    return String(value || '').replace(/\D/g, '');
+  }
+
+  function emailValue() {
+    // Prefer the verified contact set by track.js; fall back to the search input.
+    return window._trackingContact?.email ||
+      document.querySelector('#tracking-email')?.value.trim().toLowerCase() || '';
+  }
+
+  function phoneValue() {
+    return cleanPhone(
+      window._trackingContact?.phone ||
+      document.querySelector('#tracking-phone')?.value || ''
+    );
+  }
+
+  function requestList() {
+    try {
+      if (Array.isArray(window._trackingRequests)) return window._trackingRequests;
+    } catch (_) {}
+    return [];
+  }
+
+  function requestById(id) {
+    return requestList().find((request) => request.id === id) || null;
+  }
+
+  function canShowLiveLocation(request) {
+    if (!request || CLOSED_STATUSES.has(request.status)) return false;
+    return ACTIVE_TRACKING_STATUSES.has(request.status);
+  }
+
+  function formatTime(value) {
+    if (!value) return '';
+    return new Date(value).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+  }
+
+  function relativeAge(value) {
+    const ms = value ? Date.now() - new Date(value).getTime() : 0;
+    if (ms < 60000) return 'less than a minute ago';
+    const minutes = Math.round(ms / 60000);
+    if (minutes < 60) return `${minutes} minute${minutes === 1 ? '' : 's'} ago`;
+    const hours = Math.round(minutes / 60);
+    return `${hours} hour${hours === 1 ? '' : 's'} ago`;
+  }
+
+  function panelHtml(request) {
+    const activeAllowed = canShowLiveLocation(request);
+    return `
+      <section class="track-live-location-panel" data-request-id="${request.id}">
+        <div class="track-live-location-heading">
+          <span class="track-live-dot" aria-hidden="true"></span>
+          <div>
+            <h3>Live location</h3>
+            <p>${activeAllowed ? 'Live location available while your vehicle is being serviced.' : 'Live location is not currently available. Status updates will still appear here.'}</p>
+          </div>
+        </div>
+        <div class="track-live-location-body">
+          <p class="track-live-eta" hidden></p>
+          <p class="track-live-location-status">${activeAllowed ? 'Checking for live location...' : 'Live location is not currently available. Status updates will still appear here.'}</p>
+          <div class="track-live-location-map" hidden>
+            <div class="track-live-map-canvas" aria-label="Approximate live vehicle service location"></div>
+            <p class="field-help">Map data © OpenStreetMap contributors. Location is approximate and comes from the worker’s phone GPS.</p>
+          </div>
+          <div class="track-live-location-links" hidden></div>
+        </div>
+      </section>
+    `;
+  }
+
+  function ensurePanel(card, request) {
+    if (!card || !request) return null;
+    let panel = card.querySelector('.track-live-location-panel');
+    if (!panel) {
+      // Preferred: a dedicated mount point placed by track.js at the correct
+      // spot in the (canceled or active) card layout.
+      const mount = card.querySelector('.track-live-location-mount');
+      const workerCard = card.querySelector('.assigned-worker-card');
+      const timeline = card.querySelector('.customer-timeline')?.closest('.timeline-status-message, .customer-timeline') || card.querySelector('.customer-timeline');
+      const body = card.querySelector('.track-request-body') || card;
+      if (mount) mount.insertAdjacentHTML('afterbegin', panelHtml(request));
+      else if (workerCard) workerCard.insertAdjacentHTML('afterend', panelHtml(request));
+      else if (timeline) timeline.insertAdjacentHTML('beforebegin', panelHtml(request));
+      else body.insertAdjacentHTML('afterbegin', panelHtml(request));
+      panel = card.querySelector('.track-live-location-panel');
+    }
+    panel.hidden = false;
+    return panel;
+  }
+
+  function setUnavailable(panel, message = 'Live location is not currently available. Status updates will still appear here.') {
+    if (!panel) return;
+    panel.classList.remove('is-live', 'is-stale');
+    panel.querySelector('.track-live-location-status').textContent = message;
+    const map = panel.querySelector('.track-live-location-map');
+    const links = panel.querySelector('.track-live-location-links');
+    if (map) map.hidden = true;
+    if (links) {
+      links.hidden = true;
+      links.innerHTML = '';
+    }
+  }
+
+  // Load Leaflet once (CSS + JS) so we can show a live, smoothly-updating map
+  // instead of a flickering iframe that reloads on every GPS update.
+  let leafletPromise = null;
+  function loadLeaflet() {
+    if (window.L) return Promise.resolve();
+    if (leafletPromise) return leafletPromise;
+    leafletPromise = new Promise((resolve, reject) => {
+      const css = document.createElement('link');
+      css.rel = 'stylesheet';
+      css.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
+      document.head.appendChild(css);
+      const js = document.createElement('script');
+      js.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
+      js.onload = () => resolve();
+      js.onerror = reject;
+      document.head.appendChild(js);
+    });
+    return leafletPromise;
+  }
+
+  function liveMarkerIcon() {
+    return window.L.divIcon({
+      className: 'track-live-marker',
+      html: '<span class="track-live-marker-pulse"></span><span class="track-live-marker-dot"></span>',
+      iconSize: [22, 22],
+      iconAnchor: [11, 11],
+    });
+  }
+
+  // ── Map provider ──────────────────────────────────────────────────────────
+  // Primary: Mapbox GL JS (billed per map LOAD, not per tile — best for long
+  // live-tracking sessions). Set window.SHIFTFUEL_MAPBOX_TOKEN to enable it.
+  // Fallback (no token): Leaflet + free OpenStreetMap tiles, so the map still
+  // works during development before a Mapbox key is configured.
+  function getMapboxToken() {
+    try { return (window.SHIFTFUEL_MAPBOX_TOKEN || '').trim(); } catch (_) { return ''; }
+  }
+
+  let mapboxPromise = null;
+  function loadMapbox() {
+    if (window.mapboxgl) return Promise.resolve();
+    if (mapboxPromise) return mapboxPromise;
+    mapboxPromise = new Promise((resolve, reject) => {
+      const css = document.createElement('link');
+      css.rel = 'stylesheet';
+      css.href = 'https://api.mapbox.com/mapbox-gl-js/v3.7.0/mapbox-gl.css';
+      document.head.appendChild(css);
+      const js = document.createElement('script');
+      js.src = 'https://api.mapbox.com/mapbox-gl-js/v3.7.0/mapbox-gl.js';
+      js.onload = () => resolve();
+      js.onerror = reject;
+      document.head.appendChild(js);
+    });
+    return mapboxPromise;
+  }
+
+  function markerElement() {
+    const el = document.createElement('div');
+    el.className = 'track-live-marker';
+    el.innerHTML = '<span class="track-live-marker-pulse"></span><span class="track-live-marker-dot"></span>';
+    return el;
+  }
+
+  // Smoothly move an existing map+marker to the new point (no reload).
+  function updateLiveMap(state, lat, lng) {
+    if (state.engine === 'mapbox') {
+      state.marker.setLngLat([lng, lat]);
+      state.map.easeTo({ center: [lng, lat], duration: 800 });
+    } else {
+      state.map.invalidateSize(); // in case the container was just re-shown
+      state.marker.setLatLng([lat, lng]);
+      state.map.panTo([lat, lng], { animate: true, duration: 0.8 });
+    }
+  }
+
+  async function createLiveMap(requestId, canvas, lat, lng) {
+    const state = liveState.get(requestId) || {};
+    const token = getMapboxToken();
+    try {
+      if (token) {
+        await loadMapbox();
+        window.mapboxgl.accessToken = token;
+        const map = new window.mapboxgl.Map({
+          container: canvas,
+          style: 'mapbox://styles/mapbox/streets-v12',
+          center: [lng, lat],
+          zoom: 14,
+        });
+        map.scrollZoom.disable(); // let the page scroll over the map
+        const marker = new window.mapboxgl.Marker({ element: markerElement() }).setLngLat([lng, lat]).addTo(map);
+        map.on('load', () => map.resize());
+        state.engine = 'mapbox';
+        state.map = map;
+        state.marker = marker;
+      } else {
+        await loadLeaflet();
+        const map = window.L.map(canvas, {
+          zoomControl: true,
+          attributionControl: true,
+          scrollWheelZoom: false,
+        }).setView([lat, lng], 15);
+        window.L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+          maxZoom: 19,
+          attribution: '© OpenStreetMap contributors',
+        }).addTo(map);
+        state.engine = 'leaflet';
+        state.map = map;
+        state.marker = window.L.marker([lat, lng], { icon: liveMarkerIcon() }).addTo(map);
+        setTimeout(() => map.invalidateSize(), 60);
+      }
+    } catch (err) {
+      console.warn('Could not load the live map:', err);
+    } finally {
+      state.creatingMap = false;
+      liveState.set(requestId, state);
+    }
+  }
+
+  function isReal(v) {
+    const n = Number(v);
+    return Number.isFinite(n) && n !== 0;
+  }
+  function needsFuel(request) {
+    return /fuel/.test(String(request.service_type || ''));
+  }
+  function needsWash(request) {
+    return /wash/.test(String(request.service_type || ''));
+  }
+  // A service leg is "done" once its receipt total is recorded in the notes.
+  function receiptRecorded(request, which) {
+    const m = String(request.notes || '').match(/\[receipt_totals fuel=([0-9.]+) wash=([0-9.]+)\]/);
+    if (!m) return false;
+    return Number(which === 'fuel' ? m[1] : m[2]) > 0;
+  }
+  // A spot captured into the request notes as [<tag> lat,lon].
+  function parseSpotCoords(request, tag) {
+    const m = String(request?.notes || '').match(new RegExp('\\[' + tag + ' (-?\\d+(?:\\.\\d+)?),(-?\\d+(?:\\.\\d+)?)\\]'));
+    if (!m) return null;
+    const lat = Number(m[1]), lon = Number(m[2]);
+    return (Number.isFinite(lat) && Number.isFinite(lon)) ? { lat, lon } : null;
+  }
+
+  // Which destination (if any) the worker is currently driving toward, so we can
+  // show the customer a live ETA for that leg. Returns null while the car is parked
+  // (fueling/washing in place, in the lot, inspection) — then we show no ETA, just
+  // the live position.
+  function legDestination(request) {
+    const s = request.status;
+    const driving = ['vehicle_picked_up', 'service_in_progress', 'car_wash_in_progress', 'fueling_in_progress', 'fuel_receipt_uploaded', 'wash_receipt_uploaded'];
+    if (driving.includes(s)) {
+      // Car wash first (matches the worker flow). Once a leg's receipt is recorded
+      // it's done, so the ETA moves to the next leg.
+      if (needsWash(request) && !receiptRecorded(request, 'wash')) {
+        const wash = parseSpotCoords(request, 'wash_dest_coords');
+        if (wash) return { lat: wash.lat, lon: wash.lon, label: 'Heading to the car wash' };
+      }
+      if (needsFuel(request) && !receiptRecorded(request, 'fuel')) {
+        // Chosen station has coords; "closest station" jobs use the saved fuel_dest_coords.
+        const station = (isReal(request.gas_station_lat) && isReal(request.gas_station_lon))
+          ? { lat: Number(request.gas_station_lat), lon: Number(request.gas_station_lon) }
+          : parseSpotCoords(request, 'fuel_dest_coords');
+        if (station) return { lat: station.lat, lon: station.lon, label: 'Heading to the gas station' };
+      }
+    }
+    if (['receipts_recorded', 'returned_location_pending', 'return_location_recorded', 'return_photos_needed'].includes(s)) {
+      // Prefer the exact spot the car was picked up from; fall back to the address.
+      const spot = parseSpotCoords(request, 'pickup_coords');
+      if (spot) return { lat: spot.lat, lon: spot.lon, label: 'Bringing your car back', back: true };
+      if (isReal(request.address_lat) && isReal(request.address_lon)) {
+        return { lat: Number(request.address_lat), lon: Number(request.address_lon), label: 'Bringing your car back', back: true };
+      }
+    }
+    return null;
+  }
+
+  // Live ETA for the current driving leg, computed from the worker's live position
+  // to that leg's destination (reuses the server's Mapbox route_eta).
+  async function updateLegEta(panel, request, lat, lng) {
+    const etaEl = panel.querySelector('.track-live-eta');
+    if (!etaEl) return;
+    const dest = legDestination(request);
+    if (!dest) { etaEl.hidden = true; return; }
+    try {
+      const res = await fetch('/api/address', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'route_eta', origin_lat: lat, origin_lon: lng, dest_lat: dest.lat, dest_lon: dest.lon }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (data.ok) {
+        etaEl.hidden = false;
+        etaEl.innerHTML = `🚗 ${dest.label} — about <strong>${data.minutes} min</strong> away${dest.back ? ' from your location' : ''}`;
+      } else {
+        etaEl.hidden = true;
+      }
+    } catch (_) { etaEl.hidden = true; }
+  }
+
+  async function setLocation(panel, location) {
+    // The panel can be momentarily absent if the card re-rendered between the
+    // RPC call and this callback — bail rather than throw on a null element.
+    if (!panel) return;
+    const lat = Number(location.latitude);
+    const lng = Number(location.longitude);
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+      setUnavailable(panel);
+      return;
+    }
+
+    // Remember the last known point so we can keep showing it (honestly aged)
+    // even after the server stops returning it past its ~3-minute cutoff.
+    const requestId = panel.dataset.requestId;
+    const remembered = liveState.get(requestId) || {};
+    remembered.lastLocation = location;
+    liveState.set(requestId, remembered);
+
+    // Fresh = a recent ping (worker actively tracking). Stale = gone quiet, so
+    // the dot is the worker's LAST known spot, not where they are right now.
+    const ageMs = location.created_at ? Date.now() - new Date(location.created_at).getTime() : 0;
+    const isFresh = ageMs <= FRESH_MS;
+    panel.classList.toggle('is-live', isFresh);
+    panel.classList.toggle('is-stale', !isFresh);
+    const statusText = panel.querySelector('.track-live-location-status');
+    if (isFresh) {
+      const accuracy = location.accuracy ? ` Accuracy: about ${Math.round(location.accuracy)} meters.` : '';
+      const updated = location.created_at ? ` Last updated ${formatTime(location.created_at)}.` : '';
+      statusText.textContent = `Worker GPS is active.${updated}${accuracy}`;
+    } else {
+      statusText.textContent = `Worker's location is paused — last seen ${relativeAge(location.created_at)}. The map shows their last known spot.`;
+    }
+
+    const mapWrap = panel.querySelector('.track-live-location-map');
+    const canvas = panel.querySelector('.track-live-map-canvas');
+    if (mapWrap && canvas) {
+      mapWrap.hidden = false;
+      const state = liveState.get(requestId) || {};
+      if (state.map) {
+        updateLiveMap(state, lat, lng);
+      } else if (!state.creatingMap) {
+        // Reserve immediately so a concurrent update can't build a second map.
+        state.creatingMap = true;
+        liveState.set(requestId, state);
+        await createLiveMap(requestId, canvas, lat, lng);
+      }
+    }
+
+    const links = panel.querySelector('.track-live-location-links');
+    if (links) {
+      const mapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${lat},${lng}`)}`;
+      const appleUrl = `https://maps.apple.com/?ll=${encodeURIComponent(`${lat},${lng}`)}`;
+      const wantedHtml = `<a class="button secondary" href="${mapsUrl}" target="_blank" rel="noopener">Open in Google Maps</a><a class="button secondary" href="${appleUrl}" target="_blank" rel="noopener">Open in Apple Maps</a>`;
+      // Only rewrite the links when they actually change (avoids needless DOM churn).
+      if (links.dataset.coords !== `${lat},${lng}`) {
+        links.innerHTML = wantedHtml;
+        links.dataset.coords = `${lat},${lng}`;
+      }
+      links.hidden = false;
+    }
+
+    // Live ETA for the current driving leg (to the station / back to the customer).
+    // Only when the position is fresh — a stale dot shouldn't imply live movement.
+    const request = requestById(requestId);
+    if (isFresh && request) {
+      updateLegEta(panel, request, lat, lng);
+    } else {
+      const etaEl = panel.querySelector('.track-live-eta');
+      if (etaEl) etaEl.hidden = true;
+    }
+  }
+
+  async function loadLocation(requestId) {
+    const request = requestById(requestId);
+    const panel = document.querySelector(`.track-live-location-panel[data-request-id="${CSS.escape(requestId)}"]`);
+    if (!canShowLiveLocation(request)) {
+      setUnavailable(panel);
+      return;
+    }
+
+    const state = liveState.get(requestId) || {};
+    const isCurrentlyLive = panel?.classList.contains('is-live');
+
+    try {
+      const { data, error } = await db().rpc('public_track_request_location', {
+        p_request_id: requestId,
+        p_phone: phoneValue(),
+        p_email: emailValue(),
+      });
+      if (error) throw error;
+      const row = Array.isArray(data) ? data[0] : data;
+      if (!row) {
+        // The server stops returning points after ~3 min. If we still have a
+        // last known point that isn't ancient, keep showing it — aged honestly
+        // as "last seen X ago" — rather than blanking the live panel.
+        const lastLoc = state.lastLocation;
+        const lastAgeMs = lastLoc && lastLoc.created_at
+          ? Date.now() - new Date(lastLoc.created_at).getTime()
+          : Infinity;
+        if (lastLoc && lastAgeMs <= STALE_MAX_MS) {
+          setLocation(panel, lastLoc);
+          return;
+        }
+        // Never had a point, or stale beyond the cap. Allow 2 consecutive empty
+        // responses before hiding, so a single slow poll doesn't flash unavailable.
+        state.missCount = (state.missCount || 0) + 1;
+        liveState.set(requestId, state);
+        if (!isCurrentlyLive || state.missCount >= 2) {
+          setUnavailable(panel);
+        }
+        return;
+      }
+      state.missCount = 0;
+      liveState.set(requestId, state);
+      setLocation(panel, row);
+    } catch (error) {
+      console.warn('Live location lookup unavailable:', error);
+      state.missCount = (state.missCount || 0) + 1;
+      liveState.set(requestId, state);
+      if (!isCurrentlyLive || state.missCount >= 2) {
+        setUnavailable(panel, 'Live location is not currently available. Status updates will still appear here.');
+      }
+    }
+  }
+
+  function subscribeLocation(requestId) {
+    const state = liveState.get(requestId) || {};
+    if (state.subscribed) return; // already wired up — never re-subscribe (causes realtime errors)
+
+    let channel = null;
+    const realtime = db();
+    const topicBase = `request-location-${requestId}`;
+    if (realtime?.channel) {
+      try {
+        // Supabase caches channels by topic, and removeChannel() is async — so
+        // reusing the same topic name returns the still-subscribed cached channel,
+        // and calling .on() after subscribe() throws. Tear down any existing
+        // channel for this request, then attach to a uniquely-named (guaranteed
+        // fresh, un-subscribed) channel.
+        const existing = (realtime.getChannels?.() || [])
+          .filter((c) => typeof c?.topic === 'string' && c.topic.includes(topicBase));
+        existing.forEach((c) => { try { realtime.removeChannel(c); } catch (_) {} });
+
+        channel = realtime.channel(`${topicBase}-${Date.now()}`);
+        channel
+          .on('postgres_changes', {
+            event: '*',
+            schema: 'public',
+            table: 'request_locations',
+            filter: `request_id=eq.${requestId}`,
+          }, () => loadLocation(requestId))
+          .subscribe();
+      } catch (err) {
+        // Realtime is only an optimization — the 20s poll below still keeps the
+        // map fresh. Never let a realtime hiccup throw into the console.
+        console.warn('Live location realtime unavailable; using polling only.', err?.message || err);
+        channel = null;
+      }
+    }
+
+    const poll = setInterval(() => loadLocation(requestId), 20000);
+    liveState.set(requestId, { ...state, subscribed: true, channel, poll });
+  }
+
+  function clearOldSubscriptions(activeIds) {
+    for (const [requestId, state] of liveState.entries()) {
+      if (activeIds.has(requestId)) continue;
+      if (state.poll) clearInterval(state.poll);
+      if (state.channel && db()?.removeChannel) db().removeChannel(state.channel);
+      if (state.map) {
+        try { state.map.remove(); } catch (_) {}
+      }
+      liveState.delete(requestId);
+    }
+  }
+
+  function refreshLivePanels() {
+    const activeIds = new Set();
+    document.querySelectorAll('.track-request-card[data-request-id]').forEach((card) => {
+      const requestId = card.dataset.requestId;
+      const request = requestById(requestId);
+      if (!request) return;
+      // Only mount the panel for active requests. For closed/canceled-and-done
+      // requests, never show a "not available" live-location card cluttering
+      // the page — hide any panel that may already exist.
+      if (!canShowLiveLocation(request)) {
+        const existing = card.querySelector('.track-live-location-panel');
+        if (existing) existing.hidden = true;
+        return;
+      }
+      ensurePanel(card, request);
+      activeIds.add(requestId);
+      subscribeLocation(requestId);
+      loadLocation(requestId);
+    });
+    clearOldSubscriptions(activeIds);
+  }
+
+  function ensureStyles() {
+    if (document.querySelector('#track-live-location-style')) return;
+    const style = document.createElement('style');
+    style.id = 'track-live-location-style';
+    style.textContent = `
+      .track-live-location-panel {
+        margin: 18px 0;
+        padding: 18px;
+        background: linear-gradient(180deg, #fff, rgba(234,242,234,.82));
+        border: 1px solid rgba(13,59,59,.12);
+        border-radius: var(--sf-radius-md, 18px);
+        box-shadow: 0 10px 28px rgba(13,59,59,.06);
+      }
+      .track-live-location-heading {
+        display: flex;
+        gap: 12px;
+        align-items: flex-start;
+      }
+      .track-live-location-heading h3 { margin: 0 0 3px; color: var(--sf-teal-dark, #0d3b3b); }
+      .track-live-location-heading p,
+      .track-live-location-status { margin: 0; color: var(--sf-muted, #60716d); }
+      .track-live-dot {
+        width: 12px;
+        height: 12px;
+        margin-top: 6px;
+        border-radius: 50%;
+        background: #94a3b8;
+        box-shadow: 0 0 0 5px rgba(148,163,184,.14);
+      }
+      .track-live-location-panel.is-live .track-live-dot {
+        background: #16a34a;
+        box-shadow: 0 0 0 5px rgba(22,163,74,.14);
+      }
+      /* Worker has gone quiet: amber dot, and stop the pulsing so the last-known
+         marker doesn't masquerade as a live position. */
+      .track-live-location-panel.is-stale .track-live-dot {
+        background: #d97706;
+        box-shadow: 0 0 0 5px rgba(217,119,6,.14);
+      }
+      .track-live-location-panel.is-stale .track-live-marker-dot { background: #d97706; }
+      .track-live-location-panel.is-stale .track-live-marker-pulse { animation: none; opacity: 0; }
+      .track-live-location-body { display: grid; gap: 12px; margin-top: 12px; }
+      .track-live-eta { margin: 0; font-weight: 800; font-size: 1.02rem; color: var(--sf-teal-dark, #0d3b3b); }
+      .track-live-eta[hidden] { display: none; }
+      .track-live-location-map { position: relative; }
+      .track-live-map-canvas {
+        width: 100%;
+        height: 280px;
+        border-radius: 14px;
+        overflow: hidden;
+        background: #e8eef0;
+      }
+      .track-live-map-canvas .leaflet-control-attribution { font-size: 10px; }
+      /* Uber-style pulsing live marker */
+      .track-live-marker { position: relative; width: 22px; height: 22px; }
+      .track-live-marker-dot {
+        position: absolute; left: 50%; top: 50%;
+        width: 14px; height: 14px; margin: -7px 0 0 -7px;
+        background: #16a34a; border: 2px solid #fff; border-radius: 50%;
+        box-shadow: 0 1px 4px rgba(0,0,0,.35);
+      }
+      .track-live-marker-pulse {
+        position: absolute; left: 50%; top: 50%;
+        width: 14px; height: 14px; margin: -7px 0 0 -7px;
+        background: rgba(22,163,74,.45); border-radius: 50%;
+        animation: track-live-pulse 1.8s ease-out infinite;
+      }
+      @keyframes track-live-pulse {
+        0% { transform: scale(1); opacity: .7; }
+        100% { transform: scale(3.4); opacity: 0; }
+      }
+      .track-live-location-links { display: flex; flex-wrap: wrap; gap: 10px; }
+    `;
+    document.head.appendChild(style);
+  }
+
+  // Signature of the request cards currently on screen — used so the observer
+  // only re-wires panels when a NEW lookup changes the set of cards, not when
+  // Leaflet or a marker update mutates the DOM (which caused a refresh loop).
+  function cardSignature() {
+    return [...document.querySelectorAll('.track-request-card[data-request-id]')]
+      .map((c) => c.dataset.requestId)
+      .sort()
+      .join(',');
+  }
+
+  function start() {
+    ensureStyles();
+    refreshLivePanels();
+    lastCardSignature = cardSignature();
+    const result = document.querySelector('#tracking-result');
+    if (result) {
+      let debounceTimer = null;
+      new MutationObserver(() => {
+        clearTimeout(debounceTimer);
+        debounceTimer = setTimeout(() => {
+          const sig = cardSignature();
+          if (sig === lastCardSignature) return; // same cards — don't re-wire (no flicker, no re-subscribe)
+          lastCardSignature = sig;
+          refreshLivePanels();
+        }, 400);
+      }).observe(result, { childList: true, subtree: true });
+    }
+  }
+
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start);
+  else start();
+})();
