@@ -118,11 +118,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setError(null);
       try {
         const data = await callRpc<WorkerProfile>("worker_login", {
-          p_phone: phone.trim(),
+          p_identifier: phone.trim(),
           p_password: password,
         });
-        if (!data || !data.id) {
-          setError("Invalid phone number or password.");
+        if (!data || !(data as any).id) {
+          setError("Incorrect phone or password. Try again.");
           return false;
         }
         await saveSession({ role: "worker", worker: data });
@@ -142,11 +142,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setError(null);
       try {
         const hash = await sha256hex(password);
-        const data = await callRpc<AdminProfile>("admin_login", {
-          p_username: username.trim(),
-          p_password_hash: hash,
-        });
-        if (!data || !data.id) {
+        const res = await fetch(
+          `https://nhdsokqxndhlkbsvmxio.supabase.co/rest/v1/rpc/admin_login`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              apikey:
+                "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5oZHNva3F4bmRobGtic3ZteGlvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE1NDU3ODgsImV4cCI6MjA5NzEyMTc4OH0.Fd7y0eVy-lCDYQ9UXVoDi6kWxdgmGk1QZ_SeVrmIP8I",
+              Authorization:
+                "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5oZHNva3F4bmRobGtic3ZteGlvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE1NDU3ODgsImV4cCI6MjA5NzEyMTc4OH0.Fd7y0eVy-lCDYQ9UXVoDi6kWxdgmGk1QZ_SeVrmIP8I",
+            },
+            body: JSON.stringify({ p_username: username.trim(), p_password_hash: hash }),
+          }
+        );
+        if (res.status === 404) {
+          setError(
+            "Admin login is not set up yet. Create the admin_login RPC in Supabase first."
+          );
+          return false;
+        }
+        const data = (await res.json()) as AdminProfile;
+        if (!res.ok || !data || !data.id) {
           setError("Invalid username or password.");
           return false;
         }
@@ -166,11 +183,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     async (phone: string, email: string): Promise<boolean> => {
       setError(null);
       try {
-        const data = await callRpc<CustomerProfile>("customer_login", {
-          p_phone: phone.trim(),
-          p_email: email.trim().toLowerCase(),
-        });
-        if (!data || !data.id) {
+        const res = await fetch(
+          `https://nhdsokqxndhlkbsvmxio.supabase.co/rest/v1/rpc/customer_login`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              apikey:
+                "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5oZHNva3F4bmRobGtic3ZteGlvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE1NDU3ODgsImV4cCI6MjA5NzEyMTc4OH0.Fd7y0eVy-lCDYQ9UXVoDi6kWxdgmGk1QZ_SeVrmIP8I",
+              Authorization:
+                "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5oZHNva3F4bmRobGtic3ZteGlvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE1NDU3ODgsImV4cCI6MjA5NzEyMTc4OH0.Fd7y0eVy-lCDYQ9UXVoDi6kWxdgmGk1QZ_SeVrmIP8I",
+            },
+            body: JSON.stringify({ p_phone: phone.trim(), p_email: email.trim().toLowerCase() }),
+          }
+        );
+        if (res.status === 404) {
+          setError(
+            "Customer login is not set up yet. Create the customer_login RPC in Supabase first."
+          );
+          return false;
+        }
+        const data = (await res.json()) as CustomerProfile;
+        if (!res.ok || !data || !data.id) {
           setError("No account found with that phone and email.");
           return false;
         }

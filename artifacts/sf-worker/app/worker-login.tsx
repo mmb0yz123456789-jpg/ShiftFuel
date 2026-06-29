@@ -79,11 +79,11 @@ export default function WorkerLoginScreen() {
           {/* Form */}
           <Animated.View style={[styles.card, { transform: [{ translateX: shakeAnim }] }]}>
             <View style={styles.field}>
-              <Text style={styles.label}>Phone Number</Text>
+              <Text style={styles.label}>Phone / Worker ID</Text>
               <TextInput
                 style={styles.input} value={phone} onChangeText={setPhone}
-                placeholder="(555) 000-0000" placeholderTextColor="#A7BFA6"
-                keyboardType="phone-pad" autoCapitalize="none" returnKeyType="next"
+                placeholder="Phone or worker ID" placeholderTextColor="#A7BFA6"
+                keyboardType="default" autoCapitalize="none" returnKeyType="next"
               />
             </View>
             <View style={styles.field}>
