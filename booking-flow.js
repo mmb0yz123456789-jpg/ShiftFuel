@@ -211,7 +211,7 @@ const stepCopy = {
           <small>Optional add-on</small>
           <details>
             <summary>What is included?</summary>
-            <p>Includes a tire pressure check, washer fluid top-off if needed, and a quick visible vehicle check. This is not a mechanical inspection.</p>
+            <p>Includes a tire pressure check, washer fluid top-off if needed, and a basic visual check. This is not a mechanical inspection.</p>
           </details>
         </span>
       </label>

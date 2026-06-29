@@ -5465,7 +5465,7 @@ workerScheduleForm?.addEventListener('submit', (event) => event.preventDefault()
 saveWorkdaysButton?.addEventListener('click', () => {
   saveWorkerAvailability().catch((error) => {
     console.error('Worker availability save failed:', error);
-    setScheduleStatus('Could not save work days. Check Supabase setup.');
+    setScheduleStatus('Could not save availability. Check Supabase setup.');
   });
 });
 
