@@ -1,0 +1,27 @@
+kind = "mobile"
+previewPath = "/sf-worker/"
+title = "ShiftFuel Worker"
+version = "1.0.0"
+id = "artifacts/sf-worker"
+router = "expo-domain"
+
+[[integratedSkills]]
+name = "expo"
+version = "1.0.0"
+
+[[services]]
+ensurePreviewReachable = "/status"
+name = "expo"
+paths = [ "/sf-worker/" ]
+localPort = 20351
+
+[services.development]
+run = "pnpm --filter @workspace/sf-worker run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/sf-worker", "run", "build" ]
+run = [ "pnpm", "--filter", "@workspace/sf-worker", "run", "serve" ]
+
+[services.env]
+PORT = "20351"
+BASE_PATH = "/sf-worker/"

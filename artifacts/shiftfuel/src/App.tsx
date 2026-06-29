@@ -26,6 +26,7 @@ function Router() {
       <Route path="/worker/dashboard" component={WorkerDashboardPage} />
       <Route path="/admin/login" component={AdminLoginPage} />
       <Route path="/admin/dashboard" component={AdminDashboardPage} />
+      <Route path="/returning" component={AccountPage} />
       <Route path="/privacy" component={PrivacyPage} />
       <Route path="/terms" component={TermsPage} />
       <Route path="/liability-waiver" component={LiabilityWaiverPage} />

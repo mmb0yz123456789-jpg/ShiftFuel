@@ -1,0 +1,20 @@
+uploads = []
+outputs = []
+
+[[generated]]
+id = "fH5ApWtIVUq13yd7vHVIL"
+uri = "file://artifacts/sf-worker/assets/images/icon.png"
+type = "image"
+title = "generated_image"
+
+[[generated]]
+id = "Sj_1QrbrPv7286bi7ZSKb"
+uri = "file://attached_assets/sf-admin-icon.png"
+type = "image"
+title = "generated_image"
+
+[[generated]]
+id = "E5EIacsBGYGvN1vhhr6cd"
+uri = "file://attached_assets/sf-customer-icon.png"
+type = "image"
+title = "generated_image"
