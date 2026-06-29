@@ -401,7 +401,7 @@ async function handleSaveServiceArea(body, res) {
   }
   const doc = buildServiceAreaDoc(body);
   try {
-    const target = path.join(process.cwd(), 'api', 'service-area.json');
+    const target = path.resolve(__dirname, 'service-area.json');
     fs.writeFileSync(target, JSON.stringify(doc));
     SERVICE_AREA = doc; // refresh the in-memory copy so checks use it immediately
     return res.status(200).json({ ok: true, path: target });

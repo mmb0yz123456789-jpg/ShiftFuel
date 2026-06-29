@@ -24,7 +24,8 @@ const payouts = _require(path.join(apiDir, "payouts.js"));
 const fuelCards = _require(path.join(apiDir, "fuel-cards.js"));
 const gpsWatchdog = _require(path.join(apiDir, "gps-watchdog.js"));
 const autoReverse = _require(path.join(apiDir, "auto-reverse-payments.js"));
-const generateServiceArea = _require(path.join(apiDir, "generate-service-area.js"));
+// generate-service-area.js is a one-off CLI script (runs main() at import time),
+// not an HTTP handler. It is NOT mounted as an API route.
 
 const router = Router();
 
@@ -61,6 +62,5 @@ router.all("/payouts", vercelWrap(payouts));
 router.all("/fuel-cards", vercelWrap(fuelCards));
 router.all("/gps-watchdog", vercelWrap(gpsWatchdog));
 router.all("/auto-reverse-payments", vercelWrap(autoReverse));
-router.all("/generate-service-area", vercelWrap(generateServiceArea));
 
 export default router;
