@@ -1,0 +1,1 @@
+- [ShiftFuel migration strategy](shiftfuel-migration.md) — vanilla JS pages migrated to React by injecting original scripts via useEffect; CSS served from public/

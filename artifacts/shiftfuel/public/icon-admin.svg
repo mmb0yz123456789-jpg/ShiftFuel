@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="ShiftFuel Admin">
+  <!-- Maskable-safe: key content within central 80% safe zone -->
+  <rect width="512" height="512" rx="112" fill="#1a1f3d"/>
+  <circle cx="256" cy="256" r="168" fill="#252b52"/>
+
+  <!-- Dashboard 2x2 grid — top-left large, others smaller (analytics layout) -->
+  <!-- Top-left: large stat tile -->
+  <rect x="158" y="158" width="110" height="110" rx="14" fill="#eaf2ea"/>
+  <!-- Top-right: tall bar chart tile -->
+  <rect x="280" y="158" width="78" height="110" rx="14" fill="#7b8cde"/>
+  <!-- Bottom-left: wide tile -->
+  <rect x="158" y="280" width="78" height="78" rx="14" fill="#7b8cde"/>
+  <!-- Bottom-right: accent tile -->
+  <rect x="248" y="280" width="110" height="78" rx="14" fill="#eaf2ea"/>
+
+  <!-- Mini bar chart lines in top-right tile -->
+  <rect x="295" y="238" width="10" height="20" rx="3" fill="#1a1f3d" opacity="0.5"/>
+  <rect x="311" y="228" width="10" height="30" rx="3" fill="#1a1f3d" opacity="0.5"/>
+  <rect x="327" y="218" width="10" height="40" rx="3" fill="#1a1f3d" opacity="0.5"/>
+
+  <!-- Trend line in top-left tile -->
+  <path d="M172 240 L198 220 L222 230 L248 200" stroke="#0d3b3b" stroke-width="8" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="248" cy="200" r="6" fill="#0d3b3b"/>
+</svg>

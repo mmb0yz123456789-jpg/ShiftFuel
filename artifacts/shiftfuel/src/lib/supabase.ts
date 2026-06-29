@@ -1,0 +1,13 @@
+import { createClient } from "@supabase/supabase-js";
+
+const SUPABASE_URL = "https://nhdsokqxndhlkbsvmxio.supabase.co";
+const SUPABASE_ANON_KEY =
+  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5oZHNva3F4bmRobGtic3ZteGlvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE1NDU3ODgsImV4cCI6MjA5NzEyMTc4OH0.Fd7y0eVy-lCDYQ9UXVoDi6kWxdgmGk1QZ_SeVrmIP8I";
+
+export const supabaseClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+// Expose globally for JS scripts that expect window.ShiftFuelSupabase
+if (typeof window !== "undefined") {
+  // @ts-ignore
+  window.ShiftFuelSupabase = supabaseClient;
+}

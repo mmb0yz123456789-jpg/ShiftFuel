@@ -1,0 +1,233 @@
+/* Shared layout width/alignment polish for Book Now and Track My Vehicle.
+   Visual-only: keeps forms/search logic untouched. */
+
+:root {
+  /* Match the landing page/header/footer width instead of a smaller 1280px lane. */
+  --sf-content-width: min(var(--sf-page-width), calc(100% - 40px));
+  --sf-content-width-mobile: calc(100% - 32px);
+}
+
+/* Keep the main page columns aligned with the same wide landing-page grid. */
+.booking-page .site-header,
+.track-page .site-header,
+.booking-page .site-footer,
+.track-page .site-footer,
+.booking-page .booking-flow-shell,
+.track-page .track-shell,
+.track-page #tracking-result,
+.track-page .portal-closing-banner {
+  width: var(--sf-content-width) !important;
+  max-width: var(--sf-page-width) !important;
+  margin-left: auto !important;
+  margin-right: auto !important;
+}
+
+/* Make the Track header use the same visual rules as the home page header. */
+.track-page .site-header.landing-header {
+  color: var(--sf-white) !important;
+  background: linear-gradient(135deg, var(--sf-teal), var(--sf-teal-dark)) !important;
+  border: 1px solid rgba(255, 255, 255, 0.12) !important;
+  border-radius: var(--sf-radius-sm) !important;
+  box-shadow: var(--sf-shadow-header) !important;
+}
+
+.track-page .logo,
+.track-page .nav a:not(.nav-cta):not(.nav-outline):not(.nav-returning) {
+  color: var(--sf-white) !important;
+}
+
+.track-page .logo-mark {
+  color: var(--sf-sage) !important;
+  background: transparent !important;
+}
+
+.track-page .site-header .nav-cta {
+  color: var(--sf-white) !important;
+  background: linear-gradient(135deg, var(--sf-green), var(--sf-green-dark)) !important;
+  border-color: var(--sf-green-dark) !important;
+}
+
+.track-page .site-header .nav-returning {
+  color: var(--sf-teal-dark) !important;
+  background: var(--sf-sage) !important;
+  border-color: var(--sf-sage) !important;
+}
+
+.track-page .site-header .nav-outline {
+  color: var(--sf-white) !important;
+  background: transparent !important;
+  border-color: rgba(255, 255, 255, 0.72) !important;
+  box-shadow: none !important;
+}
+
+.track-page .site-header .nav-outline[aria-current="page"] {
+  color: var(--sf-white) !important;
+  background: transparent !important;
+  border-color: rgba(255, 255, 255, 0.72) !important;
+  box-shadow: none !important;
+}
+
+/* Book Now: stop the center content from feeling skinny compared with header/footer. */
+.booking-page .booking-flow-shell {
+  display: grid;
+  gap: 24px;
+  padding-inline: 0 !important;
+}
+
+.booking-page .booking-flow,
+.booking-page .booking-progress-rail,
+.booking-page .booking-layout,
+.booking-page .booking-cards,
+.booking-page .booking-accordion-card,
+.booking-page .booking-summary-sidebar,
+.booking-page .booking-flow-hero {
+  width: 100% !important;
+  max-width: none !important;
+}
+
+.booking-page .booking-layout {
+  grid-template-columns: minmax(0, 1fr) minmax(340px, 430px);
+  gap: clamp(18px, 2vw, 30px);
+}
+
+.booking-page .booking-accordion-body,
+.booking-page .booking-accordion-header,
+.booking-page .booking-summary-sidebar {
+  padding-left: clamp(20px, 2.5vw, 36px);
+  padding-right: clamp(20px, 2.5vw, 36px);
+}
+
+.booking-page .booking-flow-hero-copy {
+  padding-left: clamp(30px, 5vw, 76px);
+  padding-right: clamp(30px, 5vw, 76px);
+}
+
+/* Track: align header/content/footer to one clean landing-page grid. */
+.track-page .track-shell {
+  padding-left: 0 !important;
+  padding-right: 0 !important;
+}
+
+.track-page .track-hero-redesign {
+  width: 100% !important;
+  max-width: none !important;
+  margin-left: auto !important;
+  margin-right: auto !important;
+  padding-left: clamp(30px, 5vw, 76px) !important;
+  padding-right: clamp(30px, 5vw, 76px) !important;
+  border-radius: var(--sf-radius-sm);
+}
+
+.track-page .track-search-card,
+.track-page #tracking-result {
+  /* Match the header/footer width exactly so the left/right edges line up. */
+  width: var(--sf-content-width) !important;
+  max-width: var(--sf-page-width) !important;
+  margin-left: auto !important;
+  margin-right: auto !important;
+}
+
+.track-page .track-search-card {
+  margin-top: -72px !important;
+}
+
+.track-page .track-section,
+.track-page .track-request-card {
+  width: 100%;
+}
+
+@media (max-width: 980px) {
+  .booking-page .site-header,
+  .track-page .site-header,
+  .booking-page .site-footer,
+  .track-page .site-footer,
+  .booking-page .booking-flow-shell,
+  .track-page .track-shell,
+  .track-page #tracking-result,
+  .track-page .portal-closing-banner,
+  .track-page .track-search-card {
+    width: var(--sf-content-width-mobile) !important;
+    max-width: 760px !important;
+  }
+
+  .booking-page .booking-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .booking-page .booking-summary-sidebar {
+    position: static;
+    /* Keep the summary AFTER the form on mobile. It used to be order:-1, which
+       hoisted an empty "Not entered yet" summary above the fields the customer
+       still has to fill in. Source order (form first, summary last) reads far
+       better on a phone. */
+    order: 1;
+  }
+
+  .track-page .track-hero-redesign {
+    width: var(--sf-content-width-mobile) !important;
+    max-width: 760px !important;
+    margin-left: auto !important;
+    margin-right: auto !important;
+    padding-left: 22px !important;
+    padding-right: 22px !important;
+  }
+
+  .track-page .track-search-card {
+    margin-top: -56px !important;
+  }
+}
+
+@media (max-width: 640px) {
+  :root {
+    --sf-content-width-mobile: calc(100% - 24px);
+  }
+
+  .booking-page .booking-accordion-body,
+  .booking-page .booking-accordion-header,
+  .booking-page .booking-summary-sidebar {
+    padding-left: 18px;
+    padding-right: 18px;
+  }
+
+  .track-page .track-search-card,
+  .track-page #tracking-result {
+    width: var(--sf-content-width-mobile) !important;
+  }
+
+  /* The shell is a full-height grid with place-items:center, which stretched the
+     rows (huge gaps) and centered items oddly (apparent right-shift). Make it a
+     plain top-aligned block on phones so things stack naturally. */
+  .track-page .track-shell {
+    display: block !important;
+    min-height: 0 !important;
+    place-items: initial !important;
+  }
+
+  /* Guarantee the title is horizontally centered: symmetric padding, and shrink
+     the heading to its text width so auto margins center the actual text. */
+  .track-page .track-hero-redesign {
+    padding-left: 16px !important;
+    padding-right: 16px !important;
+    text-align: center !important;
+  }
+  .track-page .track-hero-redesign .booking-flow-hero-copy {
+    text-align: center !important;
+  }
+  .track-page .track-hero-redesign h1 {
+    width: fit-content;
+    max-width: 100%;
+    margin-left: auto !important;
+    margin-right: auto !important;
+    text-align: center !important;
+  }
+
+  /* Make the lookup form read as part of the page, not a floating glass overlay:
+     no hero overlap, no big drop shadow, no backdrop blur. */
+  .track-page .track-search-card {
+    margin-top: 0 !important;
+    box-shadow: none !important;
+    backdrop-filter: none !important;
+    background: #ffffff !important;
+    border-color: rgba(13, 59, 59, 0.10) !important;
+  }
+}

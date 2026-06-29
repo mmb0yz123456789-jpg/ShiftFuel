@@ -1,0 +1,1456 @@
+/* ============================================================
+   ShiftFuel Worker — clean light app shell.
+   Turns the worker portal from a marketing webpage into a tidy
+   installed-app feel: flat light canvas, compact sticky header,
+   consistent white cards, big tap targets, and a real fixed
+   bottom tab bar. Loaded AFTER styles.css so it overrides it.
+   Presentation only — no markup logic depends on these rules.
+   ============================================================ */
+
+/* ---- App canvas ---- */
+.worker-portal-page {
+  background: #eef2f0 !important;
+}
+/* The [hidden] attribute must always win over any display rule below
+   (e.g. the rating row / Active badge stay hidden until they have data). */
+.worker-portal-page [hidden] { display: none !important; }
+.worker-portal-page main {
+  width: min(560px, 100%);
+  margin: 0 auto;
+  padding: 0 0 92px; /* clear the fixed tab bar */
+}
+
+/* Tame the marketing-scale section padding across every tab. */
+.worker-portal-page .section {
+  width: 100% !important;
+  max-width: none !important;
+  margin: 0 !important;
+  padding: 12px 16px !important;
+}
+
+/* ---- Sticky app header ---- */
+.worker-portal-page .portal-header {
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  width: 100% !important;
+  max-width: none !important;
+  margin: 0 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  padding: 12px 16px !important;
+  box-shadow: 0 2px 12px rgba(6, 39, 39, 0.18) !important;
+}
+/* Slim single-row top bar: logo + name on the left, Online on the right. */
+.worker-portal-page .portal-header {
+  flex-direction: row !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  gap: 12px !important;
+  padding: 9px 16px !important;
+}
+.worker-portal-page .portal-header .logo span:last-child { font-size: 0.92rem !important; line-height: 1.05 !important; }
+.worker-portal-page .portal-header .logo span:last-child { font-size: 1rem; }
+/* "Worker Dashboard" label is redundant with the tab bar below. */
+.worker-portal-page .portal-header-label { display: none !important; }
+.worker-portal-page .portal-header-actions {
+  display: flex !important;
+  flex-direction: row !important;
+  flex-wrap: nowrap !important;
+  gap: 8px !important;
+  align-items: center !important;
+  justify-content: flex-end !important;
+  margin: 0 !important;
+}
+.worker-portal-page .portal-signout-btn {
+  padding: 7px 13px !important;
+  font-size: 0.82rem !important;
+  border-radius: 999px !important;
+}
+.worker-portal-page .worker-presence-indicator {
+  background: rgba(255, 255, 255, 0.14);
+  border-radius: 999px;
+  padding: 5px 11px;
+}
+
+/* ---- Kill the marketing hero image + huge min-height ---- */
+.worker-portal-page .worker-portal-hero {
+  min-height: 0 !important;
+  padding: 14px 16px !important;
+  background: transparent !important;
+  border-bottom: 0 !important;
+}
+.worker-portal-page .worker-hero-content { display: block !important; }
+.worker-portal-page .worker-portal-hero .eyebrow { margin-bottom: 2px !important; }
+.worker-portal-page .worker-portal-hero h1 {
+  font-size: 1.6rem !important;
+  line-height: 1.1 !important;
+  margin: 0 0 4px !important;
+}
+.worker-portal-page #worker-hero-subtitle { margin: 0 0 14px !important; }
+
+/* ---- Dashboard greeting (just the name, under the header) ---- */
+.worker-portal-page .worker-greeting .eyebrow { margin-bottom: 0 !important; }
+.worker-portal-page .worker-greeting h1 {
+  font-size: 1.7rem !important;
+  line-height: 1.05 !important;
+  margin: 2px 0 0 !important;
+}
+
+/* ---- Today's Jobs: the dashboard work surface ---- */
+.worker-portal-page .worker-today-section { padding-top: 4px !important; }
+.worker-portal-page .worker-today-heading {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  margin-bottom: 12px !important;
+}
+.worker-portal-page .worker-today-heading h2 { margin: 0 !important; }
+.worker-portal-page .worker-refresh-chip {
+  width: auto !important;
+  min-height: 36px !important;
+  padding: 6px 14px !important;
+  font-size: 0.85rem !important;
+  border-radius: 999px !important;
+}
+.worker-portal-page .worker-today-list { display: grid !important; gap: 14px !important; }
+
+/* The guided baby-step card on the dashboard reads as a clean white card. */
+.worker-portal-page .worker-current-job-card {
+  background: #ffffff !important;
+  border: 1px solid rgba(13, 59, 59, 0.08) !important;
+  border-radius: 18px !important;
+  box-shadow: 0 8px 24px rgba(13, 59, 59, 0.06) !important;
+  padding: 18px !important;
+  margin: 0 !important;
+}
+.worker-portal-page .worker-today-list .worker-state-card {
+  background: #ffffff !important;
+  border: 1px dashed rgba(13, 59, 59, 0.18) !important;
+  border-radius: 18px !important;
+  padding: 22px 18px !important;
+  text-align: center !important;
+  color: #60716d !important;
+}
+.worker-portal-page .worker-state-empty h3 {
+  margin: 0 0 6px !important;
+  color: var(--sf-teal, #0d3b3b) !important;
+  font-size: 1rem !important;
+}
+.worker-portal-page .worker-state-empty p {
+  margin: 0 !important;
+}
+
+/* Dashboard primary actions: full-width, app-sized taps. */
+.worker-portal-page .worker-portal-hero .actions {
+  display: grid !important;
+  gap: 10px !important;
+  margin-top: 0 !important;
+}
+.worker-portal-page .worker-portal-hero .actions .button {
+  width: 100% !important;
+  min-height: 50px !important;
+  font-size: 1rem !important;
+  border-radius: 14px !important;
+}
+
+/* ---- Unified white cards across all tabs ---- */
+.worker-portal-page .worker-dashboard-card,
+.worker-portal-page .worker-current-status-card,
+.worker-portal-page .worker-jobs-panel,
+.worker-portal-page .worker-schedule-form-inline,
+.worker-portal-page .worker-state-card,
+.worker-portal-page .worker-profile-snapshot {
+  background: #ffffff !important;
+  border: 1px solid rgba(13, 59, 59, 0.08) !important;
+  border-radius: 18px !important;
+  box-shadow: 0 8px 24px rgba(13, 59, 59, 0.06) !important;
+  padding: 18px !important;
+  margin: 0 0 14px !important;
+}
+.worker-portal-page .worker-card-heading h2,
+.worker-portal-page .section-heading h2 {
+  font-size: 1.15rem !important;
+  margin: 0 0 12px !important;
+  letter-spacing: -0.01em !important;
+}
+
+/* Status card: clean key/value rows. */
+.worker-portal-page .worker-current-status-card dl { margin: 0 !important; }
+.worker-portal-page .worker-current-status-card dl > div {
+  display: flex !important;
+  justify-content: space-between !important;
+  gap: 12px !important;
+  padding: 11px 0 !important;
+  border-bottom: 1px solid rgba(13, 59, 59, 0.07) !important;
+}
+.worker-portal-page .worker-current-status-card dl > div:last-child { border-bottom: 0 !important; }
+.worker-portal-page .worker-current-status-card dt { color: #60716d !important; }
+.worker-portal-page .worker-current-status-card dd { font-weight: 700 !important; text-align: right !important; margin: 0 !important; }
+
+/* Progress stepper row: compact + tidy. */
+.worker-portal-page .worker-progress-line {
+  display: grid !important;
+  grid-template-columns: repeat(3, 1fr) !important;
+  gap: 14px 8px !important;
+}
+
+/* Stat grid: even, app-like tiles. */
+.worker-portal-page .worker-stat-grid {
+  display: grid !important;
+  grid-template-columns: repeat(3, 1fr) !important;
+  gap: 10px !important;
+}
+.worker-portal-page .worker-stat-card {
+  background: var(--sf-sage-light, #eaf2ea) !important;
+  border-radius: 14px !important;
+  padding: 14px 8px !important;
+  text-align: center !important;
+}
+
+/* ---- Fixed bottom tab bar ---- */
+.worker-portal-page .app-tabbar {
+  position: fixed !important;
+  left: 0; right: 0; bottom: 0;
+  z-index: 50;
+  display: flex !important;
+  gap: 0 !important;
+  background: #ffffff !important;
+  border-top: 1px solid rgba(13, 59, 59, 0.1) !important;
+  box-shadow: 0 -4px 18px rgba(6, 39, 39, 0.07) !important;
+  padding: 6px 4px calc(6px + env(safe-area-inset-bottom)) !important;
+}
+.worker-portal-page .app-tab {
+  flex: 1 !important;
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
+  gap: 3px !important;
+  padding: 6px 2px !important;
+  background: transparent !important;
+  border: 0 !important;
+  color: #6b7d78 !important;
+  font-size: 0.68rem !important;
+  font-weight: 700 !important;
+}
+.worker-portal-page .app-tab svg { width: 22px !important; height: 22px !important; }
+.worker-portal-page .app-tab.active { color: var(--sf-teal, #0d3b3b) !important; }
+
+/* Profile actions: full-width stacked buttons (incl. the relocated
+   Enable alerts / Take a break / Sign out controls). */
+.worker-portal-page .worker-profile-actions {
+  display: grid !important;
+  gap: 10px !important;
+  margin-top: 14px !important;
+}
+.worker-portal-page .worker-profile-actions .button {
+  width: 100% !important;
+  min-height: 48px !important;
+  border-radius: 12px !important;
+  font-weight: 700 !important;
+}
+
+/* ---- Job card: avatar header + iconographic detail rows (mockup style) ---- */
+.worker-portal-page .worker-job-head {
+  display: grid !important;
+  grid-template-columns: auto 1fr auto !important;
+  align-items: start !important;
+  gap: 12px !important;
+  padding-bottom: 14px !important;
+  border-bottom: 1px solid rgba(13, 59, 59, 0.08) !important;
+}
+.worker-portal-page .worker-avatar {
+  width: 44px; height: 44px;
+  display: inline-flex; align-items: center; justify-content: center;
+  border-radius: 50%;
+  background: var(--sf-sage-light, #eaf2ea);
+  color: var(--sf-teal, #0d3b3b);
+  font-weight: 800; font-size: 1.05rem;
+}
+.worker-portal-page .worker-job-head-main { min-width: 0; }
+.worker-portal-page .worker-job-head-main .worker-current-job-name {
+  margin: 2px 0 2px !important;
+  font-size: 1.2rem !important;
+}
+.worker-portal-page .worker-job-head-main .worker-card-vehicle {
+  margin: 0 !important;
+  color: #60716d !important;
+  font-size: 0.9rem !important;
+}
+.worker-portal-page .worker-job-head-meta {
+  display: grid; justify-items: end; gap: 6px; text-align: right;
+}
+.worker-portal-page .worker-return-by { font-size: 0.82rem; color: #60716d; white-space: nowrap; }
+.worker-portal-page .worker-job-facts { display: grid; gap: 0; padding: 6px 0 2px; }
+.worker-portal-page .worker-fact-row {
+  display: grid;
+  grid-template-columns: 28px 1fr;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 0;
+}
+.worker-portal-page .worker-fact-icon {
+  width: 28px; height: 28px;
+  display: inline-flex; align-items: center; justify-content: center;
+  color: var(--sf-teal, #0d3b3b);
+}
+.worker-portal-page .worker-fact-icon svg { width: 20px; height: 20px; }
+.worker-portal-page .worker-fact-text { display: grid; gap: 1px; min-width: 0; }
+.worker-portal-page .worker-fact-label {
+  font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.04em; color: #8a9893;
+}
+.worker-portal-page .worker-fact-value { color: #1c2b28; font-weight: 600; }
+
+/* 2-column job card (identity | details). Stacks on mobile; splits on desktop. */
+.worker-portal-page .worker-job-statusrow { display: flex; justify-content: flex-end; margin-bottom: 8px; }
+.worker-portal-page .worker-job-identity {
+  display: flex; align-items: center; gap: 12px;
+  padding-bottom: 14px; margin-bottom: 4px;
+  border-bottom: 1px solid rgba(13, 59, 59, 0.08);
+}
+
+/* Available-job card: tighter head, prominent est fee, full-width Accept. */
+.worker-portal-page .worker-available-card .worker-job-head {
+  border-bottom: 0 !important;
+  padding-bottom: 6px !important;
+}
+.worker-portal-page .worker-est-fee {
+  font-weight: 800;
+  color: var(--sf-green, #1f7a45);
+  font-size: 1.05rem;
+}
+
+/* Native-maps "Navigate ›" deep link on job cards */
+.worker-portal-page .worker-nav-link {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: var(--sf-green, #1f7a45);
+  color: #fff;
+  font-weight: 700;
+  font-size: 0.82rem;
+  text-decoration: none;
+  white-space: nowrap;
+}
+.worker-portal-page .worker-nav-link:hover { filter: brightness(1.08); }
+
+/* "Start — open directions" action button (anchor styled as a primary button) */
+.worker-portal-page .worker-start-nav {
+  display: block;
+  width: 100%;
+  text-align: center;
+  text-decoration: none;
+}
+.worker-portal-page .worker-station-pref {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: #b45309;
+}
+.worker-portal-page .worker-available-card .worker-card-action {
+  width: 100% !important;
+  min-height: 50px !important;
+  margin-top: 8px !important;
+  border-radius: 14px !important;
+  font-weight: 800 !important;
+}
+
+/* ---- Upcoming list on the dashboard (claimed jobs outside the active Today card) ---- */
+.worker-portal-page .worker-upcoming-block { margin-top: 16px; }
+.worker-portal-page .worker-upcoming-accordion {
+  border: 1px solid rgba(13, 59, 59, 0.1);
+  border-radius: 14px;
+  background: #fff;
+  box-shadow: 0 8px 22px rgba(13, 59, 59, 0.06);
+  overflow: hidden;
+}
+.worker-portal-page .worker-upcoming-summary {
+  list-style: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 50px;
+  padding: 0 14px;
+  color: #123c38;
+  font-size: 0.9rem;
+  font-weight: 800;
+  cursor: pointer;
+}
+.worker-portal-page .worker-upcoming-summary::-webkit-details-marker { display: none; }
+.worker-portal-page .worker-upcoming-summary::after {
+  content: '';
+  width: 8px;
+  height: 8px;
+  border-right: 2px solid #6c7d79;
+  border-bottom: 2px solid #6c7d79;
+  transform: rotate(45deg);
+  transition: transform 0.18s ease;
+}
+.worker-portal-page .worker-upcoming-accordion[open] .worker-upcoming-summary::after {
+  transform: rotate(225deg);
+}
+.worker-portal-page .worker-upcoming-summary strong {
+  margin-left: auto;
+  min-width: 28px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: #eef6f1;
+  color: #147a5a;
+  font-size: 0.82rem;
+}
+.worker-portal-page .worker-upcoming-list {
+  padding: 0 12px 12px;
+}
+.worker-portal-page .worker-upcoming-row {
+  display: grid !important;
+  grid-template-columns: 36px 1fr auto !important;
+  align-items: center !important;
+  gap: 12px !important;
+  background: #fff !important;
+  border: 1px solid rgba(13, 59, 59, 0.08) !important;
+  border-radius: 14px !important;
+  padding: 12px 14px !important;
+  margin-bottom: 10px !important;
+}
+.worker-portal-page .worker-upcoming-list .worker-upcoming-row:last-child { margin-bottom: 0 !important; }
+.worker-portal-page .worker-upcoming-row { align-items: start !important; }
+.worker-portal-page .worker-upcoming-main { display: grid; gap: 3px; min-width: 0; }
+.worker-portal-page .worker-upcoming-main .worker-card-sub { color: #60716d; font-size: 0.85rem; }
+.worker-portal-page .worker-upcoming-addr {
+  display: inline-flex; align-items: flex-start; gap: 5px;
+  color: #60716d; font-size: 0.8rem; line-height: 1.35; margin-top: 1px;
+}
+.worker-portal-page .worker-upcoming-addr svg { width: 14px; height: 14px; flex: 0 0 auto; margin-top: 1px; color: var(--sf-teal, #0d3b3b); }
+.worker-portal-page .worker-upcoming-when { color: #60716d; font-size: 0.82rem; white-space: nowrap; margin-top: 2px; }
+
+/* ---- Today's Schedule count strip (Accepted / Upcoming / Completed / Cancelled) ---- */
+.worker-portal-page .worker-today-counts {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  background: #fff;
+  border: 1px solid rgba(13, 59, 59, 0.08);
+  border-radius: 16px;
+  box-shadow: 0 8px 24px rgba(13, 59, 59, 0.06);
+  overflow: hidden;
+}
+.worker-portal-page .worker-count-cell {
+  display: grid; gap: 2px; justify-items: center; text-align: center;
+  padding: 16px 4px;
+  border-left: 1px solid rgba(13, 59, 59, 0.07);
+}
+.worker-portal-page .worker-count-cell:first-child { border-left: 0; }
+/* Tappable tiles (count > 0) are buttons — reset native chrome, keep the look. */
+.worker-portal-page button.worker-count-cell {
+  -webkit-appearance: none;
+  appearance: none;
+  background: none;
+  border: 0;
+  border-left: 1px solid rgba(13, 59, 59, 0.07);
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+.worker-portal-page button.worker-count-cell:first-child { border-left: 0; }
+.worker-portal-page button.worker-count-cell:hover { background: #f6faf8; }
+.worker-portal-page button.worker-count-cell:active { background: #eef5f1; }
+/* Zero-count tiles are dimmed and inert. */
+.worker-portal-page .worker-count-cell.is-empty { opacity: 0.4; }
+.worker-portal-page .worker-count-value { font-size: 1.5rem; font-weight: 800; line-height: 1; }
+.worker-portal-page .worker-count-label { font-size: 0.72rem; color: #60716d; }
+.worker-portal-page .worker-count-cell.is-accepted .worker-count-value { color: var(--sf-green, #1f7a45); }
+.worker-portal-page .worker-count-cell.is-upcoming .worker-count-value { color: #d97706; }
+.worker-portal-page .worker-count-cell.is-completed .worker-count-value { color: var(--sf-teal, #0d3b3b); }
+.worker-portal-page .worker-count-cell.is-cancelled .worker-count-value { color: #b42318; }
+
+/* ---- Schedule: one readable row per day — checkbox + day, full-width times,
+   small Copy/Paste. Times get the space so they're actually legible. ---- */
+.worker-portal-page .worker-day-row {
+  display: grid !important;
+  grid-template-columns: 78px minmax(0, 1fr) auto !important;
+  grid-template-areas: "day times copy" !important;   /* one tidy line per day */
+  align-items: center !important;
+  column-gap: 12px !important;
+  row-gap: 8px !important;
+  padding: 8px 2px !important;
+  background: transparent !important;
+  border: 0 !important;
+  border-bottom: 1px solid rgba(13, 59, 59, 0.08) !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  margin: 0 !important;
+}
+.worker-portal-page .worker-day-row:last-child { border-bottom: 0 !important; }
+.worker-portal-page .worker-day-handle { display: none !important; } /* decorative only — hidden to free space */
+.worker-portal-page .worker-day-toggle {
+  grid-area: day;
+  display: inline-flex !important; align-items: center !important; gap: 8px !important;
+  margin: 0 !important; padding: 0 !important; background: transparent !important; border: 0 !important;
+}
+.worker-portal-page .worker-day-name { font-weight: 700; color: var(--sf-teal, #0d3b3b); }
+.worker-portal-page .worker-day-copy-actions { grid-area: copy; display: flex !important; gap: 6px !important; }
+.worker-portal-page .worker-day-copy-actions .button {
+  min-height: 32px !important; padding: 3px 12px !important; font-size: 0.76rem !important;
+  background: transparent !important; border: 1px solid rgba(13, 59, 59, 0.18) !important;
+}
+.worker-portal-page .worker-day-times {
+  grid-area: times;
+  display: flex !important; align-items: center !important; gap: 8px !important;
+}
+.worker-portal-page .worker-day-times input[type="time"] {
+  flex: 1 1 0 !important; min-width: 0 !important; min-height: 38px !important; padding: 5px 10px !important;
+}
+.worker-portal-page .worker-day-dash { color: #8a9893; flex: 0 0 auto; }
+
+/* Narrow phones: not enough width for one line — stack the times under the
+   day + Copy/Paste row (the old two-row layout, just for small screens). */
+@media (max-width: 560px) {
+  .worker-portal-page .worker-day-row {
+    grid-template-columns: auto 1fr auto !important;
+    grid-template-areas:
+      "day day copy"
+      "times times times" !important;
+    padding: 12px 2px !important;
+  }
+  .worker-portal-page .worker-day-times input[type="time"] { min-height: 44px !important; }
+}
+
+/* ---- Aside "View X" heading link ---- */
+.worker-portal-page .worker-aside-heading { display: flex !important; align-items: center !important; justify-content: space-between !important; }
+.worker-portal-page .worker-aside-link {
+  background: none; border: 0; padding: 0; cursor: pointer;
+  color: var(--sf-green, #1f7a45); font-weight: 700; font-size: 0.82rem;
+}
+.worker-portal-page .worker-aside-link:hover { text-decoration: underline; }
+
+/* ---- Availability snapshot (timeline bar) ---- */
+.worker-portal-page .worker-avail-date { color: #60716d; font-size: 0.85rem; margin: 0 0 12px; }
+.worker-portal-page .worker-avail-bar {
+  position: relative; height: 12px; border-radius: 999px; background: #e7ecea; overflow: hidden;
+}
+.worker-portal-page .worker-avail-fill {
+  position: absolute; top: 0; bottom: 0; background: var(--sf-green, #1f7a45); border-radius: 999px;
+}
+.worker-portal-page .worker-avail-axis {
+  display: flex; justify-content: space-between; font-size: 0.66rem; color: #8a9893; margin-top: 6px;
+}
+.worker-portal-page .worker-avail-legend {
+  display: flex; gap: 16px; margin-top: 12px; font-size: 0.82rem; color: #60716d;
+}
+.worker-portal-page .worker-avail-legend > span { display: inline-flex; align-items: center; gap: 6px; }
+.worker-portal-page .worker-avail-key { width: 12px; height: 12px; border-radius: 3px; display: inline-block; }
+.worker-portal-page .worker-avail-key.is-on { background: var(--sf-green, #1f7a45); }
+.worker-portal-page .worker-avail-key.is-off { background: #e7ecea; }
+
+/* ---- Header account chip (avatar + name + sign out) ---- */
+.worker-portal-page .worker-account-avatar {
+  width: 34px; height: 34px; border-radius: 50%;
+  background: var(--sf-sage-light, #eaf2ea); color: var(--sf-teal, #0d3b3b);
+  display: inline-flex; align-items: center; justify-content: center; font-weight: 800; font-size: 0.85rem;
+}
+.worker-portal-page .worker-account-text { display: grid; line-height: 1.15; }
+.worker-portal-page .worker-account-name { color: #fff; font-size: 0.85rem; font-weight: 700; }
+.worker-portal-page .worker-account-signout {
+  background: none; border: 0; padding: 0; cursor: pointer; text-align: left;
+  color: rgba(255, 255, 255, 0.72); font-size: 0.72rem;
+}
+.worker-portal-page .worker-account-signout:hover { text-decoration: underline; }
+
+/* ---- Earnings tab ---- */
+.worker-portal-page .worker-earnings { display: grid; gap: 14px; }
+.worker-portal-page .worker-earnings-summary {
+  display: grid;
+  gap: 2px;
+  background: var(--sf-teal, #0d3b3b) !important;
+  color: #fff !important;
+  border-radius: 18px !important;
+  padding: 20px !important;
+  box-shadow: 0 8px 24px rgba(13, 59, 59, 0.16) !important;
+}
+.worker-portal-page .worker-earnings-total-label {
+  font-size: 0.8rem; letter-spacing: 0.04em; text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.72);
+}
+.worker-portal-page .worker-earnings-total { font-size: 2.2rem; font-weight: 800; line-height: 1.1; }
+.worker-portal-page .worker-earnings-sub { font-size: 0.82rem; color: rgba(255, 255, 255, 0.72); }
+.worker-portal-page .worker-earnings-row {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  gap: 12px !important;
+  background: #fff !important;
+  border: 1px solid rgba(13, 59, 59, 0.08) !important;
+  border-radius: 14px !important;
+  padding: 14px 16px !important;
+}
+.worker-portal-page .worker-earnings-row .worker-card-summary-main { display: grid; gap: 2px; }
+.worker-portal-page .worker-earnings-row .worker-card-sub { color: #60716d; font-size: 0.85rem; }
+.worker-portal-page .worker-earnings-amount { font-weight: 800; color: var(--sf-green, #1f7a45); font-size: 1.1rem; }
+
+/* ---- Profile ---- */
+.worker-portal-page .worker-profile-snapshot .worker-profile-mini {
+  display: flex !important;
+  align-items: center !important;
+  gap: 16px !important;
+}
+.worker-portal-page .worker-profile-id { display: grid; gap: 6px; }
+.worker-portal-page .worker-profile-id h2 { margin: 0 !important; font-size: 1.4rem !important; }
+.worker-portal-page .worker-profile-rating {
+  display: inline-flex; align-items: center; gap: 6px; font-size: 0.95rem;
+}
+.worker-portal-page .worker-rating-star { color: #f5a623; }
+.worker-portal-page .worker-rating-count { color: #60716d; font-size: 0.85rem; }
+.worker-portal-page .worker-active-badge {
+  display: inline-flex; align-items: center; gap: 6px; align-self: start;
+  padding: 4px 10px; border-radius: 999px;
+  background: rgba(31, 122, 69, 0.1); color: var(--sf-green, #1f7a45);
+  font-size: 0.78rem; font-weight: 700;
+}
+.worker-portal-page .worker-active-dot {
+  width: 7px; height: 7px; border-radius: 50%; background: var(--sf-green, #1f7a45);
+}
+.worker-portal-page .worker-profile-photo-frame { position: relative; }
+.worker-portal-page .worker-verified-badge {
+  position: absolute; right: -2px; bottom: -2px;
+  width: 22px; height: 22px;
+  color: var(--sf-green, #1f7a45);
+  background: #fff; border-radius: 50%;
+  display: inline-flex; align-items: center; justify-content: center;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+}
+.worker-portal-page .worker-verified-badge svg { width: 22px; height: 22px; }
+.worker-portal-page .worker-profile-actions {
+  display: grid !important; gap: 10px !important; margin-top: 16px !important;
+}
+.worker-portal-page .worker-profile-actions .button {
+  width: 100% !important; min-height: 48px !important;
+  border-radius: 12px !important; font-weight: 700 !important;
+}
+.worker-portal-page .worker-contact-row {
+  display: grid !important; grid-template-columns: 40px 1fr !important;
+  align-items: center !important; gap: 12px !important;
+  padding: 12px 0 !important;
+  border-bottom: 1px solid rgba(13, 59, 59, 0.07) !important;
+}
+.worker-portal-page .worker-contact-row:last-child { border-bottom: 0 !important; }
+.worker-portal-page .worker-contact-row .worker-fact-icon {
+  width: 40px; height: 40px; border-radius: 12px;
+  background: var(--sf-sage-light, #eaf2ea);
+}
+.worker-portal-page .worker-contact-row .worker-fact-icon svg { width: 20px; height: 20px; }
+.worker-portal-page .worker-reviews-heading {
+  display: flex !important; align-items: center !important; justify-content: space-between !important;
+}
+.worker-portal-page .worker-reviews-viewall {
+  background: none; border: 0; cursor: pointer;
+  color: var(--sf-green, #1f7a45); font-weight: 700; font-size: 0.88rem;
+}
+.worker-portal-page .worker-review-item {
+  display: grid; grid-template-columns: 36px 1fr; gap: 12px;
+  padding: 14px 0; border-bottom: 1px solid rgba(13, 59, 59, 0.07);
+}
+.worker-portal-page .worker-review-item:last-child { border-bottom: 0; }
+.worker-portal-page .worker-avatar-sm { width: 36px !important; height: 36px !important; font-size: 0.9rem !important; }
+.worker-portal-page .worker-review-body { display: grid; gap: 3px; min-width: 0; }
+.worker-portal-page .worker-review-top { display: flex; align-items: center; gap: 10px; }
+.worker-portal-page .worker-review-stars { color: var(--sf-green, #1f7a45); letter-spacing: 1px; font-size: 0.85rem; }
+.worker-portal-page .worker-review-time { color: #8a9893; font-size: 0.78rem; }
+.worker-portal-page .worker-review-comment { margin: 2px 0 0 !important; color: #1c2b28; font-size: 0.9rem; line-height: 1.45; }
+
+/* ---- Legal links tucked into the Profile tab (app shell footer) ---- */
+.worker-app-legal {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px 16px;
+  margin: 18px 0 6px;
+}
+.worker-app-legal a,
+.worker-app-legal .worker-legal-link {
+  color: #60716d;
+  font-size: 0.82rem;
+  text-decoration: none;
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+  font-family: inherit;
+}
+.worker-app-legal a:hover,
+.worker-app-legal .worker-legal-link:hover { text-decoration: underline; }
+
+/* Legal document content rendered inside the worker-styled modal. */
+.worker-legal-content { color: #1c2b28; }
+.worker-legal-content h1 {
+  font-size: 1.4rem !important; line-height: 1.2;
+  color: var(--sf-teal, #0d3b3b); margin: 0 0 6px;
+}
+.worker-legal-content h2,
+.worker-legal-content h3 {
+  font-size: 1.05rem !important; color: var(--sf-teal, #0d3b3b); margin: 18px 0 6px;
+}
+.worker-legal-content p,
+.worker-legal-content li { line-height: 1.55; color: #1c2b28; }
+.worker-legal-content .legal-updated { color: #8a9893; font-size: 0.82rem; }
+.worker-app-copy {
+  text-align: center;
+  color: #9aa8a3;
+  font-size: 0.76rem;
+  margin: 0 0 8px;
+}
+
+/* Detail cards that only belong on the desktop dashboard (hidden on the lean
+   mobile app). Shown again inside the desktop media query below. */
+.worker-portal-page .worker-desktop-only { display: none; }
+
+/* Job actions are mobile-only: on the phone the worker drives the ticket, on a
+   computer the job is read-only (see desktop media query). The "use your phone"
+   note is the mirror — hidden on mobile, shown on desktop in its place. */
+.worker-portal-page .worker-desktop-act-note { display: none; }
+
+/* Mobile-only avatar button in header */
+#worker-mobile-avatar-btn { display: flex !important; }
+
+/* ------------------------------------------------------------
+   Mobile header: single row, matching the admin portal.
+   Logo left · live-presence pill centered · avatar right.
+
+   The shared header rule in styles.css (.unified-portal-header
+   mobile) sets flex-wrap:wrap and forces .portal-header-actions to
+   width:100%, which dropped the Online pill + avatar onto a second
+   row and let the logo wrap to two lines. We undo that here.
+   ------------------------------------------------------------ */
+@media (max-width: 760px) {
+  .worker-portal-page .unified-portal-header.worker-top-nav {
+    flex-wrap: nowrap;
+    align-items: center;
+    gap: 10px;
+  }
+  .worker-portal-page .worker-top-nav .logo {
+    flex: 0 0 auto;
+    white-space: nowrap;
+  }
+  .worker-portal-page .worker-top-nav .logo > span {
+    white-space: nowrap;
+  }
+
+  /* Promote the action items (presence pill, avatar) to direct
+     children of the header bar so the pill can center between the
+     logo and the avatar instead of being trapped in a 100%-wide row. */
+  .worker-portal-page .unified-portal-header.worker-top-nav .portal-header-actions {
+    display: contents;
+  }
+  .worker-portal-page .worker-top-nav .portal-header-label {
+    display: none;
+  }
+
+  /* Centered Online / On-break pill (sits between logo and avatar). */
+  .worker-portal-page .worker-top-nav .worker-presence-indicator {
+    margin-inline: auto;
+  }
+
+  /* Avatar stays pinned to the far right. */
+  .worker-portal-page #worker-mobile-avatar-btn {
+    flex: 0 0 auto;
+  }
+}
+
+/* Footer legal links open the in-app modal but look like plain footer links. */
+.worker-portal-page .site-footer .worker-legal-link {
+  background: none; border: 0; padding: 0; cursor: pointer;
+  font: inherit; color: inherit; text-decoration: none;
+}
+.worker-portal-page .site-footer .worker-legal-link:hover { text-decoration: underline; }
+
+/* ============================================================
+   Desktop / website layout (>= 761px): horizontal top nav under
+   the header, then a 2-column dashboard (work surface + info
+   aside). Other tabs use a comfortable centered column. The nav
+   sits AFTER <main> in the DOM but grid places it under the header.
+   ============================================================ */
+@media (min-width: 761px) {
+  .worker-portal-page {
+    display: grid !important;
+    grid-template-columns: 1fr !important;
+    grid-template-rows: auto 1fr auto !important;
+    grid-template-areas:
+      "header"
+      "main"
+      "footer" !important;
+    min-height: 100vh;
+  }
+  .worker-portal-page .site-footer { grid-area: footer; }
+  /* Contained, rounded header bar (logo | nav | account) — website, not app. */
+  .worker-portal-page .portal-header {
+    grid-area: header;
+    position: static !important;
+    display: flex !important;
+    flex-direction: row !important;
+    align-items: center !important;
+    gap: 24px !important;
+    /* Match the customer pages' header container exactly. */
+    width: min(var(--sf-page-width, 1600px), calc(100% - 40px)) !important;
+    max-width: none !important;
+    margin: 18px auto 0 !important;
+    border-radius: var(--sf-radius-sm, 14px) !important;
+    padding: 12px 22px !important;
+  }
+  /* Nav sits INSIDE the teal header bar (light pills on teal). */
+  .worker-portal-page .app-tabbar {
+    position: static !important;
+    flex: 1 1 auto !important;
+    flex-direction: row !important;
+    justify-content: center !important;
+    align-items: center !important;
+    gap: 4px !important;
+    width: auto !important;
+    border: 0 !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    padding: 0 !important;
+  }
+  .worker-portal-page .app-tab {
+    flex: 0 0 auto !important;
+    flex-direction: row !important;
+    gap: 8px !important;
+    padding: 8px 14px !important;
+    border-radius: 999px !important;
+    font-size: 0.9rem !important;
+    font-weight: 600 !important;
+    color: rgba(255, 255, 255, 0.82) !important;
+  }
+  .worker-portal-page .app-tab svg { width: 18px !important; height: 18px !important; }
+  .worker-portal-page .app-tab.active {
+    background: rgba(255, 255, 255, 0.16) !important;
+    color: #ffffff !important;
+  }
+  .worker-portal-page .worker-account-chip { display: flex !important; align-items: center; gap: 9px; }
+  /* Content area */
+  .worker-portal-page main {
+    grid-area: main;
+    width: auto !important;
+    margin: 0 !important;
+    padding: 0 0 48px !important;
+  }
+  .worker-portal-page .worker-desktop-only { display: block; }
+  .worker-portal-page .worker-mobile-only { display: none !important; }
+  #worker-mobile-avatar-btn { display: none !important; }
+  /* Desktop is read-only: hide every operational control on the job ticket
+     (status buttons, receipt/completion panels, service-unable) and show a
+     note steering the worker to the phone app. Read-only details + the
+     Call / View-details secondary actions are rendered elsewhere and stay. */
+  .worker-portal-page .worker-job-actions-area { display: none !important; }
+  .worker-portal-page .worker-desktop-act-note {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin: 16px 0 0;
+    padding: 13px 16px;
+    border-radius: 12px;
+    border: 1px dashed rgba(13, 59, 59, 0.22);
+    background: rgba(13, 59, 59, 0.045);
+    color: #2c4a47;
+    font-size: 0.86rem;
+    font-weight: 600;
+    line-height: 1.35;
+  }
+  .worker-portal-page .worker-desktop-act-note span[aria-hidden] {
+    font-size: 1.15rem;
+    line-height: 1;
+  }
+  /* Earnings breakdown tiles (desktop dashboard). */
+  .worker-portal-page .worker-earn-tiles {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 10px;
+  }
+  .worker-portal-page .worker-earn-tile {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 12px 14px;
+    border-radius: 14px;
+    background: rgba(13, 59, 59, 0.04);
+    border: 1px solid rgba(13, 59, 59, 0.08);
+  }
+  .worker-portal-page .worker-earn-tile-lead {
+    background: rgba(20, 122, 90, 0.08);
+    border-color: rgba(20, 122, 90, 0.2);
+  }
+  .worker-portal-page .worker-earn-tile-label {
+    font-size: 0.74rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: #6c7d79;
+  }
+  .worker-portal-page .worker-earn-tile-value {
+    font-size: 1.32rem;
+    font-weight: 700;
+    color: #11332f;
+    line-height: 1.1;
+  }
+  .worker-portal-page .worker-earn-tile-sub {
+    font-size: 0.76rem;
+    color: #7c8b87;
+  }
+  .worker-portal-page .worker-earn-foot {
+    margin: 12px 0 0;
+    font-size: 0.76rem;
+    color: #8a9692;
+  }
+  /* Job history table (desktop dashboard). */
+  .worker-portal-page .worker-hist-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.88rem;
+  }
+  .worker-portal-page .worker-hist-table th {
+    text-align: left;
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: #8a9692;
+    font-weight: 600;
+    padding: 0 10px 8px;
+    border-bottom: 1px solid rgba(13, 59, 59, 0.1);
+  }
+  .worker-portal-page .worker-hist-table th:last-child,
+  .worker-portal-page .worker-hist-pay { text-align: right; }
+  .worker-portal-page .worker-hist-table td {
+    padding: 11px 10px;
+    border-bottom: 1px solid rgba(13, 59, 59, 0.06);
+    vertical-align: middle;
+  }
+  .worker-portal-page .worker-hist-date { color: #6c7d79; white-space: nowrap; }
+  .worker-portal-page .worker-hist-job strong { display: block; color: #11332f; }
+  .worker-portal-page .worker-hist-service { font-size: 0.78rem; color: #7c8b87; }
+  .worker-portal-page .worker-hist-pay { font-weight: 700; color: #147a5a; white-space: nowrap; }
+  /* Upcoming agenda (desktop dashboard). */
+  .worker-portal-page .worker-upcoming-group + .worker-upcoming-group { margin-top: 16px; }
+  .worker-portal-page .worker-upcoming-date {
+    margin: 0 0 8px;
+    font-size: 0.74rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: #8a9692;
+    font-weight: 700;
+  }
+  .worker-portal-page .worker-upcoming-row {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 9px 10px;
+    border-bottom: 1px solid rgba(13, 59, 59, 0.06);
+  }
+  .worker-portal-page .worker-upcoming-time {
+    flex: 0 0 78px;
+    font-weight: 700;
+    color: #11332f;
+    font-size: 0.86rem;
+  }
+  .worker-portal-page .worker-upcoming-meta { display: flex; flex-direction: column; min-width: 0; }
+  .worker-portal-page .worker-upcoming-meta strong { color: #11332f; }
+  .worker-portal-page .worker-upcoming-sub { font-size: 0.78rem; color: #7c8b87; }
+  /* 2-column dashboard — same container width as the header so edges align. */
+  .worker-portal-page .worker-dash-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 320px;
+    gap: 14px;
+    width: min(var(--sf-page-width, 1600px), calc(100% - 40px));
+    max-width: none;
+    margin: 12px auto 0;
+    align-items: start;
+  }
+  .worker-portal-page .worker-dash-main { min-width: 0; display: grid; gap: 12px; }
+  .worker-portal-page .worker-dash-aside { display: grid; gap: 12px; }
+  .worker-portal-page .worker-dash-grid .worker-dashboard-card,
+  .worker-portal-page .worker-dash-grid .worker-current-status-card,
+  .worker-portal-page .worker-dash-grid .worker-state-card {
+    padding: 14px !important;
+    margin-bottom: 0 !important;
+  }
+  .worker-portal-page .worker-dash-grid .worker-card-heading h2 {
+    margin-bottom: 10px !important;
+  }
+  .worker-portal-page .worker-dash-grid .worker-today-heading {
+    margin-bottom: 10px !important;
+  }
+  .worker-portal-page .worker-stat-grid-compact {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+  .worker-portal-page .worker-dashboard-card-compact {
+    padding-bottom: 12px !important;
+  }
+  /* Job card top → 2 columns (identity | details) with a divider, like the render. */
+  .worker-portal-page .worker-job-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 0.85fr) minmax(0, 1.15fr);
+    gap: 28px;
+    align-items: start;
+  }
+  .worker-portal-page .worker-job-identity {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 14px;
+    padding: 4px 26px 4px 0;
+    margin: 0;
+    border-bottom: 0;
+    border-right: 1px solid rgba(13, 59, 59, 0.1);
+  }
+  /* Sections inside the dashboard grid drop the page-section spacing. */
+  .worker-portal-page .worker-dash-grid .section {
+    max-width: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+  /* Other tabs: fill the window like the dashboard (same page container). */
+  .worker-portal-page #wtab-jobs .section,
+  .worker-portal-page #wtab-schedule .section,
+  .worker-portal-page #wtab-earnings .section,
+  .worker-portal-page #wtab-profile .section {
+    width: min(var(--sf-page-width, 1600px), calc(100% - 40px)) !important;
+    max-width: none !important;
+    margin: 18px auto 0 !important;
+  }
+}
+
+/* ──────────────────────────────────────────────────────────────────────────
+   ACTIVE-JOB WIZARD — one baby step at a time.
+   The current step fills the card; the customer/vehicle reference facts and the
+   full vertical tracker live behind "View job details" so nothing competes with
+   "what to do right now." The status/action engine is reused unchanged; this is
+   purely the presentation layer.
+   ────────────────────────────────────────────────────────────────────────── */
+.worker-portal-page .worker-wizard-card { padding: 16px !important; }
+
+/* Compact header: who + what, status pill trailing. */
+.worker-portal-page .worker-wizard-head {
+  display: flex !important;
+  align-items: center !important;
+  gap: 12px !important;
+  margin-bottom: 14px !important;
+}
+.worker-portal-page .worker-wizard-head-main { flex: 1 1 auto; min-width: 0; }
+.worker-portal-page .worker-wizard-head .worker-current-job-name {
+  font-size: 1.15rem !important;
+  margin: 0 !important;
+}
+.worker-portal-page .worker-wizard-head .worker-card-vehicle {
+  margin: 2px 0 0 !important;
+  color: #4e5f5b !important;
+  font-size: 0.9rem !important;
+}
+.worker-portal-page .worker-wizard-head .status-pill { flex-shrink: 0; }
+
+/* Pinned progress rail: "Step N of 6" + a 6-dot horizontal tracker. */
+.worker-portal-page .worker-wizard-progress {
+  background: var(--sf-sage-light, #eaf2ea) !important;
+  border-radius: 14px !important;
+  padding: 12px 14px 14px !important;
+  margin-bottom: 16px !important;
+}
+.worker-portal-page .worker-wizard-progress-head {
+  display: flex !important;
+  align-items: baseline !important;
+  justify-content: space-between !important;
+  gap: 10px !important;
+  margin-bottom: 14px !important;
+}
+.worker-portal-page .worker-wizard-step-count {
+  font-size: 0.7rem !important;
+  font-weight: 800 !important;
+  letter-spacing: 0.05em !important;
+  text-transform: uppercase !important;
+  color: #60716d !important;
+}
+.worker-portal-page .worker-wizard-step-phase {
+  font-size: 0.98rem !important;
+  font-weight: 800 !important;
+  color: var(--sf-teal, #0d3b3b) !important;
+  text-align: right !important;
+}
+.worker-portal-page .worker-hstepper {
+  list-style: none !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  display: grid !important;
+  grid-template-columns: repeat(6, 1fr) !important;
+}
+.worker-portal-page .worker-hstep {
+  position: relative !important;
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
+  gap: 5px !important;
+  text-align: center !important;
+}
+.worker-portal-page .worker-hstep::before {
+  content: "" !important;
+  position: absolute !important;
+  top: 13px !important;
+  left: -50% !important;
+  width: 100% !important;
+  height: 2px !important;
+  background: rgba(13, 59, 59, 0.16) !important;
+  z-index: 0 !important;
+}
+.worker-portal-page .worker-hstep:first-child::before { display: none !important; }
+.worker-portal-page .worker-hstep.is-done::before,
+.worker-portal-page .worker-hstep.is-active::before { background: var(--sf-teal, #0d3b3b) !important; }
+.worker-portal-page .worker-hstep-dot {
+  position: relative !important;
+  z-index: 1 !important;
+  display: grid !important;
+  place-items: center !important;
+  width: 26px !important;
+  height: 26px !important;
+  border-radius: 50% !important;
+  background: #fff !important;
+  border: 2px solid rgba(13, 59, 59, 0.18) !important;
+  color: #7c8b87 !important;
+  font-size: 0.74rem !important;
+  font-weight: 800 !important;
+}
+.worker-portal-page .worker-hstep-label {
+  font-size: 0.62rem !important;
+  font-weight: 700 !important;
+  color: #7c8b87 !important;
+}
+.worker-portal-page .worker-hstep.is-done .worker-hstep-dot {
+  background: var(--sf-teal, #0d3b3b) !important;
+  border-color: var(--sf-teal, #0d3b3b) !important;
+  color: #fff !important;
+}
+.worker-portal-page .worker-hstep.is-active .worker-hstep-dot {
+  border-color: var(--sf-teal, #0d3b3b) !important;
+  color: var(--sf-teal, #0d3b3b) !important;
+  box-shadow: 0 0 0 4px rgba(13, 59, 59, 0.12) !important;
+}
+.worker-portal-page .worker-hstep.is-done .worker-hstep-label,
+.worker-portal-page .worker-hstep.is-active .worker-hstep-label { color: var(--sf-teal, #0d3b3b) !important; }
+
+/* The focal step: one clear instruction + big, obvious tap targets. */
+.worker-portal-page .worker-wizard-step .guided-step {
+  background: transparent !important;
+  border: 0 !important;
+  padding: 0 !important;
+  margin: 0 !important;
+}
+.worker-portal-page .worker-wizard-step .guided-step .eyebrow {
+  font-size: 0.68rem !important;
+  letter-spacing: 0.06em !important;
+  text-transform: uppercase !important;
+  color: #60716d !important;
+}
+.worker-portal-page .worker-wizard-step .guided-step h4 {
+  font-size: 1.28rem !important;
+  margin: 2px 0 12px !important;
+  color: var(--sf-teal, #0d3b3b) !important;
+  letter-spacing: -0.01em !important;
+}
+.worker-portal-page .worker-wizard-step .next-action-label {
+  font-size: 1rem !important;
+  line-height: 1.5 !important;
+  color: #2f413d !important;
+  background: var(--sf-sage-light, #eaf2ea) !important;
+  border-radius: 12px !important;
+  padding: 12px 14px !important;
+  margin: 0 0 16px !important;
+}
+.worker-portal-page .worker-wizard-step .next-action-label strong { color: var(--sf-teal, #0d3b3b) !important; }
+
+/* Big stacked tap targets — both the action buttons and any in-step panel. */
+.worker-portal-page .worker-wizard-step .admin-button-row {
+  display: grid !important;
+  gap: 10px !important;
+}
+.worker-portal-page .worker-wizard-step .button.primary {
+  width: 100% !important;
+  min-height: 54px !important;
+  font-size: 1.02rem !important;
+  border-radius: 14px !important;
+}
+.worker-portal-page .worker-wizard-step .admin-button-row .button {
+  width: 100% !important;
+  min-height: 50px !important;
+  border-radius: 14px !important;
+}
+
+/* Clean single-line job details on the active-job card. */
+.worker-portal-page .worker-job-plain {
+  display: grid !important;
+  gap: 9px !important;
+  margin: 0 0 16px !important;
+}
+.worker-portal-page .wjp-row { display: grid !important; gap: 1px !important; }
+.worker-portal-page .wjp-label {
+  font-size: 0.62rem !important;
+  font-weight: 800 !important;
+  letter-spacing: 0.06em !important;
+  text-transform: uppercase !important;
+  color: #7c8b87 !important;
+}
+.worker-portal-page .wjp-value {
+  font-size: 0.95rem !important;
+  font-weight: 600 !important;
+  color: #1f2d2a !important;
+  line-height: 1.35 !important;
+}
+/* Customer name leads, a touch larger and in brand teal. */
+.worker-portal-page .worker-job-plain .wjp-row:first-child .wjp-value {
+  font-size: 1.08rem !important;
+  font-weight: 800 !important;
+  color: var(--sf-teal, #0d3b3b) !important;
+}
+
+/* Desktop: keep the single step a calm, centered column instead of stretching
+   it across the whole dashboard main area. */
+@media (min-width: 761px) {
+  .worker-portal-page .worker-wizard-card { padding: 26px !important; }
+  .worker-portal-page .worker-job-plain,
+  .worker-portal-page .worker-wizard-step,
+  .worker-portal-page .worker-wizard-card .worker-secondary-actions {
+    max-width: 620px !important;
+    margin-left: auto !important;
+    margin-right: auto !important;
+  }
+}
+
+/* ── Available-job estimate row (earnings + time) ── */
+.worker-portal-page .worker-job-estrow {
+  display: grid !important;
+  grid-template-columns: 1fr 1fr !important;
+  gap: 10px !important;
+  margin: 10px 0 4px !important;
+}
+.worker-portal-page .worker-est-stat {
+  display: grid !important;
+  gap: 2px !important;
+  padding: 10px 12px !important;
+  background: var(--sf-sage-light, #eaf2ea) !important;
+  border-radius: 12px !important;
+}
+.worker-portal-page .worker-est-stat-label {
+  font-size: 0.62rem !important;
+  font-weight: 800 !important;
+  letter-spacing: 0.05em !important;
+  text-transform: uppercase !important;
+  color: #60716d !important;
+}
+.worker-portal-page .worker-est-stat-value {
+  font-size: 1.15rem !important;
+  font-weight: 800 !important;
+  color: var(--sf-teal, #0d3b3b) !important;
+}
+
+/* ── Pickup / return photo wizard: one tile at a time ── */
+.worker-portal-page .photo-wizard-progress {
+  font-weight: 800 !important;
+  color: var(--sf-teal, #0d3b3b) !important;
+  font-size: 0.95rem !important;
+  margin: 4px 0 14px !important;
+}
+.worker-portal-page .photo-wizard-step { display: none !important; }
+.worker-portal-page .photo-wizard-step.is-current { display: block !important; }
+.worker-portal-page .photo-wizard-step.is-done {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  gap: 10px !important;
+  padding: 10px 12px !important;
+  margin-bottom: 8px !important;
+  border: 1px solid rgba(13, 59, 59, 0.1) !important;
+  border-radius: 12px !important;
+  background: #f6faf8 !important;
+}
+.worker-portal-page .photo-wizard-step-label {
+  display: flex !important;
+  align-items: center !important;
+  font-weight: 700 !important;
+  margin: 0 0 10px !important;
+}
+.worker-portal-page .photo-wizard-step.is-done .photo-wizard-step-label { margin: 0 !important; }
+.worker-portal-page .photo-wizard-step.is-done .file-button-control { display: none !important; }
+.worker-portal-page .photo-wizard-done-tag { display: none !important; }
+.worker-portal-page .photo-wizard-step.is-done .photo-wizard-done-tag {
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+  color: var(--sf-green, #1f7a45) !important;
+  font-weight: 800 !important;
+  font-size: 0.85rem !important;
+  white-space: nowrap !important;
+}
+.worker-portal-page .photo-wizard-retake {
+  background: none !important;
+  border: 0 !important;
+  color: var(--sf-teal, #0d3b3b) !important;
+  font-weight: 800 !important;
+  font-size: 0.85rem !important;
+  text-decoration: underline !important;
+  cursor: pointer !important;
+  padding: 0 !important;
+}
+
+/* Earnings calculator (Earnings tab) */
+.worker-pay-calc-inputs { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin: 10px 0; }
+.worker-pay-calc-inputs label { display: flex; flex-direction: column; gap: 4px; font-size: .82rem; font-weight: 700; }
+.worker-pay-calc-check { flex-direction: row !important; align-items: center; gap: 8px; }
+.worker-pay-calc-check input { width: auto; }
+.worker-pay-calc-output { margin-top: 8px; }
+.wcalc-row { display: flex; justify-content: space-between; gap: 12px; padding: 4px 0; font-size: .92rem; }
+.wcalc-row-total { font-weight: 800; border-top: 1px solid #d7e3de; margin-top: 4px; padding-top: 8px; }
+.wcalc-time { margin-top: 10px; }
+
+/* ── Worker change requests (Schedule tab list + job-change modal) ── */
+.worker-change-requests-view label { display: block; margin-bottom: 10px; font-weight: 600; }
+.worker-change-requests-view select,
+.worker-change-requests-view textarea,
+.wcr-job-body select,
+.wcr-job-body textarea { width: 100%; margin-top: 4px; }
+.wcr-item { padding: 12px 0; border-bottom: 1px solid rgba(13,59,59,.08); }
+.wcr-item:last-child { border-bottom: 0; }
+.wcr-item-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.wcr-item-details { margin: 6px 0 0; color: #2c4a47; }
+.wcr-item-note { margin: 6px 0 0; color: #60716d; font-size: .86rem; }
+.wcr-item-meta { margin: 6px 0 0; color: #8a9692; font-size: .78rem; }
+.wcr-badge { font-size: .72rem; font-weight: 800; padding: 3px 10px; border-radius: 999px; text-transform: uppercase; letter-spacing: .03em; white-space: nowrap; }
+.wcr-badge.is-pending { background: #fef3c7; color: #92600a; }
+.wcr-badge.is-approved { background: #dcfce7; color: #166534; }
+.wcr-badge.is-rejected { background: #fee2e2; color: #991b1b; }
+.wcr-job-body { padding: 1rem 1.25rem 1.25rem; }
+.wcr-job-body .button.primary { width: 100%; margin-top: 4px; }
+
+/* Availability (Schedule tab): Work Days then the Days Off calendar, stacked. */
+.worker-availability-window { padding-top: 4px; }
+.worker-schedule-quick-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+.worker-schedule-quick-actions .button {
+  min-height: 40px;
+  padding: 9px 12px;
+  font-size: 0.86rem;
+}
+.worker-day-row.is-unavailable {
+  opacity: 0.58;
+  background: #f6f8f7;
+}
+.worker-availability-window > .button.primary {
+  width: 100%;
+  margin-top: 14px;
+}
+.worker-availability-title {
+  margin: 0 0 12px;
+  font-size: 1.02rem;
+  color: var(--sf-teal, #0d3b3b);
+}
+/* Visual break between the Work Days block and the Days Off calendar below it. */
+.worker-availability-divider {
+  margin-top: 22px;
+  padding-top: 20px;
+  border-top: 1px solid rgba(13, 59, 59, 0.1);
+}
+
+/* Schedule tab: Work Days and Days Off are each a collapsible accordion. */
+.worker-acc { padding: 0; }
+.worker-acc + .worker-acc {
+  margin-top: 4px;
+  border-top: 1px solid rgba(13, 59, 59, 0.1);
+}
+.worker-acc-head {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  padding: 14px 2px; cursor: pointer; list-style: none; user-select: none;
+  font-size: 1.02rem; font-weight: 700; color: var(--sf-teal, #0d3b3b);
+}
+.worker-acc-head::-webkit-details-marker { display: none; }
+.worker-acc-head::marker { display: none; }
+.worker-acc-chevron { color: #6b7d78; transition: transform 0.18s ease; flex-shrink: 0; }
+.worker-acc[open] > .worker-acc-head .worker-acc-chevron { transform: rotate(180deg); }
+.worker-acc-body { padding: 0 0 8px; }
+.worker-acc-body > .button.primary { width: 100%; margin-top: 14px; }
+
+@media (max-width: 720px) {
+  .worker-schedule-quick-actions {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ── Payouts & fuel card (Earnings tab — Phase 2/3) ─────────────────────── */
+.worker-payout-card {
+  padding: 16px;
+  margin-bottom: 12px;
+  background: #fff;
+  border: 1px solid #e6ece8;
+  border-radius: 14px;
+}
+.worker-payout-card.is-highlighted {
+  box-shadow: 0 0 0 3px rgba(31, 122, 69, 0.18), 0 12px 26px rgba(6, 39, 39, 0.16);
+}
+.worker-payout-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 6px;
+}
+.worker-payout-head h3 { margin: 0; font-size: 1.02rem; color: #0d3b3b; }
+.worker-payout-status {
+  padding: 4px 11px;
+  border-radius: 999px;
+  font-size: 0.76rem;
+  font-weight: 800;
+  background: #eef2f0;
+  color: #5f6f6d;
+}
+.worker-payout-status.is-ready { background: #e7f5ec; color: #1a7a45; }
+.worker-payout-status.is-pending { background: #fff3e0; color: #b4690e; }
+.worker-payout-card .button { width: 100%; margin-top: 10px; }
+
+.worker-fuel-card-visual {
+  margin-top: 4px;
+  padding: 18px;
+  border-radius: 14px;
+  color: #eaf2ea;
+  background: linear-gradient(135deg, #0d3b3b, #072a2a);
+  box-shadow: 0 10px 24px rgba(6, 39, 39, 0.22);
+}
+.worker-fuel-card-visual.is-frozen { opacity: 0.6; filter: grayscale(0.4); }
+.wfc-brand { font-size: 0.78rem; font-weight: 800; letter-spacing: 0.04em; color: #a7bfa6; text-transform: uppercase; }
+.wfc-number { margin: 14px 0 12px; font-size: 1.32rem; font-weight: 800; letter-spacing: 0.06em; font-variant-numeric: tabular-nums; }
+.wfc-row { display: flex; justify-content: space-between; font-size: 0.86rem; font-weight: 700; color: #cfe0cf; }
+.worker-wallet-help {
+  margin-top: 10px;
+  padding: 12px;
+  border-radius: 12px;
+  background: #f6faf8;
+  border: 1px solid #dfe9e3;
+}
+.worker-wallet-help[hidden] { display: none; }
+.worker-wallet-help strong { display: block; color: #0d3b3b; margin-bottom: 6px; }
+.worker-wallet-help ol { margin: 0; padding-left: 20px; color: #314743; font-size: 0.9rem; }
+.worker-wallet-help li + li { margin-top: 4px; }
+
+.worker-phys-card-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid #e6ece8;
+}
+.worker-phys-card-row strong { color: #0d3b3b; font-size: 0.95rem; }
+.worker-phys-card-row .field-help { margin: 2px 0 0; }
+.worker-phys-card-row .button { flex: 0 0 auto; width: auto; margin: 0; min-height: 38px; padding: 8px 14px; font-size: 0.85rem; }
+@media (max-width: 480px) {
+  .worker-phys-card-row { flex-direction: column; align-items: stretch; }
+  .worker-phys-card-row .button { width: 100%; }
+}
