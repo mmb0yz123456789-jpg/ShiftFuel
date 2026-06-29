@@ -125,10 +125,10 @@ const stepCopy = {
     fields: `
       <div class="customer-account-prompt">
         <div>
-          <strong>Returning customer?</strong>
-          <span>Use My Account to book again faster with saved vehicles and service addresses.</span>
+          <strong>Have an account?</strong>
+          <span>Sign in to My Account to autofill saved vehicles and service addresses. Continue as guest if you prefer.</span>
         </div>
-        <a class="button secondary" href="customer.html">My Account</a>
+        <a class="button secondary" href="customer.html">Open My Account</a>
       </div>
       <div class="booking-field-grid">
         <label><span>First name <span class="required-mark">Required</span></span><input data-required name="firstName" type="text" autocomplete="given-name" placeholder="Jordan"></label>

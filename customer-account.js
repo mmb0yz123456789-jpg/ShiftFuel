@@ -231,7 +231,7 @@ function renderAccount(session, data) {
     : emptyCard("No saved vehicles yet. Your next completed booking will save one for faster future booking.");
   addressesMount.innerHTML = data.addresses.length
     ? data.addresses.map(addressCard).join("")
-    : emptyCard("No saved service addresses yet. Use Book Now or returning customer booking to add one.");
+    : emptyCard("No saved service addresses yet. Use Book Now or My Account to add one.");
   historyMount.innerHTML = history.length
     ? history.slice(0, 8).map((request) => requestCard(request, "history")).join("")
     : emptyCard("No completed service history is available for this phone and email yet.");
