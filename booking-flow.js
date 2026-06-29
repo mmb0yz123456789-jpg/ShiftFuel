@@ -207,11 +207,15 @@ const stepCopy = {
       <label class="choice-card booking-addon-card">
         <input type="checkbox" name="quickCare" value="quick-care">
         <span>
-          <strong>Quick Vehicle Care</strong>
+          <strong>Vehicle Add-Ons</strong>
           <small>Optional add-on</small>
           <details>
             <summary>What is included?</summary>
-            <p>Includes a tire pressure check, washer fluid top-off if needed, and a basic visual check. This is not a mechanical inspection.</p>
+            <ul class="pricing-includes">
+              <li>Tire pressure</li>
+              <li>Washer fluid top-off</li>
+              <li>Basic walk-around</li>
+            </ul>
           </details>
         </span>
       </label>
@@ -2402,7 +2406,7 @@ function renderPaymentSummary(panel) {
     <dl class="review-summary-list">
       ${serviceNeedsFuel() ? `<div><dt>Fuel service fee</dt><dd>${formatMoney(totals.fuelFee)}</dd></div>` : ""}
       ${serviceNeedsWash() ? `<div><dt>Car wash service fee</dt><dd>${formatMoney(totals.washFee)}</dd></div>` : ""}
-      ${bookingState.values.quickCare ? `<div><dt>Quick Vehicle Care add-on</dt><dd>${formatMoney(totals.quickFee)}</dd></div>` : ""}
+      ${bookingState.values.quickCare ? `<div><dt>Vehicle add-on</dt><dd>${formatMoney(totals.quickFee)}</dd></div>` : ""}
       ${serviceNeedsFuel() ? `<div><dt>Estimated fuel</dt><dd>${escapeHtml(bookingState.values.fuelPreference || "Selected range")} selected. We authorize a ${totals.authorizationFuelGallons} gallon buffer just in case: ${totals.authorizationFuelGallons} gal x ${formatMoney(PRICE_PER_GALLON)}/gal = ${formatMoney(totals.fuelEstimate)}</dd></div>` : ""}
       ${totals.washPackage ? `<div><dt>Car wash package</dt><dd>${escapeHtml(totals.washPackage.label)} - ${formatMoney(totals.washAmount)}</dd></div>` : ""}
       ${totals.stationSurcharge > 0 ? `<div><dt>Preferred station distance</dt><dd>${escapeHtml(bookingState.station.name || "Selected station")} (+${formatMoney(totals.stationSurcharge)})</dd></div>` : ""}
@@ -3013,7 +3017,7 @@ function renderReviewSummary(panel) {
   if (!summary) return;
   const values = bookingState.values;
   const totals = calculateTotals();
-  const addOns = values.quickCare ? "Quick Vehicle Care" : "None";
+  const addOns = values.quickCare ? "Vehicle Add-Ons" : "None";
   summary.innerHTML = `
     <strong>Final summary</strong>
     <dl class="review-summary-list">
@@ -3556,7 +3560,7 @@ function renderFlow(root) {
 }
 
 // Preselect a service when the customer arrives from a "Book This Service" card
-// on the landing page (e.g. book.html?service=fuel). Quick Vehicle Care is an
+// on the landing page (e.g. book.html?service=fuel). Vehicle Add-Ons are an
 // add-on, so it pre-checks the add-on and explains it must attach to a service.
 function applyPreselectedService() {
   let requested = "";
@@ -3576,7 +3580,7 @@ function applyPreselectedService() {
     bookingState.values.quickCare = true;
     if (stepCopy.Service) {
       stepCopy.Service.intro =
-        "Quick Vehicle Care is an optional add-on. Choose a fuel or car wash service below to attach it to.";
+        "Vehicle Add-Ons are optional. Choose a fuel or car wash service below to attach them to.";
     }
   }
 }
