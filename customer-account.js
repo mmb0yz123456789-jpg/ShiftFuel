@@ -9,6 +9,7 @@ const vehiclesMount = document.querySelector("[data-saved-vehicles]");
 const addressesMount = document.querySelector("[data-saved-addresses]");
 const historyMount = document.querySelector("[data-service-history]");
 const promosMount = document.querySelector("[data-customer-promos]");
+const accountSummary = document.querySelector("[data-customer-account-summary]");
 const greeting = document.querySelector("[data-customer-greeting]");
 
 const terminalStatuses = new Set([
@@ -215,8 +216,27 @@ function renderAccount(session, data) {
   const active = requests.filter((request) => !terminalStatuses.has(request.status));
   const history = requests.filter((request) => terminalStatuses.has(request.status));
   const name = session.name || customerNameFrom(requests, data);
+  const phone = formatPhone(session.phone);
+  const email = String(session.email || "").trim().toLowerCase();
+  const promoHeading = requests.length ? "Returning customer" : "Promo eligibility";
+  const promoCopy = requests.length
+    ? "You are recognized as a returning customer. Eligible promo codes are validated during booking and usage caps are tracked by your phone and email."
+    : "Your account is linked to saved details. Enter promo codes during booking to see if you qualify.";
 
   if (greeting) greeting.textContent = name ? `Welcome back, ${name.split(/\s+/)[0]}` : "Welcome back";
+  if (accountSummary) {
+    accountSummary.innerHTML = `
+      <article class="customer-data-card customer-account-card">
+        <strong>Signed in as</strong>
+        <span>${escapeHtml(phone)} · ${escapeHtml(email)}</span>
+      </article>
+      <article class="customer-data-card customer-account-card">
+        <strong>${escapeHtml(promoHeading)}</strong>
+        <span>${escapeHtml(promoCopy)}</span>
+      </article>
+    `;
+  }
+
   document.querySelector("[data-active-count]").textContent = active.length;
   document.querySelector("[data-history-count]").textContent = history.length;
   document.querySelector("[data-vehicle-count]").textContent = data.vehicles.length;
@@ -237,12 +257,12 @@ function renderAccount(session, data) {
     : emptyCard("No completed service history is available for this phone and email yet.");
   promosMount.innerHTML = `
     <article class="customer-data-card">
-      <strong>Promos</strong>
-      <span>Eligible promo codes will appear during booking and on future account updates.</span>
+      <strong>${requests.length ? "Book again with saved details" : "Ready to book"}</strong>
+      <span>${requests.length ? "Use your returning customer account to reuse saved vehicles and addresses on the next booking." : "Start a new booking and enter any promo code during checkout."}</span>
     </article>
     <article class="customer-data-card">
-      <strong>Reminders</strong>
-      <span>Service reminders can be added later without changing guest booking or payment flow.</span>
+      <strong>Promos</strong>
+      <span>${promoCopy}</span>
     </article>
   `;
 

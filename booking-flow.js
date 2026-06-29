@@ -3557,14 +3557,23 @@ function applyPreselectedService() {
   }
 }
 
-function applyCustomerAccountSession() {
-  let session = null;
+function getCustomerAccountSession() {
   try {
-    session = JSON.parse(localStorage.getItem("shiftfuel_customer_account") || "null");
+    const session = JSON.parse(localStorage.getItem("shiftfuel_customer_account") || "null");
+    if (!session?.phone || !session?.email) return null;
+    return {
+      phone: String(session.phone || "").trim(),
+      email: String(session.email || "").trim().toLowerCase(),
+      name: String(session.name || "").trim(),
+    };
   } catch (_) {
-    session = null;
+    return null;
   }
-  if (!session?.phone || !session?.email) return;
+}
+
+function applyCustomerAccountSession() {
+  const session = getCustomerAccountSession();
+  if (!session) return;
 
   const phone = formatPhone(session.phone);
   const email = String(session.email || "").trim().toLowerCase();
@@ -3580,12 +3589,26 @@ function applyCustomerAccountSession() {
   }
 }
 
+async function autoVerifyReturningCustomer() {
+  if (!flowRoot || flowRoot.dataset.bookingFlow !== "returning") return;
+  const session = getCustomerAccountSession();
+  if (!session) return;
+  const panel = flowRoot.querySelector('[data-step-index="0"]');
+  if (!panel) return;
+  if (!bookingState.values.verifyPhone && !bookingState.values.verifyEmail) return;
+
+  await verifyReturningCustomer(panel);
+}
+
 async function initBookingFlow() {
   if (!flowRoot) return;
   await livePricingReady;
   applyCustomerAccountSession();
   applyPreselectedService();
   renderFlow(flowRoot);
+  autoVerifyReturningCustomer().catch((error) => {
+    console.warn("Returning customer auto-verify failed:", error);
+  });
 }
 
 initBookingFlow();
