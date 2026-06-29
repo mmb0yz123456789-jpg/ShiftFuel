@@ -1,0 +1,238 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <base href="/">
+  <title>Admin Login | ShiftFuel Concierge</title>
+  <link rel="icon" href="icon-main.svg" type="image/svg+xml">
+  <link rel="icon" href="icon-main.svg" sizes="any">
+  <link rel="apple-touch-icon" href="icon-main.svg">
+  <link rel="manifest" href="manifest-admin.webmanifest">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="SF Admin">
+  <link rel="apple-touch-icon" href="icon-main.svg">
+  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="mobile-polish.css">
+  <style>
+    /* Installed-app (PWA) view: hide the website wayfinding links. An admin who
+       opens the home-screen app didn't come from the staff/customer site, so
+       "Back to Staff Access" / "Back to customer site" would just dump them onto
+       the public site inside the app shell. Browser visitors still see them. */
+    html.is-pwa .portal-hero-back,
+    html.is-pwa .portal-login-back { display: none !important; }
+    /* When the top back-arrow already returns to the customer site (visitor came
+       straight from there), hide the redundant bottom "Back to customer site". */
+    html.hide-bottom-back .portal-login-back { display: none !important; }
+  </style>
+</head>
+<body class="landing-page portal-login-page admin-login-page">
+
+  <!-- Flag the installed-app view so the website "Back to…" links can hide.
+       Runs before the header paints, so the links never flash in. -->
+  <script>
+    (function () {
+      var standalone = window.matchMedia && window.matchMedia("(display-mode: standalone)").matches;
+      if (standalone || window.navigator.standalone === true) {
+        document.documentElement.classList.add("is-pwa");
+      }
+    })();
+  </script>
+
+  <script>
+    (function () {
+      var token = sessionStorage.getItem("shiftfuel_admin_token");
+      var expires = Number(sessionStorage.getItem("shiftfuel_admin_expires") || 0);
+      if (token && expires > Date.now()) window.location.replace("/admin/dashboard");
+    })();
+  </script>
+
+  <!-- Concierge sign-in hero -->
+  <header class="portal-login-hero">
+    <a class="portal-hero-brand" href="index.html" aria-label="ShiftFuel Concierge home">
+      <span class="portal-hero-mark"><img src="icon-main.svg" alt="" aria-hidden="true"></span>
+      <span class="portal-hero-wordmark">ShiftFuel<br>Concierge</span>
+    </a>
+    <div class="portal-hero-role">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true">
+        <path d="M12 2.6 5 5.2v5.4c0 4.3 2.9 8.3 7 9.4 4.1-1.1 7-5.1 7-9.4V5.2L12 2.6z"/>
+        <circle cx="12" cy="11" r="2.1"/>
+        <path d="M12 8.9v-.9M12 14v-.9M14.3 11h.9M8.8 11h.9M13.6 9.4l.6-.6M9.8 12.8l.6-.6M13.6 12.6l.6.6M9.8 9.2l.6.6"/>
+      </svg>
+      <span>Admin Portal</span>
+    </div>
+    <a class="portal-hero-back" href="staff-access.html">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+        <path d="M15 18l-6-6 6-6"/>
+      </svg>
+      <span>Back to Staff Access</span>
+    </a>
+  </header>
+
+  <!-- The customer site links straight to /admin/login on desktop, but goes via
+       Staff Access on mobile. So the back arrow only returns to Staff Access if the
+       visitor actually came from there; otherwise it goes back to the customer site. -->
+  <script>
+    (function () {
+      var back = document.querySelector('.portal-hero-back');
+      if (!back || /staff-access/i.test(document.referrer || '')) return;
+      back.setAttribute('href', 'index.html');
+      var label = back.querySelector('span');
+      if (label) label.textContent = 'Back to customer site';
+      document.documentElement.classList.add('hide-bottom-back');
+    })();
+  </script>
+
+  <main class="portal-login-shell">
+    <section class="portal-login-card">
+      <span class="portal-login-badge">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true">
+          <path d="M12 2.6 5 5.2v5.4c0 4.3 2.9 8.3 7 9.4 4.1-1.1 7-5.1 7-9.4V5.2L12 2.6z"/>
+          <path d="M9.2 11.7l2 2 3.6-3.9"/>
+        </svg>
+        Admin Access
+      </span>
+      <h1>ShiftFuel Admin Portal</h1>
+      <p class="portal-login-intro">Sign in to manage requests, workers, services, and payments.</p>
+
+      <form id="admin-login-form" class="booking-form">
+        <label>
+          Username
+          <span class="portal-input-group">
+            <svg class="portal-input-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true">
+              <circle cx="12" cy="8" r="3.2"/>
+              <path d="M5.5 19.5c0-3.2 2.9-5.6 6.5-5.6s6.5 2.4 6.5 5.6"/>
+            </svg>
+            <input id="admin-username" type="text" placeholder="Enter admin username" autocomplete="username" required>
+          </span>
+        </label>
+
+        <label>
+          Password
+          <span class="portal-input-group">
+            <svg class="portal-input-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true">
+              <rect x="5" y="10.5" width="14" height="9.5" rx="2.2"/>
+              <path d="M8 10.5V7.6a4 4 0 0 1 8 0v2.9"/>
+            </svg>
+            <input id="admin-password" type="password" placeholder="Enter your password" required>
+          </span>
+        </label>
+
+        <button class="button primary" type="submit">Sign In</button>
+      </form>
+
+      <p id="login-message" class="form-status"></p>
+
+      <div class="portal-login-divider" aria-hidden="true">
+        <span class="portal-login-divider-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true">
+            <path d="M12 2.6 5 5.2v5.4c0 4.3 2.9 8.3 7 9.4 4.1-1.1 7-5.1 7-9.4V5.2L12 2.6z"/>
+            <path d="M9.2 11.7l2 2 3.6-3.9"/>
+          </svg>
+        </span>
+      </div>
+
+      <a class="portal-login-back" href="index.html">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true">
+          <circle cx="12" cy="12" r="9"/>
+          <path d="M3 12h18M12 3c2.5 2.4 3.9 5.7 3.9 9s-1.4 6.6-3.9 9c-2.5-2.4-3.9-5.7-3.9-9S9.5 5.4 12 3z"/>
+        </svg>
+        <span>Back to customer site</span>
+      </a>
+    </section>
+  </main>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="supabase-client.js"></script>
+  <script src="password-toggle.js"></script>
+
+  <script>
+    const form = document.getElementById("admin-login-form");
+    const usernameInput = document.getElementById("admin-username");
+    const passwordInput = document.getElementById("admin-password");
+    const message = document.getElementById("login-message");
+    const LOCK_KEY = "shiftfuel_admin_locked_until";
+    const ATTEMPT_KEY = "shiftfuel_admin_failed_attempts";
+
+    async function sha256Hex(value) {
+      const bytes = new TextEncoder().encode(value);
+      const digest = await crypto.subtle.digest("SHA-256", bytes);
+      return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
+    }
+
+    function lockedUntil() {
+      return Number(localStorage.getItem(LOCK_KEY) || 0);
+    }
+
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+
+      const lockTime = lockedUntil();
+      if (lockTime > Date.now()) {
+        const minutes = Math.ceil((lockTime - Date.now()) / 60000);
+        message.textContent = `Too many attempts. Try again in ${minutes} minute${minutes === 1 ? "" : "s"}.`;
+        return;
+      }
+
+      const password = passwordInput.value;
+      const username = usernameInput.value.trim().toLowerCase();
+      const usernameHash = await sha256Hex(username);
+      const passwordHash = await sha256Hex(password);
+
+      message.textContent = "Signing in...";
+
+      try {
+        // Login goes through the /api/payments router (action: admin_login), which
+        // throttles brute force PER IP. Folded into that function to stay under the
+        // Vercel Hobby serverless-function limit. The raw password never leaves the
+        // browser — only the SHA-256 hashes are sent, same as before.
+        const resp = await fetch("/api/payments", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "admin_login", username_hash: usernameHash, password_hash: passwordHash }),
+        });
+        const result = await resp.json().catch(() => ({}));
+
+        if (resp.ok && result.token) {
+          localStorage.removeItem(ATTEMPT_KEY);
+          localStorage.removeItem(LOCK_KEY);
+          sessionStorage.setItem("shiftfuel_admin", "true");
+          sessionStorage.setItem("shiftfuel_admin_token", result.token);
+          sessionStorage.setItem("shiftfuel_admin_expires", String(Date.now() + 8 * 60 * 60 * 1000));
+          window.location.href = "/admin/dashboard";
+          return;
+        }
+
+        if (resp.status === 429) {
+          const retry = Number(resp.headers.get("Retry-After") || 0);
+          const mins = retry ? Math.ceil(retry / 60) : 15;
+          message.textContent = `Too many attempts from your network. Try again in about ${mins} minute${mins === 1 ? "" : "s"}.`;
+          return;
+        }
+        if (resp.status === 423 || result.error === "ACCOUNT_LOCKED") {
+          message.textContent = "Admin login is temporarily locked. Try again later.";
+          return;
+        }
+        throw new Error(result.error || "INVALID_CREDENTIALS");
+      } catch (err) {
+        message.textContent = "";
+        const attempts = Number(localStorage.getItem(ATTEMPT_KEY) || 0) + 1;
+        localStorage.setItem(ATTEMPT_KEY, String(attempts));
+
+        if (attempts >= 3) {
+          localStorage.setItem(LOCK_KEY, String(Date.now() + 15 * 60 * 1000));
+          localStorage.setItem(ATTEMPT_KEY, "0");
+          message.textContent = "Too many attempts. Admin login is locked for 15 minutes.";
+          return;
+        }
+
+        message.textContent = `Incorrect username or password. ${3 - attempts} attempt${3 - attempts === 1 ? "" : "s"} left before a temporary lock.`;
+      }
+    });
+  </script>
+
+  <script defer src="/_vercel/insights/script.js"></script>
+  <script defer src="/_vercel/speed-insights/script.js"></script>
+</body>
+</html>

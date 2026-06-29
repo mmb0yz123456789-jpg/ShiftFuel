@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Book Now | ShiftFuel Concierge</title>
+    <link rel="icon" href="icon-main.svg" type="image/svg+xml">
+    <link rel="icon" href="icon-main.svg" sizes="any">
+    <link rel="apple-touch-icon" href="icon-main.svg">
+    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="layout-width-polish.css">
+    <link rel="stylesheet" href="mobile-polish.css">
+  </head>
+  <body class="landing-page booking-page">
+    <header class="site-header landing-header">
+      <a class="logo" href="index.html" aria-label="ShiftFuel Concierge home">
+        <span class="logo-mark"><img src="icon-main.svg" alt="" aria-hidden="true"></span>
+        <span>ShiftFuel Concierge</span>
+      </a>
+      <button class="mobile-menu-button" type="button" data-nav-toggle aria-expanded="false" aria-controls="site-nav">
+        <span>Menu</span>
+        <span aria-hidden="true">&#9776;</span>
+      </button>
+      <nav id="site-nav" class="nav" data-nav aria-label="Main navigation">
+        <a href="index.html#how">How It Works</a>
+        <a href="index.html#services">Services &amp; Pricing</a>
+        <a href="index.html#trust">Safety &amp; Trust</a>
+        <a class="nav-cta" href="book.html#booking-flow" aria-current="page">Book Now</a>
+        <a class="nav-returning" href="customer.html">My Account</a>
+        <a class="nav-outline" href="track.html">Track My Vehicle</a>
+      </nav>
+    </header>
+
+    <main class="booking-flow-shell">
+      <section class="booking-flow-hero">
+        <div class="booking-flow-hero-copy">
+          <p class="eyebrow">Book in minutes, we handle the rest</p>
+          <h1>Book your ShiftFuel service.</h1>
+          <p>We make it easy. Follow the simple steps below and we'll take care of the fuel fill-up, car wash, or quick vehicle care while you focus on what matters.</p>
+          <div class="hero-trust-row">
+            <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="8" r="3.4"/><path d="M5 20c0-3.3 3.1-6 7-6s7 2.7 7 6"/></svg>Trusted professionals</span>
+            <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3l7 3v6c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6l7-3z"/></svg>Premium experience</span>
+            <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="8.5"/><path d="M12 7v5l3.5 2"/></svg>Real-time updates</span>
+            <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="5" y="10.5" width="14" height="9.5" rx="1.6"/><path d="M8 10.5V8a4 4 0 0 1 8 0v2.5"/></svg>Secure &amp; protected</span>
+          </div>
+        </div>
+        <figure class="booking-flow-hero-image">
+          <img src="https://images.unsplash.com/photo-1503376780353-7e6692767b70?auto=format&fit=crop&w=1200&q=80" alt="A vehicle ready for ShiftFuel concierge service">
+        </figure>
+      </section>
+
+      <section id="booking-flow" class="booking-flow" data-booking-flow="book-now" aria-label="Book Now flow"></section>
+    </main>
+
+    <section class="landing-final-cta">
+      <div class="final-cta-main">
+        <span class="final-cta-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M12 3l7 3v6c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6l7-3z"/><path d="M9 12l2 2 4-4"/></svg></span>
+        <div>
+          <strong>Your vehicle, our priority.</strong>
+          <p>Convenient vehicle service while you work.</p>
+        </div>
+      </div>
+      <div class="final-cta-portals final-cta-portals--desktop">
+        <a class="button portal-button portal-button-primary" href="/join-the-team"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3l7 3v6c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6l7-3z"/><path d="M9 12l2 2 4-4"/></svg>Join the Team</a>
+        <a class="button portal-button" href="/worker/login"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="8" r="3.4"/><path d="M5 20c0-3.3 3.1-6 7-6s7 2.7 7 6"/></svg>Worker Portal</a>
+        <a class="button portal-button" href="/admin/login"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="11" width="18" height="10" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>Admin Portal</a>
+      </div>
+      <div class="final-cta-portals final-cta-portals--mobile">
+        <a class="button portal-button portal-button-primary" href="staff-access.html"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="8" r="3.4"/><path d="M5 20c0-3.3 3.1-6 7-6s7 2.7 7 6"/></svg>Staff Access</a>
+      </div>
+    </section>
+
+    <footer class="site-footer">
+      <div class="footer-main">
+        <p class="footer-copy">&copy; <span id="year"></span> ShiftFuel Concierge. All rights reserved.</p>
+        <nav class="footer-links" aria-label="Legal links">
+          <a href="privacy.html">Privacy Policy</a>
+          <a href="terms.html">Terms of Service</a>
+          <a href="liability-waiver.html">Liability Waiver</a>
+        </nav>
+      </div>
+    </footer>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="supabase-client.js"></script>
+    <script src="https://js.stripe.com/v3/"></script>
+    <script src="date-picker.js"></script>
+    <script src="booking-flow.js"></script>
+  </body>
+</html>

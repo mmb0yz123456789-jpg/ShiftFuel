@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Staff Access | ShiftFuel Concierge</title>
+  <link rel="icon" href="icon-main.svg" type="image/svg+xml">
+  <link rel="icon" href="icon-main.svg" sizes="any">
+  <link rel="apple-touch-icon" href="icon-main.svg">
+  <link rel="stylesheet" href="styles.css">    <link rel="stylesheet" href="mobile-polish.css"></head>
+<body class="landing-page portal-login-page staff-access-page">
+
+  <header class="portal-header unified-portal-header">
+    <a class="logo" href="index.html">
+      <span class="logo-mark"><img src="icon-main.svg" alt="" aria-hidden="true"></span>
+      <span>ShiftFuel Concierge</span>
+    </a>
+    <div class="portal-header-actions">
+      <span class="portal-header-label">Staff Access</span>
+    </div>
+  </header>
+
+  <main class="portal-login-shell">
+    <section class="portal-login-card staff-access-card">
+      <h1>Staff Access</h1>
+      <p class="portal-login-intro">Choose your portal to continue. Staff and admin areas require secure login.</p>
+
+      <div class="staff-access-buttons">
+        <a href="worker-login.html" class="staff-portal-btn">
+          <span class="staff-portal-btn-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7">
+              <circle cx="12" cy="8" r="3.4"/>
+              <path d="M5 20c0-3.3 3.1-6 7-6s7 2.7 7 6"/>
+            </svg>
+          </span>
+          <span class="staff-portal-btn-body">
+            <strong>Worker Portal</strong>
+            <small>View jobs, update requests &amp; complete services</small>
+          </span>
+          <svg class="staff-portal-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg>
+        </a>
+
+        <a href="admin-login.html" class="staff-portal-btn">
+          <span class="staff-portal-btn-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7">
+              <circle cx="12" cy="12" r="3"/>
+              <path d="M19.4 13.5a7.6 7.6 0 0 0 0-3l1.9-1.3-2-3.4-2.2.7a7.6 7.6 0 0 0-2.6-1.5L14 2.5h-4l-.5 2.5a7.6 7.6 0 0 0-2.6 1.5l-2.2-.7-2 3.4 1.9 1.3a7.6 7.6 0 0 0 0 3l-1.9 1.3 2 3.4 2.2-.7a7.6 7.6 0 0 0 2.6 1.5l.5 2.5h4l.5-2.5a7.6 7.6 0 0 0 2.6-1.5l2.2.7 2-3.4z"/>
+            </svg>
+          </span>
+          <span class="staff-portal-btn-body">
+            <strong>Admin Portal</strong>
+            <small>Manage requests, workers, services &amp; payments</small>
+          </span>
+          <svg class="staff-portal-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg>
+        </a>
+
+        <a href="/join-the-team" class="staff-portal-btn">
+          <span class="staff-portal-btn-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7">
+              <path d="M12 21s7-5.5 7-11.5A7 7 0 0 0 5 9.5C5 15.5 12 21 12 21z"/>
+              <circle cx="12" cy="9.5" r="2.3"/>
+            </svg>
+          </span>
+          <span class="staff-portal-btn-body">
+            <strong>Join the Team</strong>
+            <small>Apply to become a ShiftFuel worker</small>
+          </span>
+          <svg class="staff-portal-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg>
+        </a>
+      </div>
+
+      <div class="portal-login-divider" aria-hidden="true">
+        <span class="portal-login-divider-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true">
+            <path d="M12 2.6 5 5.2v5.4c0 4.3 2.9 8.3 7 9.4 4.1-1.1 7-5.1 7-9.4V5.2L12 2.6z"/>
+            <path d="M9.2 11.7l2 2 3.6-3.9"/>
+          </svg>
+        </span>
+      </div>
+
+      <a href="index.html" class="portal-login-back">← Back to customer site</a>
+    </section>
+  </main>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="supabase-client.js"></script>
+</body>
+</html>

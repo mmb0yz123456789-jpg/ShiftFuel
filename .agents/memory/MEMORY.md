@@ -1,0 +1,1 @@
+- [ShiftFuel CJS API loading](shiftfuel-cjs-loading.md) — shiftfuel-api folder must have {"type":"commonjs"} package.json; loaded at runtime via createRequire, NOT bundled by esbuild.

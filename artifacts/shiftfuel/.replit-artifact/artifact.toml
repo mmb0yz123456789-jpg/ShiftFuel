@@ -1,0 +1,31 @@
+kind = "web"
+previewPath = "/"
+title = "ShiftFuel Concierge"
+version = "1.0.0"
+id = "artifacts/shiftfuel"
+router = "path"
+
+[[integratedSkills]]
+name = "react-vite"
+version = "1.0.0"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 23752
+
+[services.development]
+run = "pnpm --filter @workspace/shiftfuel run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/shiftfuel", "run", "build" ]
+publicDir = "artifacts/shiftfuel/dist/public"
+serve = "static"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "23752"
+BASE_PATH = "/"

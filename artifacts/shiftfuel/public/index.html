@@ -1,0 +1,274 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>ShiftFuel Concierge</title>
+    <link rel="icon" href="icon-main.svg" type="image/svg+xml">
+    <link rel="icon" href="icon-main.svg" sizes="any">
+    <link rel="apple-touch-icon" href="icon-main.svg">
+    <link rel="manifest" href="manifest.webmanifest">
+    <!-- Customer site opens in the browser (not standalone) so Stripe's card
+         iframe loads reliably on iOS home-screen launches. -->
+    <meta name="apple-mobile-web-app-capable" content="no">
+    <meta name="apple-mobile-web-app-title" content="ShiftFuel">
+    <link rel="apple-touch-icon" href="icon-main.svg">
+    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="mobile-polish.css">
+  </head>
+  <body class="landing-page">
+    <header class="site-header landing-header">
+      <a class="logo" href="index.html" aria-label="ShiftFuel Concierge home">
+        <span class="logo-mark"><img src="icon-main.svg" alt="" aria-hidden="true"></span>
+        <span>ShiftFuel Concierge</span>
+      </a>
+      <button class="mobile-menu-button" type="button" data-nav-toggle aria-expanded="false" aria-controls="site-nav">
+        <span>Menu</span>
+        <span aria-hidden="true">&#9776;</span>
+      </button>
+      <nav id="site-nav" class="nav" data-nav aria-label="Main navigation">
+        <a href="#how">How It Works</a>
+        <a href="#services">Services &amp; Pricing</a>
+        <a href="#trust">Safety &amp; Trust</a>
+        <a class="nav-cta" href="book.html#booking-flow">Book Now</a>
+        <a class="nav-returning" href="customer.html">My Account</a>
+        <a class="nav-outline" href="track.html">Track My Vehicle</a>
+      </nav>
+    </header>
+
+    <main>
+      <section class="landing-hero">
+        <div class="landing-hero-copy">
+          <p class="eyebrow">Workday vehicle services</p>
+          <h1>Workday vehicle services, handled for you.</h1>
+          <p class="hero-copy">Fuel fill-ups, car wash service, and quick vehicle checks&mdash;delivered while you focus on your work.</p>
+          <div class="landing-actions" aria-label="Primary actions">
+            <a class="button primary" href="book.html#booking-flow">Book Now</a>
+            <a class="button tertiary" href="track.html">Track My Vehicle</a>
+            <a class="button returning" href="customer.html">My Account</a>
+          </div>
+          <div class="hero-trust-row">
+            <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="8" r="3.4"/><path d="M5 20c0-3.3 3.1-6 7-6s7 2.7 7 6"/></svg>Trusted professionals</span>
+            <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3l7 3v6c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6l7-3z"/></svg>Premium experience</span>
+            <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="8.5"/><path d="M12 7v5l3.5 2"/></svg>Real-time updates</span>
+          </div>
+        </div>
+        <figure class="landing-hero-image">
+          <img src="https://images.unsplash.com/photo-1503376780353-7e6692767b70?auto=format&fit=crop&w=1200&q=80" alt="A vehicle ready for ShiftFuel concierge service">
+        </figure>
+      </section>
+
+      <section id="how" class="landing-section">
+        <div class="section-heading center">
+          <h2>How it works</h2>
+        </div>
+        <ol class="how-it-works-grid">
+          <li>
+            <span class="step-number">1</span>
+            <span class="step-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3.5" y="5" width="17" height="16" rx="2"/><path d="M3.5 9.5h17M8 3v4M16 3v4"/></svg></span>
+            <strong>Book</strong>
+            <p>Choose a service, date, and time that works for you.</p>
+          </li>
+          <li>
+            <span class="step-number">2</span>
+            <span class="step-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 21s7-5.5 7-11.5A7 7 0 0 0 5 9.5C5 15.5 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.3"/></svg></span>
+            <strong>We come to your vehicle</strong>
+            <p>A verified worker arrives at your service location.</p>
+          </li>
+          <li>
+            <span class="step-number">3</span>
+            <span class="step-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 16l1.5-5a2 2 0 0 1 1.9-1.4h9.2A2 2 0 0 1 18.5 11L20 16"/><rect x="3" y="16" width="18" height="4" rx="1.4"/><circle cx="7.5" cy="20" r="1.1"/><circle cx="16.5" cy="20" r="1.1"/></svg></span>
+            <strong>We take care of it</strong>
+            <p>We deliver premium service while you stay focused on your day.</p>
+          </li>
+          <li>
+            <span class="step-number">4</span>
+            <span class="step-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3l7 3v6c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6l7-3z"/><path d="M9 12l2 2 4-4"/></svg></span>
+            <strong>You're all set</strong>
+            <p>Get real-time updates and photos when the service is complete.</p>
+          </li>
+        </ol>
+      </section>
+
+      <section id="services" class="landing-section">
+        <div class="section-heading center">
+          <h2>Services &amp; Pricing</h2>
+        </div>
+        <a class="bundle-landing-banner" data-bundle-banner href="book.html?service=fuel_wash#booking-flow" hidden></a>
+        <div class="pricing-card-grid">
+          <article class="pricing-card">
+            <span class="pricing-icon pricing-icon-fuel"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="3" width="9" height="18" rx="1.4"/><path d="M4 10h9M7.5 3v0"/><path d="M13 8h2.5a2 2 0 0 1 2 2v6.5a1.5 1.5 0 0 0 3 0V8.5L18 6"/></svg></span>
+            <h3>Fuel Concierge</h3>
+            <p>We fuel your vehicle with quality fuel&mdash;so you don't have to leave work.</p>
+            <p class="pricing-from"><span>Fuel service starts at </span><span data-price="fuel-service-fee">$15</span><span>. Fuel is charged separately at actual pump price.</span></p>
+            <ul class="pricing-package-list" id="fuel-price-list" data-fuel-prices>
+              <li><span>Loading current prices&hellip;</span></li>
+            </ul>
+            <a class="button pricing-button pricing-button-fuel" href="book.html?service=fuel#booking-flow">Book This Service</a>
+          </article>
+		<article class="pricing-card">
+		  <span class="pricing-icon pricing-icon-wash">
+			<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+			  <path d="M4 16l1.5-5a2 2 0 0 1 1.9-1.4h9.2A2 2 0 0 1 18.5 11L20 16"/>
+			  <rect x="3" y="16" width="18" height="4" rx="1.4"/>
+			  <circle cx="7.5" cy="20" r="1.1"/>
+			  <circle cx="16.5" cy="20" r="1.1"/>
+			  <path d="M8 5.5c.7-1 .7-1.8 0-2.8M12 5.5c.7-1 .7-1.8 0-2.8M16 5.5c.7-1 .7-1.8 0-2.8"/>
+			</svg>
+		  </span>
+
+		  <h3>Car Wash</h3>
+		  <p>Premium exterior wash. Because first impressions matter.</p>
+		  <p class="pricing-from"><span>Service fee starts at </span><span data-price="wash-service-fee">$15</span><span> plus the selected wash package.</span></p>
+
+		  <div class="wash-summary-list">
+			<details class="wash-summary-item">
+			  <summary class="wash-summary-header">
+				<strong>Double Wash</strong>
+				<span data-price="wash-double">$12</span>
+			  </summary>
+			  <p>High pH Presoak, Low pH Presoak, Double Tire &amp; Wheel Cleaning, Drying Agent, Spot Free Rinse</p>
+			</details>
+
+			<details class="wash-summary-item">
+			  <summary class="wash-summary-header">
+				<strong>Shine</strong>
+				<span data-price="wash-shine">$16</span>
+			  </summary>
+			  <p>Everything in Double Wash, plus Tri-Foam Conditioner &amp; Blazin' Glaze Clear Coat.</p>
+			</details>
+
+			<details class="wash-summary-item">
+			  <summary class="wash-summary-header">
+				<strong>Shine &amp; Protect</strong>
+				<span data-price="wash-shine-protect">$20</span>
+			  </summary>
+			  <p>Everything in Shine, plus ICE® Instant Shine, Salt Shield, Tire Shine &amp; Triple Wheel Cleaning.</p>
+			</details>
+
+			<details class="wash-summary-item">
+			  <summary class="wash-summary-header">
+				<strong>Buff &amp; Shine</strong>
+				<span data-price="wash-buff-shine">$27</span>
+			  </summary>
+			  <p>Everything in Shine &amp; Protect, plus Fire Bath, Super Hard Shell Ceramic Finish &amp; Buff N' Shine.</p>
+			</details>
+		  </div>
+
+		  <p class="pricing-warning">
+			Exterior wash only&mdash;we do not offer interior cleaning.
+		  </p>
+
+		  <a class="button pricing-button pricing-button-wash" href="book.html?service=wash#booking-flow">Book This Service</a>
+		</article>
+          <article class="pricing-card">
+            <span class="pricing-icon pricing-icon-inspect"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="5" y="4" width="14" height="17" rx="1.6"/><path d="M9 3.5h6v2H9z"/><path d="M9 11l1.8 1.8L15 9"/></svg></span>
+            <h3>Quick Vehicle Care</h3>
+            <p>An optional add-on you can attach to any fuel or car wash request.</p>
+            <p class="pricing-from"><span data-price="quick-care">$5</span> <span>add-on</span></p>
+            <ul class="pricing-includes">
+              <li>Tire pressure check</li>
+              <li>Washer fluid top-off if needed</li>
+              <li>Basic visual check</li>
+            </ul>
+            <p class="pricing-warning">This is not a mechanical inspection.</p>
+            <a class="button pricing-button pricing-button-inspect" href="book.html?service=quick-care#booking-flow">Book This Service</a>
+          </article>
+        </div>
+        <p class="pricing-disclaimer">Service prices include payment and operating costs. Final fuel cost is based on the actual receipt. Final totals are rounded up to the nearest dollar.</p>
+      </section>
+
+      <section id="trust" class="landing-section">
+        <div class="section-heading center">
+          <h2>Safety &amp; Trust</h2>
+        </div>
+        <div class="safety-row">
+          <div>
+            <span class="safety-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="8" r="3.4"/><path d="M5 20c0-3.3 3.1-6 7-6s7 2.7 7 6"/></svg></span>
+            <strong>Verified professionals</strong>
+            <p>Background-checked, trained, and insured.</p>
+          </div>
+          <div>
+            <span class="safety-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="5" y="10.5" width="14" height="9.5" rx="1.6"/><path d="M8 10.5V8a4 4 0 0 1 8 0v2.5"/></svg></span>
+            <strong>Secure &amp; protected</strong>
+            <p>Safe, encrypted transactions and data.</p>
+          </div>
+          <div>
+            <span class="safety-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 8.5A1.5 1.5 0 0 1 5.5 7h2l1-2h7l1 2h2A1.5 1.5 0 0 1 20 8.5v9A1.5 1.5 0 0 1 18.5 19h-13A1.5 1.5 0 0 1 4 17.5z"/><circle cx="12" cy="12.5" r="3.2"/></svg></span>
+            <strong>Photo documentation</strong>
+            <p>Before &amp; after photos with every service.</p>
+          </div>
+          <div>
+            <span class="safety-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="8.5"/><path d="M12 7v5l3.5 2"/></svg></span>
+            <strong>Real-time updates</strong>
+            <p>Live status so you're always in the know.</p>
+          </div>
+        </div>
+      </section>
+
+		<section class="landing-final-cta">
+		  <div class="final-cta-main">
+			<span class="final-cta-icon">
+			  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6">
+				<path d="M12 3l7 3v6c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6l7-3z"/>
+				<path d="M9 12l2 2 4-4"/>
+			  </svg>
+			</span>
+			<div>
+			  <strong>Your vehicle, our priority.</strong>
+			  <p>Convenient vehicle service while you work.</p>
+			</div>
+		  </div>
+		  
+		  <!-- Desktop: three separate boxes -->
+		  <div class="final-cta-portals final-cta-portals--desktop">
+			<a class="button portal-button portal-button-primary" href="hiring.html">
+			  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+				<path d="M12 3l7 3v6c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6l7-3z"/>
+				<path d="M9 12l2 2 4-4"/>
+			  </svg>
+			  Join the Team
+			</a>
+			<a class="button portal-button" href="/worker/login">
+			  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+				<circle cx="12" cy="8" r="3.4"/>
+				<path d="M5 20c0-3.3 3.1-6 7-6s7 2.7 7 6"/>
+			  </svg>
+			  Worker Portal
+			</a>
+			<a class="button portal-button" href="/admin/login">
+			  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+				<rect x="3" y="11" width="18" height="10" rx="2"/>
+				<path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+			  </svg>
+			  Admin Portal
+			</a>
+		  </div>
+		  <!-- Mobile: single Staff Access button -->
+		  <div class="final-cta-portals final-cta-portals--mobile">
+			<a class="button portal-button portal-button-primary" href="staff-access.html">
+			  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+				<circle cx="12" cy="8" r="3.4"/>
+				<path d="M5 20c0-3.3 3.1-6 7-6s7 2.7 7 6"/>
+			  </svg>
+			  Staff Access
+			</a>
+		  </div>
+		</section>
+    </main>
+
+    <footer class="site-footer">
+      <div class="footer-main">
+        <p class="footer-copy">&copy; <span id="year"></span> ShiftFuel Concierge. All rights reserved.</p>
+        <nav class="footer-links" aria-label="Legal links">
+          <a href="privacy.html">Privacy Policy</a>
+          <a href="terms.html">Terms of Service</a>
+          <a href="liability-waiver.html">Liability Waiver</a>
+        </nav>
+      </div>
+    </footer>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="supabase-client.js"></script>
+    <script src="landing.js"></script>
+  </body>
+</html>

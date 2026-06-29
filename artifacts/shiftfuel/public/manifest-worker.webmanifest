@@ -1,0 +1,19 @@
+{
+  "name": "ShiftFuel Worker",
+  "short_name": "SF Worker",
+  "description": "ShiftFuel Concierge — Worker Portal.",
+  "start_url": "/worker/login",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#0b3d5c",
+  "theme_color": "#0b3d5c",
+  "icons": [
+    {
+      "src": "icon-worker.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="ShiftFuel Worker">
+  <!-- Maskable-safe: key content within central 80% safe zone -->
+  <rect width="512" height="512" rx="112" fill="#0b3d5c"/>
+  <circle cx="256" cy="256" r="168" fill="#0f5a87"/>
+
+  <!-- Fuel pump body -->
+  <rect x="176" y="160" width="108" height="196" rx="12" fill="#eaf2ea"/>
+  <!-- Display window (cut-out look) -->
+  <rect x="194" y="182" width="72" height="56" rx="8" fill="#0b3d5c"/>
+  <!-- Fuel drop icon in window -->
+  <path d="M230 196 Q230 188 238 188 Q246 188 246 196 Q246 210 238 216 Q230 210 230 196Z" fill="#eaf2ea"/>
+
+  <!-- Pump base -->
+  <rect x="168" y="352" width="124" height="18" rx="6" fill="#eaf2ea"/>
+
+  <!-- Hose arm -->
+  <path d="M284 210 Q352 210 352 274 L352 326"
+        stroke="#eaf2ea" stroke-width="20" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- Nozzle head -->
+  <rect x="338" y="320" width="28" height="52" rx="8" fill="#eaf2ea"/>
+  <!-- Nozzle tip -->
+  <rect x="338" y="364" width="28" height="12" rx="4" fill="#cde0cd"/>
+</svg>
