@@ -305,40 +305,46 @@ let workerProfilePhotoZoom = 1;
 let workerProfilePhotoPosition = { x: 0, y: 0 };
 let workerPhotoDisplayDrag = null;
 
-// Unified active/open status list â€” keep in sync with admin.js, track.js,
-// and the SQL active-status list in supabase-production-rls-lockdown.sql
-// (worker_list_open_requests). The RPC filters server-side too, but the
-// client keeps this guard so stale SQL cannot show closed requests.
-const workerOpenStatuses = [
-  'pending',
+const BOOKING_STATUSES = [
   'request_received',
   'accepted',
   'key_received',
   'vehicle_picked_up',
-  'service_in_progress',
-  'fueling_in_progress',
-  'car_wash_in_progress',
-  'partial_service_complete',
-  'fueling_complete',
-  'car_wash_complete',
-  'fuel_receipt_uploaded',
-  'wash_receipt_uploaded',
-  'service_complete',
-  'receipts_recorded',
-  'returned_location_pending',
-  'return_location_recorded',
-  'return_photos_needed',
-  'vehicle_returned',
-  'inspection_needed',
-  'inspection_recorded',
-  'final_payment_processed',
-  'awaiting_key_return',
-  'return_requested',
-  'customer_return_requested',
-  'cancelled_pending_key_return',
-  'payment_issue',
-  'authorization_too_low',
-  'pending_customer_payment',
+  'in_progress',
+  'completed',
+  'cancelled',
+];
+
+function canonicalBookingStatus(status) {
+  const value = String(status || 'request_received').toLowerCase();
+  if (BOOKING_STATUSES.includes(value)) return value;
+  if (['pending'].includes(value)) return 'request_received';
+  if ([
+    'complete',
+    'keys_returned',
+    'finalized',
+  ].includes(value)) return 'completed';
+  if ([
+    'denied',
+    'customer_canceled',
+    'canceled',
+    'cancelled_pending_key_return',
+    'unable_to_complete',
+    'auto_reversed',
+    'closed_no_charge',
+    'canceled_return_completed',
+  ].includes(value)) return 'cancelled';
+  return 'in_progress';
+}
+
+// Unified active/open status list. The RPC filters server-side too, but the
+// client keeps this guard so stale SQL cannot show closed requests.
+const workerOpenStatuses = [
+  'request_received',
+  'accepted',
+  'key_received',
+  'vehicle_picked_up',
+  'in_progress',
 ];
 
 function normalizeName(value) {
@@ -354,7 +360,7 @@ function normalizeId(value) {
 }
 
 function isWorkerOpenStatus(status) {
-  return workerOpenStatuses.includes(String(status || ''));
+  return workerOpenStatuses.includes(canonicalBookingStatus(status));
 }
 
 function hasCustomerReturnRequestAlert(request) {
@@ -453,11 +459,14 @@ attachPhoneInputFormatting(workerProfilePhone);
 // Friendly labels for every status â€” keep in sync with admin.js and track.js.
 // Raw database status strings must never be shown to a worker.
 const workerStatusLabels = {
-  pending: 'Request received',
   request_received: 'Request received',
   accepted: 'Accepted',
   key_received: 'Key received',
   vehicle_picked_up: 'Vehicle picked up',
+  in_progress: 'In progress',
+  completed: 'Completed',
+  cancelled: 'Cancelled',
+  pending: 'Request received',
   service_in_progress: 'Service in progress',
   fueling_in_progress: 'Fueling in progress',
   car_wash_in_progress: 'Car wash in progress',
@@ -926,7 +935,7 @@ function workerFeeShareSplit(fuelFee, washFee, inspFee, timeCharge, shares = WOR
 }
 
 function workerNetPayout(request) {
-  const completed = request.status === 'complete' || request.payment_status === 'captured';
+  const completed = canonicalBookingStatus(request.status) === 'completed' || request.payment_status === 'captured';
   // Once a job is finished its pay is frozen — read the locked amount and never
   // recompute (so later rate changes / admin fee edits can't move it).
   if (completed) {
@@ -964,7 +973,7 @@ function workerEstimatedPayout(request) {
 //   10 min to drive to the destination
 // +  5 min to find the car
 // +  GPS time out to the gas station / car wash / both, and the time to go back
-// + 10 min only if the customer added Quick Vehicle Care
+// + 10 min only if the customer added Vehicle Add-Ons
 const EST_TO_DESTINATION_MIN = 10;
 const EST_FIND_CAR_MIN = 5;
 const EST_QUICK_CARE_MIN = 10;
@@ -1100,7 +1109,7 @@ function frozenWorkerPayout(request) {
 function appendWorkerPayoutNote(request, baseNotes) {
   const notes = baseNotes != null ? baseNotes : (request.notes || '');
   if (/\[worker_payout /.test(notes)) return notes; // already locked — don't double-stamp
-  const payout = workerNetPayout({ ...request, status: 'complete', notes });
+  const payout = workerNetPayout({ ...request, status: 'completed', notes });
   const tag = `[worker_payout ${roundMoneyValue(payout).toFixed(2)}]`;
   return notes ? `${notes}\n${tag}` : tag;
 }
@@ -2031,7 +2040,7 @@ function updateWorkerStatCards(requests) {
     workerHeroSubtitle.textContent = `You have ${jobsToday} ${jobsToday === 1 ? 'job' : 'jobs'} scheduled today.`;
   }
   if (completedEl) {
-    completedEl.textContent = requests.filter((r) => r.status === 'complete').length;
+    completedEl.textContent = requests.filter((r) => canonicalBookingStatus(r.status) === 'completed').length;
   }
 }
 
@@ -2153,7 +2162,7 @@ function workerFormatService(request) {
   if (request.fuel_type) parts.push(`Fuel: ${request.fuel_type}`);
   if (request.estimated_fuel_range) parts.push(`Est. range: ${request.estimated_fuel_range}`);
   if (request.wash_package_label) parts.push(`Wash: ${request.wash_package_label}`);
-  if (request.quick_inspection) parts.push('Quick inspection');
+  if (request.quick_inspection) parts.push('Vehicle add-ons');
   if (request.service_date) parts.push(request.service_date);
   if (request.desired_return_time) parts.push(`Return by: ${request.desired_return_time}`);
   return parts.filter(Boolean).join(' | ');
@@ -2189,7 +2198,7 @@ function workerJobNextActionLabel(request, mode) {
 // Maps an internal status to a coloured status-badge modifier class so the
 // pill colour matches the workflow phase (open / in progress / complete / etc).
 function workerStatusBadgeClass(status) {
-  if (status === 'complete' || status === 'keys_returned' || status === 'canceled_return_completed') return 'status-pill-complete';
+  if (canonicalBookingStatus(status) === 'completed') return 'status-pill-complete';
   if (['cancelled_pending_key_return', 'customer_canceled', 'canceled', 'cancelled', 'denied', 'unable_to_complete', 'auto_reversed', 'closed_no_charge'].includes(status)) return 'status-pill-cancelled';
   if (['payment_issue', 'authorization_too_low', 'pending_customer_payment'].includes(status)) return 'status-pill-payment';
   if (['pending', 'request_received'].includes(status)) return 'status-pill-open';
@@ -2197,7 +2206,8 @@ function workerStatusBadgeClass(status) {
 }
 
 function workerStatusBadge(request) {
-  return `<span class="status-pill ${workerStatusBadgeClass(request.status)}">${escapeHtml(workerStatusLabels[request.status] || request.status || '')}</span>`;
+  const canonicalStatus = canonicalBookingStatus(request.status);
+  return `<span class="status-pill ${workerStatusBadgeClass(canonicalStatus)}">${escapeHtml(workerStatusLabels[canonicalStatus] || canonicalStatus || '')}</span>`;
 }
 
 function workerVehicleSummary(request) {
@@ -2712,7 +2722,10 @@ function renderWorkerCompletedCard(request) {
 }
 
 function workerProgressStepForStatus(status) {
-  if (status === 'complete') return 6;
+  const canonical = canonicalBookingStatus(status);
+  if (canonical === 'completed') return 6;
+  if (canonical === 'cancelled') return 0;
+  if (canonical === 'in_progress') return 4;
   const returnPhase = ['returned_location_pending', 'return_location_recorded', 'return_photos_needed', 'vehicle_returned', 'inspection_needed', 'inspection_recorded', 'final_payment_processed', 'awaiting_key_return', 'keys_returned', 'return_requested', 'customer_return_requested', 'cancelled_pending_key_return', 'payment_issue', 'authorization_too_low', 'pending_customer_payment'];
   if (returnPhase.includes(status)) return 5;
   const servicePhase = ['service_in_progress', 'fueling_in_progress', 'car_wash_in_progress', 'partial_service_complete', 'fueling_complete', 'car_wash_complete', 'fuel_receipt_uploaded', 'wash_receipt_uploaded', 'service_complete', 'receipts_recorded'];
@@ -2759,8 +2772,8 @@ function updateWorkerProgressTimeline(myJobs) {
 
 function workerUpdateDescription(job) {
   if (job.payment_status === 'captured') return 'Job completed — payout added';
-  if (job.status === 'complete') return 'Job completed - payout added';
-  return workerStatusLabels[job.status] || job.status || 'Status updated';
+  if (canonicalBookingStatus(job.status) === 'completed') return 'Job completed - payout added';
+  return workerStatusLabels[canonicalBookingStatus(job.status)] || job.status || 'Status updated';
 }
 
 function workerFormatClockTime(iso) {
@@ -2800,7 +2813,7 @@ function updateWorkerOnTimeRate(myJobs) {
   const targets = [document.querySelector('#worker-stat-ontime'), document.querySelector('#worker-current-ontime')].filter(Boolean);
   if (!targets.length) return;
 
-  const completed = myJobs.filter((job) => job.status === 'complete' && job.service_date && job.desired_return_time && job.updated_at);
+  const completed = myJobs.filter((job) => canonicalBookingStatus(job.status) === 'completed' && job.service_date && job.desired_return_time && job.updated_at);
   if (!completed.length) {
     targets.forEach((el) => { el.textContent = '—'; });
     return;
@@ -2873,7 +2886,7 @@ function renderWorkerJobCard(request, mode) {
           <p class="eyebrow">${escapeHtml(formatWorkerJobTime(request))}</p>
           <h3>${escapeHtml(request.customer_name || 'Customer')}</h3>
         </div>
-        <span class="status-pill">${escapeHtml(workerStatusLabels[request.status] || request.status || '')}</span>
+        <span class="status-pill">${escapeHtml(workerStatusLabels[canonicalBookingStatus(request.status)] || canonicalBookingStatus(request.status) || '')}</span>
       </div>
       ${(mode === 'mine' && request.assigned_worker_name && !request.assigned_employee_id) ? `
         <p class="field-help" style="color:#b35900">âš  Assigned by name only â€” worker ID missing.</p>
@@ -3817,7 +3830,7 @@ async function loadWorkerCompletedToday() {
     return [];
   }
   return (data || [])
-    .filter((r) => r.status === 'complete' && (String(r.updated_at || '').slice(0, 10) === today || r.service_date === today))
+    .filter((r) => canonicalBookingStatus(r.status) === 'completed' && (String(r.updated_at || '').slice(0, 10) === today || r.service_date === today))
     .sort((a, b) => new Date(b.updated_at || 0) - new Date(a.updated_at || 0));
 }
 
@@ -3835,7 +3848,7 @@ async function loadWorkerCompletedHistory() {
     return [];
   }
   return (data || [])
-    .filter((r) => r.status === 'complete' || r.payment_status === 'captured')
+    .filter((r) => canonicalBookingStatus(r.status) === 'completed' || r.payment_status === 'captured')
     .sort((a, b) => new Date(b.updated_at || 0) - new Date(a.updated_at || 0));
 }
 
@@ -3993,7 +4006,7 @@ window.ShiftFuelSaveDest = function (requestId, tag, dest) {
 
 async function updateWorkerJobStatus(id, status, options = {}) {
   const request = allWorkerJobs.find((item) => item.id === id);
-  const pData = { status };
+  const pData = { status: canonicalBookingStatus(status) };
   if (options.coordAction && request) {
     const meta = routeCoordTagForAction(options.coordAction);
     const coords = await workerCoordsForRequest(request);
@@ -4083,7 +4096,7 @@ async function saveWorkerServiceUnable(button) {
   const { error } = await workerDb.rpc('worker_update_request', {
     p_token: SESSION_WORKER_TOKEN,
     p_request_id: id,
-    p_data: { status: nextStatus, final_total: finalTotal, notes, ...pricingAuditFields({ ...request, notes }, receiptTotals) },
+    p_data: { status: canonicalBookingStatus(nextStatus), final_total: finalTotal, notes, ...pricingAuditFields({ ...request, notes }, receiptTotals) },
   });
 
   if (error) throw error;
@@ -4183,7 +4196,7 @@ async function uploadWorkerPhotoSet(button) {
     }
   }
   const nextStatus = panel.dataset.nextStatus;
-  await workerUpdateRequestWithCoordinateFallback(id, { status: nextStatus, notes, ...routeCoordData });
+  await workerUpdateRequestWithCoordinateFallback(id, { status: canonicalBookingStatus(nextStatus), notes, ...routeCoordData });
   await loadWorkerJobs();
 
   const updated = allWorkerJobs.find((item) => item.id === id) || request;
@@ -4254,7 +4267,7 @@ async function saveWorkerFinalTotal(button) {
 
   const updates = { final_total: finalTotal, notes, ...pricingAuditFields(request, newReceiptTotals) };
   if (button.dataset.nextStatus) {
-    updates.status = button.dataset.nextStatus;
+    updates.status = canonicalBookingStatus(button.dataset.nextStatus);
   }
 
   const { error } = await workerDb.rpc('worker_update_request', {
@@ -4305,7 +4318,7 @@ async function saveWorkerReturnLocation(button) {
       return_parking_spot: null,
       return_parking_map_url: null,
       // Skip the old "Return photos" gateway tap — go straight into the photo wizard.
-      status: 'return_photos_needed',
+      status: 'in_progress',
     },
   });
 
@@ -4334,7 +4347,7 @@ async function bypassWorkerPickupPhotos(button) {
   const { error } = await workerDb.rpc('worker_update_request', {
     p_token: SESSION_WORKER_TOKEN,
     p_request_id: id,
-    p_data: { status: 'awaiting_key_return', notes, updated_at: timestamp },
+    p_data: { status: 'in_progress', notes, updated_at: timestamp },
   });
 
   if (error) {
@@ -4381,7 +4394,7 @@ async function saveWorkerInspection(button) {
   // so the card falls through to the first service drive. (Old jobs that reached the
   // legacy inspection_needed status still advance to inspection_recorded.)
   const pData = { notes };
-  if (request.status === 'inspection_needed') pData.status = 'inspection_recorded';
+  if (request.status === 'inspection_needed') pData.status = 'in_progress';
 
   const { error } = await workerDb.rpc('worker_update_request', {
     p_token: SESSION_WORKER_TOKEN,
@@ -4459,7 +4472,7 @@ function workerCompleteValidation(button) {
     return null;
   }
   if (request.quick_inspection && !hasInspectionRecorded(request) && !isReturnWorkflow) {
-    alert('Complete the quick inspection before completing this request.');
+    alert('Complete the vehicle add-ons before completing this request.');
     return null;
   }
 
@@ -4551,7 +4564,7 @@ async function completeWorkerRequest(button) {
     : request.notes;
   const timestamp = new Date().toISOString();
   const updates = {
-    status: isReturnWorkflow ? 'awaiting_key_return' : 'complete',
+    status: isReturnWorkflow ? 'in_progress' : 'completed',
     final_total: finalTotal,
     updated_at: timestamp,
     ...pricingAuditFields(request, receiptTotals),
@@ -4584,7 +4597,7 @@ async function completeWorkerRequest(button) {
   }
 
   console.log(isReturnWorkflow
-    ? 'Request moved to awaiting_key_return - return workflow will close after keys are returned.'
+    ? 'Request remains in progress - return workflow will close after keys are returned.'
     : 'Request completed - no payment hold to capture.');
 
   await loadWorkerJobs();
@@ -5647,7 +5660,7 @@ loadVehiclePsiGuides().finally(loadWorkerProfile);
         const { error: keyReturnError } = await workerDb.rpc('worker_update_request', {
           p_token: SESSION_WORKER_TOKEN,
           p_request_id: id,
-          p_data: { status: 'awaiting_key_return', notes, updated_at: timestamp },
+          p_data: { status: 'in_progress', notes, updated_at: timestamp },
         });
         if (keyReturnError) console.warn('Could not move captured job to key return step:', keyReturnError);
         await loadWorkerJobs().catch(() => {});
@@ -5669,7 +5682,7 @@ loadVehiclePsiGuides().finally(loadWorkerProfile);
         const { error: keyReturnError } = await workerDb.rpc('worker_update_request', {
           p_token: SESSION_WORKER_TOKEN,
           p_request_id: id,
-          p_data: { status: 'awaiting_key_return', notes, updated_at: timestamp },
+          p_data: { status: 'in_progress', notes, updated_at: timestamp },
         });
         if (keyReturnError) console.warn('Could not move completed job to key return step:', keyReturnError);
         await loadWorkerJobs().catch(() => {});

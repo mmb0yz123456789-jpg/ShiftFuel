@@ -124,7 +124,35 @@ let expandedSummaryId = null;
 let dashboardRange = 'today';
 let customRange = { start: '', end: '' };
 let queueFilters = { search: '', serviceType: '', status: '', worker: '', payment: '', sort: 'newest' };
-const UNASSIGNED_STATUSES = ['pending', 'request_received'];
+const BOOKING_STATUSES = [
+  'request_received',
+  'accepted',
+  'key_received',
+  'vehicle_picked_up',
+  'in_progress',
+  'completed',
+  'cancelled',
+];
+
+function canonicalBookingStatus(status) {
+  const value = String(status || 'request_received').toLowerCase();
+  if (BOOKING_STATUSES.includes(value)) return value;
+  if (value === 'pending') return 'request_received';
+  if (['complete', 'keys_returned', 'finalized'].includes(value)) return 'completed';
+  if ([
+    'denied',
+    'customer_canceled',
+    'canceled',
+    'cancelled_pending_key_return',
+    'unable_to_complete',
+    'auto_reversed',
+    'closed_no_charge',
+    'canceled_return_completed',
+  ].includes(value)) return 'cancelled';
+  return 'in_progress';
+}
+
+const UNASSIGNED_STATUSES = ['request_received'];
 
 function adminToken() {
   return sessionStorage.getItem('shiftfuel_admin_token');
@@ -197,22 +225,10 @@ const CR_FUEL_ESTIMATE_RANGES = [
 const CR_AVG_FUEL_PRICES = { Regular: 3.792, 'Mid-grade': 4.411, Premium: 4.701, Diesel: 4.967 };
 let CR_FEES = { fuelConvenience: 15, washConvenience: 15, quickInspection: 5 };
 const slotHoldingStatuses = new Set([
-  'accepted', 'key_received',
-  'pickup_vehicle_photo_uploaded', 'pickup_odometer_photo_uploaded', 'pickup_fuel_gauge_photo_uploaded',
-  'vehicle_picked_up', 'service_in_progress',
-  'fueling_in_progress', 'car_wash_in_progress', 'partial_service_complete',
-  'fueling_complete', 'fuel_receipt_uploaded',
-  'car_wash_complete', 'car_wash_after_fuel_in_progress',
-  'wash_receipt_uploaded', 'wash_receipt_after_fuel_uploaded',
-  'fueling_after_wash_in_progress', 'fuel_receipt_after_wash_uploaded', 'fuel_and_wash_complete',
-  'service_complete', 'receipts_recorded',
-  'returned_location_pending', 'return_location_recorded', 'return_photos_needed',
-  'dropoff_vehicle_photo_uploaded', 'dropoff_odometer_photo_uploaded', 'dropoff_fuel_gauge_photo_uploaded',
-  'vehicle_returned', 'inspection_needed', 'inspection_recorded',
-  'final_payment_processed', 'awaiting_key_return', 'keys_returned',
-  'return_requested', 'customer_return_requested',
-  'cancelled_pending_key_return',
-  'payment_issue', 'authorization_too_low', 'pending_customer_payment',
+  'accepted',
+  'key_received',
+  'vehicle_picked_up',
+  'in_progress',
 ]);
 
 function crNormalizeTimeSlot(value) {
@@ -332,7 +348,7 @@ async function refreshAdminCreateReturnTimes() {
     const { data, error } = await db.rpc('public_booked_return_slots', { p_service_date: dateValue });
     if (error) throw error;
     bookedSlots = new Set((data || [])
-      .filter((row) => slotHoldingStatuses.has(row.status))
+      .filter((row) => slotHoldingStatuses.has(canonicalBookingStatus(row.status)))
       .map((row) => crNormalizeTimeSlot(row.desired_return_time))
       .filter(Boolean));
   } catch (error) {
@@ -505,8 +521,8 @@ let adminPhotoDeleted = false; // true when admin clicks "Delete photo"
 
 // Unified terminal/closed status list — keep in sync with worker.js, track.js,
 // and the SQL terminal-status list in supabase-production-rls-lockdown.sql.
-const terminalStatuses = ['complete', 'denied', 'customer_canceled', 'canceled', 'cancelled', 'unable_to_complete', 'auto_reversed', 'closed_no_charge', 'canceled_return_completed'];
-const closedStatuses = ['denied', 'customer_canceled', 'canceled', 'cancelled', 'unable_to_complete', 'auto_reversed', 'closed_no_charge', 'canceled_return_completed'];
+const terminalStatuses = ['completed', 'cancelled'];
+const closedStatuses = ['cancelled'];
 
 // Friendly labels for every status — keep in sync with worker.js and track.js.
 // Raw database status strings must never be shown to a user; this map is the
@@ -520,6 +536,9 @@ const statusLabels = {
   pickup_odometer_photo_uploaded: 'Pickup odometer photo uploaded',
   pickup_fuel_gauge_photo_uploaded: 'Pickup fuel gauge photo uploaded',
   vehicle_picked_up: 'Vehicle picked up',
+  in_progress: 'In progress',
+  completed: 'Completed',
+  cancelled: 'Cancelled',
   service_in_progress: 'Service in progress',
   fueling_in_progress: 'Fueling in progress',
   fueling_complete: 'Fueling complete',
@@ -555,7 +574,6 @@ const statusLabels = {
   return_requested: 'Return requested',
   customer_return_requested: 'Return requested',
   cancelled_pending_key_return: 'Cancellation received - awaiting key/vehicle return',
-  cancelled: 'Cancelled',
   canceled_return_completed: 'Return completed',
   payment_issue: 'Payment issue',
   authorization_too_low: 'Authorization issue',
@@ -576,7 +594,7 @@ function updateHeroStats() {
   } else if (adminAvgRating) {
     adminAvgRating.textContent = '—';
   }
-  const completeCount = allRequests.filter((r) => r.status === 'complete').length;
+  const completeCount = allRequests.filter((r) => canonicalBookingStatus(r.status) === 'completed').length;
   if (adminCompletedCount) adminCompletedCount.textContent = completeCount;
 }
 
@@ -605,7 +623,7 @@ const PAYMENT_STATUS_LABELS = {
   capture_failed:         'Capture failed — customer must repay',
 };
 
-const CLOSED_STATUSES = ['denied', 'customer_canceled', 'canceled', 'cancelled', 'unable_to_complete', 'auto_reversed', 'closed_no_charge', 'canceled_return_completed'];
+const CLOSED_STATUSES = ['cancelled'];
 
 function paymentStatusLabel(request) {
   const label = PAYMENT_STATUS_LABELS[request.payment_status] || request.payment_status || 'Unknown';
@@ -615,6 +633,11 @@ function paymentStatusLabel(request) {
     ? ` — ${money(request.estimated_total)} estimated hold`
     : '';
   return `${label}${amount}`;
+}
+
+function bookingStatusLabel(status) {
+  const canonicalStatus = canonicalBookingStatus(status);
+  return statusLabels[canonicalStatus] || canonicalStatus || 'Status pending';
 }
 
 function formatTimestamp(iso) {
@@ -800,7 +823,7 @@ function savedFeeOrDefault(value, fallback) {
 }
 
 function isOpen(request) {
-  return !terminalStatuses.includes(request.status);
+  return !terminalStatuses.includes(canonicalBookingStatus(request.status));
 }
 
 function dashboardRangeBounds(range) {
@@ -1042,7 +1065,7 @@ function workerPayoutForRequest(request) {
   return result;
 }
 function computeWorkerPayoutForRequest(request) {
-  const completed = request.status === 'complete' || request.payment_status === 'captured';
+  const completed = canonicalBookingStatus(request.status) === 'completed' || request.payment_status === 'captured';
   if (completed) {
     const locked = frozenWorkerPayout(request);
     if (locked != null) return roundMoneyValue(locked);
@@ -1349,7 +1372,7 @@ function adminFormatService(request) {
   if (request.fuel_type) parts.push(`Fuel: ${request.fuel_type}`);
   if (request.estimated_fuel_range) parts.push(`Est. range: ${request.estimated_fuel_range}`);
   if (request.wash_package_label) parts.push(`Wash: ${request.wash_package_label}`);
-  if (request.quick_inspection) parts.push('Quick inspection');
+  if (request.quick_inspection) parts.push('Vehicle add-ons');
   if (request.service_date) parts.push(request.service_date);
   if (request.desired_pickup_time) parts.push(`Available from: ${String(request.desired_pickup_time).slice(0, 5)}`);
   if (request.desired_return_time) parts.push(`Return by: ${request.desired_return_time}`);
@@ -1370,8 +1393,8 @@ function queueServiceLabel(request) {
 }
 
 function queueStatusBucket(request) {
-  if (closedStatuses.includes(request.status)) return { label: 'Closed', cls: 'status-pill-denied' };
-  if (request.status === 'complete') return { label: 'Completed', cls: 'status-pill-complete' };
+  if (closedStatuses.includes(canonicalBookingStatus(request.status))) return { label: 'Closed', cls: 'status-pill-denied' };
+  if (canonicalBookingStatus(request.status) === 'completed') return { label: 'Completed', cls: 'status-pill-complete' };
   if (UNASSIGNED_STATUSES.includes(request.status)) return { label: 'Open', cls: 'status-pill-open' };
   return { label: 'In Progress', cls: 'status-pill-progress' };
 }
@@ -1425,20 +1448,20 @@ function requestCardDetails(request) {
       ${hasPayment ? `<hr class="details-divider">` : ''}
       ${hasPayment ? `<p><strong>Estimated total:</strong> ${money(request.estimated_total)} | <strong>Final total:</strong> ${request.final_total == null ? 'Not recorded' : money(request.final_total)}</p>` : ''}
       ${(receiptTotals.fuel || receiptTotals.wash) ? `<p><strong>Receipt totals:</strong> Fuel ${money(receiptTotals.fuel)} | Car wash ${money(receiptTotals.wash)}</p>` : ''}
-      ${hasPayment ? `<p><strong>Service fees:</strong> Fuel service ${money(fees.fuel)} | Car wash service ${money(fees.wash)} | Quick inspection ${money(fees.inspection)}</p>` : ''}
-      ${(request.status === 'complete' || request.payment_status === 'captured') ? `<p><strong>Driver pay${frozenWorkerPayout(request) != null ? ' (locked)' : ''}:</strong> ${money(workerPayoutForRequest(request))}${request.assigned_worker_name ? ` &rarr; ${escapeHtml(request.assigned_worker_name)}` : ''}${frozenWorkerPayout(request) != null ? '' : ' <span class="field-help" style="display:inline">(live — not yet locked)</span>'}</p>` : ''}
+      ${hasPayment ? `<p><strong>Service fees:</strong> Fuel service ${money(fees.fuel)} | Car wash service ${money(fees.wash)} | Vehicle add-ons ${money(fees.inspection)}</p>` : ''}
+      ${(canonicalBookingStatus(request.status) === 'completed' || request.payment_status === 'captured') ? `<p><strong>Driver pay${frozenWorkerPayout(request) != null ? ' (locked)' : ''}:</strong> ${money(workerPayoutForRequest(request))}${request.assigned_worker_name ? ` &rarr; ${escapeHtml(request.assigned_worker_name)}` : ''}${frozenWorkerPayout(request) != null ? '' : ' <span class="field-help" style="display:inline">(live — not yet locked)</span>'}</p>` : ''}
       ${hasPayment ? renderPricingAuditDetails(request) : ''}
       ${request.payment_intent_id ? `<hr class="details-divider">
       <p><strong>Payment status:</strong> ${paymentStatusLabel(request)}</p>
       ${request.auto_reversed_at ? `<p><strong>Auto-reversed:</strong> ${formatTimestamp(request.auto_reversed_at)} — service was not completed on the scheduled date.</p>` : ''}
-      ${(CLOSED_STATUSES.includes(request.status) && request.payment_status === 'payment_release_failed') ? `
+      ${(CLOSED_STATUSES.includes(canonicalBookingStatus(request.status)) && request.payment_status === 'payment_release_failed') ? `
         <div class="admin-warning-banner">
           ⚠️ Payment hold could not be released automatically. Go to the Stripe dashboard and cancel this PaymentIntent manually.
           <div class="admin-button-row" style="margin-top:8px">
             <button class="button danger retry-release-hold" data-id="${escapeHtml(request.id)}" data-pi="${escapeHtml(request.payment_intent_id)}" type="button">Retry hold release</button>
           </div>
         </div>` : ''}
-      ${(CLOSED_STATUSES.includes(request.status) && request.payment_status === 'authorized') ? `
+      ${(CLOSED_STATUSES.includes(canonicalBookingStatus(request.status)) && request.payment_status === 'authorized') ? `
         <div class="admin-warning-banner">
           ⚠️ This request was closed but the card authorization was not released. Release it now.
           <div class="admin-button-row" style="margin-top:8px">
@@ -1467,7 +1490,7 @@ function renderCompletedSummary(request) {
     receiptTotals.wash  ? `<div class="summary-kv"><span>Wash receipt</span><strong>${money(receiptTotals.wash)}</strong></div>` : '',
     fees.fuel           ? `<div class="summary-kv"><span>Fuel service fee</span><strong>${money(fees.fuel)}</strong></div>` : '',
     fees.wash           ? `<div class="summary-kv"><span>Wash service fee</span><strong>${money(fees.wash)}</strong></div>` : '',
-    fees.inspection     ? `<div class="summary-kv"><span>Inspection fee</span><strong>${money(fees.inspection)}</strong></div>` : '',
+    fees.inspection     ? `<div class="summary-kv"><span>Add-ons fee</span><strong>${money(fees.inspection)}</strong></div>` : '',
     request.final_total != null
       ? `<div class="summary-kv summary-kv--total"><span>Final total</span><strong>${money(request.final_total)}</strong></div>`
       : '',
@@ -1605,7 +1628,7 @@ function filePicker(label, className, extraAttributes = '', accept = 'image/*') 
 
 function renderActions(request) {
   if (!isOpen(request)) {
-    const isComplete = request.status === 'complete';
+    const isComplete = canonicalBookingStatus(request.status) === 'completed';
     const label = isComplete ? 'Edit' : 'Edit / reopen';
     return `
       <div class="admin-button-row">
@@ -1716,7 +1739,7 @@ function renderActions(request) {
   return `
     <div class="guided-step">
       <p class="eyebrow">Current status</p>
-      <h4>${escapeHtml(statusLabels[request.status] || request.status)}</h4>
+      <h4>${escapeHtml(bookingStatusLabel(request.status))}</h4>
       ${nextAction ? `<p class="next-action-label"><strong>Next action:</strong> ${escapeHtml(nextAction)}</p>` : ''}
       <div class="admin-button-row">${actions.join('')}</div>
     </div>
@@ -2030,7 +2053,7 @@ function renderCompletePanel(request) {
       <div class="request-details">
         ${serviceNeedsFuel(request) ? `<p><strong>Fuel:</strong> ${money(receiptTotals.fuel)} receipt + ${money(fees.fuel)} service.</p>` : ''}
         ${serviceNeedsWash(request) ? `<p><strong>Car wash:</strong> ${money(receiptTotals.wash)} receipt + ${money(fees.wash)} service.</p>` : ''}
-        ${request.quick_inspection ? `<p><strong>Quick inspection:</strong> ${money(fees.inspection)}</p>` : ''}
+        ${request.quick_inspection ? `<p><strong>Vehicle add-ons:</strong> ${money(fees.inspection)}</p>` : ''}
         <p><strong>Final total currently saved:</strong> ${request.final_total == null ? 'Not recorded' : money(request.final_total)}</p>
         <p><strong>Expected total from saved receipts:</strong> ${money(expectedFinalTotal)}</p>
         ${request.return_parking_location ? `<p><strong>Return location:</strong> ${escapeHtml(request.return_parking_location)}</p>` : ''}
@@ -2245,7 +2268,7 @@ function updateDashboardStatCards() {
   // numbers match the lists you see when you click them.
   const openCount = allRequests.filter((r) => UNASSIGNED_STATUSES.includes(r.status) && isInDashboardRange(r, dashboardRange)).length;
   const inProgressCount = allRequests.filter((r) => isOpen(r) && !UNASSIGNED_STATUSES.includes(r.status) && isInDashboardRange(r, dashboardRange)).length;
-  const completedCount = allRequests.filter((r) => r.status === 'complete' && isInDashboardRange(r, dashboardRange)).length;
+  const completedCount = allRequests.filter((r) => canonicalBookingStatus(r.status) === 'completed' && isInDashboardRange(r, dashboardRange)).length;
   const activeWorkerCount = allEmployees.filter((e) => e.active).length;
   // Company NET for the active range — the same formula as the Payroll tab so the
   // tile and Payroll agree (service fees + cancellation fees − worker payouts).
@@ -2364,8 +2387,8 @@ function renderRequests() {
     if (currentView === 'all') return true;
     if (currentView === 'unassigned') return UNASSIGNED_STATUSES.includes(request.status);
     if (currentView === 'inprogress') return isOpen(request) && !UNASSIGNED_STATUSES.includes(request.status);
-    if (currentView === 'complete') return request.status === 'complete';
-    if (currentView === 'closed') return closedStatuses.includes(request.status);
+    if (currentView === 'complete') return canonicalBookingStatus(request.status) === 'completed';
+    if (currentView === 'closed') return closedStatuses.includes(canonicalBookingStatus(request.status));
     return true;
   });
 
@@ -2376,8 +2399,8 @@ function renderRequests() {
   const allCount = inRange.length;
   const openCount = inRange.filter((r) => UNASSIGNED_STATUSES.includes(r.status)).length;
   const inProgressCount = inRange.filter((r) => isOpen(r) && !UNASSIGNED_STATUSES.includes(r.status)).length;
-  const completeCount = inRange.filter((r) => r.status === 'complete').length;
-  const closedCount = inRange.filter((r) => closedStatuses.includes(r.status)).length;
+  const completeCount = inRange.filter((r) => canonicalBookingStatus(r.status) === 'completed').length;
+  const closedCount = inRange.filter((r) => closedStatuses.includes(canonicalBookingStatus(r.status))).length;
 
   if (allRequestsCountEl) allRequestsCountEl.textContent = allCount;
   if (openRequests) openRequests.textContent = openCount;
@@ -2386,7 +2409,7 @@ function renderRequests() {
   if (deniedRequests) deniedRequests.textContent = closedCount;
 
   // Hero "Completed all-time" stays all-time regardless of the date range.
-  if (adminCompletedCount) adminCompletedCount.textContent = allRequests.filter((r) => r.status === 'complete').length;
+  if (adminCompletedCount) adminCompletedCount.textContent = allRequests.filter((r) => canonicalBookingStatus(r.status) === 'completed').length;
 
   updateDashboardStatCards();
 
@@ -2470,7 +2493,7 @@ function renderRequests() {
                         <p class="eyebrow">${escapeHtml(request.id)}</p>
                         <h3>${escapeHtml(request.customer_name || 'Customer')}</h3>
                       </div>
-                      <span class="status-pill">${escapeHtml(statusLabels[request.status] || request.status)}</span>
+                      <span class="status-pill">${escapeHtml(bookingStatusLabel(request.status))}</span>
                     </div>
                     ${requestCardDetails(request)}
                     ${renderWorkerAssignment(request)}
@@ -4160,8 +4183,9 @@ workerProfileList?.addEventListener('click', async (event) => {
 
 async function updateRequestStatus(id, status) {
   const request = allRequests.find(r => r.id === id);
-  const payload = { status };
-  if (status === 'complete') payload.completed_at = new Date().toISOString();
+  const canonicalStatus = canonicalBookingStatus(status);
+  const payload = { status: canonicalStatus };
+  if (canonicalStatus === 'completed') payload.completed_at = new Date().toISOString();
 
   let { error } = await db.rpc('admin_update_request', {
     p_token: adminToken(),
@@ -4169,7 +4193,7 @@ async function updateRequestStatus(id, status) {
     p_data: payload,
   });
 
-  if (error && status === 'complete' && /completed_at|schema cache|column/i.test(String(error.message || ''))) {
+  if (error && canonicalStatus === 'completed' && /completed_at|schema cache|column/i.test(String(error.message || ''))) {
     delete payload.completed_at;
     ({ error } = await db.rpc('admin_update_request', {
       p_token: adminToken(),
@@ -4180,7 +4204,7 @@ async function updateRequestStatus(id, status) {
 
   if (error) throw error;
 
-  if (status === 'accepted' && request) {
+  if (canonicalStatus === 'accepted' && request) {
     const date = request.service_date
       ? new Date(request.service_date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
       : '';
@@ -4316,7 +4340,7 @@ async function saveFinalTotal(button) {
 
   const rpcData = { final_total: finalTotal, notes, ...pricingAuditFields(request, newReceiptTotals) };
   if (button.dataset.nextStatus) {
-    rpcData.status = button.dataset.nextStatus;
+    rpcData.status = canonicalBookingStatus(button.dataset.nextStatus);
   }
 
   const { error } = await db.rpc('admin_update_request', {
@@ -4366,7 +4390,7 @@ async function saveServiceUnable(button) {
   const { error } = await db.rpc('admin_update_request', {
     p_token: adminToken(),
     p_request_id: id,
-    p_data: { status: nextStatusAfterServiceUnable(request, type), final_total: finalTotal, notes, ...pricingAuditFields({ ...request, notes }, receiptTotals) },
+    p_data: { status: canonicalBookingStatus(nextStatusAfterServiceUnable(request, type)), final_total: finalTotal, notes, ...pricingAuditFields({ ...request, notes }, receiptTotals) },
   });
 
   if (error) throw error;
@@ -4929,7 +4953,7 @@ async function saveDenyReason(button) {
     p_token: adminToken(),
     p_request_id: id,
     p_data: {
-      status: 'denied',
+      status: 'cancelled',
       cancellation_reason: reason,
       notes,
       ...(paymentStatus !== request.payment_status ? { payment_status: paymentStatus } : {}),
@@ -4997,7 +5021,7 @@ async function saveReturnLocation(button) {
   const { error } = await db.rpc('admin_update_request', {
     p_token: adminToken(),
     p_request_id: id,
-    p_data: { return_parking_location: returnParkingLocation, status: 'return_location_recorded' },
+    p_data: { return_parking_location: returnParkingLocation, status: 'in_progress' },
   });
 
   if (error) throw error;
@@ -5032,7 +5056,7 @@ async function saveInspection(button) {
   const { error } = await db.rpc('admin_update_request', {
     p_token: adminToken(),
     p_request_id: id,
-    p_data: { notes, status: 'inspection_recorded' },
+    p_data: { notes, status: 'in_progress' },
   });
 
   if (error) throw error;
@@ -5069,7 +5093,7 @@ async function completeRequest(button) {
   button.disabled = true;
   button.textContent = 'Saving...';
   try {
-    await updateRequestStatus(id, 'complete');
+    await updateRequestStatus(id, 'completed');
   } catch (err) {
     console.error('[complete] Failed:', err.message);
     button.disabled = false;
@@ -5188,7 +5212,7 @@ async function proceedToKeyReturn(button) {
   button.disabled = true;
   button.textContent = 'Saving...';
   try {
-    await updateRequestStatus(id, 'complete');
+    await updateRequestStatus(id, 'completed');
   } catch (err) {
     button.disabled = false;
     button.textContent = button.textContent.includes('no payment') ? 'Complete request (no payment)' : 'Complete request';
@@ -5307,7 +5331,7 @@ async function sendToCustomerPayment(button) {
     const { error } = await db.rpc('admin_update_request', {
       p_token: adminToken(),
       p_request_id: id,
-      p_data: { status: 'pending_customer_payment' },
+      p_data: { status: 'in_progress' },
     });
     if (error) throw error;
 
@@ -5498,7 +5522,7 @@ async function uploadPhotoSet(button) {
   const { error } = await db.rpc('admin_update_request', {
     p_token: adminToken(),
     p_request_id: id,
-    p_data: { status: panel.dataset.nextStatus, notes },
+    p_data: { status: canonicalBookingStatus(panel.dataset.nextStatus), notes },
   });
 
   if (error) throw error;
@@ -5528,7 +5552,7 @@ function renderEditTotalPanel(request) {
             <input class="etc-wash-fee" type="number" min="0" step="0.01" value="${fees.wash}" placeholder="${fees.wash}">
           </label>` : ''}
         ${request.quick_inspection ? `
-          <label>Inspection fee
+          <label>Add-ons fee
             <input class="etc-inspection-fee" type="number" min="0" step="0.01" value="${fees.inspection}" placeholder="${fees.inspection}">
           </label>` : ''}
       </div>
@@ -5625,7 +5649,7 @@ async function saveEditTotalCharge(button) {
   }
 
   const timestamp = new Date().toISOString();
-  const adjustNote = `[payment_adjustment ${timestamp}] Total changed from ${money(oldTotal)} to ${money(newTotal)}. Fuel: ${money(fuelReceipt)} + fee ${money(fuelFee)}, Wash: ${money(washReceipt)} + fee ${money(washFee)}, Inspection fee: ${money(inspFee)}.`;
+  const adjustNote = `[payment_adjustment ${timestamp}] Total changed from ${money(oldTotal)} to ${money(newTotal)}. Fuel: ${money(fuelReceipt)} + fee ${money(fuelFee)}, Wash: ${money(washReceipt)} + fee ${money(washFee)}, Add-ons fee: ${money(inspFee)}.`;
   const notes = request.notes ? `${request.notes}\n${adjustNote}` : adjustNote;
   const newPaymentStatus = diff < 0 ? 'refunded' : 'captured';
 
@@ -7015,7 +7039,7 @@ function renderSearchResults(results, sortOrder = 'newest') {
     <button class="find-ticket-result" data-request-id="${escapeHtml(r.id)}">
       <div class="find-ticket-result-header">
         <span class="find-ticket-name">${escapeHtml(r.customer_name || 'Customer')}</span>
-        <span class="status-pill">${escapeHtml(statusLabels[r.status] || r.status)}</span>
+        <span class="status-pill">${escapeHtml(bookingStatusLabel(r.status))}</span>
       </div>
       <span class="find-ticket-meta">${r.customer_phone ? escapeHtml(formatPhone(r.customer_phone)) : 'No phone'} &middot; ${escapeHtml(r.customer_email || 'No email')}</span>
       <span class="find-ticket-meta">
@@ -7074,7 +7098,7 @@ function runAdminFind() {
     <button class="admin-find-result" data-find-request="${escapeHtml(r.id)}" type="button">
       <div class="find-ticket-result-header">
         <span class="find-ticket-name">${escapeHtml(r.customer_name || 'Customer')}</span>
-        <span class="status-pill">${escapeHtml(statusLabels[r.status] || r.status)}</span>
+        <span class="status-pill">${escapeHtml(bookingStatusLabel(r.status))}</span>
       </div>
       <span class="find-ticket-meta">${r.customer_phone ? escapeHtml(formatPhone(r.customer_phone)) : 'No phone'}${r.customer_email ? ' · ' + escapeHtml(r.customer_email) : ''}</span>
       <span class="find-ticket-meta">${escapeHtml(r.service_date || 'Date not set')}${[r.vehicle_year, r.vehicle_make, r.vehicle_model].filter(Boolean).length ? ' · ' + escapeHtml([r.vehicle_year, r.vehicle_make, r.vehicle_model].filter(Boolean).join(' ')) : ''}</span>
@@ -7201,7 +7225,7 @@ async function openTicketDetailModal(request) {
         <p class="eyebrow">${escapeHtml(request.id)}</p>
         <h3 style="margin:0">${escapeHtml(request.customer_name || 'Customer')}</h3>
       </div>
-      <span class="status-pill">${escapeHtml(statusLabels[request.status] || request.status)}</span>
+      <span class="status-pill">${escapeHtml(bookingStatusLabel(request.status))}</span>
     </div>
     ${requestCardDetails(request)}
     ${request.driven_miles ? (() => {
@@ -7835,7 +7859,7 @@ const SERVICE_PRICING_FIELDS = [
   { id: 'fp-diesel', label: 'Diesel ($/gal)', step: '0.001' },
   { id: 'sp-fuel-fee', label: 'Fuel concierge service fee ($)', step: '0.01' },
   { id: 'sp-wash-fee', label: 'Car wash service fee ($)', step: '0.01' },
-  { id: 'sp-inspection-fee', label: 'Quick inspection fee ($)', step: '0.01' },
+  { id: 'sp-inspection-fee', label: 'Vehicle add-ons fee ($)', step: '0.01' },
   { id: 'sp-per-mile-rate', label: 'Gas station distance surcharge ($/extra round-trip mile)', step: '0.01' },
   { id: 'sp-wash-buff-shine', label: 'Buff & Shine package ($)', step: '0.01' },
   { id: 'sp-wash-shine-protect', label: 'Shine & Protect package ($)', step: '0.01' },
@@ -7971,7 +7995,7 @@ function renderServicesSettingsList() {
         </label>
         <label>Gas station round-trip miles<input id="sim-station-miles" type="number" min="0" step="0.1" value="0"><span class="tbp-hint">Extra round-trip distance to the customer's chosen (non-nearest) station. Drives the customer surcharge AND worker mileage pay.</span></label>
         <label>Car wash round-trip miles<input id="sim-wash-miles" type="number" min="0" step="0.1" value="0"><span class="tbp-hint">Round-trip wash detour. Worker is paid on ALL of it; the customer is billed (at the surcharge rate) only for miles past the free allowance below.</span></label>
-        <label class="sim-check"><input id="sim-quick" type="checkbox"> Quick vehicle care</label>
+        <label class="sim-check"><input id="sim-quick" type="checkbox"> Vehicle add-ons</label>
       </div>
       <p class="field-help" style="margin:.6rem 0 .2rem"><strong>Rates</strong> — pre-filled from your saved settings. Change them here to test "what-if" scenarios; this sandbox never touches your saved pricing.</p>
       <div class="pricing-sim-inputs">
@@ -8154,7 +8178,7 @@ function runPricingSimulator() {
         ${needsWash ? row('Wash package', washPrice) : ''}
         ${needsFuel ? row('Fuel service fee', fuelFee) : ''}
         ${needsWash ? row('Wash service fee', washFee) : ''}
-        ${quick ? row('Quick vehicle care', inspFee) : ''}
+        ${quick ? row('Vehicle add-ons', inspFee) : ''}
         ${timeCharge > 0 ? row(`Service time (${serviceMin.toFixed(1)} min × ${money(companyRate)})`, timeCharge) : ''}
         ${stationSurcharge > 0 ? row('Gas station distance', stationSurcharge) : ''}
         ${washSurcharge > 0 ? row(`Car wash distance (past ${washDetourFree} free mi)`, washSurcharge) : ''}

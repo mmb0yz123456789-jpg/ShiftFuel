@@ -212,9 +212,9 @@ const stepCopy = {
           <details>
             <summary>What is included?</summary>
             <ul class="pricing-includes">
-              <li>Tire pressure</li>
-              <li>Washer fluid top-off</li>
-              <li>Basic walk-around</li>
+              <li>Tire pressure top-off</li>
+              <li>Washer fluid refill</li>
+              <li>Quick exterior look-over</li>
             </ul>
           </details>
         </span>
@@ -282,6 +282,52 @@ const stepCopy = {
     `,
   },
 };
+
+function scrollBookingFlowStart(options = {}) {
+  const target = document.querySelector("#booking-flow");
+  if (!target) return;
+  const header = document.querySelector(".site-header");
+  const headerHeight = header ? header.getBoundingClientRect().height : 0;
+  const top = target.getBoundingClientRect().top + window.scrollY - headerHeight - 18;
+  window.scrollTo({
+    top: Math.max(top, 0),
+    behavior: options.behavior || "smooth",
+  });
+}
+
+function scrollBookingFlowStartAfterRender() {
+  if (window.location.hash !== "#booking-flow") return;
+  window.setTimeout(() => scrollBookingFlowStart({ behavior: "auto" }), 0);
+  window.setTimeout(() => scrollBookingFlowStart({ behavior: "auto" }), 120);
+}
+
+function bindBookingFlowAnchorScroll() {
+  if (!document.body?.classList.contains("booking-page")) return;
+  if (document.documentElement.dataset.bookingFlowAnchorBound === "true") return;
+  document.documentElement.dataset.bookingFlowAnchorBound = "true";
+
+  document.addEventListener("click", (event) => {
+    const link = event.target.closest('a[href$="#booking-flow"], a[href="#booking-flow"]');
+    if (!link) return;
+    let targetUrl;
+    try {
+      targetUrl = new URL(link.getAttribute("href"), window.location.href);
+    } catch (_) {
+      return;
+    }
+    if (targetUrl.pathname !== window.location.pathname || targetUrl.hash !== "#booking-flow") return;
+
+    event.preventDefault();
+    history.replaceState(null, "", "#booking-flow");
+    navToggle?.setAttribute("aria-expanded", "false");
+    nav?.classList.remove("is-open");
+    scrollBookingFlowStart();
+  });
+
+  window.addEventListener("hashchange", () => {
+    if (window.location.hash === "#booking-flow") scrollBookingFlowStart();
+  });
+}
 
 function normalizePhone(value) {
   return String(value || "").replace(/\D/g, "");
@@ -452,15 +498,20 @@ function updateFuelBufferNote(panel) {
   note.innerHTML = `💳 <strong>Card hold:</strong> at checkout we authorize for up to <strong>${authGal} gallons</strong> — just in case your tank needs a little more fuel than the range you picked. You're only charged for the fuel actually pumped; the rest is released right after service.`;
 }
 const slotHoldingStatuses = new Set([
-  "accepted", "key_received", "vehicle_picked_up", "service_in_progress",
-  "fueling_in_progress", "car_wash_in_progress", "partial_service_complete",
-  "fueling_complete", "fuel_receipt_uploaded", "car_wash_complete", "wash_receipt_uploaded",
-  "service_complete", "receipts_recorded", "returned_location_pending", "return_location_recorded",
-  "return_photos_needed", "vehicle_returned", "inspection_needed", "inspection_recorded",
-  "final_payment_processed", "awaiting_key_return", "keys_returned", "return_requested",
-  "customer_return_requested", "cancelled_pending_key_return",
-  "payment_issue", "authorization_too_low", "pending_customer_payment",
+  "accepted",
+  "key_received",
+  "vehicle_picked_up",
+  "in_progress",
 ]);
+
+function canonicalBookingStatus(status) {
+  const value = String(status || "request_received").toLowerCase();
+  if (["request_received", "accepted", "key_received", "vehicle_picked_up", "in_progress", "completed", "cancelled"].includes(value)) return value;
+  if (value === "pending") return "request_received";
+  if (["complete", "keys_returned", "finalized"].includes(value)) return "completed";
+  if (["denied", "customer_canceled", "canceled", "cancelled_pending_key_return", "unable_to_complete", "auto_reversed", "closed_no_charge", "canceled_return_completed"].includes(value)) return "cancelled";
+  return "in_progress";
+}
 
 function formatMoney(value) {
   return `$${(Number(value) || 0).toFixed(2)}`;
@@ -754,7 +805,7 @@ async function loadBookedSlots() {
     const { data, error } = bookedResult || {};
     if (error) throw error;
     (data || []).forEach((row) => {
-      if (slotHoldingStatuses.has(row.status) && row.desired_return_time) {
+      if (slotHoldingStatuses.has(canonicalBookingStatus(row.status)) && row.desired_return_time) {
         bookingState.bookedSlots.add(normalizeTimeSlot(row.desired_return_time));
       }
     });
@@ -3633,7 +3684,9 @@ async function initBookingFlow() {
   await livePricingReady;
   applyCustomerAccountSession();
   applyPreselectedService();
+  bindBookingFlowAnchorScroll();
   renderFlow(flowRoot);
+  scrollBookingFlowStartAfterRender();
   autoVerifyReturningCustomer().catch((error) => {
     console.warn("Returning customer auto-verify failed:", error);
   });

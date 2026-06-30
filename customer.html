@@ -31,7 +31,7 @@
         <a href="index.html#trust">Safety &amp; Trust</a>
         <a class="nav-cta" href="book.html#booking-flow">Book Now</a>
         <a class="nav-returning" href="customer.html" aria-current="page">My Account</a>
-        <a class="nav-outline" href="track.html">Track My Vehicle</a>
+        <a class="nav-outline" href="track.html#track-form">Track My Vehicle</a>
       </nav>
     </header>
 
@@ -42,14 +42,81 @@
           <h1>Book faster and track everything in one place.</h1>
           <p>My Account is your optional home for saved vehicles, saved service addresses, recent bookings, and account-only offers. Guest booking and guest tracking are still available.</p>
           <div class="landing-actions">
-            <a class="button primary" href="#customer-account-panel">Open My Account</a>
+            <a class="button primary" href="#customer-account-placeholder">Open My Account</a>
             <a class="button tertiary" href="book.html#booking-flow">Book as guest</a>
-            <a class="button returning" href="track.html">Track without logging in</a>
+            <a class="button returning" href="track.html#track-form">Track without logging in</a>
           </div>
         </div>
         <figure class="booking-flow-hero-image">
           <img src="https://images.unsplash.com/photo-1503376780353-7e6692767b70?auto=format&fit=crop&w=1200&q=80" alt="A vehicle ready for ShiftFuel concierge service">
         </figure>
+      </section>
+
+      <section id="customer-account-placeholder" class="account-placeholder" aria-label="My Account placeholder">
+        <div class="account-placeholder-header">
+          <div>
+            <p class="customer-dashboard-kicker">My Account</p>
+            <h2>Welcome back, Jordan.</h2>
+            <p>Review recent bookings and keep your profile details handy for faster service.</p>
+          </div>
+          <button class="button secondary account-logout-button" type="button">Log out</button>
+        </div>
+
+        <div class="account-placeholder-grid">
+          <section class="account-placeholder-card account-profile-card" aria-label="Profile">
+            <div class="customer-section-heading">
+              <h3>Profile</h3>
+            </div>
+            <dl class="account-profile-list">
+              <div>
+                <dt>Name</dt>
+                <dd>Jordan Smith</dd>
+              </div>
+              <div>
+                <dt>Phone</dt>
+                <dd>(302) 555-0100</dd>
+              </div>
+              <div>
+                <dt>Email</dt>
+                <dd>jordan@example.com</dd>
+              </div>
+              <div>
+                <dt>Default area</dt>
+                <dd>Christiana area</dd>
+              </div>
+            </dl>
+          </section>
+
+          <section class="account-placeholder-card account-bookings-card" aria-label="Past bookings">
+            <div class="customer-section-heading">
+              <h3>Past bookings</h3>
+              <span>3</span>
+            </div>
+            <div class="account-booking-list">
+              <article class="account-booking-item">
+                <div>
+                  <strong>Fuel Fill-Up</strong>
+                  <span>SF-A18C92B4</span>
+                </div>
+                <p>Jun 24, 2026 · 2021 Toyota Camry · Complete</p>
+              </article>
+              <article class="account-booking-item">
+                <div>
+                  <strong>Fuel + Car Wash</strong>
+                  <span>SF-B72F041D</span>
+                </div>
+                <p>Jun 12, 2026 · 2020 Honda Accord · Complete</p>
+              </article>
+              <article class="account-booking-item">
+                <div>
+                  <strong>Vehicle Add-Ons</strong>
+                  <span>SF-C45D8E10</span>
+                </div>
+                <p>May 30, 2026 · 2022 Ford Escape · Complete</p>
+              </article>
+            </div>
+          </section>
+        </div>
       </section>
 
       <section id="customer-account-panel" class="customer-account-panel" aria-label="Customer account sign in">

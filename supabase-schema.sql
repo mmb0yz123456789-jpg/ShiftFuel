@@ -19,6 +19,16 @@ create table vehicles (
   created_at timestamptz not null default now()
 );
 
+create type booking_status as enum (
+  'request_received',
+  'accepted',
+  'key_received',
+  'vehicle_picked_up',
+  'in_progress',
+  'completed',
+  'cancelled'
+);
+
 create table service_requests (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references users(id) on delete cascade,
@@ -39,7 +49,7 @@ create table service_requests (
   quick_inspection_fee numeric(10, 2) not null default 0,
   fuel_convenience_fee numeric(10, 2) not null default 0,
   fuel_type text,
-  status text not null default 'request_received',
+  status booking_status not null default 'request_received',
   service_date date not null,
   desired_return_time time not null,
   estimated_fuel_range text,
