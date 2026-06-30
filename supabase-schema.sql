@@ -20,11 +20,11 @@ create table vehicles (
 );
 
 create type booking_status as enum (
-  'request_received',
-  'accepted',
-  'key_received',
-  'vehicle_picked_up',
-  'in_progress',
+  'new',
+  'assigned',
+  'en_route',
+  'in_service',
+  'returning',
   'completed',
   'cancelled'
 );
@@ -49,7 +49,7 @@ create table service_requests (
   quick_inspection_fee numeric(10, 2) not null default 0,
   fuel_convenience_fee numeric(10, 2) not null default 0,
   fuel_type text,
-  status booking_status not null default 'request_received',
+  status booking_status not null default 'new',
   service_date date not null,
   desired_return_time time not null,
   estimated_fuel_range text,
@@ -62,9 +62,44 @@ create table service_requests (
   final_total numeric(10, 2),
   cancellation_reason text,
   notes text,
+  assigned_at timestamptz,
+  service_started_at timestamptz,
+  completed_at timestamptz,
+  cancelled_at timestamptz,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+
+create or replace function set_booking_stage_timestamp()
+returns trigger
+language plpgsql
+as $$
+begin
+  if TG_OP = 'UPDATE' and new.status is distinct from old.status then
+    new.updated_at = now();
+  end if;
+
+  case new.status::text
+    when 'assigned' then
+      new.assigned_at = coalesce(new.assigned_at, now());
+    when 'in_service' then
+      new.service_started_at = coalesce(new.service_started_at, now());
+    when 'completed' then
+      new.completed_at = coalesce(new.completed_at, now());
+    when 'cancelled' then
+      new.cancelled_at = coalesce(new.cancelled_at, now());
+    else
+      null;
+  end case;
+
+  return new;
+end;
+$$;
+
+create trigger service_requests_stage_timestamp
+before insert or update of status on service_requests
+for each row
+execute function set_booking_stage_timestamp();
 
 create table photos (
   id uuid primary key default gen_random_uuid(),
