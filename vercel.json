@@ -1,4 +1,5 @@
 {
+  "buildCommand": "npm run build",
   "crons": [
     {
       "path": "/api/auto-reverse-payments",
@@ -10,6 +11,8 @@
     }
   ],
   "rewrites": [
+    { "source": "/api/auto-reverse-payments", "destination": "/api/cron?job=auto-reverse-payments" },
+    { "source": "/api/cron-cleanup-holds", "destination": "/api/cron?job=cleanup-holds" },
     { "source": "/staff/access", "destination": "/staff-access.html" },
     { "source": "/join-the-team", "destination": "/hiring.html" },
     { "source": "/apply", "destination": "/hiring.html" },
@@ -32,7 +35,7 @@
         { "key": "X-Content-Type-Options", "value": "nosniff" },
         { "key": "Referrer-Policy", "value": "strict-origin-when-cross-origin" },
         { "key": "Strict-Transport-Security", "value": "max-age=63072000; includeSubDomains" },
-        { "key": "Content-Security-Policy", "value": "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; form-action 'self'; script-src 'self' 'unsafe-inline' https://api.mapbox.com https://cdn.jsdelivr.net https://js.stripe.com https://unpkg.com; style-src 'self' 'unsafe-inline' https://api.mapbox.com https://unpkg.com; img-src 'self' data: blob: https://api.mapbox.com https://*.tiles.mapbox.com https://nhdsokqxndhlkbsvmxio.supabase.co https://images.unsplash.com https://*.tile.openstreetmap.org; font-src 'self' data:; connect-src 'self' https://nhdsokqxndhlkbsvmxio.supabase.co wss://nhdsokqxndhlkbsvmxio.supabase.co https://api.mapbox.com https://events.mapbox.com https://api.stripe.com https://m.stripe.com https://m.stripe.network https://vpic.nhtsa.dot.gov https://vitals.vercel-insights.com; frame-src https://js.stripe.com https://hooks.stripe.com; worker-src 'self' blob:; manifest-src 'self'" }
+        { "key": "Content-Security-Policy", "value": "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; form-action 'self'; script-src 'self' 'unsafe-inline' https://api.mapbox.com https://cdn.jsdelivr.net https://js.stripe.com https://unpkg.com; style-src 'self' 'unsafe-inline' https://api.mapbox.com https://unpkg.com; img-src 'self' data: blob: https://api.mapbox.com https://*.tiles.mapbox.com https://*.supabase.co https://images.unsplash.com https://*.tile.openstreetmap.org; font-src 'self' data:; connect-src 'self' https://*.supabase.co wss://*.supabase.co https://api.mapbox.com https://events.mapbox.com https://api.stripe.com https://m.stripe.com https://m.stripe.network https://vpic.nhtsa.dot.gov https://vitals.vercel-insights.com; frame-src https://js.stripe.com https://hooks.stripe.com; worker-src 'self' blob:; manifest-src 'self'" }
       ]
     }
   ]

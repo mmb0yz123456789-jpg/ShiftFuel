@@ -1,7 +1,7 @@
 // ── Stripe setup ─────────────────────────────────────────────────────────────
-// REPLACE WITH LIVE KEY BEFORE PRODUCTION LAUNCH
-const STRIPE_PUBLISHABLE_KEY = 'pk_test_51Tinn8H7KLNRhY3F757Dwev2OIk1CWs0ExzSQwvX9gvzo7ubsXnYbZKl9qVLoIWYOpF6OkzVkIA9kAtkx7i1c1HG00sCPnNo59';
-const stripe = window.Stripe ? window.Stripe(STRIPE_PUBLISHABLE_KEY) : null;
+const STRIPE_PUBLISHABLE_KEY = window.SHIFTFUEL_CONFIG?.stripePublishableKey || window.SHIFTFUEL_STRIPE_PUBLISHABLE_KEY || '';
+if (!STRIPE_PUBLISHABLE_KEY) console.error('ShiftFuel Stripe publishable config is missing. Set STRIPE_PUBLISHABLE_KEY for the current Vercel environment.');
+const stripe = window.Stripe && STRIPE_PUBLISHABLE_KEY ? window.Stripe(STRIPE_PUBLISHABLE_KEY) : null;
 const stripeElements = stripe ? stripe.elements() : null;
 const cardElement = stripeElements ? stripeElements.create('card', {
   style: {

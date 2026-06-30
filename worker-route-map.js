@@ -14,7 +14,7 @@
 (() => {
   if (!document.body?.classList.contains('worker-portal-page')) return;
 
-  const MAPBOX_TOKEN = 'pk.eyJ1IjoibW1iMHl6MTIiLCJhIjoiY21xcXZiaGU4MGxubjJvcHpidnhidG55cyJ9.Ciss2gT76eC3Zt92_qhtGA';
+  const MAPBOX_TOKEN = window.SHIFTFUEL_CONFIG?.mapboxPublicToken || window.SHIFTFUEL_MAPBOX_TOKEN || 'pk.eyJ1IjoibW1iMHl6MTIiLCJhIjoiY21xcXZiaGU4MGxubjJvcHpidnhidG55cyJ9.Ciss2gT76eC3Zt92_qhtGA';
   const METERS_PER_MILE = 1609.34;
   const OFF_ROUTE_METERS = 60;            // re-route once the worker strays this far from the line
   const ADVANCE_STEP_METERS = 28;         // advance the next-turn banner within this radius of a maneuver

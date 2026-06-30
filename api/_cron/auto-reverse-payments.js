@@ -1,7 +1,7 @@
 const Stripe = require('stripe');
 const { createClient } = require('@supabase/supabase-js');
-const { notifyRequest } = require('./_push');
-const { placeScheduledHold } = require('./_scheduled-auth');
+const { notifyRequest } = require('../_push');
+const { placeScheduledHold } = require('../_scheduled-auth');
 
 // Place the off-session hold for advance (saved-card) bookings this many days
 // before the service date — fresh enough to stay inside Stripe's ~7-day capture

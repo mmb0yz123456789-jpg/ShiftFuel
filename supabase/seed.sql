@@ -1,0 +1,10 @@
+-- ShiftFuel DEV seed placeholder.
+--
+-- Use this file only for fake DEV seed notes or fake DEV seed rows.
+-- Do not add real customer, worker, applicant, vehicle, payment, photo, or
+-- location data.
+--
+-- DEV seed rows must use fake names, fake contact information, fake vehicles,
+-- and Stripe test-mode identifiers only.
+--
+-- Do not run this file against the PROD Supabase project.
