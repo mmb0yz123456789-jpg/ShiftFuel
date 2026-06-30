@@ -33,6 +33,13 @@ CREATE EXTENSION IF NOT EXISTS pgcrypto WITH SCHEMA extensions;
 
 BEGIN;
 
+ALTER TABLE public.employees
+  ADD COLUMN IF NOT EXISTS must_change_password boolean NOT NULL DEFAULT false,
+  ADD COLUMN IF NOT EXISTS password_reset_at timestamptz,
+  ADD COLUMN IF NOT EXISTS failed_login_attempts integer NOT NULL DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS locked_until timestamptz,
+  ADD COLUMN IF NOT EXISTS last_login_at timestamptz;
+
 -- ─────────────────────────────────────────────────────────────────────────────
 -- 1. admin_create_session — bcrypt-verify the password (no global hard-lock;
 --    keeps the failure counter from 202606271100). Username stays SHA-256 equality.

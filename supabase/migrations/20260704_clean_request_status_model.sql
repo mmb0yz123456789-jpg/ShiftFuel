@@ -95,6 +95,28 @@ end $$;
 alter table public.service_requests
   alter column status drop default;
 
+drop trigger if exists service_requests_stage_timestamp on public.service_requests;
+
+drop index if exists public.one_active_request_per_slot;
+
+do $$
+declare
+  v_constraint record;
+begin
+  for v_constraint in
+    select conname
+    from pg_constraint
+    where conrelid = 'public.service_requests'::regclass
+      and contype = 'c'
+      and pg_get_constraintdef(oid) ilike '%status%'
+  loop
+    execute format(
+      'alter table public.service_requests drop constraint if exists %I',
+      v_constraint.conname
+    );
+  end loop;
+end $$;
+
 alter table public.service_requests
   alter column status type public.booking_status_clean
   using public.canonical_request_status(status::text)::public.booking_status_clean;
@@ -150,3 +172,13 @@ create trigger service_requests_stage_timestamp
 before insert or update of status on public.service_requests
 for each row
 execute function public.set_booking_stage_timestamp();
+
+create unique index if not exists one_active_request_per_slot
+on public.service_requests (service_date, desired_return_time)
+where desired_return_time is not null
+  and status in (
+    'assigned'::public.booking_status,
+    'en_route'::public.booking_status,
+    'in_service'::public.booking_status,
+    'returning'::public.booking_status
+  );

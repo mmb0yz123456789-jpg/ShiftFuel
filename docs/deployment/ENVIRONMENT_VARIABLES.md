@@ -56,9 +56,15 @@ Desired PROD Vercel setup:
 - `SUPABASE_URL` = PROD Supabase URL
 - `SUPABASE_ANON_KEY` = PROD anon key for generated browser runtime config
 - `SUPABASE_SERVICE_ROLE_KEY` = PROD service role key
-- `STRIPE_SECRET_KEY` = Stripe live secret key
-- `STRIPE_PUBLISHABLE_KEY` = Stripe live publishable key for generated browser runtime config
+- `STRIPE_SECRET_KEY` = Stripe test/sandbox secret key for now
+- `STRIPE_PUBLISHABLE_KEY` = Stripe test/sandbox publishable key for generated browser runtime config for now
 - `VITE_APP_ENV` = `prod`
+
+Temporary production Stripe note:
+
+Production Vercel currently uses PROD Supabase but Stripe test/sandbox mode.
+Do not switch Production Vercel to Stripe live keys until live payments are
+explicitly approved.
 
 Current behavior:
 
