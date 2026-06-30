@@ -154,7 +154,7 @@ function canonicalBookingStatus(status) {
 
 const UNASSIGNED_STATUSES = ['request_received'];
 
-function adminToken() {
+function adminAuthToken() {
   return sessionStorage.getItem('shiftfuel_admin_token');
 }
 
@@ -1804,7 +1804,7 @@ async function confirmCancellationReturn(button) {
     const res = await fetch('/api/payments', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'worker_confirm_cancellation_return', request_id: id, caller_token: adminToken() }),
+      body: JSON.stringify({ action: 'worker_confirm_cancellation_return', request_id: id, caller_token: adminAuthToken() }),
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(data.error || `Could not confirm the ${item} return.`);
@@ -2537,7 +2537,7 @@ async function ensureEmployee(fullName) {
     if (!existing.active) {
       console.warn(`ensureEmployee: "${fullName}" (${existing.id}) was inactive — re-activating.`);
       const { error } = await db.rpc('admin_update_employee', {
-        p_token: adminToken(),
+        p_token: adminAuthToken(),
         p_employee_id: existing.id,
         p_data: { active: true, profile_updated_at: new Date().toISOString() },
       });
@@ -2547,7 +2547,7 @@ async function ensureEmployee(fullName) {
   }
 
   const { error: insertError } = await db.rpc('admin_insert_employee', {
-    p_token: adminToken(),
+    p_token: adminAuthToken(),
     p_data: {
       employee_code: employeeCode,
       full_name: fullName,
@@ -2596,7 +2596,7 @@ async function loadEmployees() {
     // Worker profiles (incl. email/phone) load through a token-gated RPC so that
     // worker contact PII is never readable via the public anon key / the
     // employees_public view. See admin_list_employees + migration 202606271820.
-    let { data, error } = await db.rpc('admin_list_employees', { p_token: adminToken() });
+    let { data, error } = await db.rpc('admin_list_employees', { p_token: adminAuthToken() });
 
     if (error) throw error;
 
@@ -2653,7 +2653,7 @@ function workerPresenceCategory(employee, busyKeys) {
 async function loadAdminChangeRequests() {
   const container = document.querySelector('#admin-change-requests');
   if (!container) return;
-  const { data, error } = await db.rpc('admin_list_change_requests', { p_token: adminToken(), p_status: null });
+  const { data, error } = await db.rpc('admin_list_change_requests', { p_token: adminAuthToken(), p_status: null });
   if (error) {
     if (!/does not exist/i.test(error.message || '')) {
       console.warn('Could not load change requests:', error);
@@ -2725,7 +2725,7 @@ function renderAdminChangeRequestRow(r) {
 
 async function resolveAdminChangeRequest(id, status, note) {
   const { error } = await db.rpc('admin_resolve_change_request', {
-    p_token: adminToken(),
+    p_token: adminAuthToken(),
     p_request_id: id,
     p_status: status,
     p_admin_note: note || null,
@@ -2750,7 +2750,7 @@ document.querySelector('#admin-change-requests')?.addEventListener('click', asyn
       const rc = req?.requested_changes || {};
       if (req?.kind === 'schedule' && rc.type === 'time_off' && rc.date) {
         const { error: dayErr } = await db.rpc('admin_add_day_off', {
-          p_token: adminToken(), p_employee_id: req.employee_id, p_day: rc.date,
+          p_token: adminAuthToken(), p_employee_id: req.employee_id, p_day: rc.date,
         });
         if (dayErr) console.warn('Auto-apply day off failed:', dayErr);
         else note = note ? `${note} (Day off ${rc.date} applied.)` : `Day off ${rc.date} applied.`;
@@ -3079,7 +3079,7 @@ async function saveAdminCardSchedule(button) {
   const employee = allEmployees.find((e) => e.id === employeeId);
   const location = employee?.home_location || DEFAULT_WORK_LOCATION;
   const { error } = await db.rpc('admin_save_availability', {
-    p_token: adminToken(),
+    p_token: adminAuthToken(),
     p_employee_id: employeeId,
     p_workdays: workdays.map((day) => ({
       day_of_week: day.dayOfWeek,
@@ -3381,7 +3381,7 @@ async function saveAdminWorkerProfile(button) {
     profile_updated_at: new Date().toISOString(),
   };
   const { data: rpcRows, error } = await db.rpc('admin_update_employee', {
-    p_token: adminToken(),
+    p_token: adminAuthToken(),
     p_employee_id: employeeId,
     p_data: updates,
   });
@@ -3407,7 +3407,7 @@ async function saveAdminWorkerProfile(button) {
   // db.rpc returns the error in the result (it doesn't throw), so check it and
   // surface a clear message instead of failing silently (handled at the end so the
   // generic "saved" message can't overwrite it).
-  const { error: rateErr } = await db.rpc('admin_set_employee_time_rate', { p_token: adminToken(), p_employee_id: employeeId, p_rate: Number.isFinite(timeRate) ? timeRate : null });
+  const { error: rateErr } = await db.rpc('admin_set_employee_time_rate', { p_token: adminAuthToken(), p_employee_id: employeeId, p_rate: Number.isFinite(timeRate) ? timeRate : null });
   if (rateErr) console.warn('Could not save employee time rate:', rateErr);
 
   // admin_update_employee also syncs employee_availability.work_location when
@@ -3446,7 +3446,7 @@ async function resetAdminWorkerPassword(button) {
   if (status) status.textContent = 'Generating new password...';
 
   const { data: tempPassword, error } = await db.rpc('admin_reset_worker_password', {
-    p_token: adminToken(),
+    p_token: adminAuthToken(),
     p_employee_id: employeeId,
   });
 
@@ -3466,7 +3466,7 @@ async function deactivateAdminWorkerProfile(button) {
   if (!confirmed) return;
 
   const { error } = await db.rpc('admin_update_employee', {
-    p_token: adminToken(),
+    p_token: adminAuthToken(),
     p_employee_id: employeeId,
     p_data: { active: false, profile_updated_at: new Date().toISOString() },
   });
@@ -3495,7 +3495,7 @@ async function reactivateAdminWorkerProfile(button) {
   await validateUniqueWorkerPhone(employeeId, employee.phone || null);
 
   const { error } = await db.rpc('admin_update_employee', {
-    p_token: adminToken(),
+    p_token: adminAuthToken(),
     p_employee_id: employeeId,
     p_data: { active: true, profile_updated_at: new Date().toISOString() },
   });
@@ -3535,7 +3535,7 @@ async function permanentlyDeleteInactiveWorker(button) {
 
   // Clear DB records (service_requests assignment + availability + days_off + employee row).
   const { error: deleteError } = await db.rpc('admin_delete_employee', {
-    p_token: adminToken(),
+    p_token: adminAuthToken(),
     p_employee_id: employeeId,
   });
   if (deleteError) throw deleteError;
@@ -3565,7 +3565,7 @@ async function permanentlyDeleteInactiveWorker(button) {
 
 async function loadRequests() {
   requestList.innerHTML = '<div class="empty-state"><p>Loading requests...</p></div>';
-  const { data, error } = await db.rpc('admin_list_requests', { p_token: adminToken() });
+  const { data, error } = await db.rpc('admin_list_requests', { p_token: adminAuthToken() });
 
   if (error) {
     console.error(error);
@@ -3651,13 +3651,13 @@ function hasUnsavedAdminInput() {
 }
 
 async function pollAdminRequests() {
-  if (!requestList || !adminToken()) return;
+  if (!requestList || !adminAuthToken()) return;
   if (isAdminInteracting() || hasUnsavedAdminInput()) return;
   // Leave the custom stat-card tables (workers/revenue) alone — they aren't
   // queue-driven and a re-render would revert them.
   if (activeStatCard === 'workers' || activeStatCard === 'revenue') return;
   try {
-    const { data, error } = await db.rpc('admin_list_requests', { p_token: adminToken() });
+    const { data, error } = await db.rpc('admin_list_requests', { p_token: adminAuthToken() });
     if (error) return;
     const requests = data || [];
     if (adminRequestsSignature(requests) === lastAdminRequestsSignature) return; // nothing changed
@@ -3679,7 +3679,7 @@ setInterval(pollAdminRequests, 20000);
 // re-rendering) the whole worker-management UI. Recomputing each tick also
 // ages stale heartbeats out to Offline.
 async function pollWorkerPresence() {
-  if (!adminToken() || !allEmployees.length) return;
+  if (!adminAuthToken() || !allEmployees.length) return;
   try {
     const { data, error } = await db
       .from('employees_public')
@@ -3788,7 +3788,7 @@ async function loadReviews() {
 
   if (requestIds.length) {
     const { data: requests, error: requestError } = await db
-      .rpc('admin_list_requests', { p_token: adminToken() })
+      .rpc('admin_list_requests', { p_token: adminAuthToken() })
       .select('id,assigned_worker_name')
       .in('id', requestIds);
 
@@ -3874,13 +3874,13 @@ async function loadApplicants() {
   applicantList.innerHTML = '<div class="empty-state"><p>Loading applicants...</p></div>';
 
   let { data, error } = await db
-    .rpc('admin_list_applicants', { p_token: adminToken() })
+    .rpc('admin_list_applicants', { p_token: adminAuthToken() })
     .select('id,name,email,phone,availability,notes,resume_url,resume_storage_path,status,created_at,checkr_status,checkr_completed_at')
     .neq('status', 'hired');
 
   if (error?.code === 'PGRST204') {
     ({ data, error } = await db
-      .rpc('admin_list_applicants', { p_token: adminToken() })
+      .rpc('admin_list_applicants', { p_token: adminAuthToken() })
       .select('id,name,email,phone,availability,notes,status,created_at')
       .neq('status', 'hired'));
   }
@@ -3911,7 +3911,7 @@ async function hireApplicant(applicantId) {
   // Look up an existing employee by phone through a token-gated RPC (phone is no
   // longer readable via the anon employees_public view). See admin_employee_id_by_phone.
   const { data: existingId, error: phoneError } = await db.rpc('admin_employee_id_by_phone', {
-    p_token: adminToken(),
+    p_token: adminAuthToken(),
     p_phone: phone,
   });
 
@@ -3920,7 +3920,7 @@ async function hireApplicant(applicantId) {
 
   if (employee) {
     const { error } = await db.rpc('admin_update_employee', {
-      p_token: adminToken(),
+      p_token: adminAuthToken(),
       p_employee_id: employee.id,
       p_data: {
         full_name: applicant.name,
@@ -3936,7 +3936,7 @@ async function hireApplicant(applicantId) {
   } else {
     const randomSuffix = Array.from(crypto.getRandomValues(new Uint8Array(3)), (value) => value.toString(16).padStart(2, '0')).join('').toUpperCase();
     const { data: newRows, error } = await db.rpc('admin_insert_employee', {
-      p_token: adminToken(),
+      p_token: adminAuthToken(),
       p_data: {
         employee_code: `EMP-${randomSuffix}`,
         full_name: applicant.name,
@@ -3953,13 +3953,13 @@ async function hireApplicant(applicantId) {
 
   // Generate a server-side temporary password and show it once to the admin.
   const { data: tempPassword, error: pwError } = await db.rpc('admin_reset_worker_password', {
-    p_token: adminToken(),
+    p_token: adminAuthToken(),
     p_employee_id: employeeId,
   });
   if (pwError) throw pwError;
 
   const { error: statusError } = await db.rpc('admin_update_applicant', {
-    p_token: adminToken(),
+    p_token: adminAuthToken(),
     p_applicant_id: applicantId,
     p_data: { status: 'hired' },
   });
@@ -4000,7 +4000,7 @@ applicantList?.addEventListener('change', async (event) => {
     }
 
     const { error: deleteError } = await db.rpc('admin_delete_applicant', {
-      p_token: adminToken(),
+      p_token: adminAuthToken(),
       p_applicant_id: select.dataset.id,
     });
 
@@ -4017,7 +4017,7 @@ applicantList?.addEventListener('change', async (event) => {
   }
 
   const { error } = await db.rpc('admin_update_applicant', {
-    p_token: adminToken(),
+    p_token: adminAuthToken(),
     p_applicant_id: select.dataset.id,
     p_data: { status: select.value },
   });
@@ -4047,7 +4047,7 @@ applicantList?.addEventListener('click', async (event) => {
     const response = await fetch('/api/checkr', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'invite', admin_token: adminToken(), applicant_id: btn.dataset.id }),
+      body: JSON.stringify({ action: 'invite', admin_token: adminAuthToken(), applicant_id: btn.dataset.id }),
     });
     const data = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(data.error || 'Request failed');
@@ -4093,7 +4093,7 @@ workerProfileList?.addEventListener('click', async (event) => {
     const next = verifyButton.dataset.verified !== '1';
     verifyButton.disabled = true;
     const { error } = await db.rpc('admin_set_worker_verified', {
-      p_token: adminToken(),
+      p_token: adminAuthToken(),
       p_employee_id: verifyButton.dataset.id,
       p_verified: next,
     });
@@ -4188,7 +4188,7 @@ async function updateRequestStatus(id, status) {
   if (canonicalStatus === 'completed') payload.completed_at = new Date().toISOString();
 
   let { error } = await db.rpc('admin_update_request', {
-    p_token: adminToken(),
+    p_token: adminAuthToken(),
     p_request_id: id,
     p_data: payload,
   });
@@ -4196,7 +4196,7 @@ async function updateRequestStatus(id, status) {
   if (error && canonicalStatus === 'completed' && /completed_at|schema cache|column/i.test(String(error.message || ''))) {
     delete payload.completed_at;
     ({ error } = await db.rpc('admin_update_request', {
-      p_token: adminToken(),
+      p_token: adminAuthToken(),
       p_request_id: id,
       p_data: payload,
     }));
@@ -4232,7 +4232,7 @@ async function updateWorkerAssignment(requestId, employeeId) {
       };
 
   const { error } = await db.rpc('admin_update_request', {
-    p_token: adminToken(),
+    p_token: adminAuthToken(),
     p_request_id: requestId,
     p_data: updates,
   });
@@ -4244,7 +4244,7 @@ async function updateWorkerAssignment(requestId, employeeId) {
     fetch('/api/push', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'notify', event: 'assigned', request_id: requestId, admin_token: adminToken() }),
+      body: JSON.stringify({ action: 'notify', event: 'assigned', request_id: requestId, admin_token: adminAuthToken() }),
     }).catch(() => {});
   }
 
@@ -4344,7 +4344,7 @@ async function saveFinalTotal(button) {
   }
 
   const { error } = await db.rpc('admin_update_request', {
-    p_token: adminToken(),
+    p_token: adminAuthToken(),
     p_request_id: id,
     p_data: rpcData,
   });
@@ -4388,7 +4388,7 @@ async function saveServiceUnable(button) {
   button.textContent = 'Saving...';
 
   const { error } = await db.rpc('admin_update_request', {
-    p_token: adminToken(),
+    p_token: adminAuthToken(),
     p_request_id: id,
     p_data: { status: canonicalBookingStatus(nextStatusAfterServiceUnable(request, type)), final_total: finalTotal, notes, ...pricingAuditFields({ ...request, notes }, receiptTotals) },
   });
@@ -4408,7 +4408,7 @@ async function voidPaymentHold(request) {
     await fetch('/api/payments', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'cancel_payment', payment_intent_id: request.payment_intent_id, request_id: request.id, caller_token: adminToken() }),
+      body: JSON.stringify({ action: 'cancel_payment', payment_intent_id: request.payment_intent_id, request_id: request.id, caller_token: adminAuthToken() }),
     });
     // cancel_payment updates payment_status in DB itself; no second write needed.
   } catch (err) {
@@ -4447,7 +4447,7 @@ async function retryReleaseHold(button) {
     const res = await fetch('/api/payments', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'cancel_payment', payment_intent_id: pi, request_id: id, caller_token: adminToken() }),
+      body: JSON.stringify({ action: 'cancel_payment', payment_intent_id: pi, request_id: id, caller_token: adminAuthToken() }),
     });
     const data = await res.json().catch(() => ({}));
     if (res.ok) {
@@ -4670,7 +4670,7 @@ async function loadPendingAuthorizations() {
     const res = await fetch('/api/payments', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'admin_list_pending_authorizations', caller_token: adminToken() }),
+      body: JSON.stringify({ action: 'admin_list_pending_authorizations', caller_token: adminAuthToken() }),
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) {
@@ -4720,7 +4720,7 @@ async function voidPendingAuthorization(button) {
     const res = await fetch('/api/payments', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'admin_void_authorization', payment_intent_id: pi, caller_token: adminToken() }),
+      body: JSON.stringify({ action: 'admin_void_authorization', payment_intent_id: pi, caller_token: adminAuthToken() }),
     });
     const data = await res.json().catch(() => ({}));
     if (res.ok) {
@@ -4766,7 +4766,7 @@ async function loadReauthNeeded() {
     const res = await fetch('/api/payments', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'admin_list_reauth_needed', caller_token: adminToken() }),
+      body: JSON.stringify({ action: 'admin_list_reauth_needed', caller_token: adminAuthToken() }),
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) {
@@ -4820,7 +4820,7 @@ async function retryScheduledAuth(button) {
     const res = await fetch('/api/payments', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'admin_retry_scheduled_auth', request_id: requestId, caller_token: adminToken() }),
+      body: JSON.stringify({ action: 'admin_retry_scheduled_auth', request_id: requestId, caller_token: adminAuthToken() }),
     });
     const data = await res.json().catch(() => ({}));
     if (res.ok) {
@@ -4866,7 +4866,7 @@ async function saveDenyReason(button) {
     return;
   }
 
-  if (!adminToken()) {
+  if (!adminAuthToken()) {
     showInlineError('Your admin session expired. Please log in again.');
     setTimeout(() => { window.location.href = '/admin/login'; }, 1500);
     return;
@@ -4895,7 +4895,7 @@ async function saveDenyReason(button) {
         const res = await fetch('/api/payments', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ action: 'refund', payment_intent_id: request.payment_intent_id, request_id: request.id, caller_token: adminToken() }),
+          body: JSON.stringify({ action: 'refund', payment_intent_id: request.payment_intent_id, request_id: request.id, caller_token: adminAuthToken() }),
         });
         if (res.ok) {
           paymentStatus = 'refunded';
@@ -4918,7 +4918,7 @@ async function saveDenyReason(button) {
         const res = await fetch('/api/payments', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ action: 'cancel_payment', payment_intent_id: request.payment_intent_id, request_id: request.id, caller_token: adminToken() }),
+          body: JSON.stringify({ action: 'cancel_payment', payment_intent_id: request.payment_intent_id, request_id: request.id, caller_token: adminAuthToken() }),
         });
         const data = await res.json().catch(() => ({}));
         if (res.ok) {
@@ -4950,7 +4950,7 @@ async function saveDenyReason(button) {
   // Deny the request regardless of whether the payment release/refund succeeded —
   // a failed Stripe call must never block the denial itself.
   const { error } = await db.rpc('admin_update_request', {
-    p_token: adminToken(),
+    p_token: adminAuthToken(),
     p_request_id: id,
     p_data: {
       status: 'cancelled',
@@ -4999,7 +4999,7 @@ async function saveTotalEdit(button) {
   button.textContent = 'Updating...';
 
   const { error } = await db.rpc('admin_update_request', {
-    p_token: adminToken(),
+    p_token: adminAuthToken(),
     p_request_id: id,
     p_data: { final_total: finalTotal, notes, ...pricingAuditFields(request, newReceiptTotals) },
   });
@@ -5019,7 +5019,7 @@ async function saveReturnLocation(button) {
   }
 
   const { error } = await db.rpc('admin_update_request', {
-    p_token: adminToken(),
+    p_token: adminAuthToken(),
     p_request_id: id,
     p_data: { return_parking_location: returnParkingLocation, status: 'in_progress' },
   });
@@ -5054,7 +5054,7 @@ async function saveInspection(button) {
   const notes = request.notes ? `${request.notes}\n${note}` : note;
 
   const { error } = await db.rpc('admin_update_request', {
-    p_token: adminToken(),
+    p_token: adminAuthToken(),
     p_request_id: id,
     p_data: { notes, status: 'in_progress' },
   });
@@ -5131,7 +5131,7 @@ async function captureAndProceed(button) {
         payment_intent_id: request.payment_intent_id,
         request_id: id,
         amount_cents: Math.round((request.final_total || 0) * 100),
-        caller_token: adminToken(),
+        caller_token: adminAuthToken(),
       }),
     });
     const data = await res.json().catch(() => ({}));
@@ -5178,7 +5178,7 @@ async function retryPaymentCapture(button) {
         payment_intent_id: request.payment_intent_id,
         request_id: id,
         amount_cents: Math.round((request.final_total || 0) * 100),
-        caller_token: adminToken(),
+        caller_token: adminAuthToken(),
       }),
     });
     const data = await res.json().catch(() => ({}));
@@ -5236,7 +5236,7 @@ async function resolveReturnRequest(button, decision) {
       body: JSON.stringify({
         action: 'resolve_return_request',
         request_id: id,
-        caller_token: adminToken(),
+        caller_token: adminAuthToken(),
         decision,
       }),
     });
@@ -5285,7 +5285,7 @@ async function submitAdminKeysReturned(button) {
       body: JSON.stringify({
         action: 'mark_keys_returned',
         request_id: id,
-        caller_token: adminToken(),
+        caller_token: adminAuthToken(),
         key_returned_to_type: toType,
         key_returned_to_name_or_location: toName,
         key_returned_by: 'Admin',
@@ -5329,7 +5329,7 @@ async function sendToCustomerPayment(button) {
 
   try {
     const { error } = await db.rpc('admin_update_request', {
-      p_token: adminToken(),
+      p_token: adminAuthToken(),
       p_request_id: id,
       p_data: { status: 'in_progress' },
     });
@@ -5413,7 +5413,7 @@ async function saveEdit(button) {
   button.textContent = 'Saving...';
 
   const { error } = await db.rpc('admin_update_request', {
-    p_token: adminToken(),
+    p_token: adminAuthToken(),
     p_request_id: id,
     p_data: updates,
   });
@@ -5520,7 +5520,7 @@ async function uploadPhotoSet(button) {
   const note = photoTimestampNote(stage, timestamp);
   const notes = request.notes ? `${request.notes}\n${note}` : note;
   const { error } = await db.rpc('admin_update_request', {
-    p_token: adminToken(),
+    p_token: adminAuthToken(),
     p_request_id: id,
     p_data: { status: canonicalBookingStatus(panel.dataset.nextStatus), notes },
   });
@@ -5637,7 +5637,7 @@ async function saveEditTotalCharge(button) {
     const res = await fetch('/api/payments', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'refund', payment_intent_id: request.payment_intent_id, request_id: request.id, amount_cents: refundCents, caller_token: adminToken() }),
+      body: JSON.stringify({ action: 'refund', payment_intent_id: request.payment_intent_id, request_id: request.id, amount_cents: refundCents, caller_token: adminAuthToken() }),
     });
     const result = await res.json().catch(() => ({}));
     if (!res.ok) {
@@ -5654,7 +5654,7 @@ async function saveEditTotalCharge(button) {
   const newPaymentStatus = diff < 0 ? 'refunded' : 'captured';
 
   const { error } = await db.rpc('admin_update_request', {
-    p_token: adminToken(),
+    p_token: adminAuthToken(),
     p_request_id: requestId,
     p_data: { final_total: newTotal, payment_status: newPaymentStatus, notes },
   });
@@ -6379,7 +6379,7 @@ async function loadPayrollPayouts(periodKey) {
   payrollPayoutsLoading[periodKey] = true;
   try {
     const { data, error } = await db.rpc('admin_list_payouts', {
-      p_token: adminToken(),
+      p_token: adminAuthToken(),
       p_period_key: periodKey,
     });
     if (error) throw error;
@@ -6395,7 +6395,7 @@ async function loadPayrollPayouts(periodKey) {
 
 async function recordPayout(opts) {
   const { error } = await db.rpc('admin_record_payout', {
-    p_token: adminToken(),
+    p_token: adminAuthToken(),
     p_employee_id: opts.employeeId || null,
     p_worker_name: opts.name || null,
     p_period_key: opts.periodKey,
@@ -6413,7 +6413,7 @@ async function recordPayout(opts) {
 async function voidPayout(id) {
   if (!window.confirm('Undo this recorded payment? The worker will show as unpaid again for this period.')) return;
   const { key } = payrollPeriodMeta(payrollRange);
-  const { error } = await db.rpc('admin_void_payout', { p_token: adminToken(), p_payout_id: id });
+  const { error } = await db.rpc('admin_void_payout', { p_token: adminAuthToken(), p_payout_id: id });
   if (error) {
     window.alert('Could not undo the payment: ' + (error.message || error));
     return;
@@ -6434,7 +6434,7 @@ async function payViaStripe(opts) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         action: 'connect_transfer',
-        caller_token: adminToken(),
+        caller_token: adminAuthToken(),
         employee_id: opts.employeeId,
         amount: Number(opts.amount),
         period_key: meta.key,
@@ -6576,7 +6576,7 @@ async function postStaffApi(path, payload) {
   const res = await fetch(path, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ caller_token: adminToken(), ...payload }),
+    body: JSON.stringify({ caller_token: adminAuthToken(), ...payload }),
   });
   const data = await res.json().catch(() => ({}));
   return { ok: res.ok && !data.error, data };
@@ -7254,7 +7254,7 @@ async function openTicketDetailModal(request) {
 async function loadTicketPhotos(requestId) {
   // Token-gated so the photos table can stay locked to anon (no enumeration).
   const { data, error } = await db.rpc('staff_request_photos', {
-    p_token: adminToken(),
+    p_token: adminAuthToken(),
     p_request_id: requestId,
   });
   if (error) { console.warn('Could not load ticket photos:', error); return []; }
@@ -7620,7 +7620,7 @@ async function upsertWorker(schedule) {
   if (existing?.length) {
     const employeeId = existing[0].id;
     const { error } = await db.rpc('admin_update_employee', {
-      p_token: adminToken(),
+      p_token: adminAuthToken(),
       p_employee_id: employeeId,
       p_data: { active: true, home_location: schedule.workerLocation },
     });
@@ -7629,7 +7629,7 @@ async function upsertWorker(schedule) {
   } else {
     const codePrefix = schedule.workerName.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6) || 'WORKER';
     const { data, error } = await db.rpc('admin_insert_employee', {
-      p_token: adminToken(),
+      p_token: adminAuthToken(),
       p_data: {
         employee_code: `EMP-${codePrefix}`,
         full_name: schedule.workerName,
@@ -7646,7 +7646,7 @@ async function saveWorkerAvailabilityToSupabase(schedule) {
   const employeeId = schedule.employeeId || await upsertWorker(schedule);
 
   const { error } = await db.rpc('admin_save_availability', {
-    p_token: adminToken(),
+    p_token: adminAuthToken(),
     p_employee_id: employeeId,
     p_workdays: schedule.workdays.map((day) => ({
       day_of_week: day.dayOfWeek,
@@ -7668,7 +7668,7 @@ async function saveWorkerDaysOffToSupabase(schedule) {
   const employeeId = schedule.employeeId || await upsertWorker(schedule);
 
   const { error } = await db.rpc('admin_save_days_off', {
-    p_token: adminToken(),
+    p_token: adminAuthToken(),
     p_employee_id: employeeId,
     p_days_off: schedule.daysOff,
   });
@@ -7829,7 +7829,7 @@ document.querySelector('#admin-create-request-form')?.addEventListener('submit',
 
   try {
     const { data: result, error } = await db.rpc('admin_create_request', {
-      p_token: adminToken(),
+      p_token: adminAuthToken(),
       p_data: data,
     });
 
@@ -8394,7 +8394,7 @@ function showPricingPendingBanner(fuelData, pricingData) {
     try {
       await Promise.all([
         db.rpc('admin_update_fuel_prices', {
-          p_token: adminToken(),
+          p_token: adminAuthToken(),
           p_regular: Number(document.getElementById('fp-regular')?.value || 0),
           p_midgrade: Number(document.getElementById('fp-midgrade')?.value || 0),
           p_premium: Number(document.getElementById('fp-premium')?.value || 0),
@@ -8402,7 +8402,7 @@ function showPricingPendingBanner(fuelData, pricingData) {
           p_effective_at: null,
         }),
         db.rpc('admin_update_service_pricing', {
-          p_token: adminToken(),
+          p_token: adminAuthToken(),
           p_fuel_service_fee: Number(document.getElementById('sp-fuel-fee')?.value || 0),
           p_wash_service_fee: Number(document.getElementById('sp-wash-fee')?.value || 0),
           p_quick_inspection_fee: Number(document.getElementById('sp-inspection-fee')?.value || 0),
@@ -8559,7 +8559,7 @@ document.querySelector('#admin-password-form')?.addEventListener('submit', async
     const [currentHash, newHash] = await Promise.all([sha256Hex(currentPassword), sha256Hex(newPassword)]);
 
     const { error } = await db.rpc('admin_change_password', {
-      p_token: adminToken(),
+      p_token: adminAuthToken(),
       p_current_password_hash: currentHash,
       p_new_password_hash: newHash,
     });
@@ -8604,7 +8604,7 @@ document.querySelector('#services-settings-form')?.addEventListener('submit', as
 
     const [fuelResult, pricingResult] = await Promise.all([
       db.rpc('admin_update_fuel_prices', {
-        p_token: adminToken(),
+        p_token: adminAuthToken(),
         p_regular: val('fp-regular'),
         p_midgrade: val('fp-midgrade'),
         p_premium: val('fp-premium'),
@@ -8613,7 +8613,7 @@ document.querySelector('#services-settings-form')?.addEventListener('submit', as
         p_effective_at: effectiveAt,
       }),
       db.rpc('admin_update_service_pricing', {
-        p_token: adminToken(),
+        p_token: adminAuthToken(),
         p_fuel_service_fee: val('sp-fuel-fee'),
         p_wash_service_fee: val('sp-wash-fee'),
         p_quick_inspection_fee: val('sp-inspection-fee'),
@@ -8758,7 +8758,7 @@ document.querySelector('#account-username-form')?.addEventListener('submit', asy
     // Hash both names the same way the login + new name are hashed (lowercased),
     // so the current-username check matches the stored admin_username_hash.
     const [currentHash, newHash] = await Promise.all([sha256Hex(currentUsername.toLowerCase()), sha256Hex(newUsername.toLowerCase())]);
-    const { error } = await db.rpc('admin_change_username', { p_token: adminToken(), p_current_username_hash: currentHash, p_new_username_hash: newHash });
+    const { error } = await db.rpc('admin_change_username', { p_token: adminAuthToken(), p_current_username_hash: currentHash, p_new_username_hash: newHash });
     if (error) throw error;
     e.target.reset();
     if (statusEl) statusEl.textContent = 'Name updated.';
@@ -8785,7 +8785,7 @@ document.querySelector('#account-password-form')?.addEventListener('submit', asy
   if (submitBtn) submitBtn.disabled = true;
   try {
     const [currentHash, newHash] = await Promise.all([sha256Hex(currentPassword), sha256Hex(newPassword)]);
-    const { error } = await db.rpc('admin_change_password', { p_token: adminToken(), p_current_password_hash: currentHash, p_new_password_hash: newHash });
+    const { error } = await db.rpc('admin_change_password', { p_token: adminAuthToken(), p_current_password_hash: currentHash, p_new_password_hash: newHash });
     if (error) throw error;
     e.target.reset();
     if (statusEl) statusEl.textContent = 'Password updated.';
@@ -8842,7 +8842,7 @@ async function promoApi(payload) {
   const res = await fetch('/api/promos', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ ...payload, admin_token: adminToken() }),
+    body: JSON.stringify({ ...payload, admin_token: adminAuthToken() }),
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.error || 'Request failed');
@@ -8877,7 +8877,7 @@ function promoAppliesLabel(a) {
 }
 
 async function loadPromos() {
-  if (!promosList || !adminToken()) return;
+  if (!promosList || !adminAuthToken()) return;
   promosList.innerHTML = '<div class="empty-state"><p>Loading promo codes…</p></div>';
   try {
     const data = await promoApi({ action: 'list' });
