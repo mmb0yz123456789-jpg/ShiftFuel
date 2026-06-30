@@ -20,11 +20,11 @@ create table vehicles (
 );
 
 create type booking_status as enum (
-  'request_received',
-  'accepted',
-  'key_received',
-  'vehicle_picked_up',
-  'in_progress',
+  'new',
+  'assigned',
+  'en_route',
+  'in_service',
+  'returning',
   'completed',
   'cancelled'
 );
@@ -49,7 +49,7 @@ create table service_requests (
   quick_inspection_fee numeric(10, 2) not null default 0,
   fuel_convenience_fee numeric(10, 2) not null default 0,
   fuel_type text,
-  status booking_status not null default 'request_received',
+  status booking_status not null default 'new',
   service_date date not null,
   desired_return_time time not null,
   estimated_fuel_range text,
@@ -62,11 +62,8 @@ create table service_requests (
   final_total numeric(10, 2),
   cancellation_reason text,
   notes text,
-  request_received_at timestamptz not null default now(),
-  accepted_at timestamptz,
-  key_received_at timestamptz,
-  vehicle_picked_up_at timestamptz,
-  in_progress_at timestamptz,
+  assigned_at timestamptz,
+  service_started_at timestamptz,
   completed_at timestamptz,
   cancelled_at timestamptz,
   created_at timestamptz not null default now(),
@@ -83,16 +80,10 @@ begin
   end if;
 
   case new.status::text
-    when 'request_received' then
-      new.request_received_at = coalesce(new.request_received_at, now());
-    when 'accepted' then
-      new.accepted_at = coalesce(new.accepted_at, now());
-    when 'key_received' then
-      new.key_received_at = coalesce(new.key_received_at, now());
-    when 'vehicle_picked_up' then
-      new.vehicle_picked_up_at = coalesce(new.vehicle_picked_up_at, now());
-    when 'in_progress' then
-      new.in_progress_at = coalesce(new.in_progress_at, now());
+    when 'assigned' then
+      new.assigned_at = coalesce(new.assigned_at, now());
+    when 'in_service' then
+      new.service_started_at = coalesce(new.service_started_at, now());
     when 'completed' then
       new.completed_at = coalesce(new.completed_at, now());
     when 'cancelled' then

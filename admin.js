@@ -112,7 +112,7 @@ let pendingChangeRequestCount = 0;
 // Last-loaded admin change requests, so the approve handler can read a request's
 // kind/date for auto-applying a day off.
 let adminChangeRequestsList = [];
-let currentView = 'unassigned';
+let currentView = 'open';
 let currentAdminTab = 'requests';
 let currentPageTab = 'dashboard';
 let currentReviewFilter = null;
@@ -125,19 +125,57 @@ let dashboardRange = 'today';
 let customRange = { start: '', end: '' };
 let queueFilters = { search: '', serviceType: '', status: '', worker: '', payment: '', sort: 'newest' };
 const BOOKING_STATUSES = [
-  'request_received',
-  'accepted',
-  'key_received',
-  'vehicle_picked_up',
-  'in_progress',
+  'new',
+  'assigned',
+  'en_route',
+  'in_service',
+  'returning',
   'completed',
   'cancelled',
 ];
 
 function canonicalBookingStatus(status) {
-  const value = String(status || 'request_received').toLowerCase();
+  const value = String(status || 'new').toLowerCase();
   if (BOOKING_STATUSES.includes(value)) return value;
-  if (value === 'pending') return 'request_received';
+  if (['pending', 'request_received', 'pending_customer_info'].includes(value)) return 'new';
+  if (['accepted', 'key_received'].includes(value)) return 'assigned';
+  if (['vehicle_picked_up', 'pickup_vehicle_photo_uploaded', 'pickup_odometer_photo_uploaded', 'pickup_fuel_gauge_photo_uploaded'].includes(value)) return 'en_route';
+  if ([
+    'in_progress',
+    'service_in_progress',
+    'fueling_in_progress',
+    'car_wash_in_progress',
+    'car_wash_after_fuel_in_progress',
+    'fueling_after_wash_in_progress',
+    'partial_service_complete',
+    'fueling_complete',
+    'car_wash_complete',
+    'fuel_receipt_uploaded',
+    'wash_receipt_uploaded',
+    'fuel_receipt_after_wash_uploaded',
+    'wash_receipt_after_fuel_uploaded',
+    'fuel_and_wash_complete',
+    'service_complete',
+    'receipts_recorded',
+    'inspection_needed',
+    'inspection_recorded',
+    'payment_issue',
+    'authorization_too_low',
+    'pending_customer_payment',
+  ].includes(value)) return 'in_service';
+  if ([
+    'returned_location_pending',
+    'return_location_recorded',
+    'return_photos_needed',
+    'dropoff_vehicle_photo_uploaded',
+    'dropoff_odometer_photo_uploaded',
+    'dropoff_fuel_gauge_photo_uploaded',
+    'vehicle_returned',
+    'final_payment_processed',
+    'awaiting_key_return',
+    'return_requested',
+    'customer_return_requested',
+  ].includes(value)) return 'returning';
   if (['complete', 'keys_returned', 'finalized'].includes(value)) return 'completed';
   if ([
     'denied',
@@ -149,10 +187,11 @@ function canonicalBookingStatus(status) {
     'closed_no_charge',
     'canceled_return_completed',
   ].includes(value)) return 'cancelled';
-  return 'in_progress';
+  return 'new';
 }
 
-const UNASSIGNED_STATUSES = ['request_received'];
+const OPEN_REQUEST_STATUSES = ['new', 'assigned'];
+const IN_PROGRESS_REQUEST_STATUSES = ['en_route', 'in_service', 'returning'];
 
 function adminAuthToken() {
   return sessionStorage.getItem('shiftfuel_admin_token');
@@ -225,10 +264,10 @@ const CR_FUEL_ESTIMATE_RANGES = [
 const CR_AVG_FUEL_PRICES = { Regular: 3.792, 'Mid-grade': 4.411, Premium: 4.701, Diesel: 4.967 };
 let CR_FEES = { fuelConvenience: 15, washConvenience: 15, quickInspection: 5 };
 const slotHoldingStatuses = new Set([
-  'accepted',
-  'key_received',
-  'vehicle_picked_up',
-  'in_progress',
+  'assigned',
+  'en_route',
+  'in_service',
+  'returning',
 ]);
 
 function crNormalizeTimeSlot(value) {
@@ -528,6 +567,13 @@ const closedStatuses = ['cancelled'];
 // Raw database status strings must never be shown to a user; this map is the
 // single source of truth for that translation.
 const statusLabels = {
+  new: 'New',
+  assigned: 'Assigned',
+  en_route: 'En route',
+  in_service: 'In service',
+  returning: 'Returning',
+  completed: 'Completed',
+  cancelled: 'Cancelled',
   pending: 'Request received',
   request_received: 'Request received',
   accepted: 'Accepted',
@@ -536,9 +582,7 @@ const statusLabels = {
   pickup_odometer_photo_uploaded: 'Pickup odometer photo uploaded',
   pickup_fuel_gauge_photo_uploaded: 'Pickup fuel gauge photo uploaded',
   vehicle_picked_up: 'Vehicle picked up',
-  in_progress: 'In progress',
-  completed: 'Completed',
-  cancelled: 'Cancelled',
+  in_progress: 'In service',
   service_in_progress: 'Service in progress',
   fueling_in_progress: 'Fueling in progress',
   fueling_complete: 'Fueling complete',
@@ -869,6 +913,40 @@ function isInDashboardRange(request, range) {
   if (start && stamp < start) return false;
   if (end && stamp > end) return false;
   return true;
+}
+
+function isToday(value) {
+  if (!value) return false;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return false;
+  const now = new Date();
+  return date.getFullYear() === now.getFullYear()
+    && date.getMonth() === now.getMonth()
+    && date.getDate() === now.getDate();
+}
+
+function getFilteredRequests(requests, filter) {
+  switch (filter) {
+    case 'open':
+      return requests.filter((r) => OPEN_REQUEST_STATUSES.includes(canonicalBookingStatus(r.status)));
+    case 'in_progress':
+      return requests.filter((r) => IN_PROGRESS_REQUEST_STATUSES.includes(canonicalBookingStatus(r.status)));
+    case 'completed_today':
+      return requests.filter((r) => canonicalBookingStatus(r.status) === 'completed' && isToday(r.completed_at));
+    case 'cancelled':
+      return requests.filter((r) => canonicalBookingStatus(r.status) === 'cancelled');
+    default:
+      return requests;
+  }
+}
+
+function normalizeRequestFilter(filter) {
+  const value = String(filter || 'all');
+  if (value === 'unassigned') return 'open';
+  if (value === 'inprogress') return 'in_progress';
+  if (value === 'complete') return 'completed_today';
+  if (value === 'closed') return 'cancelled';
+  return value;
 }
 
 function formatShortDate(value) {
@@ -1395,7 +1473,7 @@ function queueServiceLabel(request) {
 function queueStatusBucket(request) {
   if (closedStatuses.includes(canonicalBookingStatus(request.status))) return { label: 'Closed', cls: 'status-pill-denied' };
   if (canonicalBookingStatus(request.status) === 'completed') return { label: 'Completed', cls: 'status-pill-complete' };
-  if (UNASSIGNED_STATUSES.includes(request.status)) return { label: 'Open', cls: 'status-pill-open' };
+  if (OPEN_REQUEST_STATUSES.includes(canonicalBookingStatus(request.status))) return { label: 'Open', cls: 'status-pill-open' };
   return { label: 'In Progress', cls: 'status-pill-progress' };
 }
 
@@ -1642,28 +1720,41 @@ function renderActions(request) {
   let activePanel = '';
   let nextAction = '';
   const hasReturnRequest = hasCustomerReturnRequestAlert(request);
+  const cleanStatus = canonicalBookingStatus(request.status);
 
   if (hasReturnRequest && request.status !== 'canceled_return_completed') {
     nextAction = 'Customer requested return after service started. Review completed receipts before charging or waiving fees.';
     activePanel = renderReturnRequestPanel(request);
-  } else if (request.status === 'request_received') {
+  } else if (cleanStatus === 'new') {
     nextAction = 'Review the request and accept it to begin service.';
-    actions.push(primaryStatusButton(request, 'Accept', 'accepted'));
-  } else if (request.status === 'accepted') {
-    nextAction = 'Confirm the key or handoff instructions have been received.';
-    actions.push(primaryStatusButton(request, 'Key received', 'key_received'));
-  } else if (request.status === 'key_received') {
+    actions.push(primaryStatusButton(request, 'Assign / Accept', 'assigned'));
+  } else if (cleanStatus === 'assigned') {
+    nextAction = 'Worker assigned and waiting to start pickup.';
+    actions.push(primaryStatusButton(request, 'Mark en route', 'en_route'));
+  } else if (cleanStatus === 'en_route') {
     nextAction = 'Upload the pickup photo set below.';
     activePanel = renderPhotoPanel(request, 'pickup');
-  } else if (request.status === 'vehicle_picked_up') {
-    nextAction = 'Complete the requested fuel or cleaning service.';
+  } else if (cleanStatus === 'in_service') {
+    nextAction = 'Vehicle is being serviced. Move to returning when service work is done.';
     if (serviceNeedsFuel(request) && !serviceDoneOrUnable(request, 'fuel')) {
-      actions.push(primaryStatusButton(request, `Fuel - ${request.fuel_type || 'fuel type not listed'}`, 'fueling_complete'));
+      actions.push(primaryStatusButton(request, `Fuel - ${request.fuel_type || 'fuel type not listed'}`, 'in_service'));
       actions.push(serviceUnableButton(request, 'fuel'));
     }
     if (serviceNeedsWash(request) && !serviceDoneOrUnable(request, 'wash')) {
-      actions.push(primaryStatusButton(request, `Car wash - ${request.wash_package_label || 'selected wash'}`, 'car_wash_complete'));
+      actions.push(primaryStatusButton(request, `Car wash - ${request.wash_package_label || 'selected wash'}`, 'in_service'));
       actions.push(serviceUnableButton(request, 'wash'));
+    }
+    actions.push(primaryStatusButton(request, 'Service done - returning', 'returning'));
+  } else if (cleanStatus === 'returning') {
+    if (!request.return_parking_location) {
+      nextAction = 'Record the return parking location after the vehicle is back.';
+      activePanel = renderReturnLocationPanel(request);
+    } else if (!/\[dropoff_time/.test(String(request.notes || ''))) {
+      nextAction = 'Upload the return photo set below.';
+      activePanel = renderPhotoPanel(request, 'dropoff');
+    } else {
+      nextAction = 'Confirm the saved totals, then capture the final payment automatically.';
+      activePanel = renderCompletePanel(request);
     }
   } else if (request.status === 'fueling_complete') {
     nextAction = `Upload the fuel receipt and enter the fuel total for ${request.fuel_type || 'the selected fuel type'}.`;
@@ -1957,7 +2048,7 @@ function renderPhotoPanel(request, stage = 'pickup') {
   const help = isDropoff
     ? 'Upload all four sides after return plus the return odometer and ending fuel gauge. Do not reuse the pickup photos.'
     : 'Upload all four sides at pickup plus the pickup odometer and pickup fuel gauge before moving the vehicle.';
-  const nextStatus = isDropoff ? 'vehicle_returned' : 'vehicle_picked_up';
+  const nextStatus = isDropoff ? 'returning' : 'in_service';
   const prefix = isDropoff ? 'dropoff' : 'pickup';
 
   return `
@@ -2256,7 +2347,7 @@ function renderEditPanel(request) {
 
       <div class="admin-button-row">
         <button class="button primary save-edit" data-id="${request.id}" type="button">Save changes</button>
-        ${canReopen ? `<button class="button secondary update-status" data-id="${request.id}" data-status="accepted" type="button">Reopen as accepted</button>` : ''}
+        ${canReopen ? `<button class="button secondary update-status" data-id="${request.id}" data-status="assigned" type="button">Reopen as assigned</button>` : ''}
       </div>
       <p class="edit-save-status field-help" data-status-for="${request.id}"></p>
     </div>
@@ -2264,18 +2355,16 @@ function renderEditPanel(request) {
 }
 
 function updateDashboardStatCards() {
-  // Every request-based tile is scoped to the active date range so the tile
-  // numbers match the lists you see when you click them.
-  const openCount = allRequests.filter((r) => UNASSIGNED_STATUSES.includes(r.status) && isInDashboardRange(r, dashboardRange)).length;
-  const inProgressCount = allRequests.filter((r) => isOpen(r) && !UNASSIGNED_STATUSES.includes(r.status) && isInDashboardRange(r, dashboardRange)).length;
-  const completedCount = allRequests.filter((r) => canonicalBookingStatus(r.status) === 'completed' && isInDashboardRange(r, dashboardRange)).length;
+  const openCount = getFilteredRequests(allRequests, 'open').length;
+  const inProgressCount = getFilteredRequests(allRequests, 'in_progress').length;
+  const completedCount = getFilteredRequests(allRequests, 'completed_today').length;
   const activeWorkerCount = allEmployees.filter((e) => e.active).length;
   // Company NET for the active range — the same formula as the Payroll tab so the
   // tile and Payroll agree (service fees + cancellation fees − worker payouts).
   const { companyNet } = companyNetBreakdown((r) => isInDashboardRange(r, dashboardRange));
 
   const rangeLabel = dashboardRangeLabel(dashboardRange);
-  if (statCompletedLabel) statCompletedLabel.textContent = `Completed ${rangeLabel}`;
+  if (statCompletedLabel) statCompletedLabel.textContent = 'Completed Today';
   if (statRevenueLabel) statRevenueLabel.textContent = `Company Net ${rangeLabel}`;
 
   if (statOpenRequests) statOpenRequests.textContent = openCount;
@@ -2385,10 +2474,10 @@ function renderRequests() {
     // e.g. "Complete" still shows even while the Open view is active.
     if (queueFilters.status) return true;
     if (currentView === 'all') return true;
-    if (currentView === 'unassigned') return UNASSIGNED_STATUSES.includes(request.status);
-    if (currentView === 'inprogress') return isOpen(request) && !UNASSIGNED_STATUSES.includes(request.status);
-    if (currentView === 'complete') return canonicalBookingStatus(request.status) === 'completed';
-    if (currentView === 'closed') return closedStatuses.includes(canonicalBookingStatus(request.status));
+    if (currentView === 'open') return OPEN_REQUEST_STATUSES.includes(canonicalBookingStatus(request.status));
+    if (currentView === 'in_progress') return IN_PROGRESS_REQUEST_STATUSES.includes(canonicalBookingStatus(request.status));
+    if (currentView === 'completed_today') return canonicalBookingStatus(request.status) === 'completed' && isToday(request.completed_at);
+    if (currentView === 'cancelled') return canonicalBookingStatus(request.status) === 'cancelled';
     return true;
   });
 
@@ -2397,10 +2486,10 @@ function renderRequests() {
   // Bucket-tab counts are scoped to the active date range so they match the list.
   const inRange = allRequests.filter((r) => isInDashboardRange(r, dashboardRange));
   const allCount = inRange.length;
-  const openCount = inRange.filter((r) => UNASSIGNED_STATUSES.includes(r.status)).length;
-  const inProgressCount = inRange.filter((r) => isOpen(r) && !UNASSIGNED_STATUSES.includes(r.status)).length;
-  const completeCount = inRange.filter((r) => canonicalBookingStatus(r.status) === 'completed').length;
-  const closedCount = inRange.filter((r) => closedStatuses.includes(canonicalBookingStatus(r.status))).length;
+  const openCount = getFilteredRequests(inRange, 'open').length;
+  const inProgressCount = getFilteredRequests(inRange, 'in_progress').length;
+  const completeCount = getFilteredRequests(allRequests, 'completed_today').length;
+  const closedCount = getFilteredRequests(inRange, 'cancelled').length;
 
   if (allRequestsCountEl) allRequestsCountEl.textContent = allCount;
   if (openRequests) openRequests.textContent = openCount;
@@ -2414,9 +2503,9 @@ function renderRequests() {
   updateDashboardStatCards();
 
   // Update heading and show-all button
-  const headings = { all: 'All requests', unassigned: 'Open requests', inprogress: 'In progress requests', complete: 'Completed requests', closed: 'Closed requests' };
+  const headings = { all: 'All requests', open: 'Open requests', in_progress: 'In progress requests', completed_today: 'Completed today', cancelled: 'Cancelled requests' };
   if (requestQueueHeading) requestQueueHeading.textContent = headings[currentView] || 'Requests';
-  if (requestQueueEyebrow) requestQueueEyebrow.textContent = (currentView === 'complete' || currentView === 'closed') ? 'History' : 'Queue';
+  if (requestQueueEyebrow) requestQueueEyebrow.textContent = (currentView === 'completed_today' || currentView === 'cancelled') ? 'History' : 'Queue';
 
   // The date range dropdown ("All time" shows everything) replaces the old
   // standalone "Show all time" button.
@@ -2425,10 +2514,10 @@ function renderRequests() {
   // Summary card active state
   [showAll, showOpen, showInProgress, showComplete, showDenied].forEach((btn) => btn?.classList.remove('active'));
   if (currentView === 'all') showAll?.classList.add('active');
-  if (currentView === 'unassigned') showOpen?.classList.add('active');
-  if (currentView === 'inprogress') showInProgress?.classList.add('active');
-  if (currentView === 'complete') showComplete?.classList.add('active');
-  if (currentView === 'closed') showDenied?.classList.add('active');
+  if (currentView === 'open') showOpen?.classList.add('active');
+  if (currentView === 'in_progress') showInProgress?.classList.add('active');
+  if (currentView === 'completed_today') showComplete?.classList.add('active');
+  if (currentView === 'cancelled') showDenied?.classList.add('active');
 
   if (sortedFiltered.length === 0) {
     const hasActiveFilters = Boolean(queueFilters.search || queueFilters.serviceType || queueFilters.worker || queueFilters.payment);
@@ -3700,7 +3789,7 @@ setInterval(pollWorkerPresence, 30000);
 
 document.querySelector('#cancellation-alert-badge')?.addEventListener('click', () => {
   setActiveStatCard(null);
-  currentView = 'inprogress';
+  currentView = 'in_progress';
   showAllTime = false;
   // Flagged tickets may be from earlier days; the date range is a global queue
   // filter, so widen it to All time or the badge would hide older open ones.
@@ -4204,7 +4293,7 @@ async function updateRequestStatus(id, status) {
 
   if (error) throw error;
 
-  if (canonicalStatus === 'accepted' && request) {
+  if (canonicalStatus === 'assigned' && request) {
     const date = request.service_date
       ? new Date(request.service_date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
       : '';
@@ -4502,12 +4591,12 @@ function buildActionNeededItems() {
         detail: `Marked picked up on ${r.service_date} but never returned.` });
       continue;
     }
-    if (r.assigned_employee_id && UNASSIGNED_STATUSES.includes(r.status)) {
+    if (r.assigned_employee_id && canonicalBookingStatus(r.status) === 'new') {
       items.push({ kind: 'unaccepted', title: 'Worker has not accepted', who, requestId: r.id,
         detail: 'A worker is assigned but has not accepted this request yet.' });
       continue;
     }
-    if (!r.assigned_employee_id && UNASSIGNED_STATUSES.includes(r.status) && r.service_date && r.service_date <= today) {
+    if (!r.assigned_employee_id && canonicalBookingStatus(r.status) === 'new' && r.service_date && r.service_date <= today) {
       items.push({ kind: 'needs-worker', title: 'Request needs a worker', who, requestId: r.id,
         detail: r.service_date < today ? `Unassigned since ${r.service_date}.` : 'Scheduled for today and still unassigned.' });
       continue;
@@ -5021,7 +5110,7 @@ async function saveReturnLocation(button) {
   const { error } = await db.rpc('admin_update_request', {
     p_token: adminAuthToken(),
     p_request_id: id,
-    p_data: { return_parking_location: returnParkingLocation, status: 'in_progress' },
+    p_data: { return_parking_location: returnParkingLocation, status: 'in_service' },
   });
 
   if (error) throw error;
@@ -5056,7 +5145,7 @@ async function saveInspection(button) {
   const { error } = await db.rpc('admin_update_request', {
     p_token: adminAuthToken(),
     p_request_id: id,
-    p_data: { notes, status: 'in_progress' },
+    p_data: { notes, status: 'in_service' },
   });
 
   if (error) throw error;
@@ -5331,7 +5420,7 @@ async function sendToCustomerPayment(button) {
     const { error } = await db.rpc('admin_update_request', {
       p_token: adminAuthToken(),
       p_request_id: id,
-      p_data: { status: 'in_progress' },
+      p_data: { status: 'in_service' },
     });
     if (error) throw error;
 
@@ -5441,7 +5530,7 @@ function nextStatusForPhoto(photoType) {
     dropoff_vehicle: 'dropoff_vehicle_photo_uploaded',
     dropoff_odometer: 'dropoff_odometer_photo_uploaded',
     dropoff_fuel_gauge: 'dropoff_fuel_gauge_photo_uploaded',
-  }[photoType] || 'accepted';
+  }[photoType] || 'assigned';
 }
 
 async function uploadPhoto(button) {
@@ -6020,28 +6109,28 @@ showAll?.addEventListener('click', () => {
 });
 showOpen?.addEventListener('click', () => {
   setActiveStatCard(null);
-  currentView = 'unassigned';
+  currentView = 'open';
   showAllTime = false;
   switchAdminTab('requests');
   renderRequests();
 });
 showInProgress?.addEventListener('click', () => {
   setActiveStatCard(null);
-  currentView = 'inprogress';
+  currentView = 'in_progress';
   showAllTime = false;
   switchAdminTab('requests');
   renderRequests();
 });
 showComplete?.addEventListener('click', () => {
   setActiveStatCard(null);
-  currentView = 'complete';
+  currentView = 'completed_today';
   showAllTime = false;
   switchAdminTab('requests');
   renderRequests();
 });
 showDenied?.addEventListener('click', () => {
   setActiveStatCard(null);
-  currentView = 'closed';
+  currentView = 'cancelled';
   showAllTime = false;
   switchAdminTab('requests');
   renderRequests();
@@ -6718,7 +6807,7 @@ function switchPageTab(page) {
     switchAdminTab('requests');
   }
   if (page === 'dashboard') {
-    currentView = 'unassigned';
+    currentView = 'open';
     switchAdminTab('requests');
   }
   if (page === 'services') {
@@ -6763,7 +6852,7 @@ document.querySelectorAll('[data-page-action]').forEach((btn) => {
   btn.addEventListener('click', () => {
     switchPageTab(btn.dataset.pageAction);
     if (btn.dataset.requestView) {
-      currentView = btn.dataset.requestView;
+      currentView = normalizeRequestFilter(btn.dataset.requestView);
       renderRequests();
     }
   });
@@ -6797,8 +6886,8 @@ function setActiveStatCard(cardId) {
 
 function statCardNav(view, cardId) {
   setActiveStatCard(cardId);
-  currentView = view;
-  if (view === 'complete') showAllTime = false;
+  currentView = normalizeRequestFilter(view);
+  if (currentView === 'completed_today') showAllTime = false;
   renderRequests();
   requestList?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
@@ -6859,12 +6948,12 @@ function openWorkersPanel() {
 // NOT inside statCardNav/openWorkersPanel, which also run on Refresh and must not
 // yank the user to another page.
 const goRequestsThen = (fn) => { switchPageTab('requests'); fn(); };
-document.getElementById('stat-card-open')?.addEventListener('click', () => goRequestsThen(() => statCardNav('unassigned', 'open')));
-document.getElementById('stat-card-open')?.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); goRequestsThen(() => statCardNav('unassigned', 'open')); } });
-document.getElementById('stat-card-inprogress')?.addEventListener('click', () => goRequestsThen(() => statCardNav('inprogress', 'inprogress')));
-document.getElementById('stat-card-inprogress')?.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); goRequestsThen(() => statCardNav('inprogress', 'inprogress')); } });
-document.getElementById('stat-card-completed')?.addEventListener('click', () => goRequestsThen(() => statCardNav('complete', 'completed')));
-document.getElementById('stat-card-completed')?.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); goRequestsThen(() => statCardNav('complete', 'completed')); } });
+document.getElementById('stat-card-open')?.addEventListener('click', () => goRequestsThen(() => statCardNav('open', 'open')));
+document.getElementById('stat-card-open')?.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); goRequestsThen(() => statCardNav('open', 'open')); } });
+document.getElementById('stat-card-inprogress')?.addEventListener('click', () => goRequestsThen(() => statCardNav('in_progress', 'inprogress')));
+document.getElementById('stat-card-inprogress')?.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); goRequestsThen(() => statCardNav('in_progress', 'inprogress')); } });
+document.getElementById('stat-card-completed')?.addEventListener('click', () => goRequestsThen(() => statCardNav('completed_today', 'completed')));
+document.getElementById('stat-card-completed')?.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); goRequestsThen(() => statCardNav('completed_today', 'completed')); } });
 document.getElementById('stat-card-workers')?.addEventListener('click', () => goRequestsThen(openWorkersPanel));
 document.getElementById('stat-card-workers')?.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); goRequestsThen(openWorkersPanel); } });
 // The tile shows Company Net, so it opens the Payroll tab (full breakdown) rather

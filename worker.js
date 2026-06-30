@@ -306,45 +306,36 @@ let workerProfilePhotoPosition = { x: 0, y: 0 };
 let workerPhotoDisplayDrag = null;
 
 const BOOKING_STATUSES = [
-  'request_received',
-  'accepted',
-  'key_received',
-  'vehicle_picked_up',
-  'in_progress',
+  'new',
+  'assigned',
+  'en_route',
+  'in_service',
+  'returning',
   'completed',
   'cancelled',
 ];
 
 function canonicalBookingStatus(status) {
-  const value = String(status || 'request_received').toLowerCase();
+  const value = String(status || 'new').toLowerCase();
   if (BOOKING_STATUSES.includes(value)) return value;
-  if (['pending'].includes(value)) return 'request_received';
-  if ([
-    'complete',
-    'keys_returned',
-    'finalized',
-  ].includes(value)) return 'completed';
-  if ([
-    'denied',
-    'customer_canceled',
-    'canceled',
-    'cancelled_pending_key_return',
-    'unable_to_complete',
-    'auto_reversed',
-    'closed_no_charge',
-    'canceled_return_completed',
-  ].includes(value)) return 'cancelled';
-  return 'in_progress';
+  if (['pending', 'request_received', 'pending_customer_info'].includes(value)) return 'new';
+  if (['accepted', 'key_received'].includes(value)) return 'assigned';
+  if (['vehicle_picked_up', 'pickup_vehicle_photo_uploaded', 'pickup_odometer_photo_uploaded', 'pickup_fuel_gauge_photo_uploaded'].includes(value)) return 'en_route';
+  if (['in_progress', 'service_in_progress', 'fueling_in_progress', 'car_wash_in_progress', 'partial_service_complete', 'fueling_complete', 'car_wash_complete', 'fuel_receipt_uploaded', 'wash_receipt_uploaded', 'service_complete', 'receipts_recorded', 'inspection_needed', 'inspection_recorded', 'payment_issue', 'authorization_too_low', 'pending_customer_payment'].includes(value)) return 'in_service';
+  if (['returned_location_pending', 'return_location_recorded', 'return_photos_needed', 'vehicle_returned', 'final_payment_processed', 'awaiting_key_return', 'return_requested', 'customer_return_requested'].includes(value)) return 'returning';
+  if (['complete', 'keys_returned', 'finalized'].includes(value)) return 'completed';
+  if (['denied', 'customer_canceled', 'canceled', 'cancelled_pending_key_return', 'unable_to_complete', 'auto_reversed', 'closed_no_charge', 'canceled_return_completed'].includes(value)) return 'cancelled';
+  return 'new';
 }
 
 // Unified active/open status list. The RPC filters server-side too, but the
 // client keeps this guard so stale SQL cannot show closed requests.
 const workerOpenStatuses = [
-  'request_received',
-  'accepted',
-  'key_received',
-  'vehicle_picked_up',
-  'in_progress',
+  'new',
+  'assigned',
+  'en_route',
+  'in_service',
+  'returning',
 ];
 
 function normalizeName(value) {
@@ -459,13 +450,18 @@ attachPhoneInputFormatting(workerProfilePhone);
 // Friendly labels for every status â€” keep in sync with admin.js and track.js.
 // Raw database status strings must never be shown to a worker.
 const workerStatusLabels = {
+  new: 'New',
+  assigned: 'Assigned',
+  en_route: 'En route',
+  in_service: 'In service',
+  returning: 'Returning',
+  completed: 'Completed',
+  cancelled: 'Cancelled',
   request_received: 'Request received',
   accepted: 'Accepted',
   key_received: 'Key received',
   vehicle_picked_up: 'Vehicle picked up',
-  in_progress: 'In progress',
-  completed: 'Completed',
-  cancelled: 'Cancelled',
+  in_progress: 'In service',
   pending: 'Request received',
   service_in_progress: 'Service in progress',
   fueling_in_progress: 'Fueling in progress',
@@ -2725,7 +2721,11 @@ function workerProgressStepForStatus(status) {
   const canonical = canonicalBookingStatus(status);
   if (canonical === 'completed') return 6;
   if (canonical === 'cancelled') return 0;
-  if (canonical === 'in_progress') return 4;
+  if (canonical === 'returning') return 5;
+  if (canonical === 'in_service') return 4;
+  if (canonical === 'en_route') return 3;
+  if (canonical === 'assigned') return 1;
+  if (canonical === 'new') return 0;
   const returnPhase = ['returned_location_pending', 'return_location_recorded', 'return_photos_needed', 'vehicle_returned', 'inspection_needed', 'inspection_recorded', 'final_payment_processed', 'awaiting_key_return', 'keys_returned', 'return_requested', 'customer_return_requested', 'cancelled_pending_key_return', 'payment_issue', 'authorization_too_low', 'pending_customer_payment'];
   if (returnPhase.includes(status)) return 5;
   const servicePhase = ['service_in_progress', 'fueling_in_progress', 'car_wash_in_progress', 'partial_service_complete', 'fueling_complete', 'car_wash_complete', 'fuel_receipt_uploaded', 'wash_receipt_uploaded', 'service_complete', 'receipts_recorded'];
@@ -2971,6 +2971,7 @@ function renderWorkerJobActions(request) {
   const actions = [];
   let activePanel = '';
   let nextAction = '';
+  const cleanStatus = canonicalBookingStatus(request.status);
   // Defer a return-request while the worker is actively mid-service — they finish
   // and record the in-progress service first; the cancel surfaces once it's done.
   const hasReturnRequest = isActiveCustomerReturnWorkflow(request) && !workerCancelDeferredMidService(request);
@@ -3005,10 +3006,10 @@ function renderWorkerJobActions(request) {
         ? renderWorkerPhotoPanel(request, 'dropoff')
         : renderWorkerReturnLocationPanel(request));
     }
-  } else if (request.status === 'request_received') {
+  } else if (cleanStatus === 'new') {
     nextAction = 'Accept the request to begin service.';
-    actions.push(workerPrimaryStatusButton(request, 'Accept request', 'accepted'));
-  } else if (request.status === 'accepted') {
+    actions.push(workerPrimaryStatusButton(request, 'Accept request', 'assigned'));
+  } else if (cleanStatus === 'assigned') {
     if (!workerHasStarted(request)) {
       // Phase 1 — before starting: one clear action (Start). Tapping it opens the
       // route map AND begins sharing location, which the customer sees as "on the
@@ -3020,14 +3021,14 @@ function renderWorkerJobActions(request) {
       // Phase 2 — en route: the customer can see you're on the way. Now the main
       // action is confirming the key/handoff. Map stays reachable via "Open map".
       nextAction = 'You\'re on the way — the customer can see you\'re en route. When you have the key/handoff, tap Key received.';
-      actions.push(`<button class="button primary worker-update-status" data-id="${escapeHtml(request.id)}" data-status="key_received" type="button">Key received</button>`);
+      actions.push(`<button class="button primary worker-update-status" data-id="${escapeHtml(request.id)}" data-status="en_route" type="button">Key received</button>`);
       actions.push(`<button class="button secondary worker-start-nav" data-route-map data-id="${escapeHtml(request.id)}" type="button">Open map</button>`);
       actions.push(`<button class="button danger worker-release-job" data-id="${escapeHtml(request.id)}" type="button">Send back to open pool</button>`);
     }
-  } else if (request.status === 'key_received') {
+  } else if (cleanStatus === 'en_route') {
     nextAction = 'Upload the pickup photo set below.';
     activePanel = renderWorkerPhotoPanel(request, 'pickup');
-  } else if (request.status === 'vehicle_picked_up') {
+  } else if (cleanStatus === 'in_service') {
     // Gateway: worker confirms they are beginning the service.
     // The customer tracker advances to "Service in progress" after this click.
     if (request.quick_inspection && !hasInspectionRecorded(request)) {
@@ -3039,16 +3040,19 @@ function renderWorkerJobActions(request) {
       // Car wash first (covers wash-only AND fuel+wash combos).
       nextAction = 'Drive to the car wash — service starts automatically when you arrive.';
       actions.push(workerNavWashButton(request, true));
-      actions.push(`<button class="button secondary worker-update-status" data-id="${escapeHtml(request.id)}" data-status="service_in_progress" type="button">Start service</button>`);
+      actions.push(`<button class="button secondary worker-update-status" data-id="${escapeHtml(request.id)}" data-status="in_service" type="button">Start service</button>`);
     } else if (serviceNeedsFuel(request)) {
       // Fuel-only job: drive to the gas station.
       nextAction = 'Drive to the gas station — service starts automatically when you arrive.';
       actions.push(workerNavStationButton(request, true));
-      actions.push(`<button class="button secondary worker-update-status" data-id="${escapeHtml(request.id)}" data-status="service_in_progress" type="button">Start service</button>`);
+      actions.push(`<button class="button secondary worker-update-status" data-id="${escapeHtml(request.id)}" data-status="in_service" type="button">Start service</button>`);
     } else {
       nextAction = 'Start the requested service.';
-      actions.push(workerPrimaryStatusButton(request, 'Start service', 'service_in_progress'));
+      actions.push(workerPrimaryStatusButton(request, 'Start service', 'in_service'));
     }
+  } else if (cleanStatus === 'returning') {
+    nextAction = request.return_parking_location ? 'Upload the return photo set.' : 'Record where the vehicle was returned before return photos.';
+    activePanel = request.return_parking_location ? renderWorkerPhotoPanel(request, 'dropoff') : renderWorkerReturnLocationPanel(request);
   } else if (request.status === 'service_in_progress') {
     // One service at a time: car wash first for combo jobs, then fuel.
     if (serviceNeedsWash(request) && !serviceDoneOrUnable(request, 'wash')) {
@@ -3208,7 +3212,7 @@ function renderWorkerPhotoPanel(request, stage = 'pickup') {
   const help = isDropoff
     ? 'Take each photo as prompted — all four sides after return, then the odometer and ending fuel gauge. Do not reuse pickup photos.'
     : 'Take each photo as prompted — all four sides at pickup, then the odometer and fuel gauge — before moving the vehicle.';
-  const nextStatus = isDropoff ? 'vehicle_returned' : 'vehicle_picked_up';
+  const nextStatus = isDropoff ? 'returning' : 'in_service';
   const prefix = isDropoff ? 'dropoff' : 'pickup';
 
   // One tile at a time, walking around the vehicle: front-driver → front-passenger
@@ -3864,7 +3868,7 @@ async function claimWorkerJob(requestId) {
       assigned_worker_phone: currentEmployee.phone ? formatPhone(currentEmployee.phone) : null,
       assigned_worker_photo_url: currentEmployee.cropped_photo_url || currentEmployee.photo_url || null,
       assigned_worker_original_photo_url: currentEmployee.original_photo_url || null,
-      status: request?.status === 'request_received' ? 'accepted' : request?.status || 'accepted',
+      status: canonicalBookingStatus(request?.status) === 'new' ? 'assigned' : canonicalBookingStatus(request?.status || 'assigned'),
     },
   });
 
@@ -4049,8 +4053,8 @@ window.ShiftFuelOnNavArrive = function (requestId, destType) {
 window.ShiftFuelOnNavAction = function (requestId, destType) {
   const job = allWorkerJobs.find((j) => j.id === requestId);
   if (!job) return;
-  if (destType === 'address' && job.status === 'accepted') {
-    updateWorkerJobStatus(requestId, 'key_received', { coordAction: 'key_pickup' }).catch((err) => console.warn('Key received failed:', err));
+  if (destType === 'address' && canonicalBookingStatus(job.status) === 'assigned') {
+    updateWorkerJobStatus(requestId, 'en_route', { coordAction: 'key_pickup' }).catch((err) => console.warn('Key received failed:', err));
   } else if (destType === 'wash' || destType === 'station') {
     if (['vehicle_picked_up', 'wash_receipt_uploaded', 'fuel_receipt_uploaded'].includes(job.status)) {
       updateWorkerJobStatus(requestId, 'service_in_progress', { coordAction: 'service_start' }).catch((err) => console.warn('Start service failed:', err));
@@ -4318,7 +4322,7 @@ async function saveWorkerReturnLocation(button) {
       return_parking_spot: null,
       return_parking_map_url: null,
       // Skip the old "Return photos" gateway tap — go straight into the photo wizard.
-      status: 'in_progress',
+      status: 'in_service',
     },
   });
 
@@ -4347,7 +4351,7 @@ async function bypassWorkerPickupPhotos(button) {
   const { error } = await workerDb.rpc('worker_update_request', {
     p_token: SESSION_WORKER_TOKEN,
     p_request_id: id,
-    p_data: { status: 'in_progress', notes, updated_at: timestamp },
+    p_data: { status: 'in_service', notes, updated_at: timestamp },
   });
 
   if (error) {
@@ -4736,6 +4740,7 @@ document.addEventListener('click', async (event) => {
     if (button.classList.contains('worker-start-nav')) {
       if (button.dataset.id) {
         workerStartedJobIds.add(button.dataset.id);
+        updateWorkerJobStatus(button.dataset.id, 'en_route').catch((err) => console.warn('Could not mark job en route:', err));
         setTimeout(() => { loadWorkerJobs(); }, 0);
       }
       return;
@@ -4779,13 +4784,16 @@ document.addEventListener('click', async (event) => {
       button.disabled = true;
       // Capture where the worker met the customer for keys, so they can navigate
       // back to the same spot to return the keys at the end.
-      if (button.dataset.status === 'key_received') {
+      if (button.dataset.status === 'key_received' || button.dataset.status === 'en_route') {
         await workerSaveSpotNote(allWorkerJobs.find((j) => j.id === button.dataset.id), 'handoff_coords');
       }
       const coordAction = {
         key_received: 'key_pickup',
+        en_route: 'key_pickup',
         service_in_progress: 'service_start',
+        in_service: 'service_start',
         returned_location_pending: 'vehicle_return',
+        returning: 'vehicle_return',
       }[button.dataset.status];
       await updateWorkerJobStatus(button.dataset.id, button.dataset.status, coordAction ? { coordAction } : {});
       return;
@@ -5660,7 +5668,7 @@ loadVehiclePsiGuides().finally(loadWorkerProfile);
         const { error: keyReturnError } = await workerDb.rpc('worker_update_request', {
           p_token: SESSION_WORKER_TOKEN,
           p_request_id: id,
-          p_data: { status: 'in_progress', notes, updated_at: timestamp },
+          p_data: { status: 'in_service', notes, updated_at: timestamp },
         });
         if (keyReturnError) console.warn('Could not move captured job to key return step:', keyReturnError);
         await loadWorkerJobs().catch(() => {});
@@ -5682,7 +5690,7 @@ loadVehiclePsiGuides().finally(loadWorkerProfile);
         const { error: keyReturnError } = await workerDb.rpc('worker_update_request', {
           p_token: SESSION_WORKER_TOKEN,
           p_request_id: id,
-          p_data: { status: 'in_progress', notes, updated_at: timestamp },
+          p_data: { status: 'in_service', notes, updated_at: timestamp },
         });
         if (keyReturnError) console.warn('Could not move completed job to key return step:', keyReturnError);
         await loadWorkerJobs().catch(() => {});

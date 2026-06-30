@@ -498,19 +498,23 @@ function updateFuelBufferNote(panel) {
   note.innerHTML = `💳 <strong>Card hold:</strong> at checkout we authorize for up to <strong>${authGal} gallons</strong> — just in case your tank needs a little more fuel than the range you picked. You're only charged for the fuel actually pumped; the rest is released right after service.`;
 }
 const slotHoldingStatuses = new Set([
-  "accepted",
-  "key_received",
-  "vehicle_picked_up",
-  "in_progress",
+  "assigned",
+  "en_route",
+  "in_service",
+  "returning",
 ]);
 
 function canonicalBookingStatus(status) {
-  const value = String(status || "request_received").toLowerCase();
-  if (["request_received", "accepted", "key_received", "vehicle_picked_up", "in_progress", "completed", "cancelled"].includes(value)) return value;
-  if (value === "pending") return "request_received";
+  const value = String(status || "new").toLowerCase();
+  if (["new", "assigned", "en_route", "in_service", "returning", "completed", "cancelled"].includes(value)) return value;
+  if (["pending", "request_received", "pending_customer_info"].includes(value)) return "new";
+  if (["accepted", "key_received"].includes(value)) return "assigned";
+  if (["vehicle_picked_up", "pickup_vehicle_photo_uploaded", "pickup_odometer_photo_uploaded", "pickup_fuel_gauge_photo_uploaded"].includes(value)) return "en_route";
+  if (["in_progress", "service_in_progress", "fueling_in_progress", "car_wash_in_progress", "partial_service_complete", "fueling_complete", "car_wash_complete", "fuel_receipt_uploaded", "wash_receipt_uploaded", "service_complete", "receipts_recorded", "inspection_needed", "inspection_recorded", "payment_issue", "authorization_too_low", "pending_customer_payment"].includes(value)) return "in_service";
+  if (["returned_location_pending", "return_location_recorded", "return_photos_needed", "vehicle_returned", "final_payment_processed", "awaiting_key_return", "return_requested", "customer_return_requested"].includes(value)) return "returning";
   if (["complete", "keys_returned", "finalized"].includes(value)) return "completed";
   if (["denied", "customer_canceled", "canceled", "cancelled_pending_key_return", "unable_to_complete", "auto_reversed", "closed_no_charge", "canceled_return_completed"].includes(value)) return "cancelled";
-  return "in_progress";
+  return "new";
 }
 
 function formatMoney(value) {

@@ -94,15 +94,19 @@ function formatPhoneForTracking(value) {
 
 // Unified terminal/closed status list — keep in sync with admin.js, worker.js,
 // and the SQL terminal-status list in supabase-production-rls-lockdown.sql.
-const BOOKING_STATUSES = ["request_received", "accepted", "key_received", "vehicle_picked_up", "in_progress", "completed", "cancelled"];
+const BOOKING_STATUSES = ["new", "assigned", "en_route", "in_service", "returning", "completed", "cancelled"];
 
 function canonicalBookingStatus(status) {
-  const value = String(status || "request_received").toLowerCase();
+  const value = String(status || "new").toLowerCase();
   if (BOOKING_STATUSES.includes(value)) return value;
-  if (value === "pending") return "request_received";
+  if (["pending", "request_received", "pending_customer_info"].includes(value)) return "new";
+  if (["accepted", "key_received"].includes(value)) return "assigned";
+  if (["vehicle_picked_up", "pickup_vehicle_photo_uploaded", "pickup_odometer_photo_uploaded", "pickup_fuel_gauge_photo_uploaded"].includes(value)) return "en_route";
+  if (["in_progress", "service_in_progress", "fueling_in_progress", "car_wash_in_progress", "partial_service_complete", "fueling_complete", "car_wash_complete", "fuel_receipt_uploaded", "wash_receipt_uploaded", "service_complete", "receipts_recorded", "inspection_needed", "inspection_recorded", "payment_issue", "authorization_too_low", "pending_customer_payment"].includes(value)) return "in_service";
+  if (["returned_location_pending", "return_location_recorded", "return_photos_needed", "vehicle_returned", "final_payment_processed", "awaiting_key_return", "return_requested", "customer_return_requested"].includes(value)) return "returning";
   if (["complete", "keys_returned", "finalized"].includes(value)) return "completed";
   if (["denied", "customer_canceled", "canceled", "cancelled_pending_key_return", "unable_to_complete", "auto_reversed", "closed_no_charge", "canceled_return_completed"].includes(value)) return "cancelled";
-  return "in_progress";
+  return "new";
 }
 
 const terminalStatuses = ["completed", "cancelled"];
@@ -111,10 +115,10 @@ const closedStatuses = ["cancelled"];
 // request stays in the in-progress section until the worker confirms the
 // key/vehicle has been returned (status then flips to "cancelled").
 const slotHoldingStatuses = new Set([
-  "accepted",
-  "key_received",
-  "vehicle_picked_up",
-  "in_progress",
+  "assigned",
+  "en_route",
+  "in_service",
+  "returning",
 ]);
 
 function fuelAuthorizationGallons(fuelRange) {
@@ -255,13 +259,18 @@ initPhotoLightbox();
 // Friendly labels for every status — keep in sync with admin.js and worker.js.
 // Raw database status strings must never be shown to a customer.
 const statusLabels = {
+  new: "New",
+  assigned: "Assigned",
+  en_route: "En route",
+  in_service: "In service",
+  returning: "Returning",
+  completed: "Completed",
+  cancelled: "Cancelled",
   pending: "Request received",
   request_received: "Request received",
   accepted: "Accepted",
   key_received: "Key received",
-  in_progress: "In progress",
-  completed: "Completed",
-  cancelled: "Cancelled",
+  in_progress: "In service",
   pickup_vehicle_photo_uploaded: "Vehicle picked up",
   pickup_odometer_photo_uploaded: "Vehicle picked up",
   pickup_fuel_gauge_photo_uploaded: "Vehicle picked up",
