@@ -207,11 +207,15 @@ const stepCopy = {
       <label class="choice-card booking-addon-card">
         <input type="checkbox" name="quickCare" value="quick-care">
         <span>
-          <strong>Quick Vehicle Care</strong>
+          <strong>Vehicle Add-Ons</strong>
           <small>Optional add-on</small>
           <details>
             <summary>What is included?</summary>
-            <p>Includes a tire pressure check, washer fluid top-off if needed, and a basic visual check. This is not a mechanical inspection.</p>
+            <ul class="pricing-includes">
+              <li>Tire pressure top-off</li>
+              <li>Washer fluid refill</li>
+              <li>Quick exterior look-over</li>
+            </ul>
           </details>
         </span>
       </label>
@@ -278,6 +282,52 @@ const stepCopy = {
     `,
   },
 };
+
+function scrollBookingFlowStart(options = {}) {
+  const target = document.querySelector("#booking-flow");
+  if (!target) return;
+  const header = document.querySelector(".site-header");
+  const headerHeight = header ? header.getBoundingClientRect().height : 0;
+  const top = target.getBoundingClientRect().top + window.scrollY - headerHeight - 18;
+  window.scrollTo({
+    top: Math.max(top, 0),
+    behavior: options.behavior || "smooth",
+  });
+}
+
+function scrollBookingFlowStartAfterRender() {
+  if (window.location.hash !== "#booking-flow") return;
+  window.setTimeout(() => scrollBookingFlowStart({ behavior: "auto" }), 0);
+  window.setTimeout(() => scrollBookingFlowStart({ behavior: "auto" }), 120);
+}
+
+function bindBookingFlowAnchorScroll() {
+  if (!document.body?.classList.contains("booking-page")) return;
+  if (document.documentElement.dataset.bookingFlowAnchorBound === "true") return;
+  document.documentElement.dataset.bookingFlowAnchorBound = "true";
+
+  document.addEventListener("click", (event) => {
+    const link = event.target.closest('a[href$="#booking-flow"], a[href="#booking-flow"]');
+    if (!link) return;
+    let targetUrl;
+    try {
+      targetUrl = new URL(link.getAttribute("href"), window.location.href);
+    } catch (_) {
+      return;
+    }
+    if (targetUrl.pathname !== window.location.pathname || targetUrl.hash !== "#booking-flow") return;
+
+    event.preventDefault();
+    history.replaceState(null, "", "#booking-flow");
+    navToggle?.setAttribute("aria-expanded", "false");
+    nav?.classList.remove("is-open");
+    scrollBookingFlowStart();
+  });
+
+  window.addEventListener("hashchange", () => {
+    if (window.location.hash === "#booking-flow") scrollBookingFlowStart();
+  });
+}
 
 function normalizePhone(value) {
   return String(value || "").replace(/\D/g, "");
@@ -448,15 +498,20 @@ function updateFuelBufferNote(panel) {
   note.innerHTML = `💳 <strong>Card hold:</strong> at checkout we authorize for up to <strong>${authGal} gallons</strong> — just in case your tank needs a little more fuel than the range you picked. You're only charged for the fuel actually pumped; the rest is released right after service.`;
 }
 const slotHoldingStatuses = new Set([
-  "accepted", "key_received", "vehicle_picked_up", "service_in_progress",
-  "fueling_in_progress", "car_wash_in_progress", "partial_service_complete",
-  "fueling_complete", "fuel_receipt_uploaded", "car_wash_complete", "wash_receipt_uploaded",
-  "service_complete", "receipts_recorded", "returned_location_pending", "return_location_recorded",
-  "return_photos_needed", "vehicle_returned", "inspection_needed", "inspection_recorded",
-  "final_payment_processed", "awaiting_key_return", "keys_returned", "return_requested",
-  "customer_return_requested", "cancelled_pending_key_return",
-  "payment_issue", "authorization_too_low", "pending_customer_payment",
+  "accepted",
+  "key_received",
+  "vehicle_picked_up",
+  "in_progress",
 ]);
+
+function canonicalBookingStatus(status) {
+  const value = String(status || "request_received").toLowerCase();
+  if (["request_received", "accepted", "key_received", "vehicle_picked_up", "in_progress", "completed", "cancelled"].includes(value)) return value;
+  if (value === "pending") return "request_received";
+  if (["complete", "keys_returned", "finalized"].includes(value)) return "completed";
+  if (["denied", "customer_canceled", "canceled", "cancelled_pending_key_return", "unable_to_complete", "auto_reversed", "closed_no_charge", "canceled_return_completed"].includes(value)) return "cancelled";
+  return "in_progress";
+}
 
 function formatMoney(value) {
   return `$${(Number(value) || 0).toFixed(2)}`;
@@ -750,7 +805,7 @@ async function loadBookedSlots() {
     const { data, error } = bookedResult || {};
     if (error) throw error;
     (data || []).forEach((row) => {
-      if (slotHoldingStatuses.has(row.status) && row.desired_return_time) {
+      if (slotHoldingStatuses.has(canonicalBookingStatus(row.status)) && row.desired_return_time) {
         bookingState.bookedSlots.add(normalizeTimeSlot(row.desired_return_time));
       }
     });
@@ -2402,7 +2457,7 @@ function renderPaymentSummary(panel) {
     <dl class="review-summary-list">
       ${serviceNeedsFuel() ? `<div><dt>Fuel service fee</dt><dd>${formatMoney(totals.fuelFee)}</dd></div>` : ""}
       ${serviceNeedsWash() ? `<div><dt>Car wash service fee</dt><dd>${formatMoney(totals.washFee)}</dd></div>` : ""}
-      ${bookingState.values.quickCare ? `<div><dt>Quick Vehicle Care add-on</dt><dd>${formatMoney(totals.quickFee)}</dd></div>` : ""}
+      ${bookingState.values.quickCare ? `<div><dt>Vehicle add-on</dt><dd>${formatMoney(totals.quickFee)}</dd></div>` : ""}
       ${serviceNeedsFuel() ? `<div><dt>Estimated fuel</dt><dd>${escapeHtml(bookingState.values.fuelPreference || "Selected range")} selected. We authorize a ${totals.authorizationFuelGallons} gallon buffer just in case: ${totals.authorizationFuelGallons} gal x ${formatMoney(PRICE_PER_GALLON)}/gal = ${formatMoney(totals.fuelEstimate)}</dd></div>` : ""}
       ${totals.washPackage ? `<div><dt>Car wash package</dt><dd>${escapeHtml(totals.washPackage.label)} - ${formatMoney(totals.washAmount)}</dd></div>` : ""}
       ${totals.stationSurcharge > 0 ? `<div><dt>Preferred station distance</dt><dd>${escapeHtml(bookingState.station.name || "Selected station")} (+${formatMoney(totals.stationSurcharge)})</dd></div>` : ""}
@@ -3013,7 +3068,7 @@ function renderReviewSummary(panel) {
   if (!summary) return;
   const values = bookingState.values;
   const totals = calculateTotals();
-  const addOns = values.quickCare ? "Quick Vehicle Care" : "None";
+  const addOns = values.quickCare ? "Vehicle Add-Ons" : "None";
   summary.innerHTML = `
     <strong>Final summary</strong>
     <dl class="review-summary-list">
@@ -3556,7 +3611,7 @@ function renderFlow(root) {
 }
 
 // Preselect a service when the customer arrives from a "Book This Service" card
-// on the landing page (e.g. book.html?service=fuel). Quick Vehicle Care is an
+// on the landing page (e.g. book.html?service=fuel). Vehicle Add-Ons are an
 // add-on, so it pre-checks the add-on and explains it must attach to a service.
 function applyPreselectedService() {
   let requested = "";
@@ -3576,7 +3631,7 @@ function applyPreselectedService() {
     bookingState.values.quickCare = true;
     if (stepCopy.Service) {
       stepCopy.Service.intro =
-        "Quick Vehicle Care is an optional add-on. Choose a fuel or car wash service below to attach it to.";
+        "Vehicle Add-Ons are optional. Choose a fuel or car wash service below to attach them to.";
     }
   }
 }
@@ -3629,7 +3684,9 @@ async function initBookingFlow() {
   await livePricingReady;
   applyCustomerAccountSession();
   applyPreselectedService();
+  bindBookingFlowAnchorScroll();
   renderFlow(flowRoot);
+  scrollBookingFlowStartAfterRender();
   autoVerifyReturningCustomer().catch((error) => {
     console.warn("Returning customer auto-verify failed:", error);
   });

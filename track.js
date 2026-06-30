@@ -19,6 +19,51 @@ const FUEL_AUTHORIZATION_BUFFER_GALLONS = {
 };
 let verifiedTrackingContact = { phone: "", email: "" };
 
+function scrollTrackFormIntoView(options = {}) {
+  const target = document.querySelector("#track-form");
+  if (!target) return;
+  const header = document.querySelector(".site-header");
+  const headerHeight = header ? header.getBoundingClientRect().height : 0;
+  const top = target.getBoundingClientRect().top + window.scrollY - headerHeight - 18;
+  window.scrollTo({
+    top: Math.max(top, 0),
+    behavior: options.behavior || "smooth",
+  });
+}
+
+function bindTrackFormAnchorScroll() {
+  if (document.documentElement.dataset.trackFormAnchorBound === "true") return;
+  document.documentElement.dataset.trackFormAnchorBound = "true";
+
+  document.addEventListener("click", (event) => {
+    const link = event.target.closest('a[href$="#track-form"], a[href="#track-form"]');
+    if (!link) return;
+    let targetUrl;
+    try {
+      targetUrl = new URL(link.getAttribute("href"), window.location.href);
+    } catch (_) {
+      return;
+    }
+    if (targetUrl.pathname !== window.location.pathname || targetUrl.hash !== "#track-form") return;
+
+    event.preventDefault();
+    history.replaceState(null, "", "#track-form");
+    document.querySelector("[data-nav-toggle]")?.setAttribute("aria-expanded", "false");
+    document.querySelector("[data-nav]")?.classList.remove("is-open");
+    scrollTrackFormIntoView();
+  });
+
+  window.addEventListener("hashchange", () => {
+    if (window.location.hash === "#track-form") scrollTrackFormIntoView();
+  });
+}
+
+function scrollTrackFormAfterLoad() {
+  if (window.location.hash !== "#track-form") return;
+  window.setTimeout(() => scrollTrackFormIntoView({ behavior: "auto" }), 0);
+  window.setTimeout(() => scrollTrackFormIntoView({ behavior: "auto" }), 120);
+}
+
 function formatPhoneForTracking(value) {
   const digits = String(value || "").replace(/\D/g, "").slice(0, 10);
   if (digits.length <= 3) return digits;
@@ -49,28 +94,27 @@ function formatPhoneForTracking(value) {
 
 // Unified terminal/closed status list — keep in sync with admin.js, worker.js,
 // and the SQL terminal-status list in supabase-production-rls-lockdown.sql.
-const terminalStatuses = ["complete", "denied", "customer_canceled", "canceled", "cancelled", "unable_to_complete", "auto_reversed", "closed_no_charge", "canceled_return_completed"];
-const closedStatuses   = ["denied", "customer_canceled", "canceled", "cancelled", "unable_to_complete", "auto_reversed", "closed_no_charge", "canceled_return_completed"];
+const BOOKING_STATUSES = ["request_received", "accepted", "key_received", "vehicle_picked_up", "in_progress", "completed", "cancelled"];
+
+function canonicalBookingStatus(status) {
+  const value = String(status || "request_received").toLowerCase();
+  if (BOOKING_STATUSES.includes(value)) return value;
+  if (value === "pending") return "request_received";
+  if (["complete", "keys_returned", "finalized"].includes(value)) return "completed";
+  if (["denied", "customer_canceled", "canceled", "cancelled_pending_key_return", "unable_to_complete", "auto_reversed", "closed_no_charge", "canceled_return_completed"].includes(value)) return "cancelled";
+  return "in_progress";
+}
+
+const terminalStatuses = ["completed", "cancelled"];
+const closedStatuses = ["cancelled"];
 // cancelled_pending_key_return is deliberately NOT terminal/closed — the
 // request stays in the in-progress section until the worker confirms the
 // key/vehicle has been returned (status then flips to "cancelled").
 const slotHoldingStatuses = new Set([
-  "accepted", "key_received",
-  "pickup_vehicle_photo_uploaded", "pickup_odometer_photo_uploaded", "pickup_fuel_gauge_photo_uploaded",
-  "vehicle_picked_up", "service_in_progress",
-  "fueling_in_progress", "car_wash_in_progress", "partial_service_complete",
-  "fueling_complete", "fuel_receipt_uploaded",
-  "car_wash_complete", "car_wash_after_fuel_in_progress",
-  "wash_receipt_uploaded", "wash_receipt_after_fuel_uploaded",
-  "fueling_after_wash_in_progress", "fuel_receipt_after_wash_uploaded", "fuel_and_wash_complete",
-  "service_complete", "receipts_recorded",
-  "returned_location_pending", "return_location_recorded", "return_photos_needed",
-  "dropoff_vehicle_photo_uploaded", "dropoff_odometer_photo_uploaded", "dropoff_fuel_gauge_photo_uploaded",
-  "vehicle_returned", "inspection_needed", "inspection_recorded",
-  "final_payment_processed", "awaiting_key_return", "keys_returned",
-  "return_requested", "customer_return_requested",
-  "cancelled_pending_key_return",
-  "payment_issue", "authorization_too_low", "pending_customer_payment",
+  "accepted",
+  "key_received",
+  "vehicle_picked_up",
+  "in_progress",
 ]);
 
 function fuelAuthorizationGallons(fuelRange) {
@@ -215,6 +259,9 @@ const statusLabels = {
   request_received: "Request received",
   accepted: "Accepted",
   key_received: "Key received",
+  in_progress: "In progress",
+  completed: "Completed",
+  cancelled: "Cancelled",
   pickup_vehicle_photo_uploaded: "Vehicle picked up",
   pickup_odometer_photo_uploaded: "Vehicle picked up",
   pickup_fuel_gauge_photo_uploaded: "Vehicle picked up",
@@ -258,7 +305,6 @@ const statusLabels = {
   payment_issue: "Payment issue",
   authorization_too_low: "Authorization issue",
   canceled_return_completed: "Return completed",
-  cancelled: "Cancelled",
   cancelled_pending_key_return: "Cancellation received — awaiting key/vehicle return",
 };
 
@@ -562,7 +608,8 @@ function trackRequestNumber(id) {
 }
 
 function friendlyStatusLabel(status) {
-  return statusLabels[status] || "Status update";
+  const canonicalStatus = canonicalBookingStatus(status);
+  return statusLabels[canonicalStatus] || "Status update";
 }
 
 function importantPaymentLabel(request) {
@@ -593,7 +640,7 @@ function requestSummaryHtml(request, options = {}) {
   const statusClass = options.statusClass || "";
 
   const totalAmount = request.final_total != null ? request.final_total
-    : (closedStatuses.includes(request.status) && request.estimated_total != null ? request.estimated_total : null);
+    : (closedStatuses.includes(canonicalBookingStatus(request.status)) && request.estimated_total != null ? request.estimated_total : null);
   const totalLabel = request.final_total != null ? 'Final' : 'Est.';
 
   return `
@@ -911,7 +958,7 @@ function buildStatusSteps(request) {
   steps.push({ key: 'vehicle_returned', label: 'Vehicle returned' });
 
   if (needsInspection) {
-    steps.push({ key: 'quick_inspection',     label: 'Quick inspection' });
+    steps.push({ key: 'quick_inspection',     label: 'Vehicle add-ons' });
     steps.push({ key: 'inspection_in_progress', label: 'Inspection in progress', nested: true, parentKey: 'quick_inspection' });
     steps.push({ key: 'inspection_complete',  label: 'Inspection complete',    nested: true, parentKey: 'quick_inspection' });
   }
@@ -1118,7 +1165,7 @@ function getStatusMessage(request) {
     return 'Your vehicle is being returned to its parking location.';
   }
   if (s === 'vehicle_returned') {
-    if (request.quick_inspection) return 'Your vehicle has been returned. A quick inspection is next.';
+    if (request.quick_inspection) return 'Your vehicle has been returned. Vehicle add-ons are being wrapped up.';
     return 'Final payment is being processed automatically.';
   }
   if (s === 'inspection_needed' || s === 'inspection_recorded') {
@@ -1144,7 +1191,7 @@ function getStatusMessage(request) {
 
 function renderTimeline(request) {
   // No timeline for closed/terminal non-complete statuses
-  if (closedStatuses.includes(request.status)) return '';
+  if (closedStatuses.includes(canonicalBookingStatus(request.status))) return '';
   if (request.status === 'cancelled_pending_key_return') {
     return `<p class="timeline-status-message">Cancellation received — awaiting key/vehicle return.</p>`;
   }
@@ -1261,7 +1308,7 @@ const PAYMENT_RELEASED_STATUSES = ['voided', 'authorization_released', 'refunded
 function renderEstimatedTotalCard(request) {
   if (request.estimated_total == null && request.final_total == null) return '';
 
-  const isClosed = closedStatuses.includes(request.status);
+  const isClosed = closedStatuses.includes(canonicalBookingStatus(request.status));
   const holdReleased = isClosed && PAYMENT_RELEASED_STATUSES.includes(request.payment_status);
   const releaseFailed = isClosed && request.payment_status === 'payment_release_failed';
 
@@ -1453,7 +1500,7 @@ function serviceSummaryFromRequest(request) {
   }
 
   if (request.quick_inspection) {
-    lines.push(`<p><strong>Quick inspection:</strong> ${formatCurrency(fees.inspection)}</p>`);
+    lines.push(`<p><strong>Vehicle add-ons:</strong> ${formatCurrency(fees.inspection)}</p>`);
   }
 
   if (!lines.length && request.final_total == null) {
@@ -1904,7 +1951,7 @@ async function cbRefreshReturnTimes(form) {
   try {
     const { data } = await shiftFuelDb.rpc('public_booked_return_slots', { p_service_date: dateValue });
     if (data) bookedSlots = new Set((data)
-      .filter((r) => slotHoldingStatuses.has(r.status))
+      .filter((r) => slotHoldingStatuses.has(canonicalBookingStatus(r.status)))
       .map((r) => String(r.desired_return_time || '').slice(0, 5))
       .filter(Boolean));
   } catch (e) { console.warn('cbRefreshReturnTimes:', e); }
@@ -2009,7 +2056,7 @@ function cbUpdateServiceDetails(form) {
   if (needsWash && washPkg) details.push(...washPkg.includes);
   else if (needsWash)       details.push('Select a wash package to see what is included.');
   details.push('Service prices include payment and operating costs. Final fuel cost is based on the actual receipt. Final totals are rounded up to the nearest dollar.');
-  if (form.querySelector('.cb-quick-inspection')?.checked) details.push('Quick vehicle inspection add-on.');
+  if (form.querySelector('.cb-quick-inspection')?.checked) details.push('Vehicle add-ons selected.');
 
   panel.innerHTML = `
     <p class="eyebrow">Service details</p>
@@ -2347,7 +2394,7 @@ function renderPendingCompletionCard(request) {
                 <dd class="cb-fuel-conv-fee">$0.00</dd>
               </div>
               <div class="cb-payment-inspection-row" hidden>
-                <dt>Quick inspection</dt>
+                <dt>Vehicle add-ons</dt>
                 <dd class="cb-inspection-fee">$0.00</dd>
               </div>
               <div>
@@ -2950,7 +2997,7 @@ const CANCELED_STATUS_SET = new Set([
 ]);
 
 function isCanceledStatus(status) {
-  return CANCELED_STATUS_SET.has(status);
+  return canonicalBookingStatus(status) === 'cancelled' || CANCELED_STATUS_SET.has(status);
 }
 
 function canceledReturnPending(request) {
@@ -3133,7 +3180,7 @@ function completedOutcomeSummary(request) {
   const notDone = [];
   if (needsWash) (unable.wash ? notDone : done).push({ label: 'car wash', reason: unable.wash });
   if (needsFuel) (unable.fuel ? notDone : done).push({ label: 'fuel service', reason: unable.fuel });
-  if (request.quick_inspection) done.push({ label: 'quick vehicle care', reason: '' });
+  if (request.quick_inspection) done.push({ label: 'vehicle add-ons', reason: '' });
 
   const sentences = [];
   if (done.length) {
@@ -3211,7 +3258,7 @@ function renderRequestCard(request, photos = [], review = null, { expanded = fal
   if (isCanceledStatus(request.status)) {
     return renderCanceledCard(request, photos, { expanded });
   }
-  if (request.status === 'complete') {
+  if (canonicalBookingStatus(request.status) === 'completed') {
     return renderCompletedCard(request, photos, review, { expanded });
   }
   if (request.status === 'pending_customer_info') {
@@ -3253,7 +3300,7 @@ function renderRequestCard(request, photos = [], review = null, { expanded = fal
   return `
     <article class="track-request-card track-dashboard-card" data-request-id="${escapeHtml(request.id)}">
       <details class="track-request-details"${expanded ? ' open' : ''}>
-        ${requestSummaryHtml(request, { statusLabel, statusClass: request.status === 'complete' ? 'status-pill-complete' : '' })}
+        ${requestSummaryHtml(request, { statusLabel, statusClass: canonicalBookingStatus(request.status) === 'completed' ? 'status-pill-complete' : '' })}
 
         <div class="track-request-body">
           ${renderEstimatedTotalCard(request)}
@@ -3283,7 +3330,7 @@ function renderRequestCard(request, photos = [], review = null, { expanded = fal
               isReturned ? renderReturnDetails(request) : '',
               serviceTimingFromNotes(request),
               inspectionSummaryFromNotes(request),
-              request.status === 'complete' ? serviceSummaryFromRequest(request) : '',
+              canonicalBookingStatus(request.status) === 'completed' ? serviceSummaryFromRequest(request) : '',
             ].filter(Boolean).join(''), { open: detailsOpen })}
 
             ${tkSubAcc('Help', `<section class="tk-card tk-help">${renderHelpCard()}</section>`, { open: detailsOpen })}
@@ -3333,8 +3380,8 @@ async function renderAllRequests(requests, phone, email) {
     return Number.isFinite(t) && (Date.now() - t) <= 30 * 24 * 60 * 60 * 1000;
   };
 
-  const inProgress = requests.filter(r => !terminalStatuses.includes(r.status) && (isReturnPending(r.status) || !isCanceledStatus(r.status)));
-  const completed  = requests.filter(r => r.status === 'complete' && within30Days(r));
+  const inProgress = requests.filter(r => !terminalStatuses.includes(canonicalBookingStatus(r.status)) && (isReturnPending(r.status) || !isCanceledStatus(r.status)));
+  const completed  = requests.filter(r => canonicalBookingStatus(r.status) === 'completed' && within30Days(r));
   // Cancelled (customer/admin) and Denied are merged into one "closed" history
   // section — both are end states the customer can't act on. Return-pending
   // cancellations stay in "In progress" until the worker confirms the return.
@@ -4762,3 +4809,6 @@ _svcControlsObserver.observe(trackingResult, { childList: true, subtree: true })
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init);
   else init();
 })();
+
+bindTrackFormAnchorScroll();
+scrollTrackFormAfterLoad();

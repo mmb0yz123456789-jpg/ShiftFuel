@@ -15,35 +15,28 @@ let activeAccountSession = null;
 let activeAccountData = { requests: [], addresses: [], vehicles: [] };
 
 const terminalStatuses = new Set([
-  "complete",
-  "denied",
-  "customer_canceled",
-  "canceled",
+  "completed",
   "cancelled",
-  "unable_to_complete",
-  "auto_reversed",
-  "closed_no_charge",
-  "canceled_return_completed",
 ]);
 
 const statusLabels = {
   request_received: "Request received",
-  pending_customer_info: "Action needed",
   accepted: "Accepted",
   key_received: "Keys received",
   vehicle_picked_up: "Vehicle picked up",
-  service_in_progress: "Service in progress",
-  fueling_in_progress: "Fueling in progress",
-  car_wash_in_progress: "Car wash in progress",
-  service_complete: "Service complete",
-  final_payment_processed: "Payment processed",
-  complete: "Complete",
-  cancelled_pending_key_return: "Canceled - return pending",
-  customer_canceled: "Canceled",
-  canceled: "Canceled",
-  cancelled: "Canceled",
-  denied: "Denied",
+  in_progress: "In progress",
+  completed: "Completed",
+  cancelled: "Cancelled",
 };
+
+function canonicalBookingStatus(status) {
+  const value = String(status || "request_received").toLowerCase();
+  if (Object.prototype.hasOwnProperty.call(statusLabels, value)) return value;
+  if (value === "pending") return "request_received";
+  if (["complete", "keys_returned", "finalized"].includes(value)) return "completed";
+  if (["denied", "customer_canceled", "canceled", "cancelled_pending_key_return", "unable_to_complete", "auto_reversed", "closed_no_charge", "canceled_return_completed"].includes(value)) return "cancelled";
+  return "in_progress";
+}
 
 function escapeHtml(value) {
   return String(value ?? "")
@@ -77,7 +70,8 @@ function serviceDateLabel(value) {
 }
 
 function statusLabel(status) {
-  return statusLabels[status] || String(status || "Status pending").replace(/_/g, " ");
+  const canonicalStatus = canonicalBookingStatus(status);
+  return statusLabels[canonicalStatus] || String(canonicalStatus || "Status pending").replace(/_/g, " ");
 }
 
 function customerNameFrom(requests = [], options = {}) {
@@ -268,8 +262,8 @@ function renderAccount(session, data, promos = []) {
   activeAccountSession = session;
   activeAccountData = data;
   const requests = [...data.requests].sort((a, b) => new Date(b.created_at || b.service_date || 0) - new Date(a.created_at || a.service_date || 0));
-  const active = requests.filter((request) => !terminalStatuses.has(request.status));
-  const history = requests.filter((request) => terminalStatuses.has(request.status));
+  const active = requests.filter((request) => !terminalStatuses.has(canonicalBookingStatus(request.status)));
+  const history = requests.filter((request) => terminalStatuses.has(canonicalBookingStatus(request.status)));
   const name = session.name || customerNameFrom(requests, data);
   const phone = formatPhone(session.phone);
   const email = String(session.email || "").trim().toLowerCase();

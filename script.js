@@ -134,21 +134,20 @@ year.textContent = new Date().getFullYear();
 // Return slots are reserved only after an admin accepts the request.
 // New request_received bookings stay available until accepted.
 const slotHoldingStatuses = new Set([
-  "accepted", "key_received",
-  "pickup_vehicle_photo_uploaded", "pickup_odometer_photo_uploaded", "pickup_fuel_gauge_photo_uploaded",
-  "vehicle_picked_up", "service_in_progress",
-  "fueling_in_progress", "fueling_complete", "fuel_receipt_uploaded",
-  "car_wash_in_progress", "car_wash_complete", "car_wash_after_fuel_in_progress",
-  "wash_receipt_uploaded", "wash_receipt_after_fuel_uploaded",
-  "fueling_after_wash_in_progress", "fuel_receipt_after_wash_uploaded", "fuel_and_wash_complete",
-  "service_complete", "receipts_recorded",
-  "returned_location_pending", "return_location_recorded", "return_photos_needed",
-  "dropoff_vehicle_photo_uploaded", "dropoff_odometer_photo_uploaded", "dropoff_fuel_gauge_photo_uploaded",
-  "vehicle_returned", "inspection_needed", "inspection_recorded",
-  "final_payment_processed", "awaiting_key_return", "keys_returned",
-  "return_requested", "customer_return_requested",
-  "payment_issue", "authorization_too_low", "pending_customer_payment",
+  "accepted",
+  "key_received",
+  "vehicle_picked_up",
+  "in_progress",
 ]);
+
+function canonicalBookingStatus(status) {
+  const value = String(status || "request_received").toLowerCase();
+  if (["request_received", "accepted", "key_received", "vehicle_picked_up", "in_progress", "completed", "cancelled"].includes(value)) return value;
+  if (value === "pending") return "request_received";
+  if (["complete", "keys_returned", "finalized"].includes(value)) return "completed";
+  if (["denied", "customer_canceled", "canceled", "cancelled_pending_key_return", "unable_to_complete", "auto_reversed", "closed_no_charge", "canceled_return_completed"].includes(value)) return "cancelled";
+  return "in_progress";
+}
 let bookedReturnSlots = new Set();
 let workerAvailabilitySlots = null;
 let workerAvailabilityLoaded = false;
@@ -984,7 +983,7 @@ async function refreshBookedReturnSlots() {
   if (!rpcError) {
     bookedReturnSlots = new Set(
       (rpcSlots || [])
-        .filter((request) => slotHoldingStatuses.has(request.status))
+        .filter((request) => slotHoldingStatuses.has(canonicalBookingStatus(request.status)))
         .map((request) => normalizeTimeSlot(request.desired_return_time))
         .filter(Boolean)
     );
@@ -1016,7 +1015,7 @@ async function refreshBookedReturnSlots() {
 
   bookedReturnSlots = new Set(
     (data || [])
-      .filter((request) => slotHoldingStatuses.has(request.status))
+      .filter((request) => slotHoldingStatuses.has(canonicalBookingStatus(request.status)))
       .map((request) => normalizeTimeSlot(request.desired_return_time))
       .filter(Boolean)
   );
@@ -1109,7 +1108,7 @@ function updateServiceDetails() {
   details.push("Service prices include payment and operating costs. Final fuel cost is based on the actual receipt. Final totals are rounded up to the nearest dollar.");
 
   if (quickInspection.checked) {
-    details.push("Quick vehicle inspection add-on.");
+    details.push("Vehicle add-ons selected.");
   }
 
   serviceDetailsPanel.innerHTML = `

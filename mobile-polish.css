@@ -125,18 +125,43 @@
     padding: 26px 20px !important;
   }
 
+  .landing-hero-copy {
+    gap: 0;
+    padding: 26px 20px 24px !important;
+  }
+
+  .landing-hero .hero-copy {
+    margin-top: 16px !important;
+    font-size: 1rem;
+    line-height: 1.55;
+  }
+
+  .booking-flow-hero p:not(.eyebrow),
+  .returning-flow-hero p:not(.eyebrow) {
+    margin-top: 16px !important;
+  }
+
   .booking-flow-hero-image,
   .landing-hero-image,
   .returning-flow-hero-image {
-    min-height: 170px !important;
+    min-height: 190px !important;
+  }
+
+  .landing-hero-image {
+    min-height: 190px !important;
   }
 
   .booking-flow-hero-image img,
   .landing-hero-image img,
   .returning-flow-hero-image img {
-    min-height: 170px !important;
-    height: 170px !important;
+    min-height: 190px !important;
+    height: 190px !important;
     object-fit: cover;
+  }
+
+  .landing-hero-image img {
+    min-height: 190px !important;
+    height: 190px !important;
   }
 
   h1 {
@@ -164,6 +189,11 @@
     width: 100%;
   }
 
+  .landing-actions {
+    gap: 10px !important;
+    margin-top: 18px !important;
+  }
+
   /* Desktop three-box variant hides on mobile; single Staff Access button shows */
   .final-cta-portals--desktop { display: none !important; }
   .final-cta-portals--mobile { display: grid !important; }
@@ -171,6 +201,12 @@
   .landing-actions .button,
   .pricing-button {
     width: 100%;
+  }
+
+  .landing-hero .hero-trust-row,
+  .booking-flow-hero .hero-trust-row,
+  .returning-flow-hero .hero-trust-row {
+    margin-top: 18px !important;
   }
 
   .how-it-works-grid,
