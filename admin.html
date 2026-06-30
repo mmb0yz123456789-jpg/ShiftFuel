@@ -102,8 +102,8 @@
 
     <script>
       const adminSessionExpires = Number(sessionStorage.getItem("shiftfuel_admin_expires") || 0);
-      const adminSessionToken = sessionStorage.getItem("shiftfuel_admin_token");
-      if (sessionStorage.getItem("shiftfuel_admin") !== "true" || !adminSessionToken || (adminSessionExpires && adminSessionExpires < Date.now())) {
+      const adminToken = sessionStorage.getItem("shiftfuel_admin_token");
+      if (sessionStorage.getItem("shiftfuel_admin") !== "true" || !adminToken || (adminSessionExpires && adminSessionExpires < Date.now())) {
         sessionStorage.removeItem("shiftfuel_admin");
         sessionStorage.removeItem("shiftfuel_admin_token");
         sessionStorage.removeItem("shiftfuel_admin_expires");
