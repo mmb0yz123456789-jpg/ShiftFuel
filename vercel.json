@@ -3,6 +3,10 @@
     {
       "path": "/api/auto-reverse-payments",
       "schedule": "0 2 * * *"
+    },
+    {
+      "path": "/api/cron-cleanup-holds",
+      "schedule": "0 * * * *"
     }
   ],
   "rewrites": [
