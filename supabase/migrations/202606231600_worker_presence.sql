@@ -18,7 +18,11 @@ alter table public.employees
 
 -- 2) Expose the two presence columns through employees_public (admin reads this).
 --    Column list mirrors the existing safe view + the two new columns appended.
-create or replace view public.employees_public
+--    DROP+CREATE because PostgreSQL cannot reorder existing view columns with
+--    CREATE OR REPLACE VIEW.
+drop view if exists public.employees_public;
+
+create view public.employees_public
   with (security_invoker = true, security_barrier = true)
 as
   select

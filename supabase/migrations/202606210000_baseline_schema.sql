@@ -33,6 +33,7 @@ create table if not exists public.service_requests (
   id uuid primary key default gen_random_uuid(),
   user_id uuid references public.users(id) on delete set null,
   vehicle_id uuid references public.vehicles(id) on delete set null,
+  customer_id uuid,
   customer_name text,
   customer_phone text,
   customer_email text,
@@ -136,6 +137,11 @@ create table if not exists public.employees (
   started_at date,
   worker_password_hash text,
   worker_password_salt text,
+  must_change_password boolean not null default false,
+  password_reset_at timestamptz,
+  failed_login_attempts integer not null default 0,
+  locked_until timestamptz,
+  last_login_at timestamptz,
   password_updated_at timestamptz,
   profile_updated_at timestamptz,
   created_at timestamptz not null default now()
@@ -228,12 +234,21 @@ create table if not exists public.saved_service_addresses (
   id uuid primary key default gen_random_uuid(),
   customer_phone text,
   customer_email text,
+  customer_name text,
+  hospital text,
   address_street text,
   address_apt text,
   address_city text,
   address_state text,
   address_zip text,
+  parking_location text,
+  parking_spot text,
+  parking_map_url text,
+  key_handoff_details text,
+  service_area_valid boolean not null default true,
+  is_active boolean not null default true,
   is_hidden boolean not null default false,
+  deleted_at timestamptz,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
@@ -242,12 +257,16 @@ create table if not exists public.saved_customer_vehicles (
   id uuid primary key default gen_random_uuid(),
   customer_phone text,
   customer_email text,
+  customer_name text,
   vehicle_year text,
   vehicle_make text,
   vehicle_model text,
   vehicle_color text,
   license_plate text,
+  fuel_type text,
+  is_active boolean not null default true,
   is_hidden boolean not null default false,
+  deleted_at timestamptz,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
@@ -340,7 +359,9 @@ alter table public.quick_inspections enable row level security;
 alter table public.service_reviews enable row level security;
 alter table public.request_locations enable row level security;
 
-create or replace view public.employees_public
+drop view if exists public.employees_public;
+
+create view public.employees_public
 with (security_barrier = true)
 as
 select
@@ -351,14 +372,15 @@ select
   email,
   active,
   home_location,
+  started_at,
   photo_url,
   original_photo_url,
   cropped_photo_url,
   photo_zoom,
   photo_position_x,
   photo_position_y,
-  started_at,
-  created_at
+  profile_updated_at,
+  password_updated_at
 from public.employees;
 
 grant select on public.employees_public to anon, authenticated;

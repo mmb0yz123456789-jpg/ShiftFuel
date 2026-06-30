@@ -12,7 +12,13 @@
 begin;
 
 -- 1. Username column + case-insensitive uniqueness.
-ALTER TABLE public.employees ADD COLUMN IF NOT EXISTS username text;
+ALTER TABLE public.employees
+  ADD COLUMN IF NOT EXISTS username text,
+  ADD COLUMN IF NOT EXISTS must_change_password boolean NOT NULL DEFAULT false,
+  ADD COLUMN IF NOT EXISTS password_reset_at timestamptz,
+  ADD COLUMN IF NOT EXISTS failed_login_attempts integer NOT NULL DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS locked_until timestamptz,
+  ADD COLUMN IF NOT EXISTS last_login_at timestamptz;
 
 CREATE UNIQUE INDEX IF NOT EXISTS employees_username_lower_unique
   ON public.employees (lower(username))
