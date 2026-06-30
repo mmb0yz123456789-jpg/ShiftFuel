@@ -1,4 +1,4 @@
-name: Apply Supabase migrations
+name: Apply Supabase migrations (daily cron only - hobby account limit)
 
 on:
   push:
@@ -8,7 +8,6 @@ on:
       - "supabase/migrations/**"
       - "supabase/config.toml"
       - ".github/workflows/supabase-migrations.yml"
-  workflow_dispatch:
 
 jobs:
   deploy:
