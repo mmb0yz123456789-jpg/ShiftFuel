@@ -144,7 +144,13 @@ applicantForm?.addEventListener('submit', async (event) => {
     if (applicantStatus) applicantStatus.textContent = 'Application submitted. We will follow up soon.';
   } catch (err) {
     console.error('Applicant save error:', err);
-    if (applicantStatus) applicantStatus.textContent = 'Could not submit application. Make sure the applicants table is added in Supabase.';
+    const message = String(err?.message || err?.error_description || '').toLowerCase();
+    const isResumeBucketError = message.includes('bucket') || message.includes('storage');
+    if (applicantStatus) {
+      applicantStatus.textContent = isResumeBucketError
+        ? 'Could not upload the resume. Please submit without a resume or try again shortly.'
+        : 'Could not submit application. Please try again shortly.';
+    }
   }
 });
 
