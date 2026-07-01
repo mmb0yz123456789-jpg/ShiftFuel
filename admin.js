@@ -480,6 +480,14 @@ const CR_VEHICLE_FALLBACK_MODELS = {
   Volvo: ['S60', 'S90', 'V60', 'XC40', 'XC60', 'XC90'],
 };
 
+// Display formatters live in shared-format.js (loaded before this file).
+// Declared here (above the vehicle-dropdown IIFE below) because that IIFE runs
+// synchronously at parse time and calls escapeHtml — a `const` used before its
+// declaration throws a TDZ ReferenceError, which halts the rest of this script
+// and leaves the whole dashboard with no event handlers wired (nothing clickable).
+const escapeHtml = window.SF.escapeHtml;
+const money = window.SF.formatCurrency;
+
 function crPopulateYearOptions(select) {
   const maxYear = new Date().getFullYear() + 1;
   let html = '<option value="">Select year</option>';
@@ -647,10 +655,6 @@ function updateHeroStats() {
   const completeCount = adminState.allRequests.filter((r) => canonicalBookingStatus(r.status) === 'completed').length;
   if (adminCompletedCount) adminCompletedCount.textContent = completeCount;
 }
-
-// Display formatters live in shared-format.js (loaded before this file).
-const escapeHtml = window.SF.escapeHtml;
-const money = window.SF.formatCurrency;
 
 const PAYMENT_STATUS_LABELS = {
   not_started:            'Not started',

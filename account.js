@@ -187,24 +187,27 @@
   async function loadProfileData() {
     if (!profileForm || !currentAccountSession) return;
 
+    // Always pre-fill from the signed-in session FIRST so the Profile tab shows
+    // the customer's own details immediately. Without this, a failed/empty profile
+    // lookup left the name/phone/email fields blank, which looks like a sign-in
+    // form and makes signed-in users think they've been logged out.
+    const nameParts = (currentAccountSession.name || '').split(' ');
+    profileForm.elements.firstName.value = nameParts[0] || '';
+    profileForm.elements.lastName.value = nameParts.slice(1).join(' ') || '';
+    profileForm.elements.phone.value = formatPhoneDisplay(currentAccountSession.phone);
+    profileForm.elements.email.value = currentAccountSession.email;
+
     try {
       const data = await lookupCustomerAccount();
-      if (!data) {
-        // Pre-fill from session if no database record
-        profileForm.elements.firstName.value = currentAccountSession.name.split(' ')[0] || '';
-        profileForm.elements.lastName.value = currentAccountSession.name.split(' ').slice(1).join(' ') || '';
-        profileForm.elements.phone.value = formatPhoneDisplay(currentAccountSession.phone);
-        profileForm.elements.email.value = currentAccountSession.email;
-        return;
-      }
+      if (!data) return;
 
-      // Populate form with database values
-      profileForm.elements.firstName.value = data.first_name || '';
-      profileForm.elements.lastName.value = data.last_name || '';
-      profileForm.elements.phone.value = formatPhoneDisplay(data.phone);
-      profileForm.elements.email.value = data.email || '';
-      profileForm.elements.serviceArea.value = data.service_area || '';
-      profileForm.elements.zipCode.value = data.zip_code || '';
+      // Enrich with database values where present (keep session values otherwise).
+      if (data.first_name) profileForm.elements.firstName.value = data.first_name;
+      if (data.last_name) profileForm.elements.lastName.value = data.last_name;
+      if (data.phone) profileForm.elements.phone.value = formatPhoneDisplay(data.phone);
+      if (data.email) profileForm.elements.email.value = data.email;
+      if (data.service_area) profileForm.elements.serviceArea.value = data.service_area;
+      if (data.zip_code) profileForm.elements.zipCode.value = data.zip_code;
 
     } catch (error) {
       console.error('Failed to load profile:', error);

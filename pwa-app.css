@@ -1146,3 +1146,120 @@ html.sf-compact body.customer-account-page:not(.customer-account-loaded) .custom
   border: 1.5px solid #c9d4d2; border-radius: 14px; background: #fff;
   color: #092f2d; font-size: 1.04rem; font-weight: 900;
 }
+
+/* ============================================================================
+   LANDING-STYLE LIGHT THEME — signed-in customer app surfaces
+   ----------------------------------------------------------------------------
+   Re-skins the four signed-in customer surfaces (account dashboard, Book, Track,
+   Account Settings) to match the public landing page instead of the dark-green
+   PWA gradient: off-white body, a solid dark-green header BAND (like
+   `.site-header` / `.landing-header`), and white cards with the landing's subtle
+   green border + soft shadow. Applies to mobile-web browser AND installed PWA
+   (`sf-compact`); the dashboard/settings gradients were already `sf-compact`, and
+   Book/Track only went dark in `sf-standalone`, so we mirror that scope for them.
+
+   DELIBERATELY EXCLUDED: the logged-out customer sign-in gate
+   (`body.customer-account-page:not(.customer-account-loaded)`) — it keeps its
+   dark hero design. Every customer rule below is scoped to
+   `.customer-account-loaded`, which the gate never has, so it stays untouched.
+   Worker/admin portals are out of scope and unaffected.
+
+   These rules are appended last on purpose: same-specificity source order (plus
+   `!important` where the dark rules used it) lets them win cleanly.
+   ========================================================================== */
+
+/* Light off-white body — same background as the public site */
+html.sf-compact body.customer-account-page.customer-account-loaded,
+html.sf-compact body.account-page,
+html.sf-standalone.sf-compact body.booking-page,
+html.sf-standalone.sf-compact body.track-page,
+html.sf-standalone.sf-compact body.account-page {
+  background:
+    radial-gradient(circle at top left, rgba(167, 191, 166, 0.18), transparent 34rem),
+    var(--sf-off-white);
+  color: var(--sf-charcoal);
+}
+
+/* Solid dark-green header band (matches the landing page header) */
+html.sf-compact body.customer-account-page.customer-account-loaded .site-header,
+html.sf-compact body.account-page .site-header,
+html.sf-standalone.sf-compact body.account-page .site-header,
+html.sf-standalone.sf-compact body.booking-page .site-header,
+html.sf-standalone.sf-compact body.track-page .site-header {
+  position: static;
+  width: auto;
+  margin: calc(env(safe-area-inset-top) + 10px) 14px 4px !important;
+  padding: 14px 18px !important;
+  color: var(--sf-white);
+  background: linear-gradient(135deg, var(--sf-teal), var(--sf-teal-dark));
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: var(--sf-radius-sm);
+  box-shadow: var(--sf-shadow-header);
+}
+/* Logo + header-nav text stay white — they sit on the dark band */
+html.sf-compact body.customer-account-page.customer-account-loaded .site-header .logo,
+html.sf-compact body.customer-account-page.customer-account-loaded .site-header .logo span,
+html.sf-compact body.account-page .site-header .logo,
+html.sf-compact body.account-page .site-header .logo span,
+html.sf-standalone.sf-compact body.booking-page .site-header .logo,
+html.sf-standalone.sf-compact body.booking-page .site-header .logo span,
+html.sf-standalone.sf-compact body.track-page .site-header .logo,
+html.sf-standalone.sf-compact body.track-page .site-header .logo span {
+  color: var(--sf-white);
+}
+
+/* Greeting + subtitle now sit on the light body → dark text */
+html.sf-compact body.customer-account-page.customer-account-loaded [data-customer-greeting] {
+  color: var(--sf-teal-dark);
+}
+html.sf-compact body.customer-account-page.customer-account-loaded .customer-dashboard-subtitle {
+  color: var(--sf-muted);
+}
+
+/* Section headings on the light body → dark label + green count chip */
+html.sf-compact body.customer-account-page.customer-account-loaded .customer-section-heading h3 {
+  color: var(--sf-teal-dark);
+}
+html.sf-compact body.customer-account-page.customer-account-loaded .customer-section-heading > span,
+html.sf-compact body.customer-account-page.customer-account-loaded .customer-section-heading-actions > span {
+  color: #12643f;
+  background: var(--sf-sage-light);
+}
+html.sf-compact body.customer-account-page.customer-account-loaded .customer-section-add {
+  color: #12643f;
+  background: var(--sf-sage-light);
+}
+
+/* Welcome banner: was translucent-white-on-green → white card on light body */
+html.sf-compact body.customer-account-page.customer-account-loaded .customer-welcome-banner {
+  color: var(--sf-charcoal);
+  background: var(--sf-white);
+  border-color: var(--sf-border);
+  box-shadow: var(--sf-shadow-soft);
+}
+html.sf-compact body.customer-account-page.customer-account-loaded .customer-welcome-banner-icon {
+  color: #12643f;
+  background: var(--sf-sage-light);
+}
+
+/* Sign-out: outline reads dark on the light body */
+html.sf-compact body.customer-account-page.customer-account-loaded .customer-dashboard-actions [data-customer-sign-out] {
+  color: var(--sf-teal-dark);
+  border-color: var(--sf-border);
+}
+
+/* White cards get the landing page's subtle border + soft shadow (was borderless
+   with a heavy drop shadow, which suited the dark gradient) */
+html.sf-compact body.customer-account-page.customer-account-loaded .customer-request-card,
+html.sf-compact body.customer-account-page.customer-account-loaded .customer-data-card,
+html.sf-compact body.customer-account-page.customer-account-loaded .customer-empty-card,
+html.sf-compact body.customer-account-page.customer-account-loaded .customer-recommend-card,
+html.sf-compact body.customer-account-page.customer-account-loaded .customer-quickaction,
+html.sf-compact body.customer-account-page.customer-account-loaded .customer-shortcut,
+html.sf-compact body.account-page .account-layout,
+html.sf-standalone.sf-compact body.account-page .account-layout,
+html.sf-standalone.sf-compact body.booking-page .booking-flow,
+html.sf-standalone.sf-compact body.track-page .track-search-card {
+  border: 1px solid var(--sf-border);
+  box-shadow: var(--sf-shadow-soft);
+}

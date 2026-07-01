@@ -996,14 +996,21 @@ dashboard?.addEventListener("click", async (event) => {
   loginForm.elements.email.value = session.email;
   openAccount(session).catch((error) => {
     console.warn("[customer-account] saved session could not be loaded:", error);
-    clearSession();
+    // Only sign the user out for a DEFINITIVE "no account for these credentials".
+    // A transient RPC/network error must NOT delete the session — otherwise a
+    // brief hiccup logs a signed-in customer out and forces them to sign in again.
+    const msg = String((error && error.message) || "").toLowerCase();
+    const accountNotFound = msg.includes("could not find") || msg.includes("not find saved");
+    if (accountNotFound) clearSession();
     if (compact) {
-      setStatus("", "");
+      setStatus(accountNotFound ? "" : "warning", accountNotFound ? "" : "We couldn't reach your account just now — please try again.");
       if (accountIntroTitle) accountIntroTitle.textContent = "Welcome back";
       if (accountIntroCopy) accountIntroCopy.textContent = "Sign in to access your saved vehicles and bookings.";
       openAccountForm("login", { focus: false, scroll: false });
     } else {
-      setStatus("warning", "Please enter your phone and email to open My Account.");
+      setStatus("warning", accountNotFound
+        ? "Please enter your phone and email to open My Account."
+        : "We couldn't reach your account just now — please refresh to try again.");
     }
   });
 })();
