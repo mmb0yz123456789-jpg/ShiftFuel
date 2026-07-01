@@ -24,6 +24,9 @@
       document.querySelectorAll('a[href="index.html"], a[href^="index.html#"], a[href="/"]').forEach((link) => {
         link.setAttribute('href', '/account');
       });
+      document.querySelectorAll('a[href="/account/settings"], a[href^="/account/settings#"]').forEach((link) => {
+        link.setAttribute('href', '/account#account-saved-details');
+      });
       document.querySelectorAll('a[href^="returning.html"]').forEach((link) => {
         const href = link.getAttribute('href') || '';
         const queryStart = href.indexOf('?');

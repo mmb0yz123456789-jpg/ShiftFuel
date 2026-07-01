@@ -6751,7 +6751,11 @@ function switchPageTab(page) {
   // on mobile when viewing a non-dashboard tab (they're the persistent right
   // rail on desktop, but stack onto every tab on phones).
   document.body.dataset.adminPage = page;
-  adminPageTabs.forEach((btn) => btn.classList.toggle('active', btn.dataset.page === page));
+  adminPageTabs.forEach((btn) => {
+    const isActive = btn.dataset.page === page;
+    btn.classList.toggle('active', isActive);
+    if (btn.classList.contains('app-tab')) btn.classList.toggle('is-active', isActive);
+  });
   document.querySelectorAll('[data-page-section]').forEach((el) => {
     const belongs = el.dataset.pageSection.split(' ').includes(page);
     if (!belongs) {
