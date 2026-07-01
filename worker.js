@@ -71,14 +71,41 @@ workerSignoutBtn?.addEventListener('click', () => {
 // actually online. Status is 'online' normally, 'on_break' when the worker
 // toggles a break. If the app is closed the heartbeat goes stale and the admin
 // ages the worker out to Offline automatically.
-let workerPresenceStatus = 'online';
-let workerHeartbeatTimer = null;
+
+// Consolidated worker session/UI state (previously ~two dozen scattered top-level
+// `let`s). Grouped for traceability; each field is still freely reassigned as
+// workerState.X. NOTE: allWorkerJobs + currentEmployee intentionally stay module
+// globals — worker-gps-tracking.js and worker-route-map.js read them via `typeof`
+// guards. Settings-loaded pricing constants (BASE_*, WORKER_*) also stay as-is.
+const workerState = {
+  workerPresenceStatus: 'online',
+  workerHeartbeatTimer: null,
+  selectedWorkerDaysOff: new Set(),
+  copiedWorkerDaySchedule: null,
+  vehiclePsiGuides: [],
+  workerCropImageUrl: '',
+  workerCroppedPreviewUrl: '',
+  workerBoundaryPreviewUrl: '',
+  workerCroppedPhotoBlob: null,
+  workerCropOffset: { x: 0, y: 0 },
+  workerCropDrag: null,
+  workerProfilePhotoZoom: 1,
+  workerProfilePhotoPosition: { x: 0, y: 0 },
+  workerPhotoDisplayDrag: null,
+  workerAvailabilityRows: [],
+  expandedWorkerJobId: null,
+  hasAutoExpandedCurrentJob: false,
+  lastWorkerJobsSignature: '',
+  workerJobsPollTimer: null,
+  lastWorkerCancelAlertIds: new Set(),
+  passwordModalForced: false,
+};
 
 async function sendWorkerHeartbeat(status) {
   const token = (typeof SESSION_WORKER_TOKEN !== 'undefined' && SESSION_WORKER_TOKEN) || '';
   if (!token) return;
   try {
-    await workerDb.rpc('worker_heartbeat', { p_token: token, p_status: status || workerPresenceStatus });
+    await workerDb.rpc('worker_heartbeat', { p_token: token, p_status: status || workerState.workerPresenceStatus });
   } catch (err) {
     // Non-fatal: a missed heartbeat just ages out to Offline.
     console.warn('Worker heartbeat failed:', err);
@@ -86,7 +113,7 @@ async function sendWorkerHeartbeat(status) {
 }
 
 function renderPresenceControls() {
-  const onBreak = workerPresenceStatus === 'on_break';
+  const onBreak = workerState.workerPresenceStatus === 'on_break';
   if (workerPresenceIndicator) {
     workerPresenceIndicator.hidden = false;
     workerPresenceIndicator.classList.toggle('is-on-break', onBreak);
@@ -107,7 +134,7 @@ function updateWorkerStatusBadge() {
   const badge = document.getElementById('worker-account-status-badge');
   if (!badge) return;
   const inactive = currentEmployee && currentEmployee.active === false;
-  const onBreak = workerPresenceStatus === 'on_break';
+  const onBreak = workerState.workerPresenceStatus === 'on_break';
   badge.classList.remove('is-on-break', 'is-offline');
   let label = 'Active';
   if (inactive) { badge.classList.add('is-offline'); label = 'Offline'; }
@@ -117,16 +144,16 @@ function updateWorkerStatusBadge() {
 
 function startWorkerHeartbeat() {
   renderPresenceControls();
-  if (workerHeartbeatTimer) return;
+  if (workerState.workerHeartbeatTimer) return;
   sendWorkerHeartbeat();
-  workerHeartbeatTimer = setInterval(() => sendWorkerHeartbeat(), 30000);
+  workerState.workerHeartbeatTimer = setInterval(() => sendWorkerHeartbeat(), 30000);
   document.addEventListener('visibilitychange', () => {
     if (!document.hidden) sendWorkerHeartbeat();
   });
 }
 
 function toggleWorkerBreak() {
-  workerPresenceStatus = workerPresenceStatus === 'on_break' ? 'online' : 'on_break';
+  workerState.workerPresenceStatus = workerState.workerPresenceStatus === 'on_break' ? 'online' : 'on_break';
   renderPresenceControls();
   sendWorkerHeartbeat();
 }
@@ -236,7 +263,7 @@ document.querySelector('#worker-progress-job-label')?.addEventListener('click', 
   const jobLabel = document.querySelector('#worker-progress-job-label');
   const jobId = jobLabel?.dataset.jobId;
   if (!jobId) return;
-  expandedWorkerJobId = expandedWorkerJobId === jobId ? null : jobId;
+  workerState.expandedWorkerJobId = workerState.expandedWorkerJobId === jobId ? null : jobId;
   await loadWorkerJobs();
   document.querySelector('#worker-jobs')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
 });
@@ -286,20 +313,8 @@ const workerDayOptions = [
 ];
 
 let currentEmployee = null;
-let selectedWorkerDaysOff = new Set();
 
-let copiedWorkerDaySchedule = null;
 let allWorkerJobs = [];
-let vehiclePsiGuides = [];
-let workerCropImageUrl = '';
-let workerCroppedPreviewUrl = '';
-let workerBoundaryPreviewUrl = '';
-let workerCroppedPhotoBlob = null;
-let workerCropOffset = { x: 0, y: 0 };
-let workerCropDrag = null;
-let workerProfilePhotoZoom = 1;
-let workerProfilePhotoPosition = { x: 0, y: 0 };
-let workerPhotoDisplayDrag = null;
 
 // Booking-status logic lives in shared-status.js (loaded before this file). The
 // shared map is comprehensive: key_received → en_route, and combo statuses like
@@ -486,7 +501,7 @@ function normalizeVehicleText(value) {
 }
 
 function psiGuideForRequest(request) {
-  const guides = vehiclePsiGuides.length ? vehiclePsiGuides : fallbackPsiGuides;
+  const guides = workerState.vehiclePsiGuides.length ? workerState.vehiclePsiGuides : fallbackPsiGuides;
   const make = normalizeVehicleText(request.vehicle_make);
   const model = normalizeVehicleText(request.vehicle_model);
   const exact = guides.find((guide) => normalizeVehicleText(guide.make) === make && normalizeVehicleText(guide.model) === model);
@@ -513,11 +528,11 @@ async function loadVehiclePsiGuides() {
 
   if (error) {
     console.warn('Using built-in PSI guide until vehicle_psi_guides is added:', error);
-    vehiclePsiGuides = fallbackPsiGuides;
+    workerState.vehiclePsiGuides = fallbackPsiGuides;
     return;
   }
 
-  vehiclePsiGuides = data?.length ? data : fallbackPsiGuides;
+  workerState.vehiclePsiGuides = data?.length ? data : fallbackPsiGuides;
 }
 
 function numberFromInput(value) {
@@ -1145,9 +1160,9 @@ async function passwordFields(password) {
 function applyWorkerPhotoZoom() {
   // CSS vars are only used by the boundary editor preview.
   // The display frame uses object-fit: cover / object-position: center.
-  const zoom = String(workerProfilePhotoZoom || 1);
-  const positionX = `${workerProfilePhotoPosition.x || 0}%`;
-  const positionY = `${workerProfilePhotoPosition.y || 0}%`;
+  const zoom = String(workerState.workerProfilePhotoZoom || 1);
+  const positionX = `${workerState.workerProfilePhotoPosition.x || 0}%`;
+  const positionY = `${workerState.workerProfilePhotoPosition.y || 0}%`;
   if (workerPhotoBoundaryImage) {
     workerPhotoBoundaryImage.style.setProperty('--profile-photo-zoom', zoom);
     workerPhotoBoundaryImage.style.setProperty('--profile-photo-x', positionX);
@@ -1158,15 +1173,15 @@ function applyWorkerPhotoZoom() {
 
 // displayUrl â€” shown in the circular avatar (cropped version).
 // modalUrl   â€” shown when the user clicks to enlarge (original version); defaults to displayUrl.
-function showWorkerPhoto(displayUrl, modalUrl, zoom = workerProfilePhotoZoom, position = workerProfilePhotoPosition) {
+function showWorkerPhoto(displayUrl, modalUrl, zoom = workerState.workerProfilePhotoZoom, position = workerState.workerProfilePhotoPosition) {
   // Support legacy 3-arg call: showWorkerPhoto(url, zoom, position)
   if (typeof modalUrl === 'number' || (modalUrl && typeof modalUrl === 'object' && 'x' in modalUrl)) {
     position = zoom;
     zoom = modalUrl;
     modalUrl = displayUrl;
   }
-  workerProfilePhotoZoom = Number(zoom || 1);
-  workerProfilePhotoPosition = {
+  workerState.workerProfilePhotoZoom = Number(zoom || 1);
+  workerState.workerProfilePhotoPosition = {
     x: Number(position?.x || 0),
     y: Number(position?.y || 0),
   };
@@ -1235,10 +1250,10 @@ function showWorkerBoundaryPreview(photoUrl) {
 }
 
 function clearWorkerBoundaryPreview() {
-  if (workerBoundaryPreviewUrl) {
-    URL.revokeObjectURL(workerBoundaryPreviewUrl);
+  if (workerState.workerBoundaryPreviewUrl) {
+    URL.revokeObjectURL(workerState.workerBoundaryPreviewUrl);
   }
-  workerBoundaryPreviewUrl = '';
+  workerState.workerBoundaryPreviewUrl = '';
   showWorkerBoundaryPreview('');
 }
 
@@ -1314,7 +1329,7 @@ function renderWorkerDaysGrid(workdays = []) {
         </label>
         <div class="worker-day-copy-actions">
           <button class="button worker-copy-day" type="button">Copy</button>
-          <button class="button worker-paste-day" type="button" ${copiedWorkerDaySchedule ? '' : 'disabled'}>Paste</button>
+          <button class="button worker-paste-day" type="button" ${workerState.copiedWorkerDaySchedule ? '' : 'disabled'}>Paste</button>
         </div>
         <div class="worker-day-times">
           <input class="worker-day-start" type="time" data-day-of-week="${dayOfWeek}" value="${startsAt}" aria-label="${label} start time">
@@ -1344,7 +1359,7 @@ function selectedWorkdaysFromForm() {
 
 function refreshWorkerPasteButtons() {
   workerDaysGrid?.querySelectorAll('.worker-paste-day').forEach((button) => {
-    button.disabled = !copiedWorkerDaySchedule;
+    button.disabled = !workerState.copiedWorkerDaySchedule;
   });
 }
 
@@ -1384,7 +1399,7 @@ function setWorkerCopyMode(mode) {
 function updateWorkerDaysOffSummary() {
   if (!workerDaysOffSummary) return;
 
-  const daysOff = Array.from(selectedWorkerDaysOff).sort();
+  const daysOff = Array.from(workerState.selectedWorkerDaysOff).sort();
   workerDaysOffSummary.textContent = daysOff.length
     ? `Days marked unbookable: ${daysOff.join(', ')}`
     : 'No days off selected.';
@@ -1414,7 +1429,7 @@ function renderWorkerDaysOffCalendar() {
       const isPast = dayDate < today;
       const isOutsideWindow = dayDate > lastBookableDate;
       const classes = ['calendar-day'];
-      if (selectedWorkerDaysOff.has(value)) classes.push('day-off');
+      if (workerState.selectedWorkerDaysOff.has(value)) classes.push('day-off');
 
       return `
         <button type="button" class="${classes.join(' ')}" data-day-off="${value}" ${isPast || isOutsideWindow ? 'disabled' : ''}>
@@ -1437,7 +1452,6 @@ function renderWorkerDaysOffCalendar() {
   updateWorkerDaysOffSummary();
 }
 
-let workerAvailabilityRows = [];
 
 function workerTimeToMinutes(t) {
   const [h, m] = String(t || '00:00').slice(0, 5).split(':').map(Number);
@@ -1449,7 +1463,7 @@ function renderWorkerAvailabilitySnapshot() {
   const container = document.querySelector('#worker-availability-snapshot');
   if (!container) return;
   const today = new Date();
-  const todayRow = workerAvailabilityRows.find((r) => Number(r.day_of_week) === today.getDay());
+  const todayRow = workerState.workerAvailabilityRows.find((r) => Number(r.day_of_week) === today.getDay());
   const dateLabel = today.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' });
   let fill = '';
   if (todayRow && todayRow.starts_at && todayRow.ends_at) {
@@ -1481,11 +1495,11 @@ async function loadWorkerSchedule() {
 
   if (availabilityError) {
     console.warn('Could not load worker availability:', availabilityError);
-    workerAvailabilityRows = [];
+    workerState.workerAvailabilityRows = [];
     renderWorkerDaysGrid([]);
   } else {
     const rows = availability || [];
-    workerAvailabilityRows = rows;
+    workerState.workerAvailabilityRows = rows;
     renderWorkerDaysGrid(rows.map((row) => ({
       dayOfWeek: row.day_of_week,
       startsAt: String(row.starts_at || '09:00').slice(0, 5),
@@ -1503,7 +1517,7 @@ async function loadWorkerSchedule() {
   if (daysOffError) {
     console.warn('Could not load worker days off:', daysOffError);
   } else {
-    selectedWorkerDaysOff = new Set((daysOff || []).map((item) => item.day_off));
+    workerState.selectedWorkerDaysOff = new Set((daysOff || []).map((item) => item.day_off));
   }
 
   renderWorkerDaysOffCalendar();
@@ -1685,12 +1699,12 @@ async function loadWorkerProfile() {
     if (workerDashboardPhone) workerDashboardPhone.textContent = currentEmployee.phone ? formatPhone(currentEmployee.phone) : 'Not provided';
     if (workerWorkingSince) workerWorkingSince.textContent = currentEmployee.started_at ? formatDate(currentEmployee.started_at) : 'Today';
 
-    workerProfilePhotoZoom = Number(currentEmployee.photo_zoom || 1);
-    workerProfilePhotoPosition = currentWorkerPhotoPositionFromEmployee();
+    workerState.workerProfilePhotoZoom = Number(currentEmployee.photo_zoom || 1);
+    workerState.workerProfilePhotoPosition = currentWorkerPhotoPositionFromEmployee();
     showWorkerPhoto(
       currentEmployee.cropped_photo_url || currentEmployee.photo_url || '',
       currentEmployee.original_photo_url || currentEmployee.photo_url || '',
-      workerProfilePhotoZoom, workerProfilePhotoPosition
+      workerState.workerProfilePhotoZoom, workerState.workerProfilePhotoPosition
     );
     resetWorkerPhotoCrop();
     setWorkerStatus('');
@@ -1740,18 +1754,18 @@ async function deleteOldWorkerPhotos(oldOriginalUrl, oldCroppedUrl) {
 }
 
 function resetWorkerPhotoCrop() {
-  if (workerCropImageUrl) {
-    URL.revokeObjectURL(workerCropImageUrl);
+  if (workerState.workerCropImageUrl) {
+    URL.revokeObjectURL(workerState.workerCropImageUrl);
   }
-  if (workerCroppedPreviewUrl) {
-    URL.revokeObjectURL(workerCroppedPreviewUrl);
+  if (workerState.workerCroppedPreviewUrl) {
+    URL.revokeObjectURL(workerState.workerCroppedPreviewUrl);
   }
 
-  workerCropImageUrl = '';
-  workerCroppedPreviewUrl = '';
-  workerCroppedPhotoBlob = null;
-  workerCropOffset = { x: 0, y: 0 };
-  workerCropDrag = null;
+  workerState.workerCropImageUrl = '';
+  workerState.workerCroppedPreviewUrl = '';
+  workerState.workerCroppedPhotoBlob = null;
+  workerState.workerCropOffset = { x: 0, y: 0 };
+  workerState.workerCropDrag = null;
 
   if (workerPhotoCropPanel) workerPhotoCropPanel.hidden = true;
   if (workerPhotoCropImage) {
@@ -1774,16 +1788,16 @@ function updateWorkerCropPreview() {
   if (!workerPhotoCropImage) return;
   const zoom = workerPhotoCropZoom?.value || '1';
   workerPhotoCropImage.style.setProperty('--crop-zoom', zoom);
-  workerPhotoCropImage.style.setProperty('--crop-x', `${workerCropOffset.x}px`);
-  workerPhotoCropImage.style.setProperty('--crop-y', `${workerCropOffset.y}px`);
+  workerPhotoCropImage.style.setProperty('--crop-x', `${workerState.workerCropOffset.x}px`);
+  workerPhotoCropImage.style.setProperty('--crop-y', `${workerState.workerCropOffset.y}px`);
 
   if (workerPhotoCropPreview) {
     const editorSize = workerPhotoCropImage.getBoundingClientRect().width || 280;
     const previewSize = workerPhotoCropPreview.getBoundingClientRect().width || editorSize;
     const offsetScale = previewSize / editorSize;
     workerPhotoCropPreview.style.setProperty('--crop-zoom', zoom);
-    workerPhotoCropPreview.style.setProperty('--crop-x', `${workerCropOffset.x * offsetScale}px`);
-    workerPhotoCropPreview.style.setProperty('--crop-y', `${workerCropOffset.y * offsetScale}px`);
+    workerPhotoCropPreview.style.setProperty('--crop-x', `${workerState.workerCropOffset.x * offsetScale}px`);
+    workerPhotoCropPreview.style.setProperty('--crop-y', `${workerState.workerCropOffset.y * offsetScale}px`);
   }
 }
 
@@ -1795,14 +1809,14 @@ function openWorkerPhotoCrop(file) {
     return;
   }
 
-  workerCropImageUrl = URL.createObjectURL(file);
-  workerCropOffset = { x: 0, y: 0 };
+  workerState.workerCropImageUrl = URL.createObjectURL(file);
+  workerState.workerCropOffset = { x: 0, y: 0 };
   if (workerPhotoCropImage) {
-    workerPhotoCropImage.src = workerCropImageUrl;
+    workerPhotoCropImage.src = workerState.workerCropImageUrl;
     workerPhotoCropImage.onload = () => updateWorkerCropPreview();
   }
   if (workerPhotoCropPreview) {
-    workerPhotoCropPreview.src = workerCropImageUrl;
+    workerPhotoCropPreview.src = workerState.workerCropImageUrl;
   }
   if (workerPhotoCropPanel) workerPhotoCropPanel.hidden = false;
   if (workerPhotoCropStatus) workerPhotoCropStatus.textContent = 'Adjust the crop, then use the cropped photo before saving.';
@@ -1830,8 +1844,8 @@ async function makeCroppedWorkerPhoto() {
   const displayHeight = naturalHeight * displayScale;
   const drawnWidth = displayWidth * outputScale;
   const drawnHeight = displayHeight * outputScale;
-  const dx = ((frameSize - displayWidth) / 2 + workerCropOffset.x) * outputScale;
-  const dy = ((frameSize - displayHeight) / 2 + workerCropOffset.y) * outputScale;
+  const dx = ((frameSize - displayWidth) / 2 + workerState.workerCropOffset.x) * outputScale;
+  const dy = ((frameSize - displayHeight) / 2 + workerState.workerCropOffset.y) * outputScale;
 
   context.drawImage(source, 0, 0, naturalWidth, naturalHeight, dx, dy, drawnWidth, drawnHeight);
 
@@ -1875,7 +1889,7 @@ async function saveWorkerDaysOff() {
 
   const { error } = await workerDb.rpc('worker_save_days_off', {
     p_token: SESSION_WORKER_TOKEN,
-    p_days_off: Array.from(selectedWorkerDaysOff).sort(),
+    p_days_off: Array.from(workerState.selectedWorkerDaysOff).sort(),
   });
   if (error) throw error;
 
@@ -2027,11 +2041,9 @@ function workerFormatService(request) {
   return parts.filter(Boolean).join(' | ');
 }
 
-let expandedWorkerJobId = null;
 // Tracks whether we've already auto-opened the active job's full card once, so
 // the background poll (and later reloads) never re-expand it after a worker has
 // deliberately collapsed it.
-let hasAutoExpandedCurrentJob = false;
 
 // Jobs the worker has tapped "Start — open map" on this session. Used to flip the
 // Accepted step from "Start" to "Key received" instantly, before the first GPS
@@ -2126,7 +2138,7 @@ function renderWorkerAvailableCard(request) {
 // Compact card for an assigned (non-current) job in Today's Schedule. Tapping
 // the card expands the full job card with its workflow actions.
 function renderWorkerCompactJobCard(request, mode) {
-  const isExpanded = expandedWorkerJobId === request.id;
+  const isExpanded = workerState.expandedWorkerJobId === request.id;
   return `
     <article class="worker-card worker-schedule-card${isExpanded ? ' is-expanded' : ''}">
       <button class="worker-card-summary worker-row-toggle" data-id="${escapeHtml(request.id)}" type="button" aria-expanded="${isExpanded}">
@@ -3449,8 +3461,6 @@ function renderWorkerTotalEditForm(request, type) {
 // never while the worker is mid-input, so it can't wipe unsaved work or collapse a
 // panel they're using. GPS is unaffected: the location watch persists across
 // re-renders and only stops once a status reaches the key-returned/terminal set.
-let lastWorkerJobsSignature = '';
-let workerJobsPollTimer = null;
 
 function workerJobsSignature(jobs) {
   return (jobs || [])
@@ -3492,7 +3502,6 @@ function hasUnsavedWorkerInput() {
   return false;
 }
 
-let lastWorkerCancelAlertIds = new Set();
 
 async function pollWorkerJobs() {
   if (!workerJobList || !currentEmployee) return;
@@ -3512,10 +3521,10 @@ async function pollWorkerJobs() {
         .filter((j) => hasCustomerReturnRequestAlert(j) || j.status === 'cancelled_pending_key_return')
         .map((j) => j.id)
     );
-    const newlyCancelled = [...myCancelAlertIds].some((id) => !lastWorkerCancelAlertIds.has(id));
-    lastWorkerCancelAlertIds = myCancelAlertIds;
+    const newlyCancelled = [...myCancelAlertIds].some((id) => !workerState.lastWorkerCancelAlertIds.has(id));
+    workerState.lastWorkerCancelAlertIds = myCancelAlertIds;
 
-    if (workerJobsSignature(jobs) === lastWorkerJobsSignature) return; // nothing changed
+    if (workerJobsSignature(jobs) === workerState.lastWorkerJobsSignature) return; // nothing changed
 
     // Benign changes still defer while the worker is actively editing, so a silent
     // re-render never wipes an in-progress entry. A cancellation overrides that.
@@ -3528,8 +3537,8 @@ async function pollWorkerJobs() {
 }
 
 function startWorkerJobsPoll() {
-  if (workerJobsPollTimer) return;
-  workerJobsPollTimer = setInterval(pollWorkerJobs, 20000);
+  if (workerState.workerJobsPollTimer) return;
+  workerState.workerJobsPollTimer = setInterval(pollWorkerJobs, 20000);
   // Refresh immediately when the worker returns to the app. iOS standalone PWAs
   // FREEZE setInterval while the app is backgrounded/locked, and they don't
   // reliably fire `visibilitychange` on resume from the lock screen — so a change
@@ -3565,7 +3574,7 @@ async function loadWorkerJobs(silent = false) {
 
   const jobs = (data || []).filter((job) => isWorkerOpenStatus(job.status));
   allWorkerJobs = jobs;
-  lastWorkerJobsSignature = workerJobsSignature(jobs);
+  workerState.lastWorkerJobsSignature = workerJobsSignature(jobs);
 
   const myJobs = jobs.filter(workerJobBelongsToCurrentEmployee);
 
@@ -4559,7 +4568,7 @@ document.addEventListener('click', async (event) => {
 
     if (button.classList.contains('worker-row-toggle')) {
       const id = button.dataset.id;
-      expandedWorkerJobId = expandedWorkerJobId === id ? null : id;
+      workerState.expandedWorkerJobId = workerState.expandedWorkerJobId === id ? null : id;
       await loadWorkerJobs();
       return;
     }
@@ -4868,9 +4877,9 @@ workerProfileForm?.addEventListener('submit', async (event) => {
 
   try {
     const file = workerProfilePhoto?.files?.[0];
-    const photoZoom = Number(workerPhotoDisplayZoom?.value || workerProfilePhotoZoom || 1);
-    const photoPositionX = Number(workerProfilePhotoPosition.x || 0);
-    const photoPositionY = Number(workerProfilePhotoPosition.y || 0);
+    const photoZoom = Number(workerPhotoDisplayZoom?.value || workerState.workerProfilePhotoZoom || 1);
+    const photoPositionX = Number(workerState.workerProfilePhotoPosition.x || 0);
+    const photoPositionY = Number(workerState.workerProfilePhotoPosition.y || 0);
     const fullName = workerProfileName?.value.trim() || currentEmployee.full_name;
     const username = (workerProfileUsername?.value || '').trim();
     const phoneInputValue = workerProfilePhone?.value.trim() || null;
@@ -4882,23 +4891,12 @@ workerProfileForm?.addEventListener('submit', async (event) => {
       return;
     }
 
-    // Check for phone duplicate before uploading photo.
-    if (phone) {
-      const cleanNew = phone.replace(/\D/g, '');
-      const cleanCurrent = (currentEmployee.phone || '').replace(/\D/g, '');
-      if (cleanNew !== cleanCurrent) {
-        const { data: phoneCheck, error: phoneCheckError } = await workerDb
-          .from('employees_public')
-          .select('id,full_name')
-          .eq('active', true)
-          .neq('id', currentEmployee.id);
-        if (phoneCheckError) throw phoneCheckError;
-        if ((phoneCheck || []).some((employee) => normalizePhone(employee.phone) === cleanNew)) {
-          setWorkerStatus('That phone number is already used by another worker. Please use a different number.');
-          return;
-        }
-      }
-    }
+    // NOTE: a client-side "phone already used by another worker" check used to
+    // live here, querying the anon employees_public view. It was already a silent
+    // no-op (the view stopped exposing `phone`), and the view's anon SELECT grant
+    // is now revoked (migration 20260709_gate_employees_public_view.sql) — so the
+    // query would only throw and block saves. Removed. If phone uniqueness needs
+    // enforcing, do it server-side inside the worker_update_profile RPC.
 
     // Resolve photo URLs: upload new original if file selected; use canvas-cropped blob for
     // cropped_photo_url; for edit-framing with no new file, regenerate crop from boundary editor.
@@ -4912,8 +4910,8 @@ workerProfileForm?.addEventListener('submit', async (event) => {
         currentEmployee.cropped_photo_url  || currentEmployee.photo_url,
       );
       originalPhotoUrl = await uploadWorkerPhoto(file);
-      if (workerCroppedPhotoBlob) {
-        croppedPhotoUrl = await uploadWorkerPhoto(workerCroppedPhotoBlob);
+      if (workerState.workerCroppedPhotoBlob) {
+        croppedPhotoUrl = await uploadWorkerPhoto(workerState.workerCroppedPhotoBlob);
       } else {
         croppedPhotoUrl = originalPhotoUrl;
       }
@@ -4922,7 +4920,7 @@ workerProfileForm?.addEventListener('submit', async (event) => {
       // Delete old cropped file only (original stays the same)
       await deleteOldWorkerPhotos(null, currentEmployee.cropped_photo_url);
       const croppedFile = await window.ShiftFuelPhoto?.cropToBlobFromBoundaryEditor(
-        workerPhotoBoundaryImage, workerProfilePhotoZoom, workerProfilePhotoPosition.x, workerProfilePhotoPosition.y
+        workerPhotoBoundaryImage, workerState.workerProfilePhotoZoom, workerState.workerProfilePhotoPosition.x, workerState.workerProfilePhotoPosition.y
       );
       if (croppedFile) croppedPhotoUrl = await uploadWorkerPhoto(croppedFile);
     }
@@ -4984,18 +4982,18 @@ workerProfileForm?.addEventListener('submit', async (event) => {
 workerProfilePhoto?.addEventListener('change', () => {
   const file = workerProfilePhoto.files?.[0];
   if (file) {
-    if (workerCroppedPreviewUrl) {
-      URL.revokeObjectURL(workerCroppedPreviewUrl);
+    if (workerState.workerCroppedPreviewUrl) {
+      URL.revokeObjectURL(workerState.workerCroppedPreviewUrl);
     }
-    if (workerBoundaryPreviewUrl) {
-      URL.revokeObjectURL(workerBoundaryPreviewUrl);
+    if (workerState.workerBoundaryPreviewUrl) {
+      URL.revokeObjectURL(workerState.workerBoundaryPreviewUrl);
     }
-    workerCroppedPreviewUrl = URL.createObjectURL(file);
-    workerBoundaryPreviewUrl = URL.createObjectURL(file);
-    workerProfilePhotoZoom = 1;
-    workerProfilePhotoPosition = { x: 0, y: 0 };
-    showWorkerPhoto(workerCroppedPreviewUrl, workerProfilePhotoZoom, workerProfilePhotoPosition);
-    showWorkerBoundaryPreview(workerBoundaryPreviewUrl);
+    workerState.workerCroppedPreviewUrl = URL.createObjectURL(file);
+    workerState.workerBoundaryPreviewUrl = URL.createObjectURL(file);
+    workerState.workerProfilePhotoZoom = 1;
+    workerState.workerProfilePhotoPosition = { x: 0, y: 0 };
+    showWorkerPhoto(workerState.workerCroppedPreviewUrl, workerState.workerProfilePhotoZoom, workerState.workerProfilePhotoPosition);
+    showWorkerBoundaryPreview(workerState.workerBoundaryPreviewUrl);
     setWorkerStatus('Profile photo selected. Save the worker profile to upload it.');
   } else {
     resetWorkerPhotoCrop();
@@ -5005,7 +5003,7 @@ workerProfilePhoto?.addEventListener('change', () => {
 });
 
 workerPhotoDisplayZoom?.addEventListener('input', () => {
-  workerProfilePhotoZoom = Number(workerPhotoDisplayZoom.value || 1);
+  workerState.workerProfilePhotoZoom = Number(workerPhotoDisplayZoom.value || 1);
   applyWorkerPhotoZoom();
   setWorkerStatus('Profile photo zoom updated. Save the worker profile to keep it.');
 });
@@ -5013,38 +5011,38 @@ workerPhotoDisplayZoom?.addEventListener('input', () => {
 workerPhotoBoundaryPreview?.addEventListener('pointerdown', (event) => {
   if (workerPhotoBoundaryPanel?.hidden || !workerPhotoBoundaryImage?.getAttribute('src')) return;
 
-  workerPhotoDisplayDrag = {
+  workerState.workerPhotoDisplayDrag = {
     pointerId: event.pointerId,
     startX: event.clientX,
     startY: event.clientY,
-    originalX: Number(workerProfilePhotoPosition.x || 0),
-    originalY: Number(workerProfilePhotoPosition.y || 0),
+    originalX: Number(workerState.workerProfilePhotoPosition.x || 0),
+    originalY: Number(workerState.workerProfilePhotoPosition.y || 0),
   };
   workerPhotoBoundaryPreview.setPointerCapture(event.pointerId);
   workerPhotoBoundaryPreview.classList.add('is-dragging');
 });
 
 workerPhotoBoundaryPreview?.addEventListener('pointermove', (event) => {
-  if (!workerPhotoDisplayDrag || workerPhotoDisplayDrag.pointerId !== event.pointerId) return;
+  if (!workerState.workerPhotoDisplayDrag || workerState.workerPhotoDisplayDrag.pointerId !== event.pointerId) return;
 
   const size = workerPhotoBoundaryPreview.getBoundingClientRect().width || 320;
-  const deltaX = ((event.clientX - workerPhotoDisplayDrag.startX) / size) * 100;
-  const deltaY = ((event.clientY - workerPhotoDisplayDrag.startY) / size) * 100;
+  const deltaX = ((event.clientX - workerState.workerPhotoDisplayDrag.startX) / size) * 100;
+  const deltaY = ((event.clientY - workerState.workerPhotoDisplayDrag.startY) / size) * 100;
 
-  workerProfilePhotoPosition = {
-    x: Math.max(-50, Math.min(50, workerPhotoDisplayDrag.originalX + deltaX)),
-    y: Math.max(-50, Math.min(50, workerPhotoDisplayDrag.originalY + deltaY)),
+  workerState.workerProfilePhotoPosition = {
+    x: Math.max(-50, Math.min(50, workerState.workerPhotoDisplayDrag.originalX + deltaX)),
+    y: Math.max(-50, Math.min(50, workerState.workerPhotoDisplayDrag.originalY + deltaY)),
   };
   applyWorkerPhotoZoom();
   setWorkerStatus('Profile photo position updated. Save the worker profile to keep it.');
 });
 
 function endWorkerPhotoDisplayDrag(event) {
-  if (!workerPhotoDisplayDrag || workerPhotoDisplayDrag.pointerId !== event.pointerId) return;
+  if (!workerState.workerPhotoDisplayDrag || workerState.workerPhotoDisplayDrag.pointerId !== event.pointerId) return;
 
   workerPhotoBoundaryPreview?.releasePointerCapture(event.pointerId);
   workerPhotoBoundaryPreview?.classList.remove('is-dragging');
-  workerPhotoDisplayDrag = null;
+  workerState.workerPhotoDisplayDrag = null;
 }
 
 workerPhotoBoundaryPreview?.addEventListener('pointerup', endWorkerPhotoDisplayDrag);
@@ -5074,10 +5072,10 @@ document.querySelector('#edit-worker-framing')?.addEventListener('click', () => 
   document.querySelector('#worker-photo-editor-actions').hidden = true;
   const sourceUrl = currentEmployee?.original_photo_url || currentEmployee?.photo_url;
   if (!sourceUrl) return;
-  // Load original (uncropped) photo for framing. workerCroppedPhotoBlob stays null so no re-upload of original.
-  workerProfilePhotoZoom = Number(currentEmployee.photo_zoom || 1);
-  workerProfilePhotoPosition = currentWorkerPhotoPositionFromEmployee();
-  if (workerBoundaryPreviewUrl) { URL.revokeObjectURL(workerBoundaryPreviewUrl); workerBoundaryPreviewUrl = ''; }
+  // Load original (uncropped) photo for framing. workerState.workerCroppedPhotoBlob stays null so no re-upload of original.
+  workerState.workerProfilePhotoZoom = Number(currentEmployee.photo_zoom || 1);
+  workerState.workerProfilePhotoPosition = currentWorkerPhotoPositionFromEmployee();
+  if (workerState.workerBoundaryPreviewUrl) { URL.revokeObjectURL(workerState.workerBoundaryPreviewUrl); workerState.workerBoundaryPreviewUrl = ''; }
   showWorkerBoundaryPreview(sourceUrl);
   setWorkerStatus('Adjust zoom and position, then save the worker profile.');
 });
@@ -5093,18 +5091,18 @@ workerPhotoCropChoose?.addEventListener('click', () => {
 
 workerPhotoCropUse?.addEventListener('click', async () => {
   if (workerPhotoCropStatus) workerPhotoCropStatus.textContent = 'Preparing cropped photo...';
-  workerCroppedPhotoBlob = await makeCroppedWorkerPhoto();
+  workerState.workerCroppedPhotoBlob = await makeCroppedWorkerPhoto();
 
-  if (!workerCroppedPhotoBlob) {
+  if (!workerState.workerCroppedPhotoBlob) {
     if (workerPhotoCropStatus) workerPhotoCropStatus.textContent = 'Could not crop this image. Choose another photo.';
     return;
   }
 
-  if (workerCroppedPreviewUrl) {
-    URL.revokeObjectURL(workerCroppedPreviewUrl);
+  if (workerState.workerCroppedPreviewUrl) {
+    URL.revokeObjectURL(workerState.workerCroppedPreviewUrl);
   }
-  workerCroppedPreviewUrl = URL.createObjectURL(workerCroppedPhotoBlob);
-  showWorkerPhoto(workerCroppedPreviewUrl);
+  workerState.workerCroppedPreviewUrl = URL.createObjectURL(workerState.workerCroppedPhotoBlob);
+  showWorkerPhoto(workerState.workerCroppedPreviewUrl);
   if (workerPhotoCropPanel) workerPhotoCropPanel.hidden = true;
   if (workerPhotoCropStatus) workerPhotoCropStatus.textContent = 'Cropped photo ready. Save the profile to upload it.';
   setWorkerStatus('Cropped photo ready. Save the worker profile to upload it.');
@@ -5118,50 +5116,49 @@ workerPhotoCropCancel?.addEventListener('click', () => {
 
 workerPhotoCropZoom?.addEventListener('input', () => {
   updateWorkerCropPreview();
-  workerCroppedPhotoBlob = null;
+  workerState.workerCroppedPhotoBlob = null;
   if (workerPhotoCropStatus) workerPhotoCropStatus.textContent = 'Crop changed. Use the cropped photo again before saving.';
 });
 
 workerPhotoCropImage?.addEventListener('pointerdown', (event) => {
-  if (!workerCropImageUrl) return;
-  workerCropDrag = {
+  if (!workerState.workerCropImageUrl) return;
+  workerState.workerCropDrag = {
     pointerId: event.pointerId,
     startX: event.clientX,
     startY: event.clientY,
-    originX: workerCropOffset.x,
-    originY: workerCropOffset.y,
+    originX: workerState.workerCropOffset.x,
+    originY: workerState.workerCropOffset.y,
   };
   workerPhotoCropImage.setPointerCapture(event.pointerId);
   workerPhotoCropImage.classList.add('is-dragging');
 });
 
 workerPhotoCropImage?.addEventListener('pointermove', (event) => {
-  if (!workerCropDrag || workerCropDrag.pointerId !== event.pointerId) return;
+  if (!workerState.workerCropDrag || workerState.workerCropDrag.pointerId !== event.pointerId) return;
 
-  workerCropOffset = {
-    x: workerCropDrag.originX + event.clientX - workerCropDrag.startX,
-    y: workerCropDrag.originY + event.clientY - workerCropDrag.startY,
+  workerState.workerCropOffset = {
+    x: workerState.workerCropDrag.originX + event.clientX - workerState.workerCropDrag.startX,
+    y: workerState.workerCropDrag.originY + event.clientY - workerState.workerCropDrag.startY,
   };
 
   updateWorkerCropPreview();
-  workerCroppedPhotoBlob = null;
+  workerState.workerCroppedPhotoBlob = null;
   if (workerPhotoCropStatus) workerPhotoCropStatus.textContent = 'Crop moved. Use the cropped photo again before saving.';
 });
 
 function endWorkerCropDrag(event) {
-  if (!workerCropDrag || workerCropDrag.pointerId !== event.pointerId) return;
+  if (!workerState.workerCropDrag || workerState.workerCropDrag.pointerId !== event.pointerId) return;
   workerPhotoCropImage?.releasePointerCapture(event.pointerId);
   workerPhotoCropImage?.classList.remove('is-dragging');
-  workerCropDrag = null;
+  workerState.workerCropDrag = null;
 }
 
 workerPhotoCropImage?.addEventListener('pointerup', endWorkerCropDrag);
 workerPhotoCropImage?.addEventListener('pointercancel', endWorkerCropDrag);
 
-let passwordModalForced = false;
 
 function openPasswordModal(forced = false) {
-  passwordModalForced = forced;
+  workerState.passwordModalForced = forced;
   if (!workerPasswordModal) return;
   workerPasswordModal.removeAttribute('hidden');
   if (workerPasswordModalClose) workerPasswordModalClose.hidden = forced;
@@ -5170,7 +5167,7 @@ function openPasswordModal(forced = false) {
 }
 
 function closePasswordModal() {
-  if (passwordModalForced) return;
+  if (workerState.passwordModalForced) return;
   workerPasswordModal?.setAttribute('hidden', '');
   workerPasswordChangeForm?.reset();
   setWorkerPasswordStatus('');
@@ -5263,7 +5260,7 @@ workerPasswordChangeForm?.addEventListener('submit', async (event) => {
     if (error) throw error;
 
     sessionStorage.removeItem('shiftfuel_worker_must_change_pw');
-    passwordModalForced = false;
+    workerState.passwordModalForced = false;
     workerPasswordChangeForm.reset();
     setWorkerPasswordStatus('Password updated successfully.');
     setTimeout(() => closePasswordModal(), 1500);
@@ -5291,23 +5288,23 @@ workerDaysGrid?.addEventListener('click', (event) => {
   const endInput = row?.querySelector('.worker-day-end');
 
   if (copyButton) {
-    copiedWorkerDaySchedule = {
+    workerState.copiedWorkerDaySchedule = {
       startsAt: startInput?.value || '09:00',
       endsAt: endInput?.value || '17:00',
       enabled: Boolean(checkbox?.checked),
     };
     refreshWorkerPasteButtons();
     setWorkerCopyMode('paste');
-    setScheduleStatus(`Copied ${copiedWorkerDaySchedule.startsAt} to ${copiedWorkerDaySchedule.endsAt}.`);
+    setScheduleStatus(`Copied ${workerState.copiedWorkerDaySchedule.startsAt} to ${workerState.copiedWorkerDaySchedule.endsAt}.`);
     return;
   }
 
-  if (pasteButton && copiedWorkerDaySchedule) {
-    if (startInput) startInput.value = copiedWorkerDaySchedule.startsAt;
-    if (endInput) endInput.value = copiedWorkerDaySchedule.endsAt;
-    if (checkbox) checkbox.checked = copiedWorkerDaySchedule.enabled;
-    const pastedSchedule = copiedWorkerDaySchedule;
-    copiedWorkerDaySchedule = null;
+  if (pasteButton && workerState.copiedWorkerDaySchedule) {
+    if (startInput) startInput.value = workerState.copiedWorkerDaySchedule.startsAt;
+    if (endInput) endInput.value = workerState.copiedWorkerDaySchedule.endsAt;
+    if (checkbox) checkbox.checked = workerState.copiedWorkerDaySchedule.enabled;
+    const pastedSchedule = workerState.copiedWorkerDaySchedule;
+    workerState.copiedWorkerDaySchedule = null;
     refreshWorkerPasteButtons();
     setWorkerCopyMode('copy');
     setScheduleStatus(`Pasted ${pastedSchedule.startsAt} to ${pastedSchedule.endsAt}. Copy another day to paste again.`);
@@ -5337,10 +5334,10 @@ workerDaysOffCalendar?.addEventListener('click', (event) => {
   if (!button || button.disabled) return;
 
   const dayOff = button.dataset.dayOff;
-  if (selectedWorkerDaysOff.has(dayOff)) {
-    selectedWorkerDaysOff.delete(dayOff);
+  if (workerState.selectedWorkerDaysOff.has(dayOff)) {
+    workerState.selectedWorkerDaysOff.delete(dayOff);
   } else {
-    selectedWorkerDaysOff.add(dayOff);
+    workerState.selectedWorkerDaysOff.add(dayOff);
   }
 
   renderWorkerDaysOffCalendar();

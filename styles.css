@@ -758,8 +758,8 @@ font-size: 0.85rem;
 .customer-account-shell {
   display: grid;
   gap: 24px;
-  width: min(980px, calc(100% - 40px));
-  margin: 28px auto;
+  width: min(1240px, calc(100% - 48px));
+  margin: clamp(28px, 4vw, 48px) auto;
 }
 
 .customer-account-access {
@@ -1036,7 +1036,7 @@ font-size: 0.85rem;
 .customer-dashboard {
   display: grid;
   gap: 22px;
-  padding: clamp(22px, 4vw, 36px);
+  padding: clamp(22px, 3vw, 44px);
   background: var(--sf-white);
   border: 1px solid rgba(13, 59, 59, 0.12);
   border-radius: var(--sf-radius-sm);
@@ -1153,9 +1153,9 @@ font-size: 0.85rem;
 
 .customer-dashboard-header {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
-  gap: 20px;
+  gap: clamp(20px, 4vw, 48px);
 }
 
 .customer-dashboard-kicker {
@@ -1189,7 +1189,7 @@ font-size: 0.85rem;
 .customer-dashboard-stats {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 10px;
+  gap: 14px;
 }
 
 .customer-dashboard-stats article {
@@ -1215,13 +1215,14 @@ font-size: 0.85rem;
 
 .customer-dashboard-layout {
   display: grid;
-  grid-template-columns: minmax(0, 1.2fr) minmax(320px, 0.8fr);
-  gap: 26px 24px;
+  grid-template-columns: minmax(0, 1.15fr) minmax(340px, 0.85fr);
+  gap: 28px;
   align-items: start;
 }
 
 .customer-dashboard-section-primary,
-.customer-dashboard-section-soft {
+.customer-dashboard-section-soft,
+#account-history {
   grid-column: 1 / -1;
 }
 
@@ -1260,8 +1261,9 @@ font-size: 0.85rem;
 }
 
 .customer-dashboard-section-primary .customer-card-list,
-.customer-dashboard-section-soft .customer-card-list {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+.customer-dashboard-section-soft .customer-card-list,
+#account-history .customer-card-list {
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
 }
 
 .customer-request-card,

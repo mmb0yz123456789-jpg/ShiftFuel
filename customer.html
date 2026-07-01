@@ -49,8 +49,8 @@
       <section class="customer-account-access" aria-labelledby="customer-account-title">
         <div class="customer-account-intro">
           <p class="customer-dashboard-kicker">Customer account</p>
-          <h1 id="customer-account-title">My Account</h1>
-          <p>Book, track, or save your details for faster future service. An account is optional.</p>
+          <h1 id="customer-account-title" data-pwa-title="Welcome back">My Account</h1>
+          <p data-pwa-copy="Sign in to access your saved vehicles, addresses, and bookings.">Book, track, or save your details for faster future service. An account is optional.</p>
         </div>
 
         <div class="customer-account-access-grid">
@@ -271,6 +271,7 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="supabase-client.js"></script>
     <script src="phone-utils.js"></script>
+    <script src="shared-status.js"></script>
     <script src="customer-account.js"></script>
   </body>
 </html>
