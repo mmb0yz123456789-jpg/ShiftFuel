@@ -326,6 +326,25 @@ html.sf-compact body.customer-account-page .customer-recommend-card .button {
   background: #1e7d52; color: #fff; border: 0; border-radius: 14px; padding: 13px; font-weight: 800;
 }
 
+/* ── Signed-in dashboard redesign components inside the phone app ────────────
+   White cards read fine on the gradient; these fix the elements that used a
+   translucent green tint (invisible on green) + put the avatar in the header. */
+html.sf-compact body.customer-account-page .customer-welcome-banner {
+  background: rgba(255,255,255,.12); border-color: rgba(255,255,255,.22); color: #eaf4f2;
+}
+html.sf-compact body.customer-account-page .customer-welcome-banner-icon { background: rgba(255,255,255,.18); color: #fff; }
+html.sf-compact body.customer-account-page .customer-quickaction { border: 0; box-shadow: 0 10px 26px rgba(4,26,24,.2); }
+html.sf-compact body.customer-account-page .customer-shortcut { border: 0; box-shadow: 0 10px 26px rgba(4,26,24,.2); }
+html.sf-compact body.customer-account-page .customer-section-heading-actions > span {
+  color: rgba(255,255,255,.75); background: rgba(255,255,255,.14);
+  min-width: 22px; height: 22px; padding: 0 7px; border-radius: 999px;
+  display: inline-flex; align-items: center; justify-content: center; font-size: .76rem; font-weight: 800;
+}
+html.sf-compact body.customer-account-page .customer-section-add { background: rgba(255,255,255,.16); color: #fff; }
+/* MU avatar lives in the top-right of the app header. */
+html.sf-compact body.customer-account-page .customer-header-signed { margin-left: auto; }
+html.sf-compact body.customer-account-page .customer-avatar-btn { color: #fff; }
+
 /* Bottom navigation (customer app only) */
 .customer-tabbar { display: none; }
 html.sf-compact body.customer-account-page .customer-tabbar { display: flex; }
@@ -442,6 +461,41 @@ html.sf-standalone.sf-compact body.account-page .account-sidebar {
 html.sf-standalone.sf-compact body.account-page .account-content {
   max-height: none;
 }
+
+/* ── Settings page (account.html) — match the DASHBOARD's dark-green gradient in
+   ALL compact modes (mobile browser + installed PWA), not just standalone. The
+   dashboard theme is `html.sf-compact body.customer-account-page`; the settings
+   theme was only `sf-standalone.sf-compact`, so a mobile browser fell back to the
+   light account.css theme. These rules mirror the standalone values above so the
+   browser and the app look identical. Desktop (sf-wide) keeps the light theme,
+   which matches the desktop dashboard. Everything readable stays inside the white
+   .account-layout card, so no white-on-gradient contrast issues. */
+html.sf-compact body.account-page {
+  background: linear-gradient(175deg, #12514f 0%, #0d3b3b 44%, #06231f 100%) fixed;
+  color: #eaf4f2;
+  min-height: 100vh;
+  min-height: 100dvh;
+  padding-bottom: calc(86px + env(safe-area-inset-bottom));
+  overflow-x: hidden;
+}
+html.sf-compact body.account-page .customer-tabbar { display: flex !important; }
+html.sf-compact body.account-page .customer-tabbar .app-tab.is-active { color: #1e7d52; background: rgba(30,125,82,.12); }
+html.sf-compact body.account-page .site-header {
+  position: static; background: transparent; border: 0; box-shadow: none;
+  padding: calc(env(safe-area-inset-top) + 10px) 18px 12px !important;
+}
+html.sf-compact body.account-page .site-header .logo,
+html.sf-compact body.account-page .site-header .logo span { color: #fff; }
+html.sf-compact body.account-page .site-footer { display: none !important; }
+html.sf-compact body.account-page .account-header-nav { display: flex; gap: 10px; }
+html.sf-compact body.account-page .account-header-nav a { color: rgba(255,255,255,.82); }
+html.sf-compact body.account-page .account-layout {
+  background: #fff; color: #0f2a28; border: 0; border-radius: 20px;
+  box-shadow: 0 12px 30px rgba(4,26,24,.22);
+  display: block; margin: 8px 16px 22px; min-height: 0; overflow: hidden;
+}
+html.sf-compact body.account-page .account-sidebar { border: 0; background: #f7fbfa; }
+html.sf-compact body.account-page .account-content { max-height: none; }
 
 /* ---- Logged-out state → app sign-in styling ------------------------------ */
 html.sf-compact body.customer-account-page .customer-account-intro .customer-dashboard-kicker { display: none; }
@@ -662,6 +716,29 @@ html.sf-compact body.customer-account-page:not(.customer-account-loaded) .custom
   box-shadow: 0 10px 24px rgba(10, 116, 63, .28);
   font-size: 1.16rem;
   font-weight: 900;
+}
+
+/* Issue #1: phone input, email input, Sign In, and Create Account must be the
+   exact same width with aligned edges. Force every wrapper to full width with no
+   stray horizontal padding/margin so all four share one left/right edge. */
+html.sf-compact body.customer-account-page:not(.customer-account-loaded) .customer-account-mode-panel,
+html.sf-compact body.customer-account-page:not(.customer-account-loaded) .customer-account-form,
+html.sf-compact body.customer-account-page:not(.customer-account-loaded) .customer-account-form label,
+html.sf-compact body.customer-account-page:not(.customer-account-loaded) .customer-account-tabs {
+  width: 100%;
+  box-sizing: border-box;
+  margin-left: 0;
+  margin-right: 0;
+  padding-left: 0;
+  padding-right: 0;
+}
+html.sf-compact body.customer-account-page:not(.customer-account-loaded) .customer-account-form input,
+html.sf-compact body.customer-account-page:not(.customer-account-loaded) .customer-account-form .button.primary,
+html.sf-compact body.customer-account-page:not(.customer-account-loaded) .customer-account-tab[data-account-mode="create"] {
+  width: 100%;
+  box-sizing: border-box;
+  margin-left: 0;
+  margin-right: 0;
 }
 
 html.sf-compact body.customer-account-page:not(.customer-account-loaded) .form-status:empty {

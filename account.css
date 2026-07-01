@@ -458,12 +458,12 @@
 }
 
 .button.primary {
-  background: #073233;
+  background: linear-gradient(135deg, #14904c, #0b6b3d);
   color: #ffffff;
 }
 
 .button.primary:hover {
-  background: #0a4547;
+  background: linear-gradient(135deg, #128445, #095c34);
 }
 
 .button.primary:disabled {

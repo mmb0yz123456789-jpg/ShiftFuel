@@ -118,14 +118,23 @@
       });
     });
 
-    // Deep-link: open the tab named in the URL hash (e.g. /account/settings#vehicles,
-    // used by the dashboard's "Manage vehicles & addresses" link). Only honour tabs
-    // whose nav button exists and isn't hidden (so a hidden Billing can't be opened).
+    // Deep-link: open the tab named in the URL hash (e.g. /account/settings#vehicles).
+    // The dashboard's "Add Vehicle"/"Add Service Address" quick actions link to
+    // #add-vehicle / #add-address — those open the matching tab AND reveal its add
+    // form. Only honour tabs whose nav button exists and isn't hidden.
+    const addFormHash = { 'add-vehicle': { tab: 'vehicles', form: '[data-add-vehicle-form]' },
+                          'add-address': { tab: 'addresses', form: '[data-add-address-form]' } };
     const applyHash = () => {
-      const name = (location.hash || '').replace('#', '').trim();
-      if (!name) return;
+      const raw = (location.hash || '').replace('#', '').trim();
+      if (!raw) return;
+      const add = addFormHash[raw];
+      const name = add ? add.tab : raw;
       const btn = document.querySelector(`[data-account-tab="${name}"]`);
       if (btn && !btn.hidden) switchToTab(name);
+      if (add) {
+        const form = document.querySelector(add.form);
+        if (form) toggleAddForm(form, true);
+      }
     };
     applyHash();
     window.addEventListener('hashchange', applyHash);

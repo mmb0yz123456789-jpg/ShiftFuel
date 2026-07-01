@@ -11984,6 +11984,92 @@ display: block;
 .customer-account-menu-signout { color: #b42318; }
 .customer-dashboard-quickactions { display: flex; flex-wrap: wrap; gap: 10px; margin: 14px 0 4px; }
 
+/* ── Signed-in customer: header cluster (nav + MU avatar, top-right) ──────────
+   Revealed by body.customer-account-loaded; the guest marketing nav is hidden. */
+.customer-header-signed { display: none; }
+body.customer-account-loaded .site-header .nav[data-nav],
+body.customer-account-loaded .mobile-menu-button { display: none !important; }
+body.customer-account-loaded .customer-header-signed {
+  display: flex; align-items: center; gap: 16px; margin-left: auto;
+}
+.customer-header-nav { display: flex; align-items: center; gap: 4px; }
+.customer-header-nav a {
+  padding: 8px 12px; border-radius: 10px; text-decoration: none;
+  color: rgba(255,255,255,.88); font-weight: 700; font-size: .95rem;
+}
+.customer-header-nav a:hover { background: rgba(255,255,255,.14); color: #fff; }
+.customer-header-nav a[aria-current="page"] { background: rgba(255,255,255,.2); color: #fff; }
+/* MU avatar: white disc with green initials so it reads on the green/dark header. */
+.customer-header-signed .customer-avatar { background: #fff; color: #0b6b3d; box-shadow: 0 2px 8px rgba(0,0,0,.18); }
+.customer-header-signed .customer-avatar-btn { color: #fff; }
+
+/* ── Welcome-back banner (dismissible, only shown when away > 7 days) ── */
+.customer-welcome-banner {
+  display: flex; align-items: center; gap: 12px;
+  margin: 0 0 18px; padding: 12px 14px; border-radius: 14px;
+  background: rgba(20,144,76,.1); border: 1px solid rgba(20,144,76,.22); color: #0f3b3b;
+}
+.customer-welcome-banner[hidden] { display: none; }
+.customer-welcome-banner-icon {
+  flex: 0 0 auto; display: grid; place-items: center; width: 34px; height: 34px;
+  border-radius: 10px; background: rgba(20,144,76,.16); color: #0b6b3d;
+}
+.customer-welcome-banner-icon svg { width: 20px; height: 20px; }
+.customer-welcome-banner-text { flex: 1 1 auto; font-weight: 700; font-size: .95rem; }
+.customer-welcome-banner-close {
+  flex: 0 0 auto; border: 0; background: transparent; color: inherit;
+  font-size: 1.4rem; line-height: 1; cursor: pointer; padding: 0 4px; opacity: .7;
+}
+.customer-welcome-banner-close:hover { opacity: 1; }
+
+/* ── Quick actions (4-up grid) ── */
+.customer-quickactions {
+  display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin: 4px 0 22px;
+}
+.customer-quickaction {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 12px;
+  padding: 16px; border-radius: 16px; text-decoration: none;
+  background: #fff; color: #0f2a28; border: 1px solid rgba(4,26,24,.08);
+  box-shadow: 0 6px 18px rgba(4,26,24,.08); font-weight: 800; font-size: .98rem;
+  transition: transform .12s ease, box-shadow .12s ease;
+}
+.customer-quickaction:hover { transform: translateY(-2px); box-shadow: 0 12px 26px rgba(4,26,24,.14); }
+.customer-quickaction-icon {
+  display: grid; place-items: center; width: 42px; height: 42px;
+  border-radius: 12px; background: rgba(20,144,76,.12); color: #0b6b3d;
+}
+.customer-quickaction-icon svg { width: 22px; height: 22px; }
+.customer-quickaction-primary { background: linear-gradient(135deg, #14904c, #0b6b3d); color: #fff; border: 0; }
+.customer-quickaction-primary .customer-quickaction-icon { background: rgba(255,255,255,.18); color: #fff; }
+
+/* ── Section heading "+ Add" affordance ── */
+.customer-section-heading-actions { display: inline-flex; align-items: center; gap: 10px; }
+.customer-section-add {
+  text-decoration: none; font-weight: 800; font-size: .84rem; color: #0b6b3d;
+  padding: 5px 11px; border-radius: 999px; background: rgba(20,144,76,.12); white-space: nowrap;
+}
+.customer-section-add:hover { background: rgba(20,144,76,.2); }
+
+/* ── Account shortcuts (Profile / Security / Notifications) ── */
+.customer-shortcuts { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+.customer-shortcut {
+  display: flex; align-items: center; gap: 10px; padding: 14px; border-radius: 14px;
+  text-decoration: none; background: #fff; color: #0f2a28; border: 1px solid rgba(4,26,24,.08);
+  box-shadow: 0 6px 18px rgba(4,26,24,.08); font-weight: 700;
+}
+.customer-shortcut:hover { background: #f4faf8; }
+.customer-shortcut-icon {
+  display: grid; place-items: center; width: 36px; height: 36px;
+  border-radius: 10px; background: rgba(20,144,76,.12); color: #0b6b3d;
+}
+.customer-shortcut-icon svg { width: 20px; height: 20px; }
+
+@media (max-width: 760px) {
+  .customer-header-nav { display: none; }
+  .customer-quickactions { grid-template-columns: repeat(2, 1fr); }
+  .customer-shortcuts { grid-template-columns: 1fr; }
+}
+
 /* ── Customer dashboard: "Recommended for you" cards (Phase 3b) ── */
 .customer-recommend { margin: 0 0 4px; }
 .customer-recommend-card {

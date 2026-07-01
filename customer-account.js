@@ -531,6 +531,38 @@ function scrollAccountHashIntoView() {
   });
 }
 
+// Welcome-back banner: show a small dismissible banner only when the customer
+// hasn't been active for more than 7 days. Every load records "now" as the new
+// last-active timestamp; dismissal is remembered for the current tab session so
+// it doesn't reappear after an in-session refresh.
+const WELCOME_LAST_ACTIVE_KEY = "shiftfuel_customer_last_active";
+const WELCOME_DISMISS_KEY = "shiftfuel_welcome_dismissed";
+let welcomeChecked = false;
+
+function maybeShowWelcomeBanner(name) {
+  if (welcomeChecked) return;
+  welcomeChecked = true;
+  const banner = document.querySelector("[data-welcome-banner]");
+  const textEl = document.querySelector("[data-welcome-banner-text]");
+  const now = Date.now();
+  let lastActive = 0;
+  try { lastActive = Number(localStorage.getItem(WELCOME_LAST_ACTIVE_KEY)) || 0; } catch (_) {}
+  let dismissed = false;
+  try { dismissed = sessionStorage.getItem(WELCOME_DISMISS_KEY) === "1"; } catch (_) {}
+  const sevenDays = 7 * 24 * 60 * 60 * 1000;
+  const awayAwhile = lastActive > 0 && (now - lastActive) > sevenDays;
+  if (banner && textEl && awayAwhile && !dismissed) {
+    const first = name ? name.split(/\s+/)[0] : "";
+    textEl.textContent = first
+      ? `Welcome back, ${first} — it's been a while. Here's your dashboard.`
+      : "Welcome back — it's been a while.";
+    banner.hidden = false;
+  } else if (banner) {
+    banner.hidden = true;
+  }
+  try { localStorage.setItem(WELCOME_LAST_ACTIVE_KEY, String(now)); } catch (_) {}
+}
+
 function renderAccount(session, data, promos = []) {
   const renderData = {
     ...data,
@@ -551,8 +583,11 @@ function renderAccount(session, data, promos = []) {
     ? "You are recognized as a returning customer. Eligible promo codes are validated during booking and usage caps are tracked by your phone and email."
     : "Your account is linked to saved details. Enter promo codes during booking to see if you qualify.";
 
-  if (greeting) greeting.textContent = name ? `Welcome back, ${name.split(/\s+/)[0]}` : "Welcome back";
+  // Clean, modest dashboard heading — "Welcome back" is reserved for the
+  // dismissible away-more-than-7-days banner below, not a permanent hero.
+  if (greeting) greeting.textContent = name ? `Hi, ${name.split(/\s+/)[0]}` : "Your dashboard";
   if (customerInitialsEl) customerInitialsEl.textContent = customerInitials(name);
+  maybeShowWelcomeBanner(name);
   if (accountSummary) {
     accountSummary.innerHTML = `
       <article class="customer-data-card customer-account-card">
@@ -577,10 +612,10 @@ function renderAccount(session, data, promos = []) {
     : emptyCard("No active services right now.", `<a class="button primary" href="/book#booking-flow">Book a saved vehicle</a>`);
   vehiclesMount.innerHTML = renderData.vehicles.length
     ? renderData.vehicles.map(vehicleCard).join("")
-    : emptyCard("No saved vehicles yet. Your next completed booking will save one for faster future booking.");
+    : emptyCard("No saved vehicles yet. Add one for faster booking.", `<a class="button primary" href="/account/settings#add-vehicle">Add Vehicle</a>`);
   addressesMount.innerHTML = renderData.addresses.length
     ? renderData.addresses.map(addressCard).join("")
-    : emptyCard("No saved service addresses yet. Use Book Now or My Account to add one.");
+    : emptyCard("No saved service addresses yet. Add one for faster booking.", `<a class="button primary" href="/account/settings#add-address">Add Service Address</a>`);
   historyMount.innerHTML = history.length
     ? history.slice(0, 8).map((request) => requestCard(request, "history")).join("")
     : emptyCard("No completed service history is available for this phone and email yet.");
@@ -813,6 +848,12 @@ createForm?.addEventListener("submit", async (event) => {
       button.textContent = "Create Account";
     }
   }
+});
+
+document.querySelector("[data-welcome-dismiss]")?.addEventListener("click", () => {
+  const banner = document.querySelector("[data-welcome-banner]");
+  if (banner) banner.hidden = true;
+  try { sessionStorage.setItem(WELCOME_DISMISS_KEY, "1"); } catch (_) { /* best effort */ }
 });
 
 document.querySelector("[data-customer-sign-out]")?.addEventListener("click", () => {
