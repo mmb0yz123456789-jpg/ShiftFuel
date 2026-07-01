@@ -3,6 +3,7 @@
 const Stripe = require('stripe');
 const { createClient } = require('@supabase/supabase-js');
 const autoReversePayments = require('./_cron/auto-reverse-payments');
+const gpsWatchdog = require('./_cron/gps-watchdog');
 
 function getUrl(req) {
   return new URL(req.url || '/api/cron', `https://${req.headers.host || 'localhost'}`);
@@ -157,6 +158,13 @@ module.exports = async (req, res) => {
 
   if (job === 'auto-reverse-payments' || url.pathname.endsWith('/auto-reverse-payments')) {
     return autoReversePayments(req, res);
+  }
+
+  // GPS watchdog — triggered by an external cron-job.org job hitting the public
+  // /api/gps-watchdog path (preserved by a vercel.json rewrite). Does its own
+  // Bearer CRON_SECRET auth.
+  if (job === 'gps-watchdog' || url.pathname.endsWith('/gps-watchdog')) {
+    return gpsWatchdog(req, res);
   }
 
   return res.status(404).json({ error: 'Unknown cron job' });
