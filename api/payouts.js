@@ -21,18 +21,13 @@
  * STRIPE_SECRET_KEY (test) set in Vercel. Express + transfers only.
  */
 
-const Stripe = require('stripe');
 const {
   setCorsHeaders,
   getSupabaseAdmin,
   verifyAdminToken,
   verifyWorkerToken,
 } = require('./_auth');
-
-function getStripe() {
-  if (!process.env.STRIPE_SECRET_KEY) throw new Error('STRIPE_SECRET_KEY not configured');
-  return new Stripe(process.env.STRIPE_SECRET_KEY);
-}
+const { getStripe } = require('./_utils');
 
 function baseUrlFrom(req) {
   const origin = req.headers.origin;

@@ -19,8 +19,17 @@
  *   resolve_return_request   – Admin: waive fee / charge return-service amount / continue service for a return request
  */
 
-const Stripe = require('stripe');
 const { setCorsHeaders, getSupabaseAdmin, verifyAdminToken, verifyWorkerToken, verifyAnyStaffToken } = require('./_auth');
+const {
+  getStripe,
+  cleanPhone,
+  roundMoney,
+  savedVehiclePlateKey,
+  savedVehicleColorKey,
+  savedAddressTextKey,
+  savedAddressStateKey,
+  savedAddressZipKey,
+} = require('./_utils');
 const { notifyRequest } = require('./_push');
 const { placeScheduledHold } = require('./_scheduled-auth');
 const { verifyServiceArea } = require('./_service-area');
@@ -51,15 +60,6 @@ const PUSH_AFTER_ACTION = {
 
 // ── Shared helpers ────────────────────────────────────────────────────────────
 
-function cleanPhone(value) {
-  return String(value || '').replace(/\D/g, '');
-}
-
-function getStripe() {
-  if (!process.env.STRIPE_SECRET_KEY) throw new Error('STRIPE_SECRET_KEY not configured');
-  return new Stripe(process.env.STRIPE_SECRET_KEY);
-}
-
 const RETURN_CANCELLATION_FEE = 15;
 const RETURN_RECOVERY_RATE = 0.029;
 const RETURN_RECOVERY_FIXED = 0.30;
@@ -89,10 +89,6 @@ const BOOKING_WASH_PACKAGES = {
   shine: { label: 'Shine', price: 16 },
   'double-wash': { label: 'Double Wash', price: 12 },
 };
-
-function roundMoney(value) {
-  return Math.round((Number(value) || 0) * 100) / 100;
-}
 
 function bookingNeedsFuel(serviceType) {
   return ['fuel', 'fuel-only', 'car-wash-fuel'].includes(serviceType);
@@ -247,26 +243,6 @@ function receiptTotalsFromNotes(notes) {
     fuel: latest ? Number(latest[1]) || 0 : 0,
     wash: latest ? Number(latest[2]) || 0 : 0,
   };
-}
-
-function savedVehiclePlateKey(value) {
-  return String(value || '').trim().toUpperCase().replace(/[\s-]+/g, '');
-}
-
-function savedVehicleColorKey(value) {
-  return String(value || '').trim().toLowerCase();
-}
-
-function savedAddressTextKey(value) {
-  return String(value || '').trim().replace(/\s+/g, ' ').toLowerCase();
-}
-
-function savedAddressStateKey(value) {
-  return String(value || '').trim().toUpperCase();
-}
-
-function savedAddressZipKey(value) {
-  return String(value || '').replace(/\D/g, '');
 }
 
 function returnRequestChargeFromNotes(notes) {
