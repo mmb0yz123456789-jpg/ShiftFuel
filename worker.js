@@ -457,14 +457,8 @@ const workerStatusLabels = {
   cancelled_pending_key_return: 'Cancellation received - awaiting key/vehicle return',
 };
 
-function escapeHtml(value) {
-  return String(value ?? '')
-    .replaceAll('&', '&amp;')
-    .replaceAll('<', '&lt;')
-    .replaceAll('>', '&gt;')
-    .replaceAll('"', '&quot;')
-    .replaceAll("'", '&#039;');
-}
+// HTML escaping lives in shared-format.js (loaded before this file).
+const escapeHtml = window.SF.escapeHtml;
 
 function formatDateTime(value) {
   if (!value) return '';
@@ -480,9 +474,7 @@ function formatWorkerJobTime(request) {
     .join(' ');
 }
 
-function money(value) {
-  return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(Number(value || 0));
-}
+const money = window.SF.formatCurrency;
 
 // Door-jamb PSI defaults live in the shared vehicle-psi.js table (single source
 // of truth for admin + worker). Loaded via <script src="vehicle-psi.js"> before
@@ -537,23 +529,11 @@ function savedFeeOrDefault(value, fallback) {
   return Number.isFinite(amount) && amount > 0 ? amount : fallback;
 }
 
-function serviceNeedsFuel(request) {
-  return String(request.service_type || '').includes('fuel');
-}
-
-function serviceNeedsWash(request) {
-  return String(request.service_type || '').includes('wash');
-}
-
-function receiptTotalsFromNotes(request) {
-  const matches = Array.from(String(request.notes || '').matchAll(/\[receipt_totals fuel=([0-9.]+) wash=([0-9.]+)\]/g));
-  const latest = matches.at(-1);
-
-  return {
-    fuel: latest ? Number(latest[1]) || 0 : 0,
-    wash: latest ? Number(latest[2]) || 0 : 0,
-  };
-}
+// Service-type checks and receipt-total parsing live in shared-payments.js
+// (loaded before this file).
+const serviceNeedsFuel = window.SF.requestNeedsFuel;
+const serviceNeedsWash = window.SF.requestNeedsWash;
+const receiptTotalsFromNotes = window.SF.receiptTotalsFromNotes;
 
 function serviceUnableMap(request) {
   const notes = String(request.notes || '');

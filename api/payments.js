@@ -30,6 +30,7 @@ const {
   savedAddressStateKey,
   savedAddressZipKey,
 } = require('./_utils');
+const { receiptTotalsFromNotes } = require('../shared-payments');
 const { notifyRequest } = require('./_push');
 const { placeScheduledHold } = require('./_scheduled-auth');
 const { verifyServiceArea } = require('./_service-area');
@@ -235,15 +236,7 @@ async function getServerPricingSettings(db) {
   }
 }
 
-function receiptTotalsFromNotes(notes) {
-  const matches = Array.from(String(notes || '').matchAll(/\[receipt_totals fuel=([0-9.]+) wash=([0-9.]+)\]/g));
-  const latest = matches.at(-1);
-
-  return {
-    fuel: latest ? Number(latest[1]) || 0 : 0,
-    wash: latest ? Number(latest[2]) || 0 : 0,
-  };
-}
+// receiptTotalsFromNotes is imported from ../shared-payments (client/server SSOT).
 
 function returnRequestChargeFromNotes(notes) {
   const receipts = receiptTotalsFromNotes(notes);
