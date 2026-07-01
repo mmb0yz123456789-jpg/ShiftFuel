@@ -127,10 +127,11 @@ const stepCopy = {
     fields: `
       <div class="customer-account-prompt">
         <div>
-          <strong>Have an account?</strong>
-          <span>Open My Account to autofill saved vehicles, saved addresses, and recent booking details. You can also continue as a guest.</span>
+          <strong>Returning customer?</strong>
+          <span>Sign in to autofill saved vehicles, saved service addresses, and recent booking details. New customers can continue below as guests.</span>
+          <small>No account required to book.</small>
         </div>
-        <a class="button secondary" href="customer.html">Open My Account</a>
+        <a class="button secondary" href="customer.html">Sign In / Open My Account</a>
       </div>
       <div class="booking-field-grid">
         <label><span>First name <span class="required-mark">Required</span></span><input data-required name="firstName" type="text" autocomplete="given-name" placeholder="First name"></label>
@@ -2991,6 +2992,21 @@ function publicRequestNumber(id) {
   return `SF-${String(id || "").slice(0, 8).toUpperCase()}`;
 }
 
+function postBookingAccountPromptHtml() {
+  return `
+    <div class="post-booking-account-prompt" data-post-booking-account-prompt>
+      <div>
+        <h4>Want faster booking next time?</h4>
+        <p>Create an account to save your vehicle, service address, and booking history.</p>
+      </div>
+      <div class="admin-button-row">
+        <a class="button primary" href="customer.html#customer-account-panel">Create My Account</a>
+        <button class="button secondary" type="button" data-dismiss-account-prompt>No thanks</button>
+      </div>
+    </div>
+  `;
+}
+
 async function submitBooking(panel) {
   if (bookingState.submitting || bookingState.submitted) return;
   savePanelValues(panel);
@@ -3041,6 +3057,7 @@ async function submitBooking(panel) {
             <button class="button primary" type="button" data-new-booking>Submit a new request</button>
             <a class="button secondary" href="track.html">Track My Vehicle</a>
           </div>
+          ${postBookingAccountPromptHtml()}
         </div>
       `;
     }
@@ -3471,6 +3488,12 @@ function renderFlow(root) {
       return;
     }
 
+    const dismissAccountPrompt = event.target.closest("[data-dismiss-account-prompt]");
+    if (dismissAccountPrompt) {
+      dismissAccountPrompt.closest("[data-post-booking-account-prompt]")?.remove();
+      return;
+    }
+
     if (event.target.closest("[data-verify-returning]")) {
       await verifyReturningCustomer(panel);
       savePanelValues(panel);
@@ -3758,7 +3781,7 @@ initBookingFlow();
     bookingState.submittedRequestNumber = number;
     const fields = panel.querySelector('.booking-step-fields');
     if (fields) {
-      fields.innerHTML = `<div class="submission-success"><h3>Request received.</h3><p>Your request number is: <strong>${escapeHtml(number)}</strong></p><p>Use Track My Vehicle to follow your request.</p><div class="admin-button-row"><button class="button primary" type="button" data-new-booking>Submit a new request</button><a class="button secondary" href="track.html">Track My Vehicle</a></div></div>`;
+      fields.innerHTML = `<div class="submission-success"><h3>Request received.</h3><p>Your request number is: <strong>${escapeHtml(number)}</strong></p><p>Use Track My Vehicle to follow your request.</p><div class="admin-button-row"><button class="button primary" type="button" data-new-booking>Submit a new request</button><a class="button secondary" href="track.html">Track My Vehicle</a></div>${postBookingAccountPromptHtml()}</div>`;
     }
     setStatus(panel, 'success', `Request received. Your request number is ${number}.`);
     const actions = panel.querySelector('.booking-step-actions');
