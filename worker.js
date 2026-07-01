@@ -4200,7 +4200,6 @@ async function saveWorkerReturnLocation(button) {
 
   if (error) throw error;
 
-  console.log('Return location saved — advancing straight to the return-photo wizard.');
   await loadWorkerJobs();
 }
 
@@ -4407,8 +4406,6 @@ async function sendWorkerToCustomerPayment(button) {
       await loadWorkerReviews();
       return;
     }
-
-    console.log('[complete] Payment captured â€” request marked complete:', id);
   } catch (err) {
     console.error('[complete] worker-capture network error:', err);
     button.disabled = false;
@@ -4471,10 +4468,6 @@ async function completeWorkerRequest(button) {
     alert('Could not update the request. Please try again.');
     return;
   }
-
-  console.log(isReturnWorkflow
-    ? 'Request remains in progress - return workflow will close after keys are returned.'
-    : 'Request completed - no payment hold to capture.');
 
   await loadWorkerJobs();
   await loadWorkerReviews();

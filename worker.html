@@ -730,7 +730,11 @@
           el.hidden = (el.id !== 'wtab-' + tab);
         });
         document.querySelectorAll('#worker-tabbar .app-tab').forEach(function(btn) {
-          btn.classList.toggle('active', btn.dataset.tab === tab);
+          var isActive = btn.dataset.tab === tab;
+          btn.classList.toggle('active', isActive);
+          btn.classList.toggle('is-active', isActive);
+          if (isActive) btn.setAttribute('aria-current', 'page');
+          else btn.removeAttribute('aria-current');
         });
         window.scrollTo(0, 0);
       }

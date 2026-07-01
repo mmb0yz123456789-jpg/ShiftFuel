@@ -44,7 +44,7 @@
     {
       "name": "My Vehicles",
       "short_name": "Vehicles",
-      "url": "/account/settings#vehicles",
+      "url": "/account#account-saved-details",
       "icons": [{ "src": "/pwa-icon-192.png", "sizes": "192x192" }]
     }
   ]
