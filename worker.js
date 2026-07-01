@@ -343,7 +343,7 @@ function normalizeName(value) {
 }
 
 function normalizePhone(value) {
-  return String(value || '').replace(/\D/g, '');
+  return window.ShiftFuelPhone?.digits(value) || String(value || '').replace(/\D/g, '').slice(0, 10);
 }
 
 function normalizeId(value) {
@@ -417,32 +417,11 @@ function workerJobHasAssignedFallback(job) {
 }
 
 function formatPhone(value) {
-  let digits = normalizePhone(value);
-  if (digits.length === 11 && digits[0] === '1') digits = digits.slice(1);
-  if (digits.length !== 10) return value || '';
-  return `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`;
+  return window.ShiftFuelPhone?.format(value) || value || '';
 }
 
 function attachPhoneInputFormatting(input) {
-  if (!input || input.dataset.phoneFormatBound) return;
-  input.dataset.phoneFormatBound = '1';
-  input.addEventListener('input', () => {
-    const digitsBeforeCursor = normalizePhone(input.value.slice(0, input.selectionStart || 0)).length;
-    const digits = normalizePhone(input.value).slice(0, 10);
-    let formatted = digits;
-    if (digits.length > 6) formatted = `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`;
-    else if (digits.length > 3) formatted = `(${digits.slice(0, 3)}) ${digits.slice(3)}`;
-    else if (digits.length > 0) formatted = `(${digits}`;
-    input.value = formatted;
-
-    let pos = 0;
-    let seen = 0;
-    while (pos < formatted.length && seen < digitsBeforeCursor) {
-      if (/\d/.test(formatted[pos])) seen += 1;
-      pos += 1;
-    }
-    input.setSelectionRange(pos, pos);
-  });
+  window.ShiftFuelPhone?.attachInput(input);
 }
 
 attachPhoneInputFormatting(workerProfilePhone);
@@ -3865,7 +3844,7 @@ async function claimWorkerJob(requestId) {
     p_request_id: requestId,
     p_data: {
       assigned_worker_name: currentEmployee.full_name,
-      assigned_worker_phone: currentEmployee.phone ? formatPhone(currentEmployee.phone) : null,
+      assigned_worker_phone: currentEmployee.phone ? normalizePhone(currentEmployee.phone) : null,
       assigned_worker_photo_url: currentEmployee.cropped_photo_url || currentEmployee.photo_url || null,
       assigned_worker_original_photo_url: currentEmployee.original_photo_url || null,
       status: canonicalBookingStatus(request?.status) === 'new' ? 'assigned' : canonicalBookingStatus(request?.status || 'assigned'),
@@ -5011,8 +4990,13 @@ workerProfileForm?.addEventListener('submit', async (event) => {
     const fullName = workerProfileName?.value.trim() || currentEmployee.full_name;
     const username = (workerProfileUsername?.value || '').trim();
     const phoneInputValue = workerProfilePhone?.value.trim() || null;
-    const phone = phoneInputValue ? formatPhone(phoneInputValue) : null;
+    const phone = phoneInputValue ? normalizePhone(phoneInputValue) : null;
     const homeLocation = currentEmployee.home_location || DEFAULT_WORK_LOCATION;
+
+    if (phoneInputValue && !window.ShiftFuelPhone?.isValid(phoneInputValue)) {
+      setWorkerStatus(window.ShiftFuelPhone?.validationMessage || 'Enter a valid 10-digit phone number.');
+      return;
+    }
 
     // Check for phone duplicate before uploading photo.
     if (phone) {

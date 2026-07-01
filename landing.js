@@ -92,7 +92,7 @@ supportForm?.addEventListener("submit", async (event) => {
   const payload = {
     customer_name: String(formData.get("customer_name") || "").trim(),
     customer_email: String(formData.get("customer_email") || "").trim(),
-    customer_phone: String(formData.get("customer_phone") || "").trim(),
+    customer_phone: window.ShiftFuelPhone?.digits(formData.get("customer_phone")) || String(formData.get("customer_phone") || "").replace(/\D/g, "").slice(0, 10),
     reason: String(formData.get("reason") || "general").trim(),
     booking_ref: String(formData.get("booking_ref") || "").trim(),
     message: String(formData.get("message") || "").trim(),
@@ -102,6 +102,11 @@ supportForm?.addEventListener("submit", async (event) => {
 
   if (!payload.customer_name || !payload.customer_email || !payload.message) {
     if (supportStatus) supportStatus.textContent = "Name, email, and message are required.";
+    return;
+  }
+
+  if (payload.customer_phone && !window.ShiftFuelPhone?.isValid(payload.customer_phone)) {
+    if (supportStatus) supportStatus.textContent = window.ShiftFuelPhone?.validationMessage || "Enter a valid 10-digit phone number.";
     return;
   }
 

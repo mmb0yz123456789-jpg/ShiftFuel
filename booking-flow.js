@@ -163,8 +163,8 @@ const stepCopy = {
     intro: "Enter your phone number, email, ticket number, or any combination of these so we can find your previous booking information.",
     fields: `
       <div class="booking-field-grid">
-        <label><span>Phone number</span><input name="verifyPhone" type="tel" placeholder="(302) 555-0100" data-any-required="verify" data-phone></label>
-        <label><span>Email address</span><input name="verifyEmail" type="email" placeholder="email@example.com" data-any-required="verify" data-email-optional></label>
+        <label><span>Phone number</span><input name="verifyPhone" type="tel" placeholder="Phone number" data-any-required="verify" data-phone></label>
+        <label><span>Email address</span><input name="verifyEmail" type="email" placeholder="you@example.com" data-any-required="verify" data-email-optional></label>
         <label><span>Ticket/request number</span><input name="verifyTicket" type="text" placeholder="Request number" data-any-required="verify"></label>
       </div>
       <div class="address-validation-panel">
@@ -333,14 +333,11 @@ function bindBookingFlowAnchorScroll() {
 }
 
 function normalizePhone(value) {
-  return String(value || "").replace(/\D/g, "");
+  return window.ShiftFuelPhone?.digits(value) || String(value || "").replace(/\D/g, "").slice(0, 10);
 }
 
 function formatPhone(value) {
-  const digits = normalizePhone(value).slice(0, 10);
-  if (digits.length <= 3) return digits;
-  if (digits.length <= 6) return `(${digits.slice(0, 3)}) ${digits.slice(3)}`;
-  return `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`;
+  return window.ShiftFuelPhone?.format(value) || value || "";
 }
 
 function isValidEmail(value) {
@@ -1068,7 +1065,7 @@ function friendlyFieldMessage(input) {
   if (input.dataset.phone !== undefined) {
     const digits = normalizePhone(value);
     if ((isRequired && digits.length !== 10) || (digits.length > 0 && digits.length !== 10)) {
-      return "Please enter a valid phone number.";
+      return window.ShiftFuelPhone?.validationMessage || "Enter a valid 10-digit phone number.";
     }
   }
   if (input.dataset.email !== undefined && value && !isValidEmail(value)) {
@@ -1078,7 +1075,7 @@ function friendlyFieldMessage(input) {
     const copy = {
       firstName: "Please enter your first name.",
       lastName: "Please enter your last name.",
-      customerPhone: "Please enter a valid phone number.",
+      customerPhone: window.ShiftFuelPhone?.validationMessage || "Enter a valid 10-digit phone number.",
       customerEmail: "Please enter a valid email address.",
       street: "Please enter your street address.",
       city: "Please enter your city.",
@@ -1827,7 +1824,7 @@ function renderReturningVehicles(panel) {
 // Book Now: silently detect a returning customer once the Customer step is done,
 // and load their saved addresses/vehicles so the next steps offer them.
 async function detectReturningCustomer() {
-  const phone = String(bookingState.values.customerPhone || "").replace(/\D/g, "");
+  const phone = normalizePhone(bookingState.values.customerPhone || "");
   const email = String(bookingState.values.customerEmail || "").trim();
   if (!phone || !email || !window.ShiftFuelSupabase) return false;
   try {
@@ -2574,7 +2571,7 @@ async function confirmPaymentAuthorization(panel, button) {
           action: "create_setup_intent",
           customer_name: customerName(),
           customer_email: bookingState.values.customerEmail,
-          customer_phone: bookingState.values.customerPhone,
+          customer_phone: normalizePhone(bookingState.values.customerPhone),
           service_label: serviceLabel(),
         }),
       });
@@ -2913,7 +2910,7 @@ function buildBookingPayload() {
     amount_cents: bookingState.payment.authorizedAmountCents || Math.round(totals.estimatedTotal * 100),
     customer_name: customerName(),
     customer_id: bookingState.returning.requests[0]?.customer_id || null,
-    customer_phone: formatPhone(bookingState.values.customerPhone || ""),
+    customer_phone: normalizePhone(bookingState.values.customerPhone || ""),
     customer_email: bookingState.values.customerEmail || "",
     vehicle_year: bookingState.values.vehicleYear || "",
     vehicle_id: resolveSelectedVehicleId(),

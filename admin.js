@@ -3420,7 +3420,11 @@ async function saveAdminWorkerProfile(button) {
 
   // Validate phone uniqueness BEFORE uploading photo so a conflict never orphans an upload.
   const phoneInputValue = card?.querySelector('.admin-worker-phone')?.value.trim() || null;
-  const phone = phoneInputValue ? formatPhone(phoneInputValue) : null;
+  const phone = phoneInputValue ? normalizePhone(phoneInputValue) : null;
+  if (phoneInputValue && !window.ShiftFuelPhone?.isValid(phoneInputValue)) {
+    if (status) status.textContent = window.ShiftFuelPhone?.validationMessage || 'Enter a valid 10-digit phone number.';
+    return;
+  }
   await validateUniqueWorkerPhone(employeeId, phone);
 
   // Resolve photo URLs: delete → clear both; new upload → upload original + canvas-crop;
@@ -4410,7 +4414,7 @@ async function updateWorkerAssignment(requestId, employeeId) {
     ? {
         assigned_employee_id: employee.id,
         assigned_worker_name: employee.full_name,
-        assigned_worker_phone: employee.phone ? formatPhone(employee.phone) : null,
+        assigned_worker_phone: employee.phone ? normalizePhone(employee.phone) : null,
         assigned_worker_photo_url: employee.cropped_photo_url || employee.photo_url || null,
         assigned_worker_original_photo_url: employee.original_photo_url || null,
       }
@@ -7105,38 +7109,17 @@ function closeFindTicketsModal() {
 heroAvgRatingBtn?.addEventListener('click', () => switchAdminTab('reviews'));
 
 function normalizePhone(s) {
-  return String(s || '').replace(/\D/g, '');
+  return window.ShiftFuelPhone?.digits(s) || String(s || '').replace(/\D/g, '').slice(0, 10);
 }
 
 function formatPhone(value) {
-  let digits = normalizePhone(value);
-  if (digits.length === 11 && digits[0] === '1') digits = digits.slice(1);
-  if (digits.length !== 10) return value || '';
-  return `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`;
+  return window.ShiftFuelPhone?.format(value) || value || '';
 }
 
 // Reformats a phone <input> live as the admin types, preserving cursor
 // position by digit count. Safe to call more than once on the same element.
 function attachPhoneInputFormatting(input) {
-  if (!input || input.dataset.phoneFormatBound) return;
-  input.dataset.phoneFormatBound = '1';
-  input.addEventListener('input', () => {
-    const digitsBeforeCursor = normalizePhone(input.value.slice(0, input.selectionStart || 0)).length;
-    const digits = normalizePhone(input.value).slice(0, 10);
-    let formatted = digits;
-    if (digits.length > 6) formatted = `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`;
-    else if (digits.length > 3) formatted = `(${digits.slice(0, 3)}) ${digits.slice(3)}`;
-    else if (digits.length > 0) formatted = `(${digits}`;
-    input.value = formatted;
-
-    let pos = 0;
-    let seen = 0;
-    while (pos < formatted.length && seen < digitsBeforeCursor) {
-      if (/\d/.test(formatted[pos])) seen += 1;
-      pos += 1;
-    }
-    input.setSelectionRange(pos, pos);
-  });
+  window.ShiftFuelPhone?.attachInput(input);
 }
 
 document.addEventListener('focusin', (event) => {
@@ -7998,7 +7981,7 @@ document.querySelector('#admin-create-request-form')?.addEventListener('submit',
 
   const data = {
     customer_name:       val('cr-customer-name'),
-    customer_phone:      formatPhone(val('cr-customer-phone')),
+    customer_phone:      normalizePhone(val('cr-customer-phone')),
     customer_email:      val('cr-customer-email'),
     address_street:      val('cr-address-street'),
     address_apt:         val('cr-address-unit'),
@@ -8026,6 +8009,11 @@ document.querySelector('#admin-create-request-form')?.addEventListener('submit',
 
   if (!data.customer_name || !data.customer_phone || !data.customer_email) {
     if (statusEl) statusEl.textContent = 'Customer name, phone, and email are required.';
+    return;
+  }
+
+  if (!window.ShiftFuelPhone?.isValid(data.customer_phone)) {
+    if (statusEl) statusEl.textContent = window.ShiftFuelPhone?.validationMessage || 'Enter a valid 10-digit phone number.';
     return;
   }
 
@@ -9147,7 +9135,7 @@ function openPromoForm(promo) {
   [...g('#promo-eligible-services').options].forEach((option) => { option.selected = selectedServices.includes(option.value); });
   g('#promo-inactive-days').value = promo?.inactive_days_threshold || '';
   g('#promo-specific-customer-id').value = promo?.specific_customer_id || '';
-  g('#promo-specific-phone').value = promo?.specific_customer_phone || '';
+  g('#promo-specific-phone').value = promo?.specific_customer_phone ? formatPhone(promo.specific_customer_phone) : '';
   g('#promo-specific-email').value = promo?.specific_customer_email || '';
   g('#promo-min-order').value = promo?.min_order_amount || '';
   g('#promo-per-customer').value = promo?.per_customer_limit ?? 1;
@@ -9176,7 +9164,7 @@ promoForm?.addEventListener('submit', async (e) => {
     eligible_services: [...g('#promo-eligible-services').selectedOptions].map((option) => option.value),
     inactive_days_threshold: g('#promo-inactive-days').value,
     specific_customer_id: g('#promo-specific-customer-id').value,
-    specific_customer_phone: g('#promo-specific-phone').value,
+    specific_customer_phone: normalizePhone(g('#promo-specific-phone').value),
     specific_customer_email: g('#promo-specific-email').value,
     min_order_amount: g('#promo-min-order').value,
     per_customer_limit: g('#promo-per-customer').value,

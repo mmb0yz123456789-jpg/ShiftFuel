@@ -65,10 +65,7 @@ function scrollTrackFormAfterLoad() {
 }
 
 function formatPhoneForTracking(value) {
-  const digits = String(value || "").replace(/\D/g, "").slice(0, 10);
-  if (digits.length <= 3) return digits;
-  if (digits.length <= 6) return `(${digits.slice(0, 3)}) ${digits.slice(3)}`;
-  return `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`;
+  return window.ShiftFuelPhone?.format(value) || value || "";
 }
 
 (function prefillTrackingFromCustomerAccount() {
@@ -337,32 +334,11 @@ const DENY_REASONS = [
 ];
 
 function cleanPhone(value) {
-  return String(value || "").replace(/\D/g, "");
+  return window.ShiftFuelPhone?.digits(value) || String(value || "").replace(/\D/g, "").slice(0, 10);
 }
 
 function attachPhoneInputFormatting(input) {
-  if (!input || input.dataset.phoneFormatBound) return;
-  input.dataset.phoneFormatBound = "1";
-  input.addEventListener("input", () => {
-    const digitsBeforeCursor = cleanPhone(input.value.slice(0, input.selectionStart || 0)).length;
-    const raw = cleanPhone(input.value);
-    // Drop a leading US country code so "1 (908) 500-0635" doesn't shift into
-    // a wrong "(190) 850-0635" by treating the 1 as the area code.
-    const digits = (raw.length === 11 && raw[0] === "1" ? raw.slice(1) : raw).slice(0, 10);
-    let formatted = digits;
-    if (digits.length > 6) formatted = `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`;
-    else if (digits.length > 3) formatted = `(${digits.slice(0, 3)}) ${digits.slice(3)}`;
-    else if (digits.length > 0) formatted = `(${digits}`;
-    input.value = formatted;
-
-    let pos = 0;
-    let seen = 0;
-    while (pos < formatted.length && seen < digitsBeforeCursor) {
-      if (/\d/.test(formatted[pos])) seen += 1;
-      pos += 1;
-    }
-    input.setSelectionRange(pos, pos);
-  });
+  window.ShiftFuelPhone?.attachInput(input);
 }
 
 attachPhoneInputFormatting(trackingPhone);
@@ -764,15 +740,11 @@ function serviceUnableReasonsFromNotes(request) {
 // can fall back to "Contact Support" instead of rendering a broken number
 // like "(55) 123-4567".
 function formatPhone(raw) {
-  const d = String(raw || '').replace(/\D/g, '');
-  if (d.length === 10) return `(${d.slice(0,3)}) ${d.slice(3,6)}-${d.slice(6)}`;
-  if (d.length === 11 && d[0] === '1') return `(${d.slice(1,4)}) ${d.slice(4,7)}-${d.slice(7)}`;
-  return '';
+  return window.ShiftFuelPhone?.format(raw) || '';
 }
 
 function isValidPhone(raw) {
-  const d = String(raw || '').replace(/\D/g, '');
-  return d.length === 10 || (d.length === 11 && d[0] === '1');
+  return Boolean(window.ShiftFuelPhone?.isValid(raw));
 }
 
 function formatTimeShort(isoOrTime) {
@@ -4583,7 +4555,7 @@ _svcControlsObserver.observe(trackingResult, { childList: true, subtree: true })
   if (!document.body?.classList.contains('track-page')) return;
 
   function cleanPhone(value) {
-    return String(value || '').replace(/\D/g, '');
+    return window.ShiftFuelPhone?.digits(value) || String(value || '').replace(/\D/g, '').slice(0, 10);
   }
 
   function cleanRequestId(value) {
@@ -4743,15 +4715,11 @@ _svcControlsObserver.observe(trackingResult, { childList: true, subtree: true })
 // merged from track-phone-formatting.js
 (function () {
   function cleanPhone(value) {
-    return String(value || "").replace(/\D/g, "").slice(0, 10);
+    return window.ShiftFuelPhone?.digits(value) || String(value || "").replace(/\D/g, "").slice(0, 10);
   }
 
   function formatPhone(value) {
-    const digits = cleanPhone(value);
-    if (!digits) return "";
-    if (digits.length <= 3) return digits;
-    if (digits.length <= 6) return `(${digits.slice(0, 3)}) ${digits.slice(3)}`;
-    return `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`;
+    return window.ShiftFuelPhone?.format(value) || "";
   }
 
   function formatPhoneInput(input) {
@@ -4765,8 +4733,7 @@ _svcControlsObserver.observe(trackingResult, { childList: true, subtree: true })
     input.setAttribute("inputmode", "numeric");
     input.setAttribute("maxlength", "14");
     input.setAttribute("autocomplete", "tel");
-    input.addEventListener("input", () => formatPhoneInput(input));
-    input.addEventListener("blur", () => { input.value = formatPhone(input.value); });
+    window.ShiftFuelPhone?.attachInput(input);
     formatPhoneInput(input);
   }
 
@@ -4798,7 +4765,7 @@ _svcControlsObserver.observe(trackingResult, { childList: true, subtree: true })
       if (input && digits && digits.length !== 10) {
         event.preventDefault();
         event.stopImmediatePropagation();
-        if (message) message.textContent = "Enter a 10 digit phone number, or search by email or request number.";
+        if (message) message.textContent = window.ShiftFuelPhone?.validationMessage || "Enter a valid 10-digit phone number.";
         input.focus();
       }
     }, true);

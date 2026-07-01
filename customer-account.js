@@ -61,14 +61,11 @@ function escapeHtml(value) {
 }
 
 function cleanPhone(value) {
-  return String(value || "").replace(/\D/g, "");
+  return window.ShiftFuelPhone?.digits(value) || String(value || "").replace(/\D/g, "").slice(0, 10);
 }
 
 function formatPhone(value) {
-  const digits = cleanPhone(value).slice(0, 10);
-  if (digits.length <= 3) return digits;
-  if (digits.length <= 6) return `(${digits.slice(0, 3)}) ${digits.slice(3)}`;
-  return `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`;
+  return window.ShiftFuelPhone?.format(value) || value || "";
 }
 
 function publicNumber(id) {
@@ -499,6 +496,10 @@ loginForm?.addEventListener("submit", async (event) => {
     phone: form.elements.phone.value,
     email: form.elements.email.value,
   };
+  if (!window.ShiftFuelPhone?.isValid(session.phone)) {
+    setStatus("error", window.ShiftFuelPhone?.validationMessage || "Enter a valid 10-digit phone number.");
+    return;
+  }
   if (button) {
     button.disabled = true;
     button.textContent = "Opening...";
@@ -526,7 +527,7 @@ createForm?.addEventListener("submit", async (event) => {
   const email = String(form.elements.email.value || "").trim().toLowerCase();
 
   if (phone.length < 10 || !email || !firstName || !lastName) {
-    setCreateStatus("error", "Enter your first name, last name, phone number, and email.");
+    setCreateStatus("error", firstName && lastName && email ? (window.ShiftFuelPhone?.validationMessage || "Enter a valid 10-digit phone number.") : "Enter your first name, last name, phone number, and email.");
     return;
   }
 

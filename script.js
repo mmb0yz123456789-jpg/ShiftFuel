@@ -1126,14 +1126,11 @@ function moneyValue(text) {
   return Number(text.replace(/[^0-9.-]+/g, "")) || 0;
 }
 function normalizePhone(value) {
-  return String(value || "").replace(/\D/g, "");
+  return window.ShiftFuelPhone?.digits(value) || String(value || "").replace(/\D/g, "").slice(0, 10);
 }
 
 function formatPhone(value) {
-  let digits = normalizePhone(value);
-  if (digits.length === 11 && digits[0] === "1") digits = digits.slice(1);
-  if (digits.length !== 10) return value || "";
-  return `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`;
+  return window.ShiftFuelPhone?.format(value) || value || "";
 }
 
 function cleanLookupPhone(value) {
@@ -1143,25 +1140,7 @@ function cleanLookupPhone(value) {
 // Reformats a phone <input> live as the customer types, preserving cursor
 // position by digit count. Safe to call more than once on the same element.
 function attachPhoneInputFormatting(input) {
-  if (!input || input.dataset.phoneFormatBound) return;
-  input.dataset.phoneFormatBound = "1";
-  input.addEventListener("input", () => {
-    const digitsBeforeCursor = normalizePhone(input.value.slice(0, input.selectionStart || 0)).length;
-    const digits = normalizePhone(input.value).slice(0, 10);
-    let formatted = digits;
-    if (digits.length > 6) formatted = `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`;
-    else if (digits.length > 3) formatted = `(${digits.slice(0, 3)}) ${digits.slice(3)}`;
-    else if (digits.length > 0) formatted = `(${digits}`;
-    input.value = formatted;
-
-    let pos = 0;
-    let seen = 0;
-    while (pos < formatted.length && seen < digitsBeforeCursor) {
-      if (/\d/.test(formatted[pos])) seen += 1;
-      pos += 1;
-    }
-    input.setSelectionRange(pos, pos);
-  });
+  window.ShiftFuelPhone?.attachInput(input);
 }
 
 function escapeHtml(value) {
@@ -2066,7 +2045,7 @@ function getBookingPayload() {
   return {
     customer: {
       name: data.get("name"),
-	  phone: formatPhone(data.get("phone")),
+	  phone: normalizePhone(data.get("phone")),
       email: data.get("email"),
     },
     vehicle: {
@@ -2627,12 +2606,19 @@ applicantForm?.addEventListener("submit", async (event) => {
   const data = new FormData(applicantForm);
   const applicantName = String(data.get("applicantName") || "").trim();
   const applicantEmail = String(data.get("applicantEmail") || "").trim();
-  const applicantPhone = String(data.get("applicantPhone") || "").trim();
+  const applicantPhone = normalizePhone(data.get("applicantPhone"));
   const applicantResume = data.get("applicantResume");
 
   if (!applicantName || (!applicantEmail && !applicantPhone)) {
     if (applicantStatus) {
       applicantStatus.textContent = "Add your name and either a phone number or email.";
+    }
+    return;
+  }
+
+  if (applicantPhone && !(window.ShiftFuelPhone?.isValid(applicantPhone) ?? applicantPhone.length === 10)) {
+    if (applicantStatus) {
+      applicantStatus.textContent = window.ShiftFuelPhone?.validationMessage || "Enter a valid 10-digit phone number.";
     }
     return;
   }
