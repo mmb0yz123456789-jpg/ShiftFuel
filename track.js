@@ -107,6 +107,19 @@ function formatPhoneForTracking(value) {
       window.setTimeout(() => trackForm?.requestSubmit(), 100);
     });
   }
+
+  // Signed-in customers shouldn't see a guest "enter your phone + email" lookup.
+  // Mark the page so CSS can drop the marketing hero + de-emphasize the form, and
+  // personalize the card copy. The fields stay (prefilled) so a "different request"
+  // lookup still works and there's never a blank screen if auto-load finds nothing.
+  if (session?.phone && session?.email) {
+    document.body.classList.add("track-authed");
+    const first = String(session.name || "").split(/\s+/)[0] || "";
+    const heading = document.querySelector(".track-search-heading h2");
+    const sub = document.querySelector(".track-search-heading p");
+    if (heading) heading.textContent = first ? `${first}, here are your services` : "Your services";
+    if (sub) sub.textContent = "You're signed in — loading your current and recent requests.";
+  }
 })();
 
 // Unified terminal/closed status list — keep in sync with admin.js, worker.js,

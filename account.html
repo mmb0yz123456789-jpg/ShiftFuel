@@ -49,21 +49,21 @@
               <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
               <circle cx="12" cy="7" r="4"></circle>
             </svg>
-            <span>Profile</span>
+            <span class="account-nav-text"><span class="account-nav-label">Profile</span><small class="account-nav-desc">Manage your personal information</small></span>
           </button>
           <button class="account-nav-item" data-account-tab="security" type="button">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
               <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
             </svg>
-            <span>Security</span>
+            <span class="account-nav-text"><span class="account-nav-label">Security</span><small class="account-nav-desc">Password and authentication</small></span>
           </button>
           <button class="account-nav-item" data-account-tab="notifications" type="button">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path>
               <path d="M13.73 21a2 2 0 0 1-3.46 0"></path>
             </svg>
-            <span>Notifications</span>
+            <span class="account-nav-text"><span class="account-nav-label">Notifications</span><small class="account-nav-desc">Manage text &amp; email alerts</small></span>
           </button>
           <button class="account-nav-item" data-account-tab="vehicles" type="button">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -71,24 +71,33 @@
               <circle cx="7" cy="17" r="2"></circle>
               <circle cx="17" cy="17" r="2"></circle>
             </svg>
-            <span>Vehicles</span>
+            <span class="account-nav-text"><span class="account-nav-label">Vehicles</span><small class="account-nav-desc">Manage saved vehicles</small></span>
           </button>
           <button class="account-nav-item" data-account-tab="addresses" type="button">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path>
               <circle cx="12" cy="10" r="3"></circle>
             </svg>
-            <span>Addresses</span>
+            <span class="account-nav-text"><span class="account-nav-label">Addresses</span><small class="account-nav-desc">Manage service addresses</small></span>
           </button>
+          <a class="account-nav-item account-nav-link" href="/account#account-history">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3 2"></path>
+            </svg>
+            <span class="account-nav-text"><span class="account-nav-label">Booking history</span><small class="account-nav-desc">View past &amp; completed services</small></span>
+          </a>
         </nav>
         <div class="account-sidebar-footer">
-          <a class="button secondary account-history-link" href="/account#account-history">Booking history</a>
           <button class="button secondary account-sign-out" type="button">Sign out</button>
         </div>
       </aside>
 
       <!-- Main Content Area -->
       <div class="account-content">
+        <button class="account-back" type="button" data-account-back aria-label="Back to account menu">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"></path></svg>
+          <span>Account</span>
+        </button>
         <!-- Profile Tab -->
         <section class="account-tab is-active" data-tab-content="profile" aria-label="Profile settings">
           <div class="account-tab-header">

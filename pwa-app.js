@@ -38,22 +38,45 @@
       });
     }
 
-    // Top-left logo + Home tab, sign-in aware and mode-independent:
-    //   signed in  → the customer dashboard (/account)
-    //   signed out → the public home (/)
-    // The logo must NEVER route to the Account settings tab — only the Account tab
-    // does that. Runs in every mode: browser, mobile web, and installed PWA.
+    // Role-aware "home" destination for the logo/brand. A signed-in user must be
+    // kept INSIDE their app; only guests go to the public marketing homepage.
+    //   admin    → /admin/dashboard
+    //   worker   → /worker/dashboard
+    //   customer → /account (the signed-in dashboard)
+    //   guest    → / (public homepage)
+    function roleAwareHome() {
+      try {
+        if (sessionStorage.getItem('shiftfuel_admin') === 'true') return '/admin/dashboard';
+        if (sessionStorage.getItem('shiftfuel_worker_token')) return '/worker/dashboard';
+        const s = JSON.parse(localStorage.getItem('shiftfuel_customer_account') || 'null');
+        if (s && s.phone && s.email) return '/account';
+      } catch (_) {}
+      return '/';
+    }
+
+    // Top-left logo + Home tab, role-aware and mode-independent. Sets the href AND
+    // binds a click handler that recomputes the destination at click time, so the
+    // logo can NEVER dump a signed-in user onto the public site — even if some
+    // other script races to change the href. Runs in every mode.
     function syncCustomerNavTargets() {
       if (!isCustomerSurface()) return;
-      const signedIn = isCustomerSignedIn();
-      const homeHref = signedIn ? '/account' : '/';
+      const home = roleAwareHome();
+      const signedIn = home !== '/';
       const logo = document.querySelector('.site-header .logo');
       if (logo) {
-        logo.setAttribute('href', homeHref);
+        logo.setAttribute('href', home);
         logo.setAttribute('aria-label', signedIn ? 'ShiftFuel Concierge home' : 'ShiftFuel Concierge');
+        if (!logo.dataset.roleHomeBound) {
+          logo.dataset.roleHomeBound = '1';
+          logo.addEventListener('click', (e) => {
+            if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return; // allow open-in-new-tab
+            e.preventDefault();
+            window.location.href = roleAwareHome();
+          });
+        }
       }
       const homeTab = document.querySelector('.customer-tabbar [data-cust-tab="home"]');
-      if (homeTab) homeTab.setAttribute('href', homeHref);
+      if (homeTab) homeTab.setAttribute('href', signedIn ? '/account' : '/');
     }
 
     // Highlight the bottom tab that matches the current route. Home (/account) and

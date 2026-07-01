@@ -108,14 +108,31 @@
   // ============================================================
   // Tab Navigation
   // ============================================================
+  // Mobile drill-down: the Account tab opens a clean MENU (nav list) and each row
+  // opens a detail PAGE. Desktop keeps the sidebar + content side by side (the CSS
+  // ignores data-acct-view above 768px), so this is mobile-only behaviour.
+  const isMobileAccount = () => window.matchMedia && window.matchMedia('(max-width: 768px)').matches;
+  function setAcctView(view) {
+    document.body.setAttribute('data-acct-view', view);
+    if (view === 'detail') { window.scrollTo(0, 0); const c = document.querySelector('.account-content'); if (c) c.scrollTop = 0; }
+  }
+
   function setupTabNavigation() {
     accountTabButtons.forEach(button => {
       button.addEventListener('click', () => {
         const tabName = button.dataset.accountTab;
         switchToTab(tabName);
+        if (isMobileAccount()) setAcctView('detail');
         // Keep the URL hash in sync so the tab survives a refresh / is shareable.
         if (history.replaceState) history.replaceState(null, '', '#' + tabName);
       });
+    });
+
+    // Back button (mobile): return from a detail page to the account menu.
+    const backBtn = document.querySelector('[data-account-back]');
+    if (backBtn) backBtn.addEventListener('click', () => {
+      setAcctView('menu');
+      if (history.replaceState) history.replaceState(null, '', location.pathname);
     });
 
     // Deep-link: open the tab named in the URL hash (e.g. /account/settings#vehicles).
@@ -126,16 +143,21 @@
                           'add-address': { tab: 'addresses', form: '[data-add-address-form]' } };
     const applyHash = () => {
       const raw = (location.hash || '').replace('#', '').trim();
-      if (!raw) return;
+      if (!raw) { setAcctView('menu'); return; }
       const add = addFormHash[raw];
       const name = add ? add.tab : raw;
       const btn = document.querySelector(`[data-account-tab="${name}"]`);
-      if (btn && !btn.hidden) switchToTab(name);
+      if (btn && !btn.hidden) {
+        switchToTab(name);
+        if (isMobileAccount()) setAcctView('detail');
+      }
       if (add) {
         const form = document.querySelector(add.form);
         if (form) toggleAddForm(form, true);
       }
     };
+    // Default to the menu on mobile; a deep-link hash jumps straight to its detail page.
+    setAcctView('menu');
     applyHash();
     window.addEventListener('hashchange', applyHash);
   }

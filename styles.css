@@ -12027,7 +12027,8 @@ body.customer-account-loaded .customer-header-signed {
   display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin: 4px 0 22px;
 }
 .customer-quickaction {
-  display: flex; flex-direction: column; align-items: flex-start; gap: 12px;
+  display: flex; flex-direction: column; align-items: flex-start; justify-content: flex-start; gap: 12px;
+  min-height: 108px; box-sizing: border-box;
   padding: 16px; border-radius: 16px; text-decoration: none;
   background: #fff; color: #0f2a28; border: 1px solid rgba(4,26,24,.08);
   box-shadow: 0 6px 18px rgba(4,26,24,.08); font-weight: 800; font-size: .98rem;
@@ -12035,10 +12036,12 @@ body.customer-account-loaded .customer-header-signed {
 }
 .customer-quickaction:hover { transform: translateY(-2px); box-shadow: 0 12px 26px rgba(4,26,24,.14); }
 .customer-quickaction-icon {
+  flex: 0 0 auto;
   display: grid; place-items: center; width: 42px; height: 42px;
   border-radius: 12px; background: rgba(20,144,76,.12); color: #0b6b3d;
 }
-.customer-quickaction-icon svg { width: 22px; height: 22px; }
+.customer-quickaction-icon svg { width: 22px; height: 22px; display: block; }
+.customer-quickaction-label { align-self: flex-start; }
 .customer-quickaction-primary { background: linear-gradient(135deg, #14904c, #0b6b3d); color: #fff; border: 0; }
 .customer-quickaction-primary .customer-quickaction-icon { background: rgba(255,255,255,.18); color: #fff; }
 

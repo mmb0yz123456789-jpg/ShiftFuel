@@ -497,6 +497,22 @@ html.sf-compact body.account-page .account-layout {
 html.sf-compact body.account-page .account-sidebar { border: 0; background: #f7fbfa; }
 html.sf-compact body.account-page .account-content { max-height: none; }
 
+/* Mobile account is a drill-down MENU. In menu view the white .account-layout
+   card is dropped so the row cards sit directly on the gradient (like the
+   dashboard); the heading goes white. Detail view keeps the white content card. */
+html.sf-compact body.account-page[data-acct-view="menu"] .account-layout {
+  background: transparent; box-shadow: none; border-radius: 0; margin: 4px 8px 22px; overflow: visible;
+}
+html.sf-compact body.account-page[data-acct-view="menu"] .account-sidebar { background: transparent; }
+html.sf-compact body.account-page[data-acct-view="menu"] .account-sidebar-header h1 { color: #fff; }
+html.sf-compact body.account-page[data-acct-view="menu"] .account-sidebar-subtitle { color: rgba(255,255,255,.72); }
+
+/* Signed-in Track: drop the guest marketing hero so it reads as an app "your
+   services" view. The lookup form stays (prefilled) as a safe fallback + for
+   looking up a different request. Applies on every surface, not just the PWA. */
+body.track-authed .track-hero-redesign { display: none; }
+body.track-authed .track-search-note { display: none; }
+
 /* ---- Logged-out state → app sign-in styling ------------------------------ */
 html.sf-compact body.customer-account-page .customer-account-intro .customer-dashboard-kicker { display: none; }
 html.sf-compact body.customer-account-page .customer-account-intro h1 { color: #fff; font-size: 1.9rem; font-weight: 800; }

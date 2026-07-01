@@ -6985,12 +6985,24 @@ document.addEventListener('click', async (event) => {
   }
 });
 
-function syncAdminMobileNav(page = adminState.currentPageTab, view = adminState.currentView) {
+// The mobile bottom bar has only 5 sections, but the app has more desktop pages.
+// Map every desktop page onto the bottom-nav item that owns it so the correct tab
+// highlights (e.g. Support / Services / Promos all live under the "Services" tab).
+// Pages with no bottom-nav home (payroll, create-request) intentionally highlight
+// nothing rather than lighting up the wrong tab.
+const ADMIN_MOBILE_NAV_PAGE = {
+  dashboard: 'dashboard',
+  requests: 'requests',
+  workers: 'workers',
+  support: 'services',
+  services: 'services',
+  settings: 'settings',
+};
+
+function syncAdminMobileNav(page = adminState.currentPageTab) {
+  const navPage = ADMIN_MOBILE_NAV_PAGE[page] || null;
   document.querySelectorAll('[data-admin-mobile-nav]').forEach((btn) => {
-    const pageMatches = btn.dataset.page === page;
-    const requestView = btn.dataset.requestView;
-    const viewMatches = !requestView || normalizeRequestFilter(requestView) === normalizeRequestFilter(view);
-    const isActive = pageMatches && viewMatches;
+    const isActive = btn.dataset.page === navPage;
     btn.classList.toggle('active', isActive);
     btn.classList.toggle('is-active', isActive);
     if (isActive) btn.setAttribute('aria-current', 'page');
@@ -7071,6 +7083,9 @@ function switchPageTab(page) {
   }
   if (page === 'services') {
     loadPromos();
+    // On phones the Services tab also hosts the Support panel (grouped hub), so
+    // populate support messages here too — harmless on desktop where it's hidden.
+    loadSupportMessages();
   }
   renderRequests();
   syncAdminMobileNav(page, adminState.currentView);
@@ -9306,8 +9321,27 @@ function openPromoForm(promo) {
   g('#promo-starts').value = promo?.starts_at ? String(promo.starts_at).slice(0, 10) : '';
   g('#promo-expires').value = promo?.expires_at ? String(promo.expires_at).slice(0, 10) : '';
   g('#promo-active').checked = promo ? !!promo.active : true;
+  syncPromoConditionalFields();
   promoForm.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
+
+// Progressive disclosure: only show the fields that matter for the current
+// discount type / audience. Free add-ons need no Value; the specific-customer
+// and inactive-days fields only apply to those audiences.
+function syncPromoConditionalFields() {
+  const type = document.querySelector('#promo-discount-type')?.value;
+  const audience = document.querySelector('#promo-audience')?.value;
+  const valueField = document.querySelector('#promo-value-field');
+  if (valueField) valueField.hidden = type === 'free_addon';
+  const inactiveField = document.querySelector('#promo-inactive-field');
+  if (inactiveField) inactiveField.hidden = audience !== 'inactive';
+  document.querySelectorAll('.promo-specific-field').forEach((el) => {
+    el.hidden = audience !== 'specific';
+  });
+}
+
+document.querySelector('#promo-discount-type')?.addEventListener('change', syncPromoConditionalFields);
+document.querySelector('#promo-audience')?.addEventListener('change', syncPromoConditionalFields);
 
 promoNewBtn?.addEventListener('click', () => openPromoForm(null));
 promoCancelBtn?.addEventListener('click', () => { if (promoForm) promoForm.hidden = true; });
