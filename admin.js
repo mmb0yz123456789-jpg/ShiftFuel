@@ -2611,15 +2611,11 @@ function renderRequests() {
 async function ensureEmployee(fullName) {
   const codePrefix = fullName.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6) || 'WORKER';
   const employeeCode = `EMP-${codePrefix}`;
-  const { data, error } = await db
-    .from('employees_public')
-    .select('id,active')
-    .eq('full_name', fullName)
-    .limit(1);
+  const { data, error } = await db.rpc('admin_list_employees', { p_token: adminAuthToken() });
 
   if (error) throw error;
 
-  const existing = data?.[0];
+  const existing = (data || []).find((employee) => employee.full_name === fullName);
 
   if (existing) {
     // Re-activate if they were accidentally deactivated.
@@ -3393,15 +3389,11 @@ async function validateUniqueWorkerPhone(employeeId, phone) {
   if (!phone) return;
   const phoneDigits = normalizePhone(phone);
 
-  const { data, error } = await db
-    .from('employees_public')
-    .select('id,full_name,employee_code')
-    .eq('active', true)
-    .neq('id', employeeId);
-
-  if (error) throw error;
-
-  const conflict = (data || []).find((employee) => normalizePhone(employee.phone) === phoneDigits);
+  const conflict = allEmployees.find((employee) => (
+    employee.id !== employeeId
+    && employee.active
+    && normalizePhone(employee.phone) === phoneDigits
+  ));
   if (conflict) {
     throw new Error(`Phone number is already used by ${conflict.full_name} (${conflict.employee_code}).`);
   }
@@ -3768,9 +3760,7 @@ setInterval(pollAdminRequests, 20000);
 async function pollWorkerPresence() {
   if (!adminAuthToken() || !allEmployees.length) return;
   try {
-    const { data, error } = await db
-      .from('employees_public')
-      .select('id,last_seen_at,presence_status');
+    const { data, error } = await db.rpc('admin_list_employees', { p_token: adminAuthToken() });
     if (error || !Array.isArray(data)) return;
     const byId = new Map(data.map((e) => [e.id, e]));
     allEmployees = allEmployees.map((e) => {
@@ -7696,13 +7686,7 @@ function validateWorkerBase(schedule) {
 }
 
 async function upsertWorker(schedule) {
-  const { data: existing, error: existingError } = await db
-    .from('employees_public')
-    .select('id')
-    .eq('full_name', schedule.workerName)
-    .limit(1);
-
-  if (existingError) throw existingError;
+  const existing = allEmployees.filter((employee) => employee.full_name === schedule.workerName);
 
   if (existing?.length) {
     const employeeId = existing[0].id;
