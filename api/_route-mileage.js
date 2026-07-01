@@ -139,4 +139,38 @@ async function recordDrivenMileage({ supabaseAdmin, requestId } = {}) {
   }
 }
 
-module.exports = { recordDrivenMileage };
+/**
+ * Read-only: miles driven so far from the GPS breadcrumb trail, optionally counting
+ * only fixes at/after `sinceIso` (e.g. the pickup time, so we measure the paid detour
+ * and not the worker's commute to the customer). Unlike recordDrivenMileage this never
+ * writes and has no idempotency guard — it's used mid-job (e.g. at cancellation) to
+ * size a partial-trip cost. Returns miles (Number), or null when there aren't enough
+ * fixes to measure. Never throws.
+ * @param {{ supabaseAdmin: object, requestId: string, sinceIso?: string }} args
+ */
+async function drivenMilesSoFar({ supabaseAdmin, requestId, sinceIso } = {}) {
+  if (!supabaseAdmin || !requestId) return null;
+  try {
+    let q = supabaseAdmin
+      .from('request_locations')
+      .select('latitude, longitude, created_at')
+      .eq('request_id', requestId)
+      .order('created_at', { ascending: true });
+    if (sinceIso) q = q.gte('created_at', sinceIso);
+    const { data: rows, error } = await q;
+    if (error || !rows || rows.length < 2) return null;
+
+    const points = rows
+      .map((r) => ({ lat: Number(r.latitude), lon: Number(r.longitude) }))
+      .filter((p) => Number.isFinite(p.lat) && Number.isFinite(p.lon));
+    if (points.length < 2) return null;
+
+    const matched = await mapMatch(decimate(points, MAX_MATCH_POINTS));
+    return matched ? matched.miles : haversineTrailMiles(points);
+  } catch (err) {
+    console.warn('[route-mileage] drivenMilesSoFar skipped for request', requestId, '—', err && err.message);
+    return null;
+  }
+}
+
+module.exports = { recordDrivenMileage, drivenMilesSoFar };

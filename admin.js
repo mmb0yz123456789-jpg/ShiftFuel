@@ -1066,9 +1066,10 @@ function adminFeeShareSplit(fuelFee, washFee, inspFee, timeCharge, shares = ADMI
   );
 }
 
-// Did the customer cancel after the worker already had the keys? Those workers
-// are owed half the cancellation fee actually collected (no mileage — they never
-// drove to a station).
+// Did the customer cancel after the worker already had the keys? Those workers are
+// owed half the base cancellation fee actually collected, plus — for post-pickup
+// cancels where the driver had already set off — the aborted-trip mileage + time
+// recorded in the [cancel_costs] note (see computeWorkerPayoutForRequest).
 function isCanceledAfterKeys(request) {
   const canceled = !!request.canceled_at || /cancel/i.test(String(request.status || ''));
   return canceled && !!request.key_received_at;
@@ -1086,6 +1087,15 @@ const ADMIN_TIME_COMP = { companyRatePerMin: 0.50, fuelBaseMin: 3, fuelPerGallon
 function adminFrozenTimeCharge(request) {
   const m = String(request?.notes || '').match(/\[time_charge (\d+(?:\.\d+)?)\]/);
   return m ? Number(m[1]) : 0;
+}
+// [cancel_costs mileage=X time=Y miles=M mins=N src=…] — stamped by the server
+// (api/payments.js) on a post-pickup cancellation. Gives payroll the real
+// aborted-trip mileage cost + minutes so the driver is paid for the trip they
+// actually made. Absent on pre-drive (key-only) cancels ⇒ null.
+function adminCancelCostsFromNotes(request) {
+  const m = String(request?.notes || '').match(/\[cancel_costs mileage=(-?\d+(?:\.\d+)?) time=(-?\d+(?:\.\d+)?) miles=(-?\d+(?:\.\d+)?) mins=(-?\d+(?:\.\d+)?)/);
+  if (!m) return null;
+  return { mileageCost: Number(m[1]) || 0, timeCost: Number(m[2]) || 0, miles: Number(m[3]) || 0, mins: Number(m[4]) || 0 };
 }
 function adminNoteCoords(request, tag) {
   const m = String(request?.notes || '').match(new RegExp('\\[' + tag + ' (-?\\d+(?:\\.\\d+)?),(-?\\d+(?:\\.\\d+)?)\\]'));
@@ -1169,11 +1179,20 @@ function computeWorkerPayoutForRequest(request) {
     // Per-type service-fee share (time folded out so it's paid once). Mirrors worker.js.
     payout += adminFeeShareSplit(fees.fuel, fees.wash, fees.inspection, adminFrozenTimeCharge(request), adminEffectiveFeeShares(request));
   } else if (isCanceledAfterKeys(request) && request.payment_status === 'cancellation_fee_paid') {
-    // 50% of the cancellation fee the company actually collected (no per-type split).
+    // 50% of the base cancellation fee the company actually collected (no per-type split).
     const cancelGross = Number(request.cancellation_fee ?? request.cancellation_fee_amount ?? 0);
     if (cancelGross > 0) {
       const stripe = roundMoneyValue(cancelGross * RETURN_RECOVERY_RATE + RETURN_RECOVERY_FIXED);
       payout += Math.max(0, cancelGross - stripe) * WORKER_SERVICE_FEE_SHARE;
+    }
+    // Post-pickup cancels: the driver actually drove the detour and spent time before
+    // the job was aborted. Pay that through, mirroring a completed job — mileage at
+    // the same rate the customer was charged (passes through 100%), time at the
+    // driver's per-minute rate. Pre-drive (key-only) cancels have no [cancel_costs]
+    // note ⇒ this stays $0.
+    const cc = adminCancelCostsFromNotes(request);
+    if (cc) {
+      payout += Math.max(0, cc.mileageCost) + roundMoneyValue(Math.max(0, cc.mins) * adminWorkerTimeRate(request));
     }
   } else {
     return 0;

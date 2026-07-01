@@ -28,7 +28,7 @@ const { computeSurchargeForChosen, PER_MILE_RATE } = require('./_gas-stations');
 const { computeWashDistanceCharge } = require('./_wash-distance');
 const { enforceRateLimit } = require('./_rate-limit');
 const { amountsFromRow, validatePromoForCustomer, recordPromoRedemption } = require('./_promos');
-const { recordDrivenMileage } = require('./_route-mileage');
+const { recordDrivenMileage, drivenMilesSoFar } = require('./_route-mileage');
 
 // Per-IP caps on the actions that reach Mapbox before Stripe verification.
 const PAYMENTS_RATE_LIMITS = {
@@ -208,11 +208,11 @@ async function getServerPricingSettings(db) {
       'double-wash': BOOKING_WASH_PACKAGES['double-wash'].price,
     },
     timeRatePerMin: 0, fuelTimeBaseMin: 3, fuelTimePerGalMin: 0.5, washTimeMin: 20,
-    bundleFuelFee: 0, bundleWashFee: 0,
+    bundleFuelFee: 0, bundleWashFee: 0, mileageRatePerMile: 0.725,
   };
   try {
     const { data } = await db.from('service_pricing_settings')
-      .select('fuel_service_fee,wash_service_fee,quick_inspection_fee,wash_buff_shine_price,wash_shine_protect_price,wash_shine_price,wash_double_wash_price,time_rate_per_min,fuel_time_base_min,fuel_time_per_gallon_min,wash_time_min,bundle_fuel_service_fee,bundle_wash_service_fee')
+      .select('fuel_service_fee,wash_service_fee,quick_inspection_fee,wash_buff_shine_price,wash_shine_protect_price,wash_shine_price,wash_double_wash_price,time_rate_per_min,fuel_time_base_min,fuel_time_per_gallon_min,wash_time_min,bundle_fuel_service_fee,bundle_wash_service_fee,wash_detour_rate')
       .eq('id', 1).maybeSingle();
     if (!data) return fallback;
     const n = (v, d) => (v != null && Number.isFinite(Number(v)) ? Number(v) : d);
@@ -232,6 +232,7 @@ async function getServerPricingSettings(db) {
       washTimeMin: n(data.wash_time_min, 20),
       bundleFuelFee: n(data.bundle_fuel_service_fee, 0),
       bundleWashFee: n(data.bundle_wash_service_fee, 0),
+      mileageRatePerMile: n(data.wash_detour_rate, 0.725),
     };
   } catch (_) {
     return fallback;
@@ -1480,18 +1481,76 @@ function cancellationOutcomeForStatus(status) {
 
 // Single shared place the Stripe-fee-covering markup is computed for
 // cancellations — never hard-code this math per call site.
-function cancellationChargeForTier(tier, receiptTotals) {
+function cancellationChargeForTier(tier, receiptTotals, recoverable = { mileage: 0, time: 0 }) {
   if (tier === 'none') {
-    return { feeAmount: 0, stripeFee: 0, receiptTotal: 0, totalCharged: 0 };
+    return { feeAmount: 0, mileageCost: 0, timeCost: 0, stripeFee: 0, receiptTotal: 0, totalCharged: 0 };
   }
   if (tier === 'flat_fee') {
-    return { feeAmount: CANCELLATION_BASE_FEE, stripeFee: 0, receiptTotal: 0, totalCharged: CANCELLATION_BASE_FEE };
+    // Keys received but no driving yet — flat base fee only, nothing to recover.
+    return { feeAmount: CANCELLATION_BASE_FEE, mileageCost: 0, timeCost: 0, stripeFee: 0, receiptTotal: 0, totalCharged: CANCELLATION_BASE_FEE };
   }
+  // fee_plus_costs: vehicle picked up / en route. Recover the real sunk cost of the
+  // aborted trip — the detour miles already driven and the time already spent —
+  // on top of the base fee, then gross up for the Stripe fee like a normal charge.
   const receiptTotal = roundMoney((receiptTotals.fuel || 0) + (receiptTotals.wash || 0));
-  const subtotal = roundMoney(CANCELLATION_BASE_FEE + receiptTotal);
+  const mileageCost = roundMoney(Math.max(0, (recoverable && recoverable.mileage) || 0));
+  const timeCost = roundMoney(Math.max(0, (recoverable && recoverable.time) || 0));
+  const subtotal = roundMoney(CANCELLATION_BASE_FEE + receiptTotal + mileageCost + timeCost);
   const totalCharged = Math.ceil((subtotal + RETURN_RECOVERY_FIXED) / (1 - RETURN_RECOVERY_RATE));
   const stripeFee = roundMoney(totalCharged - subtotal);
-  return { feeAmount: CANCELLATION_BASE_FEE, stripeFee, receiptTotal, totalCharged };
+  return { feeAmount: CANCELLATION_BASE_FEE, mileageCost, timeCost, stripeFee, receiptTotal, totalCharged };
+}
+
+// One-way estimated detour legs stamped at booking; a conservative fallback for the
+// sunk-cost calc when the live GPS trail is too thin to Map-Match. fuel →
+// [station_miles], wash → [wash_miles].
+function estimatedDetourMilesFromNotes(request) {
+  const notes = String(request.notes || '');
+  const st = String(request.service_type || '');
+  const station = /fuel/.test(st) ? Number((notes.match(/\[station_miles (\d+(?:\.\d+)?)\]/) || [])[1] || 0) : 0;
+  const wash = /wash/.test(st) ? Number((notes.match(/\[wash_miles (\d+(?:\.\d+)?)\]/) || [])[1] || 0) : 0;
+  return (Number.isFinite(station) ? station : 0) + (Number.isFinite(wash) ? wash : 0);
+}
+
+// Real sunk cost for a post-pickup cancellation: miles the worker has driven SINCE
+// pickup (GPS Map-Matched, estimated legs as fallback) × the worker mileage rate,
+// plus minutes since pickup × the company time rate. Both inputs are clamped so bad
+// GPS or clock skew can never balloon the charge. Never throws — returns zeros on any
+// failure so a cancellation is never blocked by this.
+async function computeCancellationSunkCost(db, request) {
+  const meta = { miles: 0, minutes: 0, source: 'none' };
+  try {
+    const settings = await getServerPricingSettings(db);
+    const mileageRate = settings.mileageRatePerMile || 0;
+    const timeRate = settings.timeRatePerMin || 0;
+    const pickupIso = request.vehicle_picked_up_at || null;
+
+    // Minutes since pickup, clamped to a sane single-job ceiling.
+    let minutes = 0;
+    if (pickupIso) {
+      const ms = Date.now() - new Date(pickupIso).getTime();
+      if (Number.isFinite(ms) && ms > 0) minutes = Math.min(240, ms / 60000);
+    }
+
+    // Actual driven miles since pickup; fall back to the booking-time estimate.
+    let miles = 0;
+    const gps = await drivenMilesSoFar({ supabaseAdmin: db, requestId: request.id, sinceIso: pickupIso });
+    if (Number.isFinite(gps) && gps > 0) {
+      miles = gps;
+      meta.source = 'gps';
+    } else {
+      miles = estimatedDetourMilesFromNotes(request);
+      meta.source = miles > 0 ? 'estimate' : 'none';
+    }
+    miles = Math.min(100, Math.max(0, miles));
+
+    meta.miles = Math.round(miles * 10) / 10;
+    meta.minutes = Math.round(minutes);
+    return { mileage: roundMoney(miles * mileageRate), time: roundMoney(minutes * timeRate), meta };
+  } catch (err) {
+    console.warn('[payments/customer_cancel] sunk-cost calc failed:', err && err.message);
+    return { mileage: 0, time: 0, meta };
+  }
 }
 
 async function handleCustomerCancel(body, res) {
@@ -1504,7 +1563,7 @@ async function handleCustomerCancel(body, res) {
   const db = getSupabaseAdmin();
   const { data: request, error: reqErr } = await db
     .from('service_requests')
-    .select('id, payment_intent_id, payment_status, status, customer_phone, customer_email, notes, assigned_employee_id, estimated_total')
+    .select('id, payment_intent_id, payment_status, status, customer_phone, customer_email, notes, assigned_employee_id, estimated_total, service_type, vehicle_picked_up_at')
     .eq('id', request_id)
     .maybeSingle();
 
@@ -1523,7 +1582,14 @@ async function handleCustomerCancel(body, res) {
 
   const timestamp = new Date().toISOString();
   const receiptTotals = receiptTotalsFromNotes(request.notes);
-  const charge = cancellationChargeForTier(outcome.tier, receiptTotals);
+
+  // Post-pickup cancellations recover the real sunk cost of the aborted trip (detour
+  // miles already driven + time already spent). Earlier tiers have no trip to recover.
+  let sunkCost = { mileage: 0, time: 0, meta: null };
+  if (outcome.tier === 'fee_plus_costs') {
+    sunkCost = await computeCancellationSunkCost(db, request);
+  }
+  const charge = cancellationChargeForTier(outcome.tier, receiptTotals, sunkCost);
   let paymentStatus = request.payment_status || 'canceled';
 
   try {
@@ -1596,6 +1662,13 @@ async function handleCustomerCancel(body, res) {
 
   const trimmedReason = reason && reason.trim() ? reason.trim() : null;
 
+  // Audit stamp for the recovered trip cost, so admin/payroll can see (and pay the
+  // worker for) the aborted-trip mileage and time behind the higher charge.
+  const meta = sunkCost.meta;
+  const notesWithCancelCost = meta && (charge.mileageCost || charge.timeCost)
+    ? `${String(request.notes || '')}\n[cancel_costs mileage=${charge.mileageCost} time=${charge.timeCost} miles=${meta.miles} mins=${meta.minutes} src=${meta.source}]`.trim()
+    : null;
+
   // The authorization hold is held roughly at estimated_total; the reversal is
   // whatever isn't captured as the final cancellation charge.
   const heldAmount = Number(request.estimated_total);
@@ -1626,6 +1699,7 @@ async function handleCustomerCancel(body, res) {
     payment_reversal_amount: paymentReversalAmount,
     payment_status: paymentStatus,
     updated_at: timestamp,
+    ...(notesWithCancelCost ? { notes: notesWithCancelCost } : {}),
   };
   const minimalUpdateData = {
     status: outcome.newStatus,
@@ -1634,6 +1708,7 @@ async function handleCustomerCancel(body, res) {
     canceled_by: 'customer',
     payment_status: paymentStatus,
     updated_at: timestamp,
+    ...(notesWithCancelCost ? { notes: notesWithCancelCost } : {}),
   };
 
   let { error: updateErr } = await db.from('service_requests').update(updateData).eq('id', request_id);
@@ -1671,7 +1746,14 @@ async function handleCustomerCancel(body, res) {
     success: true,
     status: outcome.newStatus,
     payment_status: paymentStatus,
-    charge: { fee_amount: charge.feeAmount, stripe_fee: charge.stripeFee, receipt_total: charge.receiptTotal, total_charged: charge.totalCharged },
+    charge: {
+      fee_amount: charge.feeAmount,
+      mileage_cost: charge.mileageCost || 0,
+      time_cost: charge.timeCost || 0,
+      stripe_fee: charge.stripeFee,
+      receipt_total: charge.receiptTotal,
+      total_charged: charge.totalCharged,
+    },
   });
 }
 

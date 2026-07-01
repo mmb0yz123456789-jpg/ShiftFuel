@@ -988,6 +988,31 @@ font-size: 0.85rem;
   color: var(--sf-muted);
 }
 
+.customer-account-benefits {
+  list-style: none;
+  margin: 14px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.customer-account-benefits li {
+  position: relative;
+  padding-left: 26px;
+  color: var(--sf-muted);
+  font-size: 0.92rem;
+  line-height: 1.35;
+}
+
+.customer-account-benefits li::before {
+  content: "✓";
+  position: absolute;
+  left: 0;
+  top: 0;
+  color: #1e7d52;
+  font-weight: 800;
+}
+
 .customer-account-form {
   display: grid;
   gap: 14px;

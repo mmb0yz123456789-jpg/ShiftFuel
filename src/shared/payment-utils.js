@@ -137,28 +137,37 @@ export function cancellationOutcomeForStatus(status) {
  * @param {Object} receiptTotals - Receipt totals {fuel, wash}
  * @returns {Object} Charge breakdown
  */
-export function cancellationChargeForTier(tier, receiptTotals = { fuel: 0, wash: 0 }) {
+export function cancellationChargeForTier(tier, receiptTotals = { fuel: 0, wash: 0 }, recoverable = { mileage: 0, time: 0 }) {
   if (tier === 'none') {
-    return { feeAmount: 0, stripeFee: 0, receiptTotal: 0, totalCharged: 0 };
+    return { feeAmount: 0, mileageCost: 0, timeCost: 0, stripeFee: 0, receiptTotal: 0, totalCharged: 0 };
   }
 
   if (tier === 'flat_fee') {
+    // Keys received but no driving yet — flat base fee only, nothing to recover.
     return {
       feeAmount: CANCELLATION_BASE_FEE,
+      mileageCost: 0,
+      timeCost: 0,
       stripeFee: 0,
       receiptTotal: 0,
       totalCharged: CANCELLATION_BASE_FEE,
     };
   }
 
-  // fee_plus_costs tier
+  // fee_plus_costs tier: vehicle picked up / en route. On top of the base fee, recover
+  // the real sunk cost of the aborted trip — the detour miles already driven and the
+  // time already spent — then gross up for the Stripe fee like a normal charge.
   const receiptTotal = roundMoney((receiptTotals.fuel || 0) + (receiptTotals.wash || 0));
-  const subtotal = roundMoney(CANCELLATION_BASE_FEE + receiptTotal);
+  const mileageCost = roundMoney(Math.max(0, (recoverable && recoverable.mileage) || 0));
+  const timeCost = roundMoney(Math.max(0, (recoverable && recoverable.time) || 0));
+  const subtotal = roundMoney(CANCELLATION_BASE_FEE + receiptTotal + mileageCost + timeCost);
   const totalCharged = Math.ceil((subtotal + RETURN_RECOVERY_FIXED) / (1 - RETURN_RECOVERY_RATE));
   const stripeFee = roundMoney(totalCharged - subtotal);
 
   return {
     feeAmount: CANCELLATION_BASE_FEE,
+    mileageCost,
+    timeCost,
     stripeFee,
     receiptTotal,
     totalCharged,
