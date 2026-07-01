@@ -489,6 +489,11 @@
 .wcr-badge.is-approved { background: #dcfce7; color: #166534; }
 .wcr-badge.is-rejected { background: #fee2e2; color: #991b1b; }
 
+.support-message-card .request-details { display: grid; gap: 10px; }
+.support-message-card .request-details p { margin: 0; }
+.support-message-card textarea { min-height: 72px; }
+.support-message-actions { margin-top: 2px; }
+
 /* ── Home "View all requests" link (queue now lives on the Requests tab) ── */
 .admin-viewall-link {
   display: inline-flex; align-items: center; gap: 6px;

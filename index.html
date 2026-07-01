@@ -47,7 +47,7 @@
             <a class="button tertiary" href="track.html#track-form">Track My Vehicle</a>
             <a class="button returning" href="customer.html#customer-account-panel">My Account</a>
           </div>
-          <p class="booking-service-area-note">Serving within 5 miles of Christiana area.</p>
+          <p class="booking-service-area-note">Serving approved service addresses within our current Delaware service area.</p>
           <div class="hero-trust-row">
             <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="8" r="3.4"/><path d="M5 20c0-3.3 3.1-6 7-6s7 2.7 7 6"/></svg>Trusted professionals</span>
             <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3l7 3v6c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6l7-3z"/></svg>Premium experience</span>
@@ -102,7 +102,7 @@
             <span class="pricing-icon pricing-icon-fuel"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="3" width="9" height="18" rx="1.4"/><path d="M4 10h9M7.5 3v0"/><path d="M13 8h2.5a2 2 0 0 1 2 2v6.5a1.5 1.5 0 0 0 3 0V8.5L18 6"/></svg></span>
             <h3>Fuel Concierge</h3>
             <p>We fuel your vehicle with quality fuel&mdash;so you don't have to leave work.</p>
-            <p class="pricing-from"><span>Fuel service starts at </span><span data-price="fuel-service-fee">$15</span><span>. Fuel is charged separately at actual pump price.</span></p>
+            <p class="pricing-from"><span>Fuel service starts at </span><span data-price="fuel-service-fee">$15</span><span>. Fuel is charged separately based on the actual pump receipt.</span></p>
             <ul class="pricing-package-list" id="fuel-price-list" data-fuel-prices>
               <li><span>Loading current prices&hellip;</span></li>
             </ul>
@@ -173,11 +173,11 @@
               <li>Washer fluid refill</li>
               <li>Quick exterior look-over</li>
             </ul>
-            <p class="pricing-warning">Convenience add-ons only; no repairs or mechanical diagnostics.</p>
+            <p class="pricing-warning">Convenience add-ons only. No repairs, diagnostics, mechanical inspection, towing, or emergency service.</p>
             <a class="button pricing-button pricing-button-inspect" href="book.html?service=quick-care#booking-flow">Book This Service</a>
           </article>
         </div>
-        <p class="pricing-disclaimer">Service prices include payment and operating costs. Final fuel cost is based on the actual receipt. Final totals are rounded up to the nearest dollar.</p>
+        <p class="pricing-disclaimer">Final total includes selected service fees, approved add-ons, and actual fuel or car wash receipt totals.</p>
       </section>
 
       <section id="trust" class="landing-section">
@@ -257,12 +257,55 @@
 			</a>
 		  </div>
 		</section>
+
+      <section id="support" class="landing-section support-section">
+        <div class="support-layout">
+          <div class="section-heading">
+            <h2>Contact support</h2>
+            <p>Need help with a booking, payment, or service question? Send a message and we will follow up by email.</p>
+            <p class="support-direct">Direct email: <a href="mailto:shiftfuel005@gmail.com">shiftfuel005@gmail.com</a></p>
+          </div>
+          <form id="support-form" class="support-form" novalidate>
+            <input type="text" name="website" tabindex="-1" autocomplete="off" class="support-hp" aria-hidden="true">
+            <div class="support-form-grid">
+              <label>Name
+                <input type="text" name="customer_name" autocomplete="name" required>
+              </label>
+              <label>Email
+                <input type="email" name="customer_email" autocomplete="email" required>
+              </label>
+              <label>Phone
+                <input type="tel" name="customer_phone" autocomplete="tel">
+              </label>
+              <label>Topic
+                <select name="reason">
+                  <option value="booking">Booking help</option>
+                  <option value="payment">Payment question</option>
+                  <option value="service">Service issue</option>
+                  <option value="general">General question</option>
+                </select>
+              </label>
+            </div>
+            <label>Booking or ticket number
+              <input type="text" name="booking_ref" placeholder="Optional">
+            </label>
+            <label>Message
+              <textarea name="message" rows="5" required></textarea>
+            </label>
+            <div class="support-actions">
+              <button class="button primary" type="submit">Send Message</button>
+              <p id="support-status" class="form-status" role="status"></p>
+            </div>
+          </form>
+        </div>
+      </section>
     </main>
 
     <footer class="site-footer">
       <div class="footer-main">
         <p class="footer-copy">&copy; <span id="year"></span> ShiftFuel Concierge. All rights reserved.</p>
         <nav class="footer-links" aria-label="Legal links">
+          <a href="#support">Support</a>
           <a href="privacy.html">Privacy Policy</a>
           <a href="terms.html">Terms of Service</a>
           <a href="liability-waiver.html">Liability Waiver</a>

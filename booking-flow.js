@@ -133,10 +133,10 @@ const stepCopy = {
         <a class="button secondary" href="customer.html">Open My Account</a>
       </div>
       <div class="booking-field-grid">
-        <label><span>First name <span class="required-mark">Required</span></span><input data-required name="firstName" type="text" autocomplete="given-name" placeholder="Jordan"></label>
-        <label><span>Last name <span class="required-mark">Required</span></span><input data-required name="lastName" type="text" autocomplete="family-name" placeholder="Smith"></label>
-        <label><span>Phone number <span class="required-mark">Required</span></span><input data-required data-phone name="customerPhone" type="tel" autocomplete="tel" placeholder="(302) 555-0100"></label>
-        <label><span>Email address <span class="required-mark">Required</span></span><input data-required data-email name="customerEmail" type="email" autocomplete="email" placeholder="jordan@example.com"></label>
+        <label><span>First name <span class="required-mark">Required</span></span><input data-required name="firstName" type="text" autocomplete="given-name" placeholder="First name"></label>
+        <label><span>Last name <span class="required-mark">Required</span></span><input data-required name="lastName" type="text" autocomplete="family-name" placeholder="Last name"></label>
+        <label><span>Phone number <span class="required-mark">Required</span></span><input data-required data-phone name="customerPhone" type="tel" autocomplete="tel" placeholder="Phone number"></label>
+        <label><span>Email address <span class="required-mark">Required</span></span><input data-required data-email name="customerEmail" type="email" autocomplete="email" placeholder="you@example.com"></label>
       </div>
     `,
   },
@@ -217,6 +217,7 @@ const stepCopy = {
               <li>Washer fluid refill</li>
               <li>Quick exterior look-over</li>
             </ul>
+            <p class="pricing-warning">Convenience add-ons only. No repairs, diagnostics, mechanical inspection, towing, or emergency service.</p>
           </details>
         </span>
       </label>

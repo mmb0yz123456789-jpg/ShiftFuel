@@ -2190,7 +2190,7 @@ function renderPendingCompletionCard(request) {
           <div class="field-grid">
             <label>
               <span>Name <span class="required-mark">Required</span></span>
-              <input class="cb-customer-name" type="text" placeholder="Jordan Smith"
+              <input class="cb-customer-name" type="text" placeholder="Customer name"
                 value="${escapeHtml(request.customer_name || '')}" required>
             </label>
             <label>

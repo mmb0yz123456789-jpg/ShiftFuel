@@ -76,8 +76,11 @@ const saveDaysOffButton = document.querySelector('#save-days-off');
 const reviewList = document.querySelector('#reviews-list');
 const applicantList = document.querySelector('#applicants-list');
 const workerProfileList = document.querySelector('#admin-worker-profile-list');
+const supportMessageList = document.querySelector('#support-message-list');
+const supportCountBadge = document.querySelector('#support-count-badge');
 const adminRefreshBtn = document.querySelector('#admin-refresh-btn');
 const adminReviewsRefreshBtn = document.querySelector('#admin-reviews-refresh-btn');
+const adminSupportRefreshBtn = document.querySelector('#admin-support-refresh-btn');
 
 const PHOTO_BUCKET = 'service-photos';
 const DEFAULT_WORKER_NAME = 'Mark Urban';
@@ -101,6 +104,7 @@ let allEmployees = [];
 let allReviews = [];
 let allReviewRequestMap = new Map();
 let allApplicantsList = [];
+let allSupportMessages = [];
 let selectedScheduleEmployeeId = '';
 // Per-employee weekly availability for the inline Workers-tab editor, keyed by
 // employee id. Populated when a worker row is expanded; the admin schedule grid
@@ -629,6 +633,13 @@ const applicantStatusLabels = {
   interviewing: 'Interviewing',
   hired: 'Hired',
   declined: 'Declined',
+};
+
+const supportReasonLabels = {
+  booking: 'Booking help',
+  payment: 'Payment question',
+  service: 'Service issue',
+  general: 'General question',
 };
 
 function updateHeroStats() {
@@ -3974,6 +3985,108 @@ async function loadApplicants() {
   renderActionNeeded();
 }
 
+function supportStatusPill(status) {
+  if (status === 'resolved') return '<span class="status-pill status-pill-complete">Resolved</span>';
+  if (status === 'archived') return '<span class="status-pill status-pill-denied">Archived</span>';
+  return '<span class="status-pill status-pill-open">Open</span>';
+}
+
+function renderSupportMessages(messages) {
+  if (!supportMessageList) return;
+  const openCount = (messages || []).filter((m) => m.status === 'open').length;
+  if (supportCountBadge) supportCountBadge.textContent = String(openCount);
+
+  if (!messages.length) {
+    supportMessageList.innerHTML = '<div class="empty-state"><p>No support messages yet.</p></div>';
+    return;
+  }
+
+  supportMessageList.innerHTML = messages.map((message) => {
+    const subject = message.subject || supportReasonLabels[message.reason] || 'Support message';
+    const replySubject = encodeURIComponent(`Re: ${subject}`);
+    const replyBody = encodeURIComponent(`Hi ${message.customer_name || ''},\n\n`);
+    const mailto = `mailto:${message.customer_email}?subject=${replySubject}&body=${replyBody}`;
+    const note = message.admin_note || '';
+    return `
+      <article class="request-card support-message-card" data-support-id="${escapeHtml(message.id)}">
+        <div class="request-card-header">
+          <div>
+            <p class="eyebrow">${escapeHtml(formatDateTime(message.created_at))}</p>
+            <h3>${escapeHtml(subject)}</h3>
+          </div>
+          ${supportStatusPill(message.status)}
+        </div>
+        <div class="request-details">
+          <p><strong>Customer:</strong> ${escapeHtml(message.customer_name)} &middot; ${escapeHtml(message.customer_email)}${message.customer_phone ? ` &middot; ${escapeHtml(formatPhone(message.customer_phone))}` : ''}</p>
+          <p><strong>Topic:</strong> ${escapeHtml(supportReasonLabels[message.reason] || message.reason || 'General question')}${message.booking_ref ? ` &middot; Ref: ${escapeHtml(message.booking_ref)}` : ''}</p>
+          <p><strong>Message:</strong> ${escapeHtml(message.message)}</p>
+          <label>Admin note
+            <textarea class="support-admin-note" rows="2">${escapeHtml(note)}</textarea>
+          </label>
+          <div class="admin-button-row support-message-actions">
+            <a class="button primary" href="${escapeHtml(mailto)}">Reply by Email</a>
+            <button class="button secondary support-save-note" data-id="${escapeHtml(message.id)}" type="button">Save Note</button>
+            ${message.status === 'open'
+              ? `<button class="button secondary support-mark-resolved" data-id="${escapeHtml(message.id)}" type="button">Mark Resolved</button>`
+              : `<button class="button secondary support-reopen" data-id="${escapeHtml(message.id)}" type="button">Reopen</button>`}
+          </div>
+        </div>
+      </article>`;
+  }).join('');
+}
+
+async function loadSupportMessages() {
+  if (!supportMessageList) return;
+  supportMessageList.innerHTML = '<div class="empty-state"><p>Loading support messages...</p></div>';
+
+  const { data, error } = await db.rpc('admin_list_support_messages', { p_token: adminAuthToken() });
+  if (error) {
+    console.warn('Could not load support messages:', error);
+    supportMessageList.innerHTML = '<div class="empty-state"><p>Could not load support messages. Run the support messages migration in Supabase.</p></div>';
+    return;
+  }
+
+  allSupportMessages = data || [];
+  renderSupportMessages(allSupportMessages);
+  renderActionNeeded();
+}
+
+async function updateSupportMessage(id, updates) {
+  const { data, error } = await db.rpc('admin_update_support_message', {
+    p_token: adminAuthToken(),
+    p_message_id: id,
+    p_status: updates.status || null,
+    p_admin_note: updates.admin_note ?? null,
+  });
+  if (error) throw error;
+  const updated = data || {};
+  allSupportMessages = allSupportMessages.map((message) => message.id === id ? { ...message, ...updated } : message);
+  renderSupportMessages(allSupportMessages);
+  renderActionNeeded();
+}
+
+supportMessageList?.addEventListener('click', async (event) => {
+  const button = event.target.closest('button[data-id]');
+  if (!button) return;
+  const card = button.closest('[data-support-id]');
+  const id = button.dataset.id;
+  const note = card?.querySelector('.support-admin-note')?.value || '';
+  button.disabled = true;
+  try {
+    if (button.classList.contains('support-mark-resolved')) {
+      await updateSupportMessage(id, { status: 'resolved', admin_note: note });
+    } else if (button.classList.contains('support-reopen')) {
+      await updateSupportMessage(id, { status: 'open', admin_note: note });
+    } else {
+      await updateSupportMessage(id, { admin_note: note });
+    }
+  } catch (error) {
+    alert(`Could not update support message: ${error.message || error}`);
+  } finally {
+    button.disabled = false;
+  }
+});
+
 async function hireApplicant(applicantId) {
   const applicant = allApplicantsList.find((item) => item.id === applicantId);
   if (!applicant) throw new Error('Applicant not found. Reload the applicants list and try again.');
@@ -4606,6 +4719,14 @@ function buildActionNeededItems() {
       detail: 'A worker is requesting a schedule or job change. Review it in the Workers tab.' });
   }
 
+  const openSupportMessages = (allSupportMessages || []).filter((m) => m.status === 'open');
+  if (openSupportMessages.length) {
+    items.push({ kind: 'support', action: 'support',
+      title: 'Support message waiting',
+      who: openSupportMessages.length === 1 ? (openSupportMessages[0].customer_name || '1 message') : `${openSupportMessages.length} messages`,
+      detail: 'A customer submitted a support message from the website.' });
+  }
+
   return items;
 }
 
@@ -4630,6 +4751,8 @@ function renderActionNeeded() {
       ? '<button class="button secondary action-needed-btn" data-action-applicants="1" type="button">Review applicants</button>'
       : it.action === 'change-requests'
         ? '<button class="button secondary action-needed-btn" data-action-change-requests="1" type="button">Review requests</button>'
+      : it.action === 'support'
+        ? '<button class="button secondary action-needed-btn" data-action-support="1" type="button">Review support</button>'
         : `<button class="button secondary action-needed-btn" data-action-request="${escapeHtml(it.requestId)}" type="button">View request</button>`;
     return `
       <div class="action-needed-card action-needed-${it.kind}">
@@ -4680,6 +4803,11 @@ document.querySelector('#action-needed-list')?.addEventListener('click', (event)
   if (crBtn) {
     switchPageTab('workers');
     setTimeout(() => document.querySelector('#admin-change-requests')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 60);
+  }
+  const supportBtn = event.target.closest('[data-action-support]');
+  if (supportBtn) {
+    switchPageTab('support');
+    setTimeout(() => document.querySelector('#support-message-list')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 60);
   }
 });
 
@@ -6809,6 +6937,9 @@ function switchPageTab(page) {
     workerPresenceFilter = null;
     renderWorkerProfiles();
   }
+  if (page === 'support') {
+    loadSupportMessages();
+  }
   if (page === 'settings') {
     setTimeout(() => window._saOpenEditor?.(), 80);
   }
@@ -6848,6 +6979,7 @@ document.querySelectorAll('[data-page-action]').forEach((btn) => {
 adminRefreshBtn?.addEventListener('click', () => refreshAdminView(adminRefreshBtn));
 adminSideRefreshBtn?.addEventListener('click', () => refreshAdminView(adminSideRefreshBtn));
 adminReviewsRefreshBtn?.addEventListener('click', () => refreshAdminView(adminReviewsRefreshBtn));
+adminSupportRefreshBtn?.addEventListener('click', () => refreshAdminView(adminSupportRefreshBtn));
 
 // ── Dashboard stat card drilldown ────────────────────────────────────────────
 
@@ -7035,6 +7167,7 @@ async function refreshAdminView(button = null) {
       loadRequests(),
       loadReviews(),
       loadApplicants(),
+      loadSupportMessages(),
       loadPendingAuthorizations(),
       loadReauthNeeded(),
     ]);
@@ -7834,6 +7967,7 @@ loadVehiclePsiGuides().finally(() => {
 });
 loadReviews();
 loadApplicants();
+loadSupportMessages();
 loadPendingAuthorizations();
 loadReauthNeeded();
 

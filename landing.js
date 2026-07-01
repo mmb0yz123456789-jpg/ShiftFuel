@@ -81,3 +81,46 @@ async function loadServicePricing() {
 
 loadFuelPrices();
 loadServicePricing();
+
+const supportForm = document.querySelector("#support-form");
+const supportStatus = document.querySelector("#support-status");
+
+supportForm?.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const submitButton = supportForm.querySelector('button[type="submit"]');
+  const formData = new FormData(supportForm);
+  const payload = {
+    customer_name: String(formData.get("customer_name") || "").trim(),
+    customer_email: String(formData.get("customer_email") || "").trim(),
+    customer_phone: String(formData.get("customer_phone") || "").trim(),
+    reason: String(formData.get("reason") || "general").trim(),
+    booking_ref: String(formData.get("booking_ref") || "").trim(),
+    message: String(formData.get("message") || "").trim(),
+    website: String(formData.get("website") || "").trim(),
+    source_page: window.location.href,
+  };
+
+  if (!payload.customer_name || !payload.customer_email || !payload.message) {
+    if (supportStatus) supportStatus.textContent = "Name, email, and message are required.";
+    return;
+  }
+
+  if (supportStatus) supportStatus.textContent = "Sending message...";
+  if (submitButton) submitButton.disabled = true;
+
+  try {
+    const response = await fetch("/api/support", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.error || "Could not send your message.");
+    supportForm.reset();
+    if (supportStatus) supportStatus.textContent = "Message sent. We will follow up by email.";
+  } catch (error) {
+    if (supportStatus) supportStatus.textContent = `${error.message || "Could not send your message."} You can email shiftfuel005@gmail.com directly.`;
+  } finally {
+    if (submitButton) submitButton.disabled = false;
+  }
+});
