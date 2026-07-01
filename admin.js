@@ -2680,8 +2680,6 @@ function normalizeEmployee(employee) {
 
 async function loadEmployees() {
   try {
-    await ensureEmployee(DEFAULT_WORKER_NAME);
-
     // Worker profiles (incl. email/phone) load through a token-gated RPC so that
     // worker contact PII is never readable via the public anon key / the
     // employees_public view. See admin_list_employees + migration 202606271820.
