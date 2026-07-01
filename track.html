@@ -6,12 +6,13 @@
   <title>Track My Vehicle | ShiftFuel Concierge</title>
   <link rel="icon" href="icon-main.svg" type="image/svg+xml">
   <link rel="icon" href="icon-main.svg" sizes="any">
+  <link rel="apple-touch-icon" href="apple-touch-icon.png">
   <link rel="manifest" href="manifest.webmanifest">
-  <!-- Customer site opens in the browser (not standalone) so Stripe's card
-       iframe loads reliably on iOS home-screen launches. -->
-  <meta name="apple-mobile-web-app-capable" content="no">
+  <meta name="theme-color" content="#0d3b3b">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="ShiftFuel">
-  <link rel="apple-touch-icon" href="icon-main.svg">
   <link rel="stylesheet" href="styles.css">
   <link rel="stylesheet" href="track-redesign.css">
   <link rel="stylesheet" href="layout-width-polish.css">
@@ -31,9 +32,9 @@
       <a href="index.html#how">How It Works</a>
       <a href="index.html#services">Services &amp; Pricing</a>
       <a href="index.html#trust">Safety &amp; Trust</a>
-      <a class="nav-cta" href="book.html#booking-flow">Book Now</a>
-      <a class="nav-returning" href="customer.html#customer-account-panel">My Account</a>
-      <a class="nav-outline" href="track.html#track-form" aria-current="page">Track My Vehicle</a>
+      <a class="nav-cta" href="/book#booking-flow">Book Now</a>
+      <a class="nav-returning" href="/account#customer-account-panel">My Account</a>
+      <a class="nav-outline" href="/track#track-form" aria-current="page">Track My Vehicle</a>
     </nav>
   </header>
 
@@ -131,7 +132,7 @@
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 21s-7-5.5-7-11a7 7 0 0 1 14 0c0 5.5-7 11-7 11z"/><circle cx="12" cy="10" r="2.4"/></svg>
       <span>Status</span>
     </button>
-    <a class="app-tab" href="book.html#booking-flow">
+    <a class="app-tab" href="/book#booking-flow">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="5" width="16" height="16" rx="2"/><path d="M12 9v6M9 12h6"/></svg>
       <span>Book</span>
     </a>

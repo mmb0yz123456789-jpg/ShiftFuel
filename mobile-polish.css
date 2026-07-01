@@ -151,7 +151,9 @@
     min-height: 190px !important;
   }
 
-  body.customer-account-page .customer-account-hero .booking-flow-hero-image {
+  body.customer-account-page .customer-account-hero .booking-flow-hero-image,
+  body.customer-account-page .customer-account-hero .landing-hero-image,
+  body.customer-account-page .customer-account-hero img {
     display: none !important;
   }
 
@@ -221,16 +223,85 @@
   }
 
   body.customer-account-page .customer-account-shell {
-    gap: 14px !important;
+    width: min(100% - 24px, 620px) !important;
+    gap: 12px !important;
+    margin-top: 10px !important;
+    margin-bottom: 18px !important;
   }
 
   body.customer-account-page .customer-account-panel {
-    gap: 14px !important;
-    padding: 20px !important;
+    gap: 12px !important;
+    padding: 16px !important;
+    border-radius: 14px !important;
   }
 
-  body.customer-account-page .customer-account-panel-copy p {
-    display: none !important;
+  body.customer-account-page .customer-account-tabs {
+    gap: 5px !important;
+    padding: 5px !important;
+  }
+
+  body.customer-account-page .customer-account-tab {
+    min-height: 46px !important;
+    padding: 10px 12px !important;
+  }
+
+  body.customer-account-page .customer-account-access {
+    gap: 12px !important;
+  }
+
+  body.customer-account-page .customer-account-intro {
+    gap: 6px !important;
+    text-align: left;
+    justify-items: start;
+  }
+
+  body.customer-account-page .customer-account-intro h1 {
+    font-size: clamp(1.9rem, 8vw, 2.35rem) !important;
+    line-height: 1.02 !important;
+  }
+
+  body.customer-account-page .customer-account-intro p:not(.customer-dashboard-kicker) {
+    font-size: 0.94rem !important;
+    line-height: 1.4 !important;
+  }
+
+  body.customer-account-page .customer-account-access-grid {
+    grid-template-columns: 1fr !important;
+    gap: 10px !important;
+  }
+
+  body.customer-account-page .customer-account-form-row {
+    grid-template-columns: 1fr !important;
+    gap: 12px !important;
+  }
+
+  body.customer-account-page .customer-account-options {
+    gap: 10px !important;
+  }
+
+  body.customer-account-page .customer-account-option-card {
+    gap: 10px !important;
+    padding: 16px !important;
+    border-radius: 14px !important;
+  }
+
+  body.customer-account-page .customer-account-panel-copy h2,
+  body.customer-account-page .customer-account-option-card h2 {
+    font-size: 1.18rem !important;
+    line-height: 1.15 !important;
+  }
+
+  body.customer-account-page .customer-account-panel-copy p,
+  body.customer-account-page .customer-account-option-card p {
+    font-size: 0.92rem !important;
+    line-height: 1.4 !important;
+  }
+
+  body.customer-account-page .customer-account-option-card .button,
+  body.customer-account-page .customer-account-form .button {
+    width: 100%;
+    min-height: 48px;
+    justify-content: center;
   }
 
   /* Desktop three-box variant hides on mobile; single Staff Access button shows */

@@ -31,8 +31,8 @@ self.addEventListener('push', (event) => {
   const title = payload.title || 'ShiftFuel Concierge';
   const options = {
     body: payload.body || '',
-    icon: payload.icon || '/icon-main.svg',
-    badge: '/icon-main.svg',
+    icon: payload.icon || '/pwa-icon-192.png',
+    badge: '/pwa-icon-192.png',
     tag: payload.tag || undefined,        // collapses duplicate alerts for the same job
     renotify: Boolean(payload.tag),
     data: { url: payload.url || '/' },

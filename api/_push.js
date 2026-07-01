@@ -77,9 +77,9 @@ async function notifyRequest(requestId, eventType) {
   const messages = {
     cancelled: { who: 'worker', title: 'Job cancelled', body: `${request.customer_name || 'A customer'} cancelled — return the key/vehicle (${shortId}).`, url: '/worker/dashboard' },
     assigned:  { who: 'worker', title: 'New job assigned', body: `You've been assigned a ${request.service_label || 'service'} job (${shortId}).`, url: '/worker/dashboard' },
-    completed: { who: 'customer', title: 'Service complete', body: `Your ${request.service_label || 'service'} is complete (${shortId}).`, url: '/track.html' },
-    paid:      { who: 'customer', title: 'Payment processed', body: `Your payment for ${shortId} was processed — thank you!`, url: '/track.html' },
-    reauth_needed: { who: 'customer', title: 'Action needed: re-authorize payment', body: `We couldn't authorize payment for your upcoming ${request.service_label || 'service'} (${shortId}). Please re-authorize so we can complete it.`, url: '/track.html' },
+    completed: { who: 'customer', title: 'Service complete', body: `Your ${request.service_label || 'service'} is complete (${shortId}).`, url: '/track' },
+    paid:      { who: 'customer', title: 'Payment processed', body: `Your payment for ${shortId} was processed — thank you!`, url: '/track' },
+    reauth_needed: { who: 'customer', title: 'Action needed: re-authorize payment', body: `We couldn't authorize payment for your upcoming ${request.service_label || 'service'} (${shortId}). Please re-authorize so we can complete it.`, url: '/track' },
   };
   const msg = messages[eventType];
   if (!msg) return;

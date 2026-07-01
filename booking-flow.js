@@ -131,7 +131,7 @@ const stepCopy = {
           <span>Sign in to autofill saved vehicles, saved service addresses, and recent booking details. New customers can continue below as guests.</span>
           <small>No account required to book.</small>
         </div>
-        <a class="button secondary" href="customer.html">Sign In / Open My Account</a>
+        <a class="button secondary" href="/account">Sign In / Open My Account</a>
       </div>
       <div class="booking-field-grid">
         <label><span>First name <span class="required-mark">Required</span></span><input data-required name="firstName" type="text" autocomplete="given-name" placeholder="First name"></label>
@@ -3000,7 +3000,7 @@ function postBookingAccountPromptHtml() {
         <p>Create an account to save your vehicle, service address, and booking history.</p>
       </div>
       <div class="admin-button-row">
-        <a class="button primary" href="customer.html#customer-account-panel">Create My Account</a>
+        <a class="button primary" href="/create-account">Create My Account</a>
         <button class="button secondary" type="button" data-dismiss-account-prompt>No thanks</button>
       </div>
     </div>
@@ -3055,7 +3055,7 @@ async function submitBooking(panel) {
           <p>Use Track My Vehicle to follow your request.</p>
           <div class="admin-button-row">
             <button class="button primary" type="button" data-new-booking>Submit a new request</button>
-            <a class="button secondary" href="track.html">Track My Vehicle</a>
+            <a class="button secondary" href="/track">Track My Vehicle</a>
           </div>
           ${postBookingAccountPromptHtml()}
         </div>
@@ -3640,7 +3640,7 @@ function renderFlow(root) {
 }
 
 // Preselect a service when the customer arrives from a "Book This Service" card
-// on the landing page (e.g. book.html?service=fuel). Vehicle Add-Ons are an
+// on the landing page (e.g. /book?service=fuel). Vehicle Add-Ons are an
 // add-on, so it pre-checks the add-on and explains it must attach to a service.
 function applyPreselectedService() {
   let requested = "";
@@ -3781,7 +3781,7 @@ initBookingFlow();
     bookingState.submittedRequestNumber = number;
     const fields = panel.querySelector('.booking-step-fields');
     if (fields) {
-      fields.innerHTML = `<div class="submission-success"><h3>Request received.</h3><p>Your request number is: <strong>${escapeHtml(number)}</strong></p><p>Use Track My Vehicle to follow your request.</p><div class="admin-button-row"><button class="button primary" type="button" data-new-booking>Submit a new request</button><a class="button secondary" href="track.html">Track My Vehicle</a></div>${postBookingAccountPromptHtml()}</div>`;
+      fields.innerHTML = `<div class="submission-success"><h3>Request received.</h3><p>Your request number is: <strong>${escapeHtml(number)}</strong></p><p>Use Track My Vehicle to follow your request.</p><div class="admin-button-row"><button class="button primary" type="button" data-new-booking>Submit a new request</button><a class="button secondary" href="/track">Track My Vehicle</a></div>${postBookingAccountPromptHtml()}</div>`;
     }
     setStatus(panel, 'success', `Request received. Your request number is ${number}.`);
     const actions = panel.querySelector('.booking-step-actions');

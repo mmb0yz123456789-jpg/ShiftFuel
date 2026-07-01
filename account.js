@@ -56,8 +56,8 @@
     // Check for existing session
     const session = getCustomerAccountSession();
     if (!session) {
-      // No session - redirect to customer.html for login
-      window.location.href = 'customer.html';
+      // No session - redirect to the customer account login route.
+      window.location.href = '/account';
       return;
     }
 

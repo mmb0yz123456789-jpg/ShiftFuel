@@ -6,11 +6,13 @@
     <title>My Account | ShiftFuel Concierge</title>
     <link rel="icon" href="icon-main.svg" type="image/svg+xml">
     <link rel="icon" href="icon-main.svg" sizes="any">
-    <link rel="apple-touch-icon" href="icon-main.svg">
+    <link rel="apple-touch-icon" href="apple-touch-icon.png">
     <link rel="manifest" href="manifest.webmanifest">
-    <meta name="apple-mobile-web-app-capable" content="no">
+    <meta name="theme-color" content="#0d3b3b">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="ShiftFuel">
-    <link rel="apple-touch-icon" href="icon-main.svg">
     <link rel="stylesheet" href="styles.css">
     <link rel="stylesheet" href="layout-width-polish.css">
     <link rel="stylesheet" href="mobile-polish.css">
@@ -29,46 +31,86 @@
         <a href="index.html#how">How It Works</a>
         <a href="index.html#services">Services &amp; Pricing</a>
         <a href="index.html#trust">Safety &amp; Trust</a>
-        <a class="nav-cta" href="book.html#booking-flow">Book Now</a>
+        <a class="nav-cta" href="/book#booking-flow">Book Now</a>
         <a class="nav-returning" href="#customer-account-panel" aria-current="page">My Account</a>
-        <a class="nav-outline" href="track.html#track-form">Track My Vehicle</a>
+        <a class="nav-outline" href="/track#track-form">Track My Vehicle</a>
       </nav>
     </header>
 
-    <main class="booking-flow-shell customer-account-shell">
-      <section class="booking-flow-hero customer-account-hero">
-        <div class="booking-flow-hero-copy">
-          <p class="eyebrow">Customer account</p>
-          <h1>My Account</h1>
-          <p>Access saved vehicles, service addresses, and recent bookings. New customers can book as a guest, or create an account after booking for faster service next time.</p>
-          <div class="landing-actions">
-            <a class="button primary" href="#customer-account-panel">Open My Account</a>
-            <a class="button tertiary" href="book.html#booking-flow">Book as guest</a>
-            <a class="button returning" href="track.html#track-form">Track without logging in</a>
-          </div>
+    <main class="customer-account-shell">
+      <section class="customer-account-access" aria-labelledby="customer-account-title">
+        <div class="customer-account-intro">
+          <p class="customer-dashboard-kicker">Customer account</p>
+          <h1 id="customer-account-title">My Account</h1>
+          <p>Log in or create an account to save vehicles, service addresses, and booking history. Guest booking and guest tracking are always available.</p>
         </div>
-        <figure class="booking-flow-hero-image">
-          <img src="https://images.unsplash.com/photo-1503376780353-7e6692767b70?auto=format&fit=crop&w=1200&q=80" alt="A vehicle ready for ShiftFuel concierge service">
-        </figure>
-      </section>
 
-      <section id="customer-account-panel" class="customer-account-panel" aria-label="Customer account sign in">
-        <div class="customer-account-panel-copy">
-          <h2>Access My Account</h2>
-          <p>Enter the phone number and email used on your bookings to access your account or saved details.</p>
+        <div class="customer-account-access-grid">
+          <section id="customer-account-panel" class="customer-account-panel customer-account-login-card" aria-label="Customer account access">
+            <div class="customer-account-panel-copy">
+              <h2>Account Access</h2>
+              <p>Use your phone number and email to open saved details, or create an optional account for future bookings.</p>
+            </div>
+
+            <div class="customer-account-tabs" role="tablist" aria-label="Account options">
+              <button class="customer-account-tab is-active" type="button" role="tab" aria-selected="true" aria-controls="account-login-panel" data-account-mode="login">Log In</button>
+              <button class="customer-account-tab" type="button" role="tab" aria-selected="false" aria-controls="account-create-panel" data-account-mode="create">Create Account</button>
+            </div>
+
+            <div id="account-login-panel" class="customer-account-mode-panel is-active" role="tabpanel" data-account-panel="login">
+              <form class="customer-account-form" data-customer-login-form>
+                <label>
+                  Phone number
+                  <input name="phone" type="tel" inputmode="numeric" autocomplete="tel" placeholder="Phone number" required>
+                </label>
+                <label>
+                  Email address
+                  <input name="email" type="email" autocomplete="email" placeholder="you@example.com" required>
+                </label>
+                <button class="button primary" type="submit">Open My Account</button>
+                <p class="form-status" data-customer-account-status></p>
+              </form>
+            </div>
+
+            <div id="account-create-panel" class="customer-account-mode-panel" role="tabpanel" data-account-panel="create" hidden>
+              <form class="customer-account-form customer-create-form" data-customer-create-form>
+                <div class="customer-account-form-row">
+                  <label>
+                    First name
+                    <input name="firstName" type="text" autocomplete="given-name" placeholder="First name" required>
+                  </label>
+                  <label>
+                    Last name
+                    <input name="lastName" type="text" autocomplete="family-name" placeholder="Last name" required>
+                  </label>
+                </div>
+                <label>
+                  Phone number
+                  <input name="phone" type="tel" inputmode="numeric" autocomplete="tel" placeholder="Phone number" required>
+                </label>
+                <label>
+                  Email address
+                  <input name="email" type="email" autocomplete="email" placeholder="you@example.com" required>
+                </label>
+                <button class="button primary" type="submit">Create Account</button>
+                <p class="form-status" data-customer-create-status></p>
+              </form>
+            </div>
+          </section>
+
+          <aside class="customer-account-options" aria-label="Account and guest options">
+            <section class="customer-account-option-card customer-account-guest-card">
+              <div>
+                <h2>Guest options</h2>
+                <p>No account is required to book or track a service request.</p>
+              </div>
+              <div class="customer-account-guest-actions">
+                <a class="button primary" href="/book#booking-flow">Book as Guest</a>
+                <a class="button secondary" href="/track#track-form">Track Without Logging In</a>
+              </div>
+            </section>
+          </aside>
         </div>
-        <form class="customer-account-form" data-customer-login-form>
-          <label>
-            Phone number
-            <input name="phone" type="tel" inputmode="numeric" autocomplete="tel" placeholder="Phone number" required>
-          </label>
-          <label>
-            Email address
-            <input name="email" type="email" autocomplete="email" placeholder="you@example.com" required>
-          </label>
-          <button class="button primary" type="submit">Open My Account</button>
-          <p class="form-status" data-customer-account-status></p>
-        </form>
       </section>
 
       <section class="customer-dashboard" data-customer-dashboard hidden aria-label="My Account dashboard">

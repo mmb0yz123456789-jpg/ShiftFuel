@@ -1,7 +1,11 @@
 const CUSTOMER_ACCOUNT_KEY = "shiftfuel_customer_account";
 const customerDb = window.ShiftFuelSupabase;
 const loginForm = document.querySelector("[data-customer-login-form]");
+const createForm = document.querySelector("[data-customer-create-form]");
 const accountStatus = document.querySelector("[data-customer-account-status]");
+const createStatus = document.querySelector("[data-customer-create-status]");
+const accountModeButtons = document.querySelectorAll("[data-account-mode]");
+const accountModePanels = document.querySelectorAll("[data-account-panel]");
 const dashboard = document.querySelector("[data-customer-dashboard]");
 const statsMount = document.querySelector("[data-customer-stats]");
 const activeMount = document.querySelector("[data-active-requests]");
@@ -105,6 +109,7 @@ function writeSession(session) {
     phone: cleanPhone(session.phone),
     email: String(session.email || "").trim().toLowerCase(),
     name: session.name || "",
+    isNewAccount: Boolean(session.isNewAccount),
     savedAt: new Date().toISOString(),
   }));
 }
@@ -117,6 +122,32 @@ function setStatus(type, message) {
   if (!accountStatus) return;
   accountStatus.dataset.status = type || "";
   accountStatus.textContent = message || "";
+}
+
+function setCreateStatus(type, message) {
+  if (!createStatus) return;
+  createStatus.dataset.status = type || "";
+  createStatus.textContent = message || "";
+}
+
+function switchAccountMode(mode = "login") {
+  const nextMode = mode === "create" ? "create" : "login";
+  accountModeButtons.forEach((button) => {
+    const isActive = button.dataset.accountMode === nextMode;
+    button.classList.toggle("is-active", isActive);
+    button.setAttribute("aria-selected", String(isActive));
+  });
+  accountModePanels.forEach((panel) => {
+    const isActive = panel.dataset.accountPanel === nextMode;
+    panel.classList.toggle("is-active", isActive);
+    panel.hidden = !isActive;
+  });
+  if (nextMode === "login") setCreateStatus("", "");
+  else setStatus("", "");
+}
+
+function accountHasData(data = {}) {
+  return Boolean(data.requests?.length || data.addresses?.length || data.vehicles?.length);
 }
 
 async function loadAccountData(session) {
@@ -180,7 +211,7 @@ function emptyCard(message, action = "") {
 function requestCard(request, type = "active") {
   const vehicle = [request.vehicle_year, request.vehicle_make, request.vehicle_model].filter(Boolean).join(" ");
   const service = request.service_label || request.service_type || "ShiftFuel service";
-  const trackHref = `track.html?request=${encodeURIComponent(publicNumber(request.id))}`;
+  const trackHref = `/track?request=${encodeURIComponent(publicNumber(request.id))}`;
   const repeatHref = `returning.html?repeat=${encodeURIComponent(publicNumber(request.id))}#booking-flow`;
   return `
     <article class="customer-request-card customer-request-card-${type}">
@@ -319,7 +350,7 @@ function renderAccount(session, data, promos = []) {
       <article class="customer-data-card">
         <strong>${requests.length ? "Book again with saved details" : "Ready to book"}</strong>
         <span>${requests.length ? "Use your returning customer account to reuse saved vehicles and addresses on the next booking." : "Start a new booking and enter any promo code during checkout."}</span>
-        <a class="button secondary" href="returning.html#booking-flow">Book again</a>
+        <a class="button secondary" href="${requests.length ? "returning.html#booking-flow" : "/book#booking-flow"}">${requests.length ? "Book again" : "Book service"}</a>
       </article>
       <article class="customer-data-card">
         <strong>Promos</strong>
@@ -443,13 +474,18 @@ async function deleteSavedAddress(addressId) {
 async function openAccount(session) {
   setStatus("warning", "Loading your account...");
   const data = await loadAccountData(session);
-  if (!data.requests.length && !data.addresses.length && !data.vehicles.length) {
+  if (!accountHasData(data)) {
+    if (session.isNewAccount) {
+      renderAccount(session, data, []);
+      setStatus("success", "Account loaded. Saved details will appear here after booking.");
+      return;
+    }
     throw new Error("We could not find saved customer details for that phone and email.");
   }
   const customerId = data.requests.find((request) => request.customer_id)?.customer_id || "";
   const promos = await loadEligiblePromos(session, customerId);
   const name = customerNameFrom(data.requests, data);
-  const nextSession = { ...session, name };
+  const nextSession = { ...session, name, isNewAccount: false };
   writeSession(nextSession);
   renderAccount(nextSession, data, promos);
   setStatus("success", "Account loaded.");
@@ -480,6 +516,53 @@ loginForm?.addEventListener("submit", async (event) => {
   }
 });
 
+createForm?.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const button = form.querySelector('button[type="submit"]');
+  const firstName = String(form.elements.firstName.value || "").trim();
+  const lastName = String(form.elements.lastName.value || "").trim();
+  const phone = cleanPhone(form.elements.phone.value);
+  const email = String(form.elements.email.value || "").trim().toLowerCase();
+
+  if (phone.length < 10 || !email || !firstName || !lastName) {
+    setCreateStatus("error", "Enter your first name, last name, phone number, and email.");
+    return;
+  }
+
+  if (button) {
+    button.disabled = true;
+    button.textContent = "Creating...";
+  }
+
+  try {
+    setCreateStatus("warning", "Checking for an existing account...");
+    const session = { phone, email, name: `${firstName} ${lastName}`.trim(), isNewAccount: true };
+    const data = await loadAccountData(session);
+    if (accountHasData(data)) {
+      switchAccountMode("login");
+      if (loginForm) {
+        loginForm.elements.phone.value = formatPhone(phone);
+        loginForm.elements.email.value = email;
+      }
+      setStatus("warning", "An account already exists for this phone/email. Please log in instead.");
+      return;
+    }
+
+    writeSession(session);
+    renderAccount(session, { requests: [], addresses: [], vehicles: [] }, []);
+    setStatus("success", "Account created. You can book service and saved details will appear here after booking.");
+  } catch (error) {
+    console.error("[customer-account] create account failed:", error);
+    setCreateStatus("error", error.message || "Could not create your account. Please try again.");
+  } finally {
+    if (button) {
+      button.disabled = false;
+      button.textContent = "Create Account";
+    }
+  }
+});
+
 document.querySelector("[data-customer-sign-out]")?.addEventListener("click", () => {
   clearSession();
   activeAccountSession = null;
@@ -488,6 +571,8 @@ document.querySelector("[data-customer-sign-out]")?.addEventListener("click", ()
   document.body.classList.remove("customer-account-loaded");
   loginForm?.classList.remove("is-compact");
   loginForm?.reset();
+  createForm?.reset();
+  switchAccountMode("login");
   setStatus("warning", "Signed out on this device.");
 });
 
@@ -529,6 +614,17 @@ dashboard?.addEventListener("click", async (event) => {
     navToggle.setAttribute("aria-expanded", String(!isOpen));
     nav?.classList.toggle("is-open", !isOpen);
   });
+
+  accountModeButtons.forEach((button) => {
+    button.addEventListener("click", () => switchAccountMode(button.dataset.accountMode));
+  });
+
+  if (window.location.hash === "#create") {
+    switchAccountMode("create");
+    document.querySelector("#customer-account-panel")?.scrollIntoView({ block: "start" });
+  } else {
+    switchAccountMode("login");
+  }
 
   const session = readSession();
   if (!session || !loginForm) return;
