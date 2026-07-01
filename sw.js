@@ -8,7 +8,7 @@
 // Strategy: always try the network first (so an online user always gets the
 // latest deployed assets), and fall back to the cached copy only when offline.
 
-const RUNTIME_CACHE = 'shiftfuel-runtime-v1';
+const RUNTIME_CACHE = 'shiftfuel-runtime-v2';
 
 self.addEventListener('install', () => {
   // Activate this version immediately on next load.
@@ -82,7 +82,13 @@ self.addEventListener('fetch', (event) => {
       // Offline — serve the last good cached copy if we have one.
       const cached = await caches.match(request);
       if (cached) return cached;
-      throw _;
+      if (request.mode === 'navigate') {
+        return new Response('ShiftFuel is offline. Please reconnect and refresh.', {
+          status: 503,
+          headers: { 'Content-Type': 'text/plain; charset=utf-8' },
+        });
+      }
+      return new Response('', { status: 504, statusText: 'Gateway Timeout' });
     }
   })());
 });
