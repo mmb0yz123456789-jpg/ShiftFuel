@@ -13,19 +13,21 @@
       || document.body?.classList.contains('booking-page')
       || document.body?.classList.contains('track-page')
       || document.body?.classList.contains('account-page');
+    const isCustomerSignedIn = () => {
+      try {
+        const s = JSON.parse(localStorage.getItem('shiftfuel_customer_account') || 'null');
+        return !!(s && s.phone && s.email);
+      } catch (_) { return false; }
+    };
 
+    // Installed PWA only: keep in-page links inside the app shell instead of the
+    // public marketing site. The logo + Home tab are handled by
+    // syncCustomerNavTargets (they must follow sign-in state), so skip them here.
     function keepCustomerLinksInApp() {
       if (!isStandalonePage() || !isCompactPage() || !isCustomerSurface()) return;
-      const logo = document.querySelector('.site-header .logo');
-      if (logo) {
-        logo.setAttribute('href', '/account');
-        logo.setAttribute('aria-label', 'ShiftFuel Concierge app home');
-      }
       document.querySelectorAll('a[href="index.html"], a[href^="index.html#"], a[href="/"]').forEach((link) => {
+        if (link.classList.contains('logo') || link.hasAttribute('data-cust-tab')) return;
         link.setAttribute('href', '/account');
-      });
-      document.querySelectorAll('a[href="/account/settings"], a[href^="/account/settings#"]').forEach((link) => {
-        link.setAttribute('href', '/account#account-saved-details');
       });
       document.querySelectorAll('a[href^="returning.html"]').forEach((link) => {
         const href = link.getAttribute('href') || '';
@@ -36,30 +38,39 @@
       });
     }
 
+    // Top-left logo + Home tab, sign-in aware and mode-independent:
+    //   signed in  → the customer dashboard (/account)
+    //   signed out → the public home (/)
+    // The logo must NEVER route to the Account settings tab — only the Account tab
+    // does that. Runs in every mode: browser, mobile web, and installed PWA.
+    function syncCustomerNavTargets() {
+      if (!isCustomerSurface()) return;
+      const signedIn = isCustomerSignedIn();
+      const homeHref = signedIn ? '/account' : '/';
+      const logo = document.querySelector('.site-header .logo');
+      if (logo) {
+        logo.setAttribute('href', homeHref);
+        logo.setAttribute('aria-label', signedIn ? 'ShiftFuel Concierge home' : 'ShiftFuel Concierge');
+      }
+      const homeTab = document.querySelector('.customer-tabbar [data-cust-tab="home"]');
+      if (homeTab) homeTab.setAttribute('href', homeHref);
+    }
+
+    // Highlight the bottom tab that matches the current route. Home (/account) and
+    // Account (/account/settings) are distinct paths so they never both light up.
     function syncCustomerTabbarActive() {
       if (!isCustomerSurface()) return;
       const tabs = Array.from(document.querySelectorAll('.customer-tabbar .app-tab'));
       if (!tabs.length) return;
-      const currentPath = window.location.pathname.replace(/\/$/, '') || '/';
-      const currentHash = window.location.hash || '';
-      let activeTab = null;
-
-      if (currentPath === '/account' && currentHash === '#account-saved-details') {
-        activeTab = tabs.find((tab) => (tab.getAttribute('href') || '') === '/account#account-saved-details');
-      }
-      if (!activeTab) {
-        activeTab = tabs.find((tab) => {
-          const href = tab.getAttribute('href') || '';
-          const url = new URL(href, window.location.origin);
-          const tabPath = url.pathname.replace(/\/$/, '') || '/';
-          if (currentPath !== tabPath) return false;
-          if (currentPath === '/account') return !url.hash || url.hash === currentHash;
-          return true;
-        });
-      }
+      const path = (window.location.pathname || '/').replace(/\/$/, '') || '/';
+      let key = 'home';
+      if (path === '/book') key = 'book';
+      else if (path === '/track') key = 'track';
+      else if (path === '/account/settings' || path === '/settings') key = 'account';
+      else key = 'home'; // /account, /my-account, or any other customer surface
 
       tabs.forEach((tab) => {
-        const isActive = tab === activeTab;
+        const isActive = tab.getAttribute('data-cust-tab') === key;
         tab.classList.toggle('is-active', isActive);
         if (isActive) tab.setAttribute('aria-current', 'page');
         else tab.removeAttribute('aria-current');
@@ -67,6 +78,7 @@
     }
 
     keepCustomerLinksInApp();
+    syncCustomerNavTargets();
     syncCustomerTabbarActive();
     window.addEventListener('hashchange', syncCustomerTabbarActive);
     window.addEventListener('popstate', syncCustomerTabbarActive);
@@ -153,7 +165,7 @@
     // available from the header home button, but it should never cover the first
     // screen after opening the app or signing in.
     close();
-    window.addEventListener('sf-mode-change', () => { keepCustomerLinksInApp(); if (!canApp()) close(); });
+    window.addEventListener('sf-mode-change', () => { keepCustomerLinksInApp(); syncCustomerNavTargets(); if (!canApp()) close(); });
   }
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);

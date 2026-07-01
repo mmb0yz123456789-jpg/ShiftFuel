@@ -607,6 +607,24 @@
           </div>
           <button id="admin-support-refresh-btn" class="button secondary" type="button">Refresh</button>
         </div>
+        <div class="admin-card support-identity-card">
+          <div class="admin-toolbar">
+            <div>
+              <p class="eyebrow">Identity support</p>
+              <h3>Customer profile lookup</h3>
+              <p class="field-help">Admin-only view for linked history, claims, saved details, promo redemptions, and identity conflicts.</p>
+            </div>
+          </div>
+          <form id="identity-support-form" class="admin-filter-bar">
+            <input id="identity-support-phone" type="tel" placeholder="Phone">
+            <input id="identity-support-email" type="email" placeholder="Email">
+            <input id="identity-support-customer-id" type="text" placeholder="Customer ID">
+            <input id="identity-support-request-id" type="text" placeholder="Request ID">
+            <button class="button primary" type="submit">Lookup</button>
+          </form>
+          <p id="identity-support-status" class="form-status" role="status"></p>
+          <div id="identity-support-results" class="identity-support-results"></div>
+        </div>
         <div id="support-message-list" class="request-list"></div>
       </section>
 

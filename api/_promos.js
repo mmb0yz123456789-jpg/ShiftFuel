@@ -86,12 +86,21 @@ function cleanPhone(phone) {
 async function customerHasHistory(db, phone, email) {
   const emailValue = cleanEmail(email);
   if (emailValue) {
-    const { data } = await db.from('service_requests').select('id').ilike('customer_email', emailValue).limit(1);
+    const { data } = await db
+      .from('service_requests')
+      .select('id')
+      .or(`customer_email_normalized.eq.${emailValue},customer_email.ilike.${emailValue}`)
+      .limit(1);
     if (Array.isArray(data) && data.length) return true;
   }
-  const pat = phoneLikePattern(phone);
-  if (pat) {
-    const { data } = await db.from('service_requests').select('id').ilike('customer_phone', pat).limit(1);
+  const phoneValue = cleanPhone(phone);
+  if (phoneValue.length >= 10) {
+    const pat = phoneLikePattern(phone);
+    const { data } = await db
+      .from('service_requests')
+      .select('id')
+      .or(`customer_phone_digits.eq.${phoneValue},customer_phone.ilike.${pat}`)
+      .limit(1);
     if (Array.isArray(data) && data.length) return true;
   }
   return false;
@@ -121,8 +130,8 @@ async function customerRedemptionCount(db, promoId, phone, email) {
   const emailValue = cleanEmail(email);
   const phoneValue = cleanPhone(phone);
   const ors = [];
-  if (emailValue) ors.push(`customer_email.eq.${emailValue}`);
-  if (phoneValue.length >= 10) ors.push(`customer_phone.eq.${phoneValue}`);
+  if (emailValue) ors.push(`customer_email_normalized.eq.${emailValue}`, `customer_email.eq.${emailValue}`);
+  if (phoneValue.length >= 10) ors.push(`customer_phone_digits.eq.${phoneValue}`, `customer_phone.eq.${phoneValue}`);
   if (!ors.length) return 0;
   const { data } = await db
     .from('promo_redemptions')
@@ -142,6 +151,12 @@ function promoTargetAudience(promo) {
   if (TARGET_AUDIENCES.includes(explicit)) return explicit;
   if (promo.audience === 'new' || promo.audience === 'returning') return promo.audience;
   return 'everyone';
+}
+
+function redeemedReasonForPromo(promo) {
+  return promoTargetAudience(promo) === 'new'
+    ? 'This first-time promo has already been used for this customer.'
+    : 'You have already used this promo code.';
 }
 
 function promoServices(promo) {
@@ -226,15 +241,15 @@ async function validatePromoForCustomer({ db, code, phone, email, amounts, isAcc
 
   if (!serviceMatchesPromo(promo, serviceType)) return { ok: false, reason: 'This code does not apply to the selected service.' };
 
-  const audience = await promoAudienceAllowed({ db, promo, phone, email, isAccount, customerId });
-  if (!audience.ok) return audience;
-
   if (Number(promo.per_customer_limit) > 0) {
     const used = await customerRedemptionCount(db, promo.id, phone, email);
     if (used >= Number(promo.per_customer_limit)) {
-      return { ok: false, reason: 'You have already used this promo code.' };
+      return { ok: false, reason: redeemedReasonForPromo(promo) };
     }
   }
+
+  const audience = await promoAudienceAllowed({ db, promo, phone, email, isAccount, customerId });
+  if (!audience.ok) return audience;
 
   const base = discountBase(promo.applies_to || 'service_fees', a);
   const discount = computeDiscount(promo, base);
@@ -263,22 +278,37 @@ async function eligiblePromosForCustomer({ db, phone, email, isAccount = true, s
   return eligible;
 }
 
+function isUniqueViolation(err) {
+  return err?.code === '23505' || /duplicate key|unique constraint/i.test(String(err?.message || ''));
+}
+
 // Record a redemption (digits-only phone + lowercase email, so the per-customer
-// cap matches reliably) and bump the total counter. Best-effort, never throws.
+// cap matches reliably) and bump the total counter. Duplicate redemptions throw
+// so a limited promo cannot remain applied after the DB blocks it.
 async function recordPromoRedemption({ db, promo, requestId, phone, email, discount }) {
+  const phoneDigits = cleanPhone(phone) || null;
+  const emailNormalized = cleanEmail(email) || null;
   try {
-    await db.from('promo_redemptions').insert({
-      promo_code_id: promo.id,
-      request_id: requestId || null,
-      customer_phone: cleanPhone(phone) || null,
-      customer_email: cleanEmail(email) || null,
-      discount_amount: roundMoney(discount),
+    const { data, error } = await db.rpc('public_record_promo_redemption', {
+      p_promo_code_id: promo.id,
+      p_request_id: requestId || null,
+      p_customer_phone: phoneDigits,
+      p_customer_email: emailNormalized,
+      p_discount_amount: roundMoney(discount),
     });
-    await db.from('promo_codes')
-      .update({ redemption_count: Number(promo.redemption_count || 0) + 1, updated_at: new Date().toISOString() })
-      .eq('id', promo.id);
+    if (error) throw error;
+    return data || null;
   } catch (err) {
-    console.warn('[promos] redemption record failed:', err.message);
+    if (isUniqueViolation(err)) {
+      throw Object.assign(new Error(redeemedReasonForPromo(promo)), {
+        code: 'PROMO_ALREADY_REDEEMED',
+        statusCode: 409,
+      });
+    }
+    throw Object.assign(new Error(err.message || 'Promo redemption could not be recorded.'), {
+      code: 'PROMO_REDEMPTION_FAILED',
+      statusCode: 409,
+    });
   }
 }
 

@@ -518,8 +518,24 @@
     padding: 20px;
   }
 
+  /* Full mobile width: cards and forms span the container, inputs fill their card,
+     no skinny columns. */
+  .account-layout,
+  .account-content,
+  .account-form {
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+  }
+
   .form-grid {
     grid-template-columns: 1fr;
+  }
+
+  .form-grid input,
+  .form-grid select {
+    width: 100%;
+    box-sizing: border-box;
   }
 
   .account-header {

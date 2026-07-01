@@ -378,6 +378,11 @@ async function handleCreateIntent(body, res) {
   }
 
   try {
+    const quoteCheck = await resolveCreateIntentQuote(body, parsedCents);
+    if (!quoteCheck.ok) {
+      return res.status(quoteCheck.status || 400).json({ error: quoteCheck.error });
+    }
+
     const stripe = getStripe();
     // Do NOT request card "flexible payments" features (e.g.
     // request_incremental_authorization). This account isn't enabled for them, and
@@ -409,6 +414,45 @@ async function handleCreateIntent(body, res) {
     console.error('[payments/create_intent] Stripe error:', err.message);
     return res.status(500).json({ error: 'Could not initialize payment. Please try again.' });
   }
+}
+
+async function resolveCreateIntentQuote(body, requestedCents) {
+  const raw = body.booking && typeof body.booking === 'object' ? body.booking : null;
+  if (!raw) return { ok: true };
+
+  const row = {};
+  for (const field of ALLOWED_BOOKING_FIELDS) {
+    if (raw[field] !== undefined) row[field] = raw[field];
+  }
+  if (!row.service_type) return { ok: true };
+  if (!ALLOWED_SERVICE_TYPES.includes(row.service_type)) {
+    return { ok: false, status: 400, error: 'Invalid service type' };
+  }
+
+  const db = getSupabaseAdmin();
+  const station = await resolveStationSurcharge(raw);
+  const washCharge = await resolveWashSurcharge(raw, row);
+  const settings = await getServerPricingSettings(db);
+  const serverPricing = calculateBookingAuthorization(row, {
+    stationSurcharge: station.surcharge,
+    washSurcharge: washCharge.surcharge,
+    settings,
+  });
+  if (!serverPricing.valid) return { ok: false, status: 400, error: serverPricing.error };
+
+  const promoResolve = await resolveBookingPromo(db, raw, row, serverPricing);
+  if (promoResolve.error) return { ok: false, status: 409, error: promoResolve.error };
+
+  const approvedCents = serverPricing.amount_cents - promoResolve.discountCents;
+  if (requestedCents !== approvedCents) {
+    console.error('[payments/create_intent] Server quote mismatch:', approvedCents, 'vs client', requestedCents, {
+      service_type: row.service_type,
+      promo_discount_cents: promoResolve.discountCents,
+    });
+    return { ok: false, status: 400, error: 'Payment total changed. Please review the payment authorization and try again.' };
+  }
+
+  return { ok: true, approvedCents, promoResolve };
 }
 
 // Customer-submitted booking fields only. Anything not in this list is
@@ -933,7 +977,15 @@ async function handleCreateAuthorizedBooking(body, res) {
 
   console.log('[payments/create_authorized_booking] Created request', data?.id, 'for PI', intent.id);
   if (promoResolve.promoContext && data?.id) {
-    await recordPromoRedemption({ db, promo: promoResolve.promoContext.promo, requestId: data.id, phone: row.customer_phone, email: row.customer_email, discount: promoResolve.promoContext.discount });
+    try {
+      await recordPromoRedemption({ db, promo: promoResolve.promoContext.promo, requestId: data.id, phone: row.customer_phone, email: row.customer_email, discount: promoResolve.promoContext.discount });
+    } catch (promoErr) {
+      if (promoErr.code === 'PROMO_ALREADY_REDEEMED' || promoErr.code === 'PROMO_REDEMPTION_FAILED') {
+        await db.from('service_requests').delete().eq('id', data.id);
+        return res.status(409).json({ error: `Promo code ${promoResolve.promoContext.promo.code}: ${promoErr.message} Please re-check your total before booking.` });
+      }
+      throw promoErr;
+    }
   }
   // Resolve the tracked hold to 'booked' so it drops off the admin "Incomplete
   // authorizations" card. Best-effort and self-swallowing.
@@ -1096,7 +1148,15 @@ async function handleCreateScheduledBooking(body, res) {
     return res.status(500).json({ error: err.userMessage || 'We could not finish saving your booking. Please try again or contact ShiftFuel.' });
   }
   if (promoResolve.promoContext && data?.id) {
-    await recordPromoRedemption({ db, promo: promoResolve.promoContext.promo, requestId: data.id, phone: row.customer_phone, email: row.customer_email, discount: promoResolve.promoContext.discount });
+    try {
+      await recordPromoRedemption({ db, promo: promoResolve.promoContext.promo, requestId: data.id, phone: row.customer_phone, email: row.customer_email, discount: promoResolve.promoContext.discount });
+    } catch (promoErr) {
+      if (promoErr.code === 'PROMO_ALREADY_REDEEMED' || promoErr.code === 'PROMO_REDEMPTION_FAILED') {
+        await db.from('service_requests').delete().eq('id', data.id);
+        return res.status(409).json({ error: `Promo code ${promoResolve.promoContext.promo.code}: ${promoErr.message} Please re-check your total before booking.` });
+      }
+      throw promoErr;
+    }
   }
 
   // Persist the Stripe IDs in the service-role-only side table so the cron can

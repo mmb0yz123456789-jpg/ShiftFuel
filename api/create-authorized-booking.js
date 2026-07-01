@@ -441,17 +441,25 @@ module.exports = async function handler(req, res) {
     const data = await insertBookingRow(db, row);
     console.log('[create-authorized-booking] Supabase insert succeeded', data?.id);
 
+    if (promoContext && data?.id) {
+      try {
+        await recordPromoRedemption({
+          db, promo: promoContext.promo, requestId: data.id,
+          phone: body.customer_phone, email: body.customer_email, discount: promoContext.discount,
+        });
+      } catch (promoErr) {
+        if (promoErr.code === 'PROMO_ALREADY_REDEEMED' || promoErr.code === 'PROMO_REDEMPTION_FAILED') {
+          await db.from('service_requests').delete().eq('id', data.id);
+          return res.status(409).json({ error: `Promo code ${promoContext.promo.code}: ${promoErr.message} Please re-check your total before booking.` });
+        }
+        throw promoErr;
+      }
+    }
+
     try {
       await saveReusableBookingSnapshots(db, row);
     } catch (error) {
       console.warn('[create-authorized-booking] reusable snapshot skipped:', error.message);
-    }
-
-    if (promoContext && data?.id) {
-      await recordPromoRedemption({
-        db, promo: promoContext.promo, requestId: data.id,
-        phone: body.customer_phone, email: body.customer_email, discount: promoContext.discount,
-      });
     }
 
     await markAuthorizationBooked(db, intent.id);

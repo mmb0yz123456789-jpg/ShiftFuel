@@ -19,6 +19,7 @@ const historyMount = document.querySelector("[data-service-history]");
 const promosMount = document.querySelector("[data-customer-promos]");
 const recommendMount = document.querySelector("[data-customer-recommend]");
 const recommendSection = document.querySelector("[data-customer-recommend-section]");
+const claimPanel = document.querySelector("[data-customer-claim-panel]");
 const accountSummary = document.querySelector("[data-customer-account-summary]");
 const greeting = document.querySelector("[data-customer-greeting]");
 const customerInitialsEl = document.querySelector("[data-customer-initials]");
@@ -104,6 +105,42 @@ function customerNameFrom(requests = [], options = {}) {
   const firstAddress = (options.addresses || []).find((item) => item.customer_name)?.customer_name || "";
   const firstVehicle = (options.vehicles || []).find((item) => item.customer_name)?.customer_name || "";
   return firstRequest || firstAddress || firstVehicle || profileName || "";
+}
+
+function simpleKey(parts) {
+  return parts.map((part) => String(part || "").trim().toLowerCase().replace(/\s+/g, " ")).join("|");
+}
+
+function uniqueVehicles(vehicles = []) {
+  const seen = new Set();
+  return vehicles.filter((vehicle) => {
+    const key = simpleKey([
+      vehicle.vehicle_year,
+      vehicle.vehicle_make,
+      vehicle.vehicle_model,
+      vehicle.vehicle_color,
+      String(vehicle.license_plate || "").replace(/[\s-]+/g, "").toUpperCase(),
+    ]);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+function uniqueAddresses(addresses = []) {
+  const seen = new Set();
+  return addresses.filter((address) => {
+    const key = simpleKey([
+      address.address_street || address.hospital,
+      address.address_apt,
+      address.address_city,
+      address.address_state,
+      String(address.address_zip || "").replace(/\D/g, ""),
+    ]);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }
 
 function readSession() {
@@ -285,6 +322,74 @@ async function loadEligiblePromos(session, customerId = "") {
   }
 }
 
+function claimCount(group = {}) {
+  return ["service_requests", "saved_vehicles", "saved_addresses", "promo_redemptions"]
+    .reduce((sum, key) => sum + (Number(group[key]) || 0), 0);
+}
+
+function renderClaimPanel(result) {
+  if (!claimPanel) return;
+  const claimable = claimCount(result?.claimable);
+  const potential = claimCount(result?.potential_matches);
+  claimPanel.hidden = true;
+  claimPanel.innerHTML = "";
+
+  if (result?.ok && result.status === "claimed" && claimable > 0) {
+    claimPanel.hidden = false;
+    claimPanel.innerHTML = `
+      <article class="customer-data-card customer-claim-card" data-status="success">
+        <strong>Your past services have been added to your account.</strong>
+        <span>We connected ${claimable} past item${claimable === 1 ? "" : "s"} from this phone and email.</span>
+      </article>
+    `;
+    return;
+  }
+
+  if (result?.ok && claimable > 0) {
+    claimPanel.hidden = false;
+    claimPanel.innerHTML = `
+      <article class="customer-data-card customer-claim-card">
+        <strong>We found past ShiftFuel services connected to this phone and email.</strong>
+        <span>Add ${claimable} past item${claimable === 1 ? "" : "s"} to keep your account history together.</span>
+        <button class="button primary" type="button" data-claim-history>Add these past services to my account</button>
+      </article>
+    `;
+    return;
+  }
+
+  if (potential > 0 || result?.status === "conflict") {
+    claimPanel.hidden = false;
+    claimPanel.innerHTML = `
+      <article class="customer-data-card customer-claim-card" data-status="warning">
+        <strong>We found possible past ShiftFuel services.</strong>
+        <span>Some details do not exactly match this account, so they were not added automatically.</span>
+      </article>
+    `;
+  }
+}
+
+async function checkClaimHistory(session, execute = false) {
+  try {
+    const res = await fetch("/api/customer-account", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        action: "claim_history",
+        phone: session.phone,
+        email: session.email,
+        execute,
+      }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || "Could not check past services.");
+    renderClaimPanel(data);
+    return data;
+  } catch (error) {
+    console.warn("[customer-account] claim history unavailable:", error);
+    return null;
+  }
+}
+
 function emptyCard(message, action = "") {
   return `
     <article class="customer-empty-card">
@@ -418,13 +523,27 @@ function renderStats(active, history, addresses, vehicles) {
   `).join("");
 }
 
+function scrollAccountHashIntoView() {
+  const hash = window.location.hash;
+  if (hash !== "#account-saved-details") return;
+  requestAnimationFrame(() => {
+    document.querySelector(hash)?.scrollIntoView({ behavior: "smooth", block: "start" });
+  });
+}
+
 function renderAccount(session, data, promos = []) {
+  const renderData = {
+    ...data,
+    requests: Array.isArray(data.requests) ? data.requests : [],
+    addresses: uniqueAddresses(data.addresses || []),
+    vehicles: uniqueVehicles(data.vehicles || []),
+  };
   activeAccountSession = session;
-  activeAccountData = data;
-  const requests = [...data.requests].sort((a, b) => new Date(b.created_at || b.service_date || 0) - new Date(a.created_at || a.service_date || 0));
+  activeAccountData = renderData;
+  const requests = [...renderData.requests].sort((a, b) => new Date(b.created_at || b.service_date || 0) - new Date(a.created_at || a.service_date || 0));
   const active = requests.filter((request) => !terminalStatuses.has(canonicalBookingStatus(request.status)));
   const history = requests.filter((request) => terminalStatuses.has(canonicalBookingStatus(request.status)));
-  const name = session.name || customerNameFrom(requests, data);
+  const name = session.name || customerNameFrom(requests, renderData);
   const phone = formatPhone(session.phone);
   const email = String(session.email || "").trim().toLowerCase();
   const promoHeading = requests.length ? "Returning customer" : "Promo eligibility";
@@ -449,23 +568,23 @@ function renderAccount(session, data, promos = []) {
 
   document.querySelector("[data-active-count]").textContent = active.length;
   document.querySelector("[data-history-count]").textContent = history.length;
-  document.querySelector("[data-vehicle-count]").textContent = data.vehicles.length;
-  document.querySelector("[data-address-count]").textContent = data.addresses.length;
+  document.querySelector("[data-vehicle-count]").textContent = renderData.vehicles.length;
+  document.querySelector("[data-address-count]").textContent = renderData.addresses.length;
 
-  renderStats(active, history, data.addresses, data.vehicles);
+  renderStats(active, history, renderData.addresses, renderData.vehicles);
   activeMount.innerHTML = active.length
     ? active.map((request) => requestCard(request, "active")).join("")
     : emptyCard("No active services right now.", `<a class="button primary" href="/book#booking-flow">Book a saved vehicle</a>`);
-  vehiclesMount.innerHTML = data.vehicles.length
-    ? data.vehicles.map(vehicleCard).join("")
+  vehiclesMount.innerHTML = renderData.vehicles.length
+    ? renderData.vehicles.map(vehicleCard).join("")
     : emptyCard("No saved vehicles yet. Your next completed booking will save one for faster future booking.");
-  addressesMount.innerHTML = data.addresses.length
-    ? data.addresses.map(addressCard).join("")
+  addressesMount.innerHTML = renderData.addresses.length
+    ? renderData.addresses.map(addressCard).join("")
     : emptyCard("No saved service addresses yet. Use Book Now or My Account to add one.");
   historyMount.innerHTML = history.length
     ? history.slice(0, 8).map((request) => requestCard(request, "history")).join("")
     : emptyCard("No completed service history is available for this phone and email yet.");
-  if (recommendMount) recommendMount.innerHTML = buildRecommendations(active, history, data);
+  if (recommendMount) recommendMount.innerHTML = buildRecommendations(active, history, renderData);
   if (recommendSection) recommendSection.hidden = false;
   promosMount.innerHTML = promos.length
     ? promos.map(promoCard).join("")
@@ -602,6 +721,7 @@ async function openAccount(session) {
     if (session.isNewAccount) {
       renderAccount(session, data, []);
       setStatus("success", "Account loaded. Saved details will appear here after booking.");
+      checkClaimHistory(session, false);
       return;
     }
     throw new Error("We could not find saved customer details for that phone and email.");
@@ -613,6 +733,7 @@ async function openAccount(session) {
   writeSession(nextSession);
   renderAccount(nextSession, data, promos);
   setStatus("success", "Account loaded.");
+  checkClaimHistory(nextSession, false);
 }
 
 loginForm?.addEventListener("submit", async (event) => {
@@ -667,7 +788,7 @@ createForm?.addEventListener("submit", async (event) => {
     setCreateStatus("warning", "Checking for an existing account...");
     const session = { phone, email, name: `${firstName} ${lastName}`.trim(), isNewAccount: true };
     const data = await loadAccountData(session);
-    if (accountExists(data)) {
+    if (data.profile?.id) {
       switchAccountMode("login");
       if (loginForm) {
         loginForm.elements.phone.value = formatPhone(phone);
@@ -682,6 +803,7 @@ createForm?.addEventListener("submit", async (event) => {
     writeSession(nextSession);
     renderAccount(nextSession, { requests: [], addresses: [], vehicles: [], profile }, []);
     setStatus("success", "Account created. You can book service and saved details will appear here after booking.");
+    checkClaimHistory(nextSession, false);
   } catch (error) {
     console.error("[customer-account] create account failed:", error);
     setCreateStatus("error", error.message || "Could not create your account. Please try again.");
@@ -719,17 +841,30 @@ document.querySelector("[data-customer-sign-out]")?.addEventListener("click", ()
 });
 
 dashboard?.addEventListener("click", async (event) => {
+  const claimButton = event.target.closest("[data-claim-history]");
   const vehicleEdit = event.target.closest("[data-edit-vehicle]");
   const vehicleDelete = event.target.closest("[data-delete-vehicle]");
   const addressEdit = event.target.closest("[data-edit-address]");
   const addressDelete = event.target.closest("[data-delete-address]");
-  if (!vehicleEdit && !vehicleDelete && !addressEdit && !addressDelete) return;
+  if (!claimButton && !vehicleEdit && !vehicleDelete && !addressEdit && !addressDelete) return;
   if (!activeAccountSession || !customerDb) {
     setStatus("error", "Open My Account before editing saved details.");
     return;
   }
   try {
-    if (vehicleEdit) {
+    if (claimButton) {
+      claimButton.disabled = true;
+      claimButton.textContent = "Adding...";
+      const result = await checkClaimHistory(activeAccountSession, true);
+      if (result?.ok && result.status === "claimed") {
+        setStatus("success", "Your past services have been added to your account.");
+        await refreshAccount();
+      } else {
+        claimButton.disabled = false;
+        claimButton.textContent = "Add these past services to my account";
+        setStatus("warning", "We could not add those services automatically.");
+      }
+    } else if (vehicleEdit) {
       const vehicle = activeAccountData.vehicles.find((item) => String(item.id) === String(vehicleEdit.dataset.editVehicle));
       if (vehicle) await updateSavedVehicle(vehicle);
     } else if (vehicleDelete) {
@@ -788,14 +923,6 @@ dashboard?.addEventListener("click", async (event) => {
     });
     document.addEventListener("click", (event) => {
       if (!accountMenu.hidden && !event.target.closest("[data-customer-identity]")) closeAccountMenu();
-    });
-  }
-
-  function scrollAccountHashIntoView() {
-    const hash = window.location.hash;
-    if (hash !== "#account-saved-details") return;
-    requestAnimationFrame(() => {
-      document.querySelector(hash)?.scrollIntoView({ behavior: "smooth", block: "start" });
     });
   }
 

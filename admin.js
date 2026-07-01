@@ -81,6 +81,13 @@ const supportCountBadge = document.querySelector('#support-count-badge');
 const adminRefreshBtn = document.querySelector('#admin-refresh-btn');
 const adminReviewsRefreshBtn = document.querySelector('#admin-reviews-refresh-btn');
 const adminSupportRefreshBtn = document.querySelector('#admin-support-refresh-btn');
+const identitySupportForm = document.querySelector('#identity-support-form');
+const identitySupportPhone = document.querySelector('#identity-support-phone');
+const identitySupportEmail = document.querySelector('#identity-support-email');
+const identitySupportCustomerId = document.querySelector('#identity-support-customer-id');
+const identitySupportRequestId = document.querySelector('#identity-support-request-id');
+const identitySupportStatus = document.querySelector('#identity-support-status');
+const identitySupportResults = document.querySelector('#identity-support-results');
 
 const PHOTO_BUCKET = 'service-photos';
 const DEFAULT_WORKER_NAME = 'Mark Urban';
@@ -3889,6 +3896,220 @@ function supportStatusPill(status) {
   if (status === 'archived') return '<span class="status-pill status-pill-denied">Archived</span>';
   return '<span class="status-pill status-pill-open">Open</span>';
 }
+
+function supportSetStatus(type, message) {
+  if (!identitySupportStatus) return;
+  identitySupportStatus.dataset.status = type || '';
+  identitySupportStatus.textContent = message || '';
+}
+
+function shortId(value) {
+  const text = String(value || '');
+  return text ? text.slice(0, 8) : '';
+}
+
+function supportEmpty(message) {
+  return `<div class="empty-state"><p>${escapeHtml(message)}</p></div>`;
+}
+
+function supportTable(rows, columns, emptyMessage) {
+  if (!rows || !rows.length) return supportEmpty(emptyMessage);
+  return `
+    <div class="admin-table-scroll">
+      <table class="admin-table identity-support-table">
+        <thead><tr>${columns.map((col) => `<th>${escapeHtml(col.label)}</th>`).join('')}<th>Actions</th></tr></thead>
+        <tbody>
+          ${rows.map((row) => `
+            <tr>
+              ${columns.map((col) => `<td>${col.render ? col.render(row) : escapeHtml(row[col.key] ?? '')}</td>`).join('')}
+              <td>${row.actions || ''}</td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+function renderIdentitySupport(data = {}) {
+  if (!identitySupportResults) return;
+  const customer = data.customer || null;
+  const lookup = data.lookup || {};
+  const serviceRows = (data.service_history || []).map((request) => ({
+    ...request,
+    actions: `
+      ${customer?.id ? `<button class="button secondary identity-link-request" type="button" data-id="${escapeHtml(request.id)}">Link</button>` : ''}
+      ${request.customer_id ? `<button class="button secondary identity-unlink-request" type="button" data-id="${escapeHtml(request.id)}">Unlink</button>` : ''}
+    `,
+  }));
+  const promoRows = (data.promo_redemptions || []).map((promo) => ({
+    ...promo,
+    actions: promo.voided_at
+      ? '<span class="field-help">Voided</span>'
+      : `<button class="button secondary identity-void-promo" type="button" data-id="${escapeHtml(promo.id)}">Mark voided</button>`,
+  }));
+
+  identitySupportResults.dataset.customerId = customer?.id || lookup.customer_id || '';
+  identitySupportResults.innerHTML = `
+    <div class="identity-support-grid">
+      <article class="admin-card">
+        <p class="eyebrow">Customer profile</p>
+        ${customer ? `
+          <h3>${escapeHtml(customer.name || [customer.first_name, customer.last_name].filter(Boolean).join(' ') || 'Customer')}</h3>
+          <p><strong>Phone:</strong> ${escapeHtml(customer.phone || lookup.phone_digits || '')}</p>
+          <p><strong>Email:</strong> ${escapeHtml(customer.email || lookup.email_normalized || '')}</p>
+          <p class="field-help">Customer ID: ${escapeHtml(customer.id)}</p>
+        ` : `
+          <h3>No profile found</h3>
+          <p class="field-help">Lookup matched snapshots only. Create or verify a customer account before manually linking history.</p>
+        `}
+      </article>
+      <article class="admin-card">
+        <p class="eyebrow">Claim status</p>
+        <h3>${(data.claim_audit || []).length} claimed item${(data.claim_audit || []).length === 1 ? '' : 's'}</h3>
+        <p class="field-help">${(data.conflicts || []).length ? 'Identity conflicts need review before linking.' : 'No identity conflicts returned for this lookup.'}</p>
+      </article>
+    </div>
+
+    <details class="svc-acc" open>
+      <summary><span>Linked service history</span></summary>
+      ${supportTable(serviceRows, [
+        { label: 'Request', render: (row) => `<strong>${escapeHtml(shortId(row.id))}</strong><br><span class="field-help">${escapeHtml(formatDateTime(row.created_at))}</span>` },
+        { label: 'Service', render: (row) => `${escapeHtml(row.service_label || row.service_type || 'Service')}<br><span class="field-help">${escapeHtml(row.status || '')}</span>` },
+        { label: 'Customer', render: (row) => `${escapeHtml(row.customer_name || '')}<br><span class="field-help">${escapeHtml(row.customer_email || '')}</span>` },
+        { label: 'Claim', render: (row) => row.claim_method ? `${escapeHtml(row.claim_method)}<br><span class="field-help">${escapeHtml(formatDateTime(row.claimed_at))}</span>` : '<span class="field-help">Not claimed</span>' },
+      ], 'No linked or matching service history found.')}
+    </details>
+
+    <details class="svc-acc">
+      <summary><span>Promo redemptions</span></summary>
+      ${supportTable(promoRows, [
+        { label: 'Code', render: (row) => `<strong>${escapeHtml(row.code || shortId(row.promo_code_id))}</strong><br><span class="field-help">${escapeHtml(row.name || '')}</span>` },
+        { label: 'Discount', render: (row) => `$${Number(row.discount_amount || 0).toFixed(2)}` },
+        { label: 'Identity', render: (row) => `${escapeHtml(row.customer_phone_digits || '')}<br><span class="field-help">${escapeHtml(row.customer_email_normalized || '')}</span>` },
+        { label: 'Status', render: (row) => row.voided_at ? `Voided<br><span class="field-help">${escapeHtml(row.void_reason || '')}</span>` : `Redeemed<br><span class="field-help">${escapeHtml(formatDateTime(row.redeemed_at))}</span>` },
+      ], 'No promo redemptions found.')}
+    </details>
+
+    <details class="svc-acc">
+      <summary><span>Saved vehicles</span></summary>
+      ${supportTable(data.saved_vehicles || [], [
+        { label: 'Vehicle', render: (row) => `${escapeHtml([row.vehicle_year, row.vehicle_make, row.vehicle_model].filter(Boolean).join(' ') || 'Vehicle')}<br><span class="field-help">${escapeHtml(row.license_plate || '')}</span>` },
+        { label: 'Owner', render: (row) => `${escapeHtml(row.customer_name || '')}<br><span class="field-help">${escapeHtml(shortId(row.customer_id))}</span>` },
+        { label: 'Claim', render: (row) => row.claim_method ? `${escapeHtml(row.claim_method)}<br><span class="field-help">${escapeHtml(formatDateTime(row.claimed_at))}</span>` : '<span class="field-help">Not claimed</span>' },
+      ], 'No saved vehicles found.')}
+    </details>
+
+    <details class="svc-acc">
+      <summary><span>Saved addresses</span></summary>
+      ${supportTable(data.saved_addresses || [], [
+        { label: 'Address', render: (row) => `${escapeHtml(row.address_street || row.hospital || 'Address')}<br><span class="field-help">${escapeHtml([row.address_city, row.address_state, row.address_zip].filter(Boolean).join(', '))}</span>` },
+        { label: 'Owner', render: (row) => `${escapeHtml(row.customer_name || '')}<br><span class="field-help">${escapeHtml(shortId(row.customer_id))}</span>` },
+        { label: 'Claim', render: (row) => row.claim_method ? `${escapeHtml(row.claim_method)}<br><span class="field-help">${escapeHtml(formatDateTime(row.claimed_at))}</span>` : '<span class="field-help">Not claimed</span>' },
+      ], 'No saved addresses found.')}
+    </details>
+
+    <details class="svc-acc">
+      <summary><span>Identity conflicts</span></summary>
+      ${supportTable(data.conflicts || [], [
+        { label: 'Issue', render: (row) => `<strong>${escapeHtml(row.issue || '')}</strong>` },
+        { label: 'Scope', render: (row) => `${escapeHtml(row.scope || '')}<br><span class="field-help">${escapeHtml(row.identity_value || '')}</span>` },
+        { label: 'Rows', render: (row) => String(row.row_count || 0) },
+      ], 'No identity conflicts found for this lookup.')}
+    </details>
+  `;
+}
+
+async function loadIdentitySupport() {
+  if (!identitySupportResults) return;
+  const payload = {
+    p_token: adminAuthToken(),
+    p_phone: identitySupportPhone?.value || null,
+    p_email: identitySupportEmail?.value || null,
+    p_customer_id: identitySupportCustomerId?.value || null,
+    p_request_id: identitySupportRequestId?.value || null,
+  };
+  if (!payload.p_phone && !payload.p_email && !payload.p_customer_id && !payload.p_request_id) {
+    supportSetStatus('error', 'Enter a phone, email, customer ID, or request ID.');
+    return;
+  }
+  supportSetStatus('warning', 'Looking up customer identity...');
+  identitySupportResults.innerHTML = '';
+  const { data, error } = await db.rpc('admin_customer_identity_lookup', payload);
+  if (error) throw error;
+  renderIdentitySupport(data || {});
+  supportSetStatus('success', 'Identity lookup loaded.');
+}
+
+async function runIdentitySupportAction(action, targetId, options = {}) {
+  const { data, error } = await db.rpc('admin_customer_identity_action', {
+    p_token: adminAuthToken(),
+    p_action: action,
+    p_target_id: targetId,
+    p_customer_id: options.customerId || null,
+    p_reason: options.reason || null,
+  });
+  if (error) throw error;
+  return data;
+}
+
+identitySupportForm?.addEventListener('submit', async (event) => {
+  event.preventDefault();
+  const button = identitySupportForm.querySelector('button[type="submit"]');
+  if (button) button.disabled = true;
+  try {
+    await loadIdentitySupport();
+  } catch (error) {
+    console.error('[admin identity support] lookup failed:', error);
+    supportSetStatus('error', error.message || 'Could not load identity support details.');
+  } finally {
+    if (button) button.disabled = false;
+  }
+});
+
+identitySupportResults?.addEventListener('click', async (event) => {
+  const linkBtn = event.target.closest('.identity-link-request');
+  const unlinkBtn = event.target.closest('.identity-unlink-request');
+  const voidPromoBtn = event.target.closest('.identity-void-promo');
+  const button = linkBtn || unlinkBtn || voidPromoBtn;
+  if (!button) return;
+
+  const customerId = identitySupportResults.dataset.customerId || '';
+  let action = '';
+  let reason = '';
+  if (linkBtn) {
+    if (!customerId) {
+      supportSetStatus('error', 'Load a verified customer profile before linking a request.');
+      return;
+    }
+    reason = window.prompt('Reason for manually linking this request after verification?') || '';
+    if (!reason.trim()) return;
+    if (!window.confirm('Link this guest request to the loaded customer account?')) return;
+    action = 'link_request';
+  } else if (unlinkBtn) {
+    reason = window.prompt('Reason for unlinking this request from the customer account?') || '';
+    if (!reason.trim()) return;
+    if (!window.confirm('Unlink this request from its customer account?')) return;
+    action = 'unlink_request';
+  } else if (voidPromoBtn) {
+    reason = window.prompt('Reason for marking this promo redemption voided/refunded?') || '';
+    if (!reason.trim()) return;
+    if (!window.confirm('Mark this promo redemption as voided for support records? This does not erase the original redemption.')) return;
+    action = 'void_promo_redemption';
+  }
+
+  button.disabled = true;
+  try {
+    await runIdentitySupportAction(action, button.dataset.id, { customerId, reason });
+    supportSetStatus('success', 'Support action saved and audit logged.');
+    await loadIdentitySupport();
+  } catch (error) {
+    console.error('[admin identity support] action failed:', error);
+    supportSetStatus('error', error.message || 'Could not save support action.');
+  } finally {
+    button.disabled = false;
+  }
+});
 
 function renderSupportMessages(messages) {
   if (!supportMessageList) return;
