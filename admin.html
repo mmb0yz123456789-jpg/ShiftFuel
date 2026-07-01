@@ -6,13 +6,20 @@
     <base href="/">
     <title>ShiftFuel Admin</title>
     <link rel="manifest" href="manifest-admin.webmanifest">
+    <meta name="theme-color" content="#1a1f3d">
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="SF Admin">
+    <script>/* PWA mode flags (anti-FOUC): set html.sf-standalone/sf-compact before first paint */
+      (function(){var d=document.documentElement,m=window.matchMedia,
+        s=(m&&m('(display-mode: standalone)').matches)||navigator.standalone===true,
+        c=!m||m('(max-width: 760px)').matches;
+        d.classList.add(s?'sf-standalone':'sf-browser',c?'sf-compact':'sf-wide');})();
+    </script>
     <link rel="icon" href="icon-main.svg" type="image/svg+xml">
     <link rel="icon" href="icon-main.svg" sizes="any">
-    <link rel="apple-touch-icon" href="icon-main.svg">
+    <link rel="apple-touch-icon" href="apple-touch-icon-admin.png">
     <link rel="stylesheet" href="styles.css">
     <style>
       /* Service-area editor modal */
@@ -171,6 +178,40 @@
 	  </div>
 	</div>
 
+    <!-- ── Installed-app home launcher (phone PWA only; inert in the browser) ── -->
+    <section class="sf-applauncher" data-sf-applauncher hidden aria-label="Admin app home">
+      <button class="sf-launcher-dismiss" type="button" data-sf-dismiss aria-label="Close app home">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
+      </button>
+      <div class="sf-launcher-head">
+        <p class="sf-launcher-kicker">ShiftFuel Admin</p>
+        <h1 class="sf-launcher-title">Operations</h1>
+        <p class="sf-launcher-sub">Everything you manage, one tap away.</p>
+      </div>
+      <div class="sf-launcher-grid">
+        <button class="sf-tile sf-tile-primary" type="button" data-sf-goto=".admin-page-tabs [data-page='requests']">
+          <span class="sf-tile-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg></span>
+          <span><span class="sf-tile-label">Open Requests</span><span class="sf-tile-sub">Find &amp; assign jobs</span></span>
+        </button>
+        <button class="sf-tile" type="button" data-sf-goto=".admin-page-tabs [data-page='dashboard']">
+          <span class="sf-tile-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 11l9-7 9 7"/><path d="M5 10v9h14v-9"/></svg></span>
+          <span class="sf-tile-label">Today's Jobs</span>
+        </button>
+        <button class="sf-tile" type="button" data-sf-goto=".admin-page-tabs [data-page='workers']">
+          <span class="sf-tile-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="9" cy="8" r="3"/><path d="M2.5 19c0-3 2.9-5.5 6.5-5.5s6.5 2.5 6.5 5.5"/><circle cx="17" cy="8.5" r="2.3"/><path d="M15.5 13.6c2.7.4 4.5 2.4 4.5 5"/></svg></span>
+          <span class="sf-tile-label">Workers</span>
+        </button>
+        <button class="sf-tile" type="button" data-sf-goto=".admin-page-tabs [data-page='payroll']">
+          <span class="sf-tile-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 19V5m5 14V9m5 10V7m5 12V11"/></svg></span>
+          <span class="sf-tile-label">Reports</span>
+        </button>
+        <button class="sf-tile" type="button" data-sf-goto=".admin-page-tabs [data-page='settings']">
+          <span class="sf-tile-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="3"/><path d="M19.4 13.5a7.6 7.6 0 0 0 0-3l1.9-1.3-2-3.4-2.2.7a7.6 7.6 0 0 0-2.6-1.5L14 2.5h-4l-.5 2.5a7.6 7.6 0 0 0-2.6 1.5l-2.2-.7-2 3.4 1.9 1.3a7.6 7.6 0 0 0 0 3l-1.9 1.3 2 3.4 2.2-.7a7.6 7.6 0 0 0 2.6 1.5l.5 2.5h4l.5-2.5a7.6 7.6 0 0 0 2.6-1.5l2.2.7 2-3.4z"/></svg></span>
+          <span class="sf-tile-label">Settings</span>
+        </button>
+      </div>
+    </section>
+
     <main class="admin-main">
       <div class="admin-page-row">
       <div class="admin-page-content">
@@ -215,7 +256,7 @@
             </div>
             <span class="admin-stat-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="9" cy="8" r="3"/><path d="M2.5 19c0-3 2.9-5.5 6.5-5.5s6.5 2.5 6.5 5.5"/><circle cx="17" cy="8.5" r="2.3"/><path d="M15.5 13.6c2.7.4 4.5 2.4 4.5 5"/></svg></span>
           </div>
-          <div class="admin-stat-card admin-stat-card--clickable" id="stat-card-revenue" role="button" tabindex="0" title="View payroll (company net)">
+          <div class="admin-stat-card admin-stat-card--clickable" id="stat-card-revenue" role="button" tabindex="0" title="View today's revenue">
             <div>
               <span class="admin-stat-label" id="stat-revenue-label">Company Net Today</span>
               <span class="admin-stat-value" id="stat-net-revenue">$0</span>

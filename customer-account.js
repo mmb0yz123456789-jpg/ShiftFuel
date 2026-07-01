@@ -6,6 +6,10 @@ const accountStatus = document.querySelector("[data-customer-account-status]");
 const createStatus = document.querySelector("[data-customer-create-status]");
 const accountModeButtons = document.querySelectorAll("[data-account-mode]");
 const accountModePanels = document.querySelectorAll("[data-account-panel]");
+const accountOpenButtons = document.querySelectorAll("[data-account-open]");
+const accountCloseButtons = document.querySelectorAll("[data-account-close]");
+const accountFormPanel = document.querySelector("[data-account-form]");
+const accountBenefitsCard = document.querySelector("[data-account-benefits]");
 const dashboard = document.querySelector("[data-customer-dashboard]");
 const statsMount = document.querySelector("[data-customer-stats]");
 const activeMount = document.querySelector("[data-active-requests]");
@@ -141,6 +145,45 @@ function switchAccountMode(mode = "login") {
   });
   if (nextMode === "login") setCreateStatus("", "");
   else setStatus("", "");
+}
+
+// The login/create form is collapsed by default so first-time customers see the
+// guest actions first. Reveal it only when they tap "Log In or Create Account".
+function openAccountForm(mode) {
+  if (accountFormPanel) accountFormPanel.hidden = false;
+  if (accountBenefitsCard) accountBenefitsCard.hidden = true;
+  accountOpenButtons.forEach((button) => button.setAttribute("aria-expanded", "true"));
+  if (mode) switchAccountMode(mode);
+  accountFormPanel?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  const firstInput = accountFormPanel?.querySelector(".customer-account-mode-panel.is-active input");
+  window.setTimeout(() => {
+    try { firstInput?.focus({ preventScroll: true }); } catch (_) { /* focus is best-effort */ }
+  }, 80);
+}
+
+function closeAccountForm() {
+  if (accountFormPanel) accountFormPanel.hidden = true;
+  if (accountBenefitsCard) accountBenefitsCard.hidden = false;
+  accountOpenButtons.forEach((button) => button.setAttribute("aria-expanded", "false"));
+}
+
+// Email is stored lowercase on submit; mirror that in the field as the customer
+// types so what they see matches what is saved.
+function bindEmailLowercase(root = document) {
+  root.querySelectorAll('input[type="email"]').forEach((input) => {
+    if (input.dataset.lowerBound === "1") return;
+    input.dataset.lowerBound = "1";
+    const lower = () => {
+      const next = input.value.toLowerCase();
+      if (next === input.value) return;
+      const start = input.selectionStart;
+      const end = input.selectionEnd;
+      input.value = next;
+      try { input.setSelectionRange(start, end); } catch (_) { /* not all inputs support it */ }
+    };
+    input.addEventListener("input", lower);
+    input.addEventListener("blur", lower);
+  });
 }
 
 function accountHasData(data = {}) {
@@ -574,6 +617,7 @@ document.querySelector("[data-customer-sign-out]")?.addEventListener("click", ()
   loginForm?.reset();
   createForm?.reset();
   switchAccountMode("login");
+  closeAccountForm();
   setStatus("warning", "Signed out on this device.");
 });
 
@@ -620,12 +664,22 @@ dashboard?.addEventListener("click", async (event) => {
     button.addEventListener("click", () => switchAccountMode(button.dataset.accountMode));
   });
 
-  if (window.location.hash === "#create") {
-    switchAccountMode("create");
-    document.querySelector("#customer-account-panel")?.scrollIntoView({ block: "start" });
-  } else {
-    switchAccountMode("login");
+  accountOpenButtons.forEach((button) => {
+    button.addEventListener("click", () => openAccountForm());
+  });
+  accountCloseButtons.forEach((button) => {
+    button.addEventListener("click", () => closeAccountForm());
+  });
+  bindEmailLowercase();
+
+  // Deep links / the "My Account" nav item should open the collapsed form.
+  function openFormFromHash(hash) {
+    if (hash === "#create") openAccountForm("create");
+    else if (hash === "#customer-account-panel") openAccountForm("login");
   }
+  openFormFromHash(window.location.hash);
+  if (window.location.hash !== "#create") switchAccountMode("login");
+  window.addEventListener("hashchange", () => openFormFromHash(window.location.hash));
 
   const session = readSession();
   if (!session || !loginForm) return;

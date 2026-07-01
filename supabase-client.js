@@ -22,6 +22,60 @@ window.ShiftFuelSupabase = supabaseClient;
   }
 })();
 
+// ── Interface mode: display-mode × screen size × role ──────────────────────────
+// One shared detector so the SAME codebase can present three intentionally
+// different experiences: full desktop web, lightweight mobile web, and an
+// app-like installed PWA. It sets html/body classes every page can key off:
+//   .sf-standalone / .sf-browser   → installed PWA vs normal browser
+//   .sf-compact    / .sf-wide      → phone-width vs desktop-width
+//   body.sf-role-admin|worker|customer|guest
+// and exposes window.SF_MODE = { role, standalone, compact }. The html classes are
+// ALSO set by a tiny inline <head> snippet on app pages (anti-FOUC); idempotent.
+(function setupInterfaceMode() {
+  const root = document.documentElement;
+  const mqCompact = window.matchMedia ? window.matchMedia('(max-width: 760px)') : null;
+  const mqStandalone = window.matchMedia ? window.matchMedia('(display-mode: standalone)') : null;
+  const isStandalone = () => (mqStandalone && mqStandalone.matches) || window.navigator.standalone === true;
+
+  function detectRole() {
+    try {
+      if (sessionStorage.getItem('shiftfuel_admin') === 'true') return 'admin';
+      if (sessionStorage.getItem('shiftfuel_worker_token')) return 'worker';
+      if (localStorage.getItem('shiftfuel_customer_account')) return 'customer';
+    } catch (_) {}
+    return 'guest';
+  }
+
+  function apply() {
+    const standalone = isStandalone();
+    const compact = mqCompact ? mqCompact.matches : window.innerWidth <= 760;
+    const role = detectRole();
+
+    root.classList.toggle('sf-standalone', standalone);
+    root.classList.toggle('sf-browser', !standalone);
+    root.classList.toggle('sf-compact', compact);
+    root.classList.toggle('sf-wide', !compact);
+
+    const body = document.body;
+    if (body) {
+      body.classList.toggle('sf-standalone', standalone);
+      body.classList.toggle('sf-browser', !standalone);
+      body.classList.toggle('sf-compact', compact);
+      body.classList.toggle('sf-wide', !compact);
+      ['admin', 'worker', 'customer', 'guest'].forEach((r) => body.classList.toggle('sf-role-' + r, r === role));
+    }
+
+    window.SF_MODE = { role, standalone, compact };
+    window.dispatchEvent(new CustomEvent('sf-mode-change', { detail: window.SF_MODE }));
+  }
+
+  apply();
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', apply);
+  const listen = (mq) => { if (!mq) return; mq.addEventListener ? mq.addEventListener('change', apply) : (mq.addListener && mq.addListener(apply)); };
+  listen(mqCompact);
+  listen(mqStandalone); // some UAs flip display-mode without a reload
+})();
+
 // ── Installable app (PWA) — injected on every page that loads this client ──────
 (function setupPwa() {
   const head = document.head;
@@ -71,6 +125,27 @@ window.ShiftFuelSupabase = supabaseClient;
     return l;
   });
 
+  // App-shell styling for installed-PWA (standalone) mode. Every rule inside is
+  // gated on html.sf-standalone, so it's completely inert in the browser and on
+  // desktop — mobile web stays the lightweight fallback, desktop keeps its dashboards.
+  addOnce('link[data-pwa-app]', () => {
+    const l = document.createElement('link');
+    l.rel = 'stylesheet';
+    l.href = 'pwa-app.css';
+    l.dataset.pwaApp = '1';
+    return l;
+  });
+
+  // App-shell behaviour: the role "app home" launcher. No-ops on any page that
+  // doesn't contain a [data-sf-applauncher], and only activates in standalone.
+  addOnce('script[data-pwa-app]', () => {
+    const s = document.createElement('script');
+    s.src = 'pwa-app.js';
+    s.defer = true;
+    s.dataset.pwaApp = '1';
+    return s;
+  });
+
   // Register the service worker (network-first; never serves stale code online).
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
@@ -96,6 +171,10 @@ window.ShiftFuelSupabase = supabaseClient;
     ? fn()
     : document.addEventListener('DOMContentLoaded', fn));
   const isIOS = () => /iphone|ipad|ipod/i.test(navigator.userAgent || '') && !window.MSStream;
+  // Installing to a home screen only makes sense on phones/tablets — never show
+  // the prompt on the desktop website (narrow viewport or a touch-first device).
+  const isMobile = () => (window.matchMedia
+    && window.matchMedia('(max-width: 768px), (pointer: coarse)').matches);
   const isStandalone = () => (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches)
     || window.navigator.standalone === true;
   const dismissed = () => { try { return localStorage.getItem(DISMISS_KEY) === '1'; } catch (_) { return false; } };
@@ -114,7 +193,7 @@ window.ShiftFuelSupabase = supabaseClient;
       || b.classList.contains('admin-portal-page')
       || b.classList.contains('worker-portal-page')
       || b.classList.contains('booking-page');
-    return customer && !excluded && !isStandalone() && !dismissed();
+    return customer && !excluded && isMobile() && !isStandalone() && !dismissed();
   }
 
   function injectStyleOnce() {

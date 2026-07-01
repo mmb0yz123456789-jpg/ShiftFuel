@@ -99,6 +99,20 @@ function renderPresenceControls() {
     workerBreakToggle.hidden = false;
     workerBreakToggle.textContent = onBreak ? 'End break' : 'Take a break';
   }
+  updateWorkerStatusBadge();
+}
+
+// Status pill in the account modal header: Active / On Break / Offline.
+function updateWorkerStatusBadge() {
+  const badge = document.getElementById('worker-account-status-badge');
+  if (!badge) return;
+  const inactive = currentEmployee && currentEmployee.active === false;
+  const onBreak = workerPresenceStatus === 'on_break';
+  badge.classList.remove('is-on-break', 'is-offline');
+  let label = 'Active';
+  if (inactive) { badge.classList.add('is-offline'); label = 'Offline'; }
+  else if (onBreak) { badge.classList.add('is-on-break'); label = 'On Break'; }
+  badge.innerHTML = '<span class="worker-active-dot"></span>' + label;
 }
 
 function startWorkerHeartbeat() {
@@ -184,11 +198,11 @@ document.querySelector('#worker-dash-reviews-all')?.addEventListener('click', ()
 document.querySelector('#worker-snapshot-schedule')?.addEventListener('click', () => {
   document.querySelector('[data-tab-view="schedule"]')?.click();
 });
-document.querySelector('#worker-header-signout')?.addEventListener('click', () => {
-  document.querySelector('#worker-signout-btn')?.click();
-});
-
-// Profile panel (mobile avatar button)
+// ── Account modal ────────────────────────────────────────────────────────────
+// Opened from the header avatar/name chip (desktop), the avatar button (mobile),
+// and the "Manage account" button on the Profile tab. The action buttons inside
+// it (Edit profile, Change password, Enable alerts, Take a break, Sign out) are
+// the real controls — their click handlers are wired elsewhere by their own IDs.
 const workerProfilePanel = document.getElementById('worker-profile-panel');
 const workerProfilePanelOverlay = document.getElementById('worker-profile-panel-overlay');
 
@@ -209,32 +223,14 @@ document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape' && workerProfilePanel && !workerProfilePanel.hasAttribute('hidden')) closeWorkerProfilePanel();
 });
 document.querySelector('#worker-mobile-avatar-btn')?.addEventListener('click', openWorkerProfilePanel);
+document.querySelector('#worker-desktop-account-btn')?.addEventListener('click', openWorkerProfilePanel);
+document.querySelector('#worker-manage-account-btn')?.addEventListener('click', openWorkerProfilePanel);
 document.querySelector('#close-worker-profile-panel')?.addEventListener('click', closeWorkerProfilePanel);
 workerProfilePanelOverlay?.addEventListener('click', closeWorkerProfilePanel);
-document.querySelector('#panel-view-profile')?.addEventListener('click', () => {
-  closeWorkerProfilePanel();
-  switchWorkerTab('profile');
-});
-document.querySelector('#panel-signout')?.addEventListener('click', () => {
-  closeWorkerProfilePanel();
-  document.querySelector('#worker-signout-btn')?.click();
-});
-document.querySelector('#panel-change-password')?.addEventListener('click', () => {
-  closeWorkerProfilePanel();
-  document.querySelector('#open-change-password-btn')?.click();
-});
-document.querySelector('#panel-edit-profile')?.addEventListener('click', () => {
-  closeWorkerProfilePanel();
-  document.querySelector('#open-edit-profile-btn')?.click();
-});
-document.querySelector('#panel-enable-alerts')?.addEventListener('click', () => {
-  closeWorkerProfilePanel();
-  document.querySelector('#worker-enable-alerts')?.click();
-});
-document.querySelector('#panel-break-toggle')?.addEventListener('click', () => {
-  closeWorkerProfilePanel();
-  document.querySelector('#worker-break-toggle')?.click();
-});
+// Edit profile / Change password open their own modals — close the account modal
+// first so they don't stack on top of it. (These buttons keep their own handlers.)
+document.querySelector('#open-edit-profile-btn')?.addEventListener('click', closeWorkerProfilePanel);
+document.querySelector('#open-change-password-btn')?.addEventListener('click', closeWorkerProfilePanel);
 
 document.querySelector('#worker-progress-job-label')?.addEventListener('click', async () => {
   const jobLabel = document.querySelector('#worker-progress-job-label');
@@ -1807,6 +1803,7 @@ async function loadWorkerProfile() {
     applyAvatarPhoto(document.querySelector('#worker-mobile-avatar-btn'), avatarPhoto);
     const panelName = document.getElementById('worker-panel-name');
     if (panelName) panelName.textContent = workerName;
+    updateWorkerStatusBadge();
     const panelPhone = document.getElementById('worker-panel-phone');
     if (panelPhone) panelPhone.textContent = currentEmployee.phone ? formatPhone(currentEmployee.phone) : 'Not provided';
     if (workerProfileName) workerProfileName.value = workerName;

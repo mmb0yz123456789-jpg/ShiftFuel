@@ -13,6 +13,12 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="ShiftFuel">
+    <script>/* PWA mode flags (anti-FOUC): set html.sf-standalone/sf-compact before first paint */
+      (function(){var d=document.documentElement,m=window.matchMedia,
+        s=(m&&m('(display-mode: standalone)').matches)||navigator.standalone===true,
+        c=!m||m('(max-width: 760px)').matches;
+        d.classList.add(s?'sf-standalone':'sf-browser',c?'sf-compact':'sf-wide');})();
+    </script>
     <link rel="stylesheet" href="styles.css">
     <link rel="stylesheet" href="layout-width-polish.css">
     <link rel="stylesheet" href="mobile-polish.css">
@@ -42,77 +48,95 @@
         <div class="customer-account-intro">
           <p class="customer-dashboard-kicker">Customer account</p>
           <h1 id="customer-account-title">My Account</h1>
-          <p>Log in or create an account to save vehicles, service addresses, and booking history. Guest booking and guest tracking are always available.</p>
+          <p>Book, track, or save your details for faster future service. An account is optional.</p>
         </div>
 
         <div class="customer-account-access-grid">
-          <section id="customer-account-panel" class="customer-account-panel customer-account-login-card" aria-label="Customer account access">
-            <div class="customer-account-panel-copy">
-              <h2>Account Access</h2>
-              <p>Use your phone number and email to open saved details, or create an optional account for future bookings.</p>
-              <ul class="customer-account-benefits">
-                <li>Save your vehicles &amp; service addresses</li>
-                <li>Rebook a saved vehicle in one tap</li>
-                <li>Track active services &amp; view past receipts</li>
-                <li>Account-only promos &amp; reminders</li>
-              </ul>
+          <section class="customer-account-actions-card" aria-labelledby="customer-account-actions-title">
+            <h2 id="customer-account-actions-title">What would you like to do?</h2>
+            <div class="customer-account-action-list">
+              <a class="customer-account-action customer-account-action-primary" href="/book#booking-flow">
+                <span class="customer-account-action-title">Book as Guest</span>
+                <span class="customer-account-action-sub">No account needed. Schedule fuel, wash, or inspection service.</span>
+              </a>
+              <a class="customer-account-action" href="/track#track-form">
+                <span class="customer-account-action-title">Track My Vehicle</span>
+                <span class="customer-account-action-sub">View an active service using your phone and email.</span>
+              </a>
+              <button class="customer-account-action" type="button" data-account-open aria-expanded="false" aria-controls="customer-account-panel">
+                <span class="customer-account-action-title">Log In or Create Account</span>
+                <span class="customer-account-action-sub">Save vehicles, service addresses, receipts, and rebook faster.</span>
+              </button>
             </div>
-
-            <div class="customer-account-tabs" role="tablist" aria-label="Account options">
-              <button class="customer-account-tab is-active" type="button" role="tab" aria-selected="true" aria-controls="account-login-panel" data-account-mode="login">Log In</button>
-              <button class="customer-account-tab" type="button" role="tab" aria-selected="false" aria-controls="account-create-panel" data-account-mode="create">Create Account</button>
-            </div>
-
-            <div id="account-login-panel" class="customer-account-mode-panel is-active" role="tabpanel" data-account-panel="login">
-              <form class="customer-account-form" data-customer-login-form>
-                <label>
-                  Phone number
-                  <input name="phone" type="tel" inputmode="numeric" autocomplete="tel" placeholder="Phone number" required>
-                </label>
-                <label>
-                  Email address
-                  <input name="email" type="email" autocomplete="email" placeholder="you@example.com" required>
-                </label>
-                <button class="button primary" type="submit">Open My Account</button>
-                <p class="form-status" data-customer-account-status></p>
-              </form>
-            </div>
-
-            <div id="account-create-panel" class="customer-account-mode-panel" role="tabpanel" data-account-panel="create" hidden>
-              <form class="customer-account-form customer-create-form" data-customer-create-form>
-                <div class="customer-account-form-row">
-                  <label>
-                    First name
-                    <input name="firstName" type="text" autocomplete="given-name" placeholder="First name" required>
-                  </label>
-                  <label>
-                    Last name
-                    <input name="lastName" type="text" autocomplete="family-name" placeholder="Last name" required>
-                  </label>
-                </div>
-                <label>
-                  Phone number
-                  <input name="phone" type="tel" inputmode="numeric" autocomplete="tel" placeholder="Phone number" required>
-                </label>
-                <label>
-                  Email address
-                  <input name="email" type="email" autocomplete="email" placeholder="you@example.com" required>
-                </label>
-                <button class="button primary" type="submit">Create Account</button>
-                <p class="form-status" data-customer-create-status></p>
-              </form>
-            </div>
+            <p class="customer-account-reassure">Guest booking and guest tracking are always available.</p>
           </section>
 
-          <aside class="customer-account-options" aria-label="Account and guest options">
-            <section class="customer-account-option-card customer-account-guest-card">
+          <aside class="customer-account-side" aria-label="Account benefits and access">
+            <section class="customer-account-option-card customer-account-benefits-card" data-account-benefits>
               <div>
-                <h2>Guest options</h2>
-                <p>No account is required to book or track a service request.</p>
+                <h2>Why create an account?</h2>
+                <ul class="customer-account-benefits">
+                  <li>Save vehicles</li>
+                  <li>Save service addresses</li>
+                  <li>Rebook faster</li>
+                  <li>View past receipts</li>
+                </ul>
               </div>
-              <div class="customer-account-guest-actions">
-                <a class="button primary" href="/book#booking-flow">Book as Guest</a>
-                <a class="button secondary" href="/track#track-form">Track Without Logging In</a>
+              <button class="button secondary" type="button" data-account-open aria-controls="customer-account-panel">Log In or Create Account</button>
+            </section>
+
+            <section id="customer-account-panel" class="customer-account-panel customer-account-login-card" aria-label="Customer account access" data-account-form hidden>
+              <div class="customer-account-panel-copy">
+                <div class="customer-account-panel-head">
+                  <h2>Log in or create account</h2>
+                  <button class="customer-account-close" type="button" data-account-close aria-label="Close login form">&times;</button>
+                </div>
+                <p>Use your phone number and email to open saved details, or create an optional account for future bookings.</p>
+              </div>
+
+              <div class="customer-account-tabs" role="tablist" aria-label="Account options">
+                <button class="customer-account-tab is-active" type="button" role="tab" aria-selected="true" aria-controls="account-login-panel" data-account-mode="login">Log In</button>
+                <button class="customer-account-tab" type="button" role="tab" aria-selected="false" aria-controls="account-create-panel" data-account-mode="create">Create Account</button>
+              </div>
+
+              <div id="account-login-panel" class="customer-account-mode-panel is-active" role="tabpanel" data-account-panel="login">
+                <form class="customer-account-form" data-customer-login-form>
+                  <label>
+                    Phone number
+                    <input name="phone" type="tel" inputmode="numeric" autocomplete="tel" placeholder="(XXX) XXX-XXXX" required>
+                  </label>
+                  <label>
+                    Email address
+                    <input name="email" type="email" autocomplete="email" placeholder="you@example.com" required>
+                  </label>
+                  <button class="button primary" type="submit">Open My Account</button>
+                  <p class="form-status" data-customer-account-status></p>
+                </form>
+              </div>
+
+              <div id="account-create-panel" class="customer-account-mode-panel" role="tabpanel" data-account-panel="create" hidden>
+                <form class="customer-account-form customer-create-form" data-customer-create-form>
+                  <div class="customer-account-form-row">
+                    <label>
+                      First name
+                      <input name="firstName" type="text" autocomplete="given-name" placeholder="First name" required>
+                    </label>
+                    <label>
+                      Last name
+                      <input name="lastName" type="text" autocomplete="family-name" placeholder="Last name" required>
+                    </label>
+                  </div>
+                  <label>
+                    Phone number
+                    <input name="phone" type="tel" inputmode="numeric" autocomplete="tel" placeholder="(XXX) XXX-XXXX" required>
+                  </label>
+                  <label>
+                    Email address
+                    <input name="email" type="email" autocomplete="email" placeholder="you@example.com" required>
+                  </label>
+                  <button class="button primary" type="submit">Create Account</button>
+                  <p class="form-status" data-customer-create-status></p>
+                </form>
               </div>
             </section>
           </aside>
@@ -144,6 +168,21 @@
             </div>
             <div class="customer-card-list" data-active-requests></div>
           </section>
+
+          <!-- Prominent Book CTA — shown only in the installed PWA phone app. -->
+          <a class="customer-book-cta" href="/book#booking-flow">
+            <span class="customer-book-cta-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="5" width="16" height="16" rx="2"/><path d="M4 9h16M8 3v4M16 3v4M12 13v4M10 15h4"/></svg>
+            </span>
+            <span class="customer-book-cta-text">
+              <strong>Book a Service</strong>
+              <span>Schedule a new fuel delivery or auto service</span>
+            </span>
+            <span class="customer-book-cta-arrow" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9 6l6 6-6 6"/></svg>
+            </span>
+          </a>
+
           <section class="customer-dashboard-section" id="account-saved-details">
             <div class="customer-section-heading">
               <h3>Saved vehicles</h3>
@@ -158,7 +197,7 @@
             </div>
             <div class="customer-card-list" data-saved-addresses></div>
           </section>
-          <section class="customer-dashboard-section">
+          <section class="customer-dashboard-section" id="account-history">
             <div class="customer-section-heading">
               <h3>Service history</h3>
               <span data-history-count>0</span>
@@ -185,6 +224,26 @@
         </nav>
       </div>
     </footer>
+
+    <!-- Installed-app bottom navigation — customer PWA phone only (hidden in browser). -->
+    <nav class="app-tabbar customer-tabbar" aria-label="ShiftFuel navigation">
+      <a class="app-tab is-active" href="/account">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 11l9-7 9 7"/><path d="M5 10v9h14v-9"/></svg>
+        <span>Home</span>
+      </a>
+      <a class="app-tab" href="/book#booking-flow">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="5" width="16" height="16" rx="2"/><path d="M4 9h16M8 3v4M16 3v4M12 13v4M10 15h4"/></svg>
+        <span>Book</span>
+      </a>
+      <a class="app-tab" href="/track#track-form">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 21s7-6.2 7-11a7 7 0 1 0-14 0c0 4.8 7 11 7 11z"/><circle cx="12" cy="10" r="2.5"/></svg>
+        <span>Track</span>
+      </a>
+      <a class="app-tab" href="/account/settings">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="8" r="3.4"/><path d="M5 20c0-3.3 3.1-6 7-6s7 2.7 7 6"/></svg>
+        <span>Account</span>
+      </a>
+    </nav>
 
     <script src="runtime-config.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>

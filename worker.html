@@ -6,13 +6,20 @@
     <base href="/">
     <title>Worker Portal | ShiftFuel Concierge</title>
     <link rel="manifest" href="manifest-worker.webmanifest">
+    <meta name="theme-color" content="#0b3d5c">
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="SF Worker">
+    <script>/* PWA mode flags (anti-FOUC): set html.sf-standalone/sf-compact before first paint */
+      (function(){var d=document.documentElement,m=window.matchMedia,
+        s=(m&&m('(display-mode: standalone)').matches)||navigator.standalone===true,
+        c=!m||m('(max-width: 760px)').matches;
+        d.classList.add(s?'sf-standalone':'sf-browser',c?'sf-compact':'sf-wide');})();
+    </script>
     <link rel="icon" href="icon-main.svg" type="image/svg+xml">
     <link rel="icon" href="icon-main.svg" sizes="any">
-    <link rel="apple-touch-icon" href="icon-main.svg">
+    <link rel="apple-touch-icon" href="apple-touch-icon-worker.png">
     <link rel="stylesheet" href="styles.css">
     <link rel="stylesheet" href="worker-app.css">
     <style>
@@ -98,6 +105,31 @@
       .has-avatar-photo { color: transparent !important; background-color: transparent !important; }
       .has-avatar-photo > span { visibility: hidden; }
 
+      /* Desktop header chip is now a button that opens the account modal. */
+      .worker-portal-page button.worker-account-chip {
+        background: none; border: 0; padding: 4px 6px; cursor: pointer;
+        border-radius: 10px; transition: background .15s ease;
+      }
+      .worker-portal-page button.worker-account-chip:hover { background: rgba(255,255,255,.12); }
+      .worker-portal-page .worker-account-role { color: rgba(255,255,255,.72); font-size: .72rem; }
+
+      /* Status badge inside the account modal (Active / On Break / Offline). */
+      .worker-acc-status-badge { margin-top: 8px; }
+      .worker-acc-status-badge.is-on-break {
+        background: rgba(217,119,6,.12); color: #b45309;
+      }
+      .worker-acc-status-badge.is-on-break .worker-active-dot { background: #d97706; }
+      .worker-acc-status-badge.is-offline {
+        background: rgba(107,114,128,.14); color: #4b5563;
+      }
+      .worker-acc-status-badge.is-offline .worker-active-dot { background: #9ca3af; }
+
+      /* Toggle rows (alerts / break) aren't navigations — drop the › chevron. */
+      .worker-profile-panel-actions .button.worker-acc-toggle::after { content: none !important; }
+
+      /* Main Profile page: single compact "Manage account" button. */
+      .worker-portal-page .worker-manage-account-btn { margin-top: 4px; }
+
       /* The "Online / On break" pill is a tap target that toggles the break. */
       .worker-presence-indicator { cursor: pointer; transition: background .15s ease; }
       .worker-presence-indicator:hover { background: rgba(255,255,255,.22); }
@@ -151,37 +183,38 @@
           <span class="worker-presence-dot"></span>
           <span id="worker-presence-label">Online</span>
         </span>
-        <div class="worker-account-chip worker-desktop-only">
+        <button type="button" class="worker-account-chip worker-desktop-only" id="worker-desktop-account-btn" aria-label="Open account menu">
           <span class="worker-account-avatar" id="worker-header-avatar" aria-hidden="true">M</span>
           <div class="worker-account-text">
             <span class="worker-account-name" id="worker-header-name">Worker</span>
-            <button class="worker-account-signout" id="worker-header-signout" type="button">Sign out</button>
+            <span class="worker-account-role">Account &#9662;</span>
           </div>
-        </div>
-        <button id="worker-mobile-avatar-btn" class="admin-avatar-btn worker-mobile-only" aria-label="Go to profile" style="display:none">
+        </button>
+        <button id="worker-mobile-avatar-btn" class="admin-avatar-btn worker-mobile-only" aria-label="Open account menu" style="display:none">
           <span id="worker-mobile-avatar-initial">W</span>
         </button>
       </div>
     </header>
 
     <div class="worker-profile-panel-overlay" id="worker-profile-panel-overlay"></div>
-    <!-- Mobile profile panel (slides down from avatar button) -->
+    <!-- Account modal — opened from the header chip (desktop), the avatar button
+         (mobile) and the "Manage account" button on the Profile tab. -->
     <div id="worker-profile-panel" class="worker-profile-panel" hidden>
       <div class="worker-profile-panel-inner">
         <div class="wacc-head">
           <div>
             <h2>Account</h2>
             <p class="wacc-sub" id="worker-panel-name">Worker</p>
+            <span class="worker-active-badge worker-acc-status-badge" id="worker-account-status-badge"><span class="worker-active-dot"></span>Active</span>
           </div>
           <button class="wacc-close" id="close-worker-profile-panel" type="button" aria-label="Close">&times;</button>
         </div>
         <div class="worker-profile-panel-actions">
-          <button class="button secondary" id="panel-view-profile" type="button">View profile</button>
-          <button class="button secondary" id="panel-enable-alerts" type="button">Enable alerts</button>
-          <button class="button secondary" id="panel-break-toggle" type="button" hidden>Take a break</button>
-          <button class="button secondary" id="panel-change-password" type="button">Change password</button>
-          <button class="button secondary" id="panel-edit-profile" type="button">Edit profile</button>
-          <button class="button danger" id="panel-signout" type="button">Sign out</button>
+          <button class="button secondary" id="open-edit-profile-btn" type="button">Edit profile</button>
+          <button class="button secondary" id="open-change-password-btn" type="button">Change password</button>
+          <button class="button secondary worker-acc-toggle" id="worker-enable-alerts" type="button">Enable alerts</button>
+          <button class="button secondary worker-acc-toggle" id="worker-break-toggle" type="button" hidden>Take a break</button>
+          <button class="button danger" id="worker-signout-btn" type="button">Sign out</button>
         </div>
         <div class="wacc-foot">
           <div class="worker-contact-row">
@@ -191,6 +224,40 @@
         </div>
       </div>
     </div>
+
+    <!-- ── Installed-app home launcher (phone PWA only; inert in the browser) ── -->
+    <section class="sf-applauncher" data-sf-applauncher hidden aria-label="Worker app home">
+      <button class="sf-launcher-dismiss" type="button" data-sf-dismiss aria-label="Close app home">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
+      </button>
+      <div class="sf-launcher-head">
+        <p class="sf-launcher-kicker">ShiftFuel Worker</p>
+        <h1 class="sf-launcher-title">Your shift</h1>
+        <p class="sf-launcher-sub">Jump straight to what you need.</p>
+      </div>
+      <div class="sf-launcher-grid">
+        <button class="sf-tile sf-tile-primary" type="button" data-sf-goto="#worker-tabbar [data-tab='dashboard']">
+          <span class="sf-tile-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="5" width="16" height="14" rx="2"/><path d="M4 9h16M8 3v4M16 3v4M9 13l2 2 4-4"/></svg></span>
+          <span><span class="sf-tile-label">Today's Job</span><span class="sf-tile-sub">Current job &amp; navigation</span></span>
+        </button>
+        <button class="sf-tile" type="button" data-sf-goto="#worker-tabbar [data-tab='jobs']">
+          <span class="sf-tile-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="5" y="4" width="14" height="17" rx="1.6"/><path d="M9 8h6M9 12h6M9 16h4"/></svg></span>
+          <span class="sf-tile-label">My Jobs</span>
+        </button>
+        <button class="sf-tile" type="button" data-sf-goto="#worker-tabbar [data-tab='schedule']">
+          <span class="sf-tile-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="5" width="16" height="16" rx="2"/><path d="M4 9h16M8 3v4M16 3v4"/></svg></span>
+          <span class="sf-tile-label">Availability</span>
+        </button>
+        <button class="sf-tile" type="button" data-sf-goto="#worker-tabbar [data-tab='earnings']">
+          <span class="sf-tile-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3a9 9 0 1 0 9 9"/><path d="M12 7v5l3 2"/><path d="M16 3l5 2-2 5"/></svg></span>
+          <span class="sf-tile-label">Earnings</span>
+        </button>
+        <button class="sf-tile" type="button" data-sf-goto="#worker-tabbar [data-tab='profile']">
+          <span class="sf-tile-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="8" r="3.4"/><path d="M5 20c0-3.3 3.1-6 7-6s7 2.7 7 6"/></svg></span>
+          <span class="sf-tile-label">Profile</span>
+        </button>
+      </div>
+    </section>
 
     <main>
 
@@ -475,11 +542,7 @@
               </div>
             </div>
             <div class="worker-profile-actions">
-              <button class="button secondary" id="worker-enable-alerts" type="button">Enable alerts</button>
-              <button class="button secondary" id="worker-break-toggle" type="button" hidden>Take a break</button>
-              <button class="button secondary" id="open-change-password-btn" type="button">Change password</button>
-              <button class="button secondary" id="open-edit-profile-btn" type="button">Edit profile</button>
-              <button class="button danger" id="worker-signout-btn" type="button">Sign out</button>
+              <button class="button secondary worker-manage-account-btn" id="worker-manage-account-btn" type="button">Manage account</button>
             </div>
           </div>
 

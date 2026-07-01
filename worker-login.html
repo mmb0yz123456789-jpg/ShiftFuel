@@ -7,13 +7,14 @@
   <title>Worker Login | ShiftFuel Concierge</title>
   <link rel="icon" href="icon-main.svg" type="image/svg+xml">
   <link rel="icon" href="icon-main.svg" sizes="any">
-  <link rel="apple-touch-icon" href="icon-main.svg">
+  <link rel="apple-touch-icon" href="apple-touch-icon-worker.png">
   <link rel="manifest" href="manifest-worker.webmanifest">
+  <meta name="theme-color" content="#0b3d5c">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="SF Worker">
-  <link rel="apple-touch-icon" href="icon-main.svg">
+  <link rel="apple-touch-icon" href="apple-touch-icon-worker.png">
   <link rel="stylesheet" href="styles.css">
   <link rel="stylesheet" href="mobile-polish.css">
   <style>
@@ -34,10 +35,11 @@
        Runs before the header paints, so the links never flash in. -->
   <script>
     (function () {
-      var standalone = window.matchMedia && window.matchMedia("(display-mode: standalone)").matches;
-      if (standalone || window.navigator.standalone === true) {
-        document.documentElement.classList.add("is-pwa");
-      }
+      var d = document.documentElement, m = window.matchMedia;
+      var standalone = (m && m("(display-mode: standalone)").matches) || window.navigator.standalone === true;
+      var compact = !m || m("(max-width: 760px)").matches;
+      if (standalone) d.classList.add("is-pwa");
+      d.classList.add(standalone ? "sf-standalone" : "sf-browser", compact ? "sf-compact" : "sf-wide");
     })();
   </script>
 

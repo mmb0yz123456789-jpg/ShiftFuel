@@ -142,8 +142,10 @@ function canonicalBookingStatus(status) {
   const value = String(status || 'new').toLowerCase();
   if (BOOKING_STATUSES.includes(value)) return value;
   if (['pending', 'request_received', 'pending_customer_info'].includes(value)) return 'new';
-  if (['accepted', 'key_received'].includes(value)) return 'assigned';
-  if (['vehicle_picked_up', 'pickup_vehicle_photo_uploaded', 'pickup_odometer_photo_uploaded', 'pickup_fuel_gauge_photo_uploaded'].includes(value)) return 'en_route';
+  if (['accepted'].includes(value)) return 'assigned';
+  // key_received = worker has the key and is starting the trip → counts as In
+  // Progress (en_route), not Open. accepted (claimed, no key yet) stays Open.
+  if (['key_received', 'vehicle_picked_up', 'pickup_vehicle_photo_uploaded', 'pickup_odometer_photo_uploaded', 'pickup_fuel_gauge_photo_uploaded'].includes(value)) return 'en_route';
   if ([
     'in_progress',
     'service_in_progress',
@@ -3695,6 +3697,7 @@ async function loadRequests() {
   // driven by currentView — re-render them so a refresh doesn't revert to the
   // default queue.
   if (activeStatCard === 'workers') openWorkersPanel();
+  else if (activeStatCard === 'revenue') openRevenuePanel();
   else renderRequests();
   renderActionNeeded();
 }
@@ -6942,12 +6945,17 @@ function switchPageTab(page) {
     loadReauthNeeded();
   }
   if (page === 'requests') {
+    // Full queue with its All/Open/In-Progress/Completed/Closed sub-tabs — clear any
+    // stat-tile selection carried over from the dashboard so the sub-tabs show.
     currentView = 'all';
+    setActiveStatCard(null);
     switchAdminTab('requests');
   }
   if (page === 'dashboard') {
+    // The metric tiles drive the operational view here; default to Open Requests
+    // selected (setActiveStatCard also switches to the requests panel).
     currentView = 'open';
-    switchAdminTab('requests');
+    setActiveStatCard('open');
   }
   if (page === 'services') {
     Promise.all([loadFuelPricesForAdmin(), loadServicePricing()]).then(([fuelData, pricingData]) => {
@@ -7086,23 +7094,90 @@ function openWorkersPanel() {
   requestList?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
 
-// The request queue now lives only on the Requests page, so a stat tile must jump
-// there first (then filter / drill down). Navigation sits here in the click path —
-// NOT inside statCardNav/openWorkersPanel, which also run on Refresh and must not
-// yank the user to another page.
-const goRequestsThen = (fn) => { switchPageTab('requests'); fn(); };
-document.getElementById('stat-card-open')?.addEventListener('click', () => goRequestsThen(() => statCardNav('open', 'open')));
-document.getElementById('stat-card-open')?.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); goRequestsThen(() => statCardNav('open', 'open')); } });
-document.getElementById('stat-card-inprogress')?.addEventListener('click', () => goRequestsThen(() => statCardNav('in_progress', 'inprogress')));
-document.getElementById('stat-card-inprogress')?.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); goRequestsThen(() => statCardNav('in_progress', 'inprogress')); } });
-document.getElementById('stat-card-completed')?.addEventListener('click', () => goRequestsThen(() => statCardNav('completed_today', 'completed')));
-document.getElementById('stat-card-completed')?.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); goRequestsThen(() => statCardNav('completed_today', 'completed')); } });
-document.getElementById('stat-card-workers')?.addEventListener('click', () => goRequestsThen(openWorkersPanel));
-document.getElementById('stat-card-workers')?.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); goRequestsThen(openWorkersPanel); } });
-// The tile shows Company Net, so it opens the Payroll tab (full breakdown) rather
-// than the gross service-fee drilldown.
-document.getElementById('stat-card-revenue')?.addEventListener('click', () => switchPageTab('payroll'));
-document.getElementById('stat-card-revenue')?.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); switchPageTab('payroll'); } });
+// "Company Net Today" tile → Today's Revenue / Payments view, rendered in place in
+// the dashboard queue panel (mirrors openWorkersPanel). Figures use the same range
+// and shared helper as the tile, so the net here can never drift from the tile.
+function openRevenuePanel() {
+  setActiveStatCard('revenue');
+  if (!requestList) return;
+
+  const inRange = (r) => isInDashboardRange(r, dashboardRange);
+  const { serviceFeeRevenue, cancellationRevenue, workerPayouts, companyNet } = companyNetBreakdown(inRange);
+  const rangeLabel = dashboardRangeLabel(dashboardRange);
+  const m = (n) => money(roundMoneyValue(n));
+
+  const charged = (allRequests || []).filter((r) => r.payment_status === 'captured' && inRange(r));
+  const refunds = (allRequests || []).filter((r) => ['refunded', 'auto_reversed'].includes(r.payment_status) && inRange(r));
+
+  const summary = `
+    <div class="revenue-panel-summary">
+      <div class="revenue-panel-cell"><span class="revenue-panel-label">Service fees</span><span class="revenue-panel-value">${m(serviceFeeRevenue)}</span></div>
+      <div class="revenue-panel-cell"><span class="revenue-panel-label">Cancellation fees</span><span class="revenue-panel-value">${m(cancellationRevenue)}</span></div>
+      <div class="revenue-panel-cell"><span class="revenue-panel-label">Worker payouts</span><span class="revenue-panel-value revenue-panel-value--neg">&minus;${m(workerPayouts)}</span></div>
+      <div class="revenue-panel-cell revenue-panel-cell--net"><span class="revenue-panel-label">Company Net</span><span class="revenue-panel-value">${m(companyNet)}</span></div>
+    </div>`;
+
+  const chargedRows = charged.length
+    ? charged.map((r) => `
+        <tr class="queue-row">
+          <td data-label="Customer">
+            <div class="queue-customer-cell">
+              <span class="queue-avatar">${escapeHtml(queueInitials(r.customer_name))}</span>
+              <strong>${escapeHtml(r.customer_name || 'Customer')}</strong>
+            </div>
+          </td>
+          <td data-label="Amount"><strong>${money(r.final_total ?? 0)}</strong></td>
+          <td data-label="Stripe status"><span class="status-pill status-pill-complete">${escapeHtml(PAYMENT_STATUS_LABELS[r.payment_status] || r.payment_status || '')}</span></td>
+          <td data-label="Completed">${r.completed_at ? escapeHtml(formatTimestamp(r.completed_at)) : '<span class="field-help">&mdash;</span>'}</td>
+        </tr>`).join('')
+    : `<tr><td colspan="4"><span class="field-help">No charged jobs ${escapeHtml(rangeLabel.toLowerCase())}.</span></td></tr>`;
+
+  const refundsBlock = refunds.length ? `
+    <h3 class="revenue-panel-subhead">Refunds &amp; reversals</h3>
+    <table class="admin-requests-table">
+      <thead><tr><th>Customer</th><th>Amount</th><th>Stripe status</th></tr></thead>
+      <tbody>${refunds.map((r) => `
+        <tr class="queue-row">
+          <td data-label="Customer"><strong>${escapeHtml(r.customer_name || 'Customer')}</strong></td>
+          <td data-label="Amount">${money(r.final_total ?? r.estimated_total ?? 0)}</td>
+          <td data-label="Stripe status"><span class="status-pill status-pill-cancelled">${escapeHtml(PAYMENT_STATUS_LABELS[r.payment_status] || r.payment_status || '')}</span></td>
+        </tr>`).join('')}</tbody>
+    </table>` : '';
+
+  requestList.innerHTML = `
+    <div class="revenue-panel">
+      ${summary}
+      <h3 class="revenue-panel-subhead">Charged jobs</h3>
+      <table class="admin-requests-table">
+        <thead><tr><th>Customer</th><th>Amount</th><th>Stripe status</th><th>Completed</th></tr></thead>
+        <tbody>${chargedRows}</tbody>
+      </table>
+      ${refundsBlock}
+    </div>`;
+
+  if (requestQueueHeading) requestQueueHeading.textContent = "Today's Revenue";
+  if (requestQueueEyebrow) requestQueueEyebrow.textContent = 'Payments';
+  if (showAllTimeBtn) showAllTimeBtn.style.display = 'none';
+  requestList?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+// The metric tiles drive the operational view IN PLACE on the dashboard: clicking a
+// tile updates the section below "Needs your attention" (the shared queue panel)
+// without navigating away. statCardNav / openWorkersPanel / openRevenuePanel also run
+// on Refresh, so they must not navigate — the tiles just call them directly. The
+// tiles only exist on the dashboard (admin-hero is data-page-section="dashboard").
+const statCardKeyActivate = (fn) => (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fn(); } };
+function bindStatCard(id, activate) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.addEventListener('click', activate);
+  el.addEventListener('keydown', statCardKeyActivate(activate));
+}
+bindStatCard('stat-card-open', () => statCardNav('open', 'open'));
+bindStatCard('stat-card-inprogress', () => statCardNav('in_progress', 'inprogress'));
+bindStatCard('stat-card-completed', () => statCardNav('completed_today', 'completed'));
+bindStatCard('stat-card-workers', openWorkersPanel);
+bindStatCard('stat-card-revenue', openRevenuePanel);
 
 // Find Tickets modal
 heroFindTicketsBtn?.addEventListener('click', openFindTicketsModal);

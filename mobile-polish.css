@@ -304,6 +304,32 @@
     justify-content: center;
   }
 
+  body.customer-account-page .customer-account-actions-card {
+    gap: 12px !important;
+    padding: 16px !important;
+    border-radius: 14px !important;
+  }
+
+  body.customer-account-page .customer-account-action-list {
+    gap: 10px !important;
+  }
+
+  /* Large, full-width, thumb-friendly action targets. */
+  body.customer-account-page .customer-account-action {
+    padding: 15px 16px !important;
+    min-height: 60px;
+    align-content: center;
+  }
+
+  body.customer-account-page .customer-account-side {
+    gap: 10px !important;
+  }
+
+  /* Keep the fixed install banner from overlapping the bottom of the page. */
+  body.customer-account-page {
+    padding-bottom: 88px !important;
+  }
+
   /* Desktop three-box variant hides on mobile; single Staff Access button shows */
   .final-cta-portals--desktop { display: none !important; }
   .final-cta-portals--mobile { display: grid !important; }

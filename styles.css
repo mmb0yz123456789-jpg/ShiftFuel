@@ -844,6 +844,126 @@ font-size: 0.85rem;
   justify-content: center;
 }
 
+/* Action-first "What would you like to do?" card (guest actions lead). */
+.customer-account-actions-card {
+  display: grid;
+  gap: 16px;
+  align-content: start;
+  padding: clamp(20px, 3vw, 30px);
+  background: var(--sf-white);
+  border: 1px solid rgba(13, 59, 59, 0.12);
+  border-radius: 16px;
+  box-shadow: var(--sf-shadow-card);
+}
+
+.customer-account-actions-card > h2 {
+  margin: 0;
+  color: var(--sf-teal-dark);
+  font-size: clamp(1.3rem, 2.2vw, 1.7rem);
+  line-height: 1.1;
+}
+
+.customer-account-action-list {
+  display: grid;
+  gap: 12px;
+}
+
+.customer-account-action {
+  display: grid;
+  gap: 4px;
+  padding: 16px 18px;
+  text-align: left;
+  text-decoration: none;
+  color: var(--sf-teal-dark);
+  background: var(--sf-white);
+  border: 1.5px solid rgba(13, 59, 59, 0.16);
+  border-radius: 14px;
+  font: inherit;
+  cursor: pointer;
+  transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
+}
+
+.customer-account-action:hover {
+  transform: translateY(-1px);
+  border-color: rgba(13, 59, 59, 0.3);
+  box-shadow: 0 10px 22px rgba(13, 59, 59, 0.12);
+}
+
+.customer-account-action-title {
+  font-size: 1.05rem;
+  font-weight: 900;
+}
+
+.customer-account-action-sub {
+  color: var(--sf-muted);
+  font-size: 0.9rem;
+  font-weight: 500;
+  line-height: 1.4;
+}
+
+.customer-account-action-primary {
+  color: var(--sf-white);
+  background: linear-gradient(135deg, #1e7d52, #166a44);
+  border-color: transparent;
+  box-shadow: 0 12px 26px rgba(30, 125, 82, 0.28);
+}
+
+.customer-account-action-primary .customer-account-action-sub {
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.customer-account-action-primary:hover {
+  border-color: transparent;
+  box-shadow: 0 16px 30px rgba(30, 125, 82, 0.34);
+}
+
+.customer-account-reassure {
+  margin: 2px 0 0;
+  padding: 10px 14px;
+  color: var(--sf-teal-dark);
+  background: var(--sf-sage-light);
+  border-radius: 12px;
+  font-size: 0.86rem;
+  font-weight: 700;
+  text-align: center;
+}
+
+.customer-account-side {
+  display: grid;
+  gap: 14px;
+  align-content: start;
+}
+
+/* The `hidden` attribute must beat the display:grid on the base card/panel. */
+.customer-account-benefits-card[hidden],
+[data-account-form][hidden] {
+  display: none;
+}
+
+.customer-account-panel-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.customer-account-close {
+  flex: none;
+  width: 34px;
+  height: 34px;
+  border: 0;
+  border-radius: 10px;
+  background: var(--sf-sage-light);
+  color: var(--sf-teal-dark);
+  font-size: 1.5rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.customer-account-close:hover {
+  background: rgba(13, 59, 59, 0.12);
+}
+
 .customer-account-grid {
   display: grid;
   grid-template-columns: 1.1fr 1fr 1fr;
