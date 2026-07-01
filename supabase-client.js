@@ -1,7 +1,14 @@
-const SUPABASE_URL = "https://nhdsokqxndhlkbsvmxio.supabase.co";
-const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5oZHNva3F4bmRobGtic3ZteGlvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE1NDU3ODgsImV4cCI6MjA5NzEyMTc4OH0.Fd7y0eVy-lCDYQ9UXVoDi6kWxdgmGk1QZ_SeVrmIP8I";
+const SHIFTFUEL_CONFIG = window.SHIFTFUEL_CONFIG || {};
+const SUPABASE_URL = SHIFTFUEL_CONFIG.supabaseUrl || "";
+const SUPABASE_ANON_KEY = SHIFTFUEL_CONFIG.supabaseAnonKey || "";
 
-const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+const supabaseClient = SUPABASE_URL && SUPABASE_ANON_KEY
+  ? supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
+  : null;
+
+if (!supabaseClient) {
+  console.error("ShiftFuel Supabase public config is missing. Set SUPABASE_URL and SUPABASE_ANON_KEY for the current Vercel environment.");
+}
 
 window.ShiftFuelSupabase = supabaseClient;
 

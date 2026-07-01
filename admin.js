@@ -7241,7 +7241,7 @@ function closeTicketDetailModal() {
 // Public Mapbox token (same pk.* token the maps already ship in the browser).
 // The Static Images request runs from the admin page on our allowed domain, so
 // the token's Referer restriction is satisfied with no server proxy.
-const MAPBOX_STATIC_TOKEN = 'pk.eyJ1IjoibW1iMHl6MTIiLCJhIjoiY21xcXZiaGU4MGxubjJvcHpidnhidG55cyJ9.Ciss2gT76eC3Zt92_qhtGA';
+const MAPBOX_STATIC_TOKEN = window.SHIFTFUEL_CONFIG?.mapboxPublicToken || window.SHIFTFUEL_MAPBOX_TOKEN || 'pk.eyJ1IjoibW1iMHl6MTIiLCJhIjoiY21xcXZiaGU4MGxubjJvcHpidnhidG55cyJ9.Ciss2gT76eC3Zt92_qhtGA';
 
 // Build a Mapbox Static Images URL from a stored GeoJSON LineString (driven_route):
 // a road map with the snapped route drawn in teal + green "A" start / red "B" end

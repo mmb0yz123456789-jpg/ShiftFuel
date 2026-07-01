@@ -8,6 +8,8 @@
     "@playwright/test": "^1.48.0"
   },
   "scripts": {
+    "build": "node scripts/generate-runtime-config.js",
+    "build:config": "node scripts/generate-runtime-config.js",
     "test:e2e": "playwright test",
     "test:e2e:mobile": "playwright test --project=mobile-chrome --project=mobile-safari",
     "test:e2e:desktop": "playwright test --project=desktop-chrome"

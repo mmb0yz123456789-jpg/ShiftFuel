@@ -1,6 +1,26 @@
 -- Includes customer_id in returning-customer option payloads when the saved
 -- option was derived from an existing customer/request.
 
+alter table public.saved_service_addresses
+  add column if not exists customer_name text,
+  add column if not exists hospital text,
+  add column if not exists parking_location text,
+  add column if not exists parking_spot text,
+  add column if not exists parking_map_url text,
+  add column if not exists key_handoff_details text,
+  add column if not exists service_area_valid boolean not null default true,
+  add column if not exists is_active boolean not null default true,
+  add column if not exists deleted_at timestamptz;
+
+alter table public.saved_customer_vehicles
+  add column if not exists customer_name text,
+  add column if not exists fuel_type text,
+  add column if not exists is_active boolean not null default true,
+  add column if not exists deleted_at timestamptz;
+
+alter table public.service_requests
+  add column if not exists customer_id uuid;
+
 create or replace function public.public_returning_customer_options(
   p_phone text,
   p_email text
