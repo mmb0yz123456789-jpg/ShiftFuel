@@ -265,8 +265,6 @@
           </div>
         </div>
 
-        <button class="admin-viewall-link" data-page-action="requests" data-request-view="open" type="button">View all requests &rarr;</button>
-
         <!-- Active Workers inline panel -->
         <div id="workers-panel" class="revenue-breakdown-panel" hidden>
           <div class="revenue-breakdown-panel-header">
@@ -497,85 +495,108 @@
 
             <form id="promo-form" class="admin-card promo-form" hidden>
               <input type="hidden" id="promo-id">
-              <div class="promo-form-grid">
-                <label>Code
-                  <input type="text" id="promo-code" placeholder="NEW20" autocapitalize="characters" autocomplete="off" maxlength="32" required>
-                </label>
-                <label>Name
-                  <input type="text" id="promo-name" placeholder="Returning customer offer" maxlength="80">
-                </label>
-                <label>Description (optional)
-                  <input type="text" id="promo-description" placeholder="20% off for first-timers" maxlength="120">
-                </label>
-                <label>Discount type
-                  <select id="promo-discount-type">
-                    <option value="percent">Percent (%)</option>
-                    <option value="fixed">Fixed ($)</option>
-                    <option value="free_addon">Free add-on</option>
-                  </select>
-                </label>
-                <label>Value
-                  <input type="number" id="promo-discount-value" min="0" step="0.01" placeholder="20">
-                </label>
-                <label>Applies to
-                  <select id="promo-applies-to">
-                    <option value="service_fees">Service fees (margin)</option>
-                    <option value="wash_and_fees">Service fees + wash price</option>
-                    <option value="total">Whole total (incl. fuel + wash)</option>
-                    <option value="fuel_service">Fuel service fee only</option>
-                    <option value="wash_service">Car wash service fee only</option>
-                    <option value="inspection">Vehicle Add-Ons fee only</option>
-                  </select>
-                </label>
-                <label>Who can use it
-                  <select id="promo-audience">
-                    <option value="everyone">Everyone</option>
-                    <option value="account">My Account customers</option>
-                    <option value="guest">Guest customers</option>
-                    <option value="inactive">Inactive customers</option>
-                    <option value="specific">Specific customer</option>
-                    <option value="new">New customers only</option>
-                    <option value="returning">Returning customers only</option>
-                  </select>
-                </label>
-                <label>Eligible services
-                  <select id="promo-eligible-services" multiple size="4">
-                    <option value="all">All services</option>
-                    <option value="fuel">Fuel</option>
-                    <option value="wash">Car wash</option>
-                    <option value="fuel_wash">Fuel + Car wash</option>
-                  </select>
-                </label>
-                <label>Inactive days
-                  <input type="number" id="promo-inactive-days" min="1" step="1" placeholder="30">
-                </label>
-                <label>Specific customer phone
-                  <input type="tel" id="promo-specific-phone" placeholder="Phone number">
-                </label>
-                <label>Specific customer email
-                  <input type="email" id="promo-specific-email" placeholder="customer@example.com">
-                </label>
-                <label>Specific customer ID
-                  <input type="text" id="promo-specific-customer-id" placeholder="Customer UUID">
-                </label>
-                <label>Minimum order ($)
-                  <input type="number" id="promo-min-order" min="0" step="0.01" placeholder="0">
-                </label>
-                <label>Uses per customer
-                  <input type="number" id="promo-per-customer" min="0" step="1" placeholder="1">
-                </label>
-                <label>Total redemption cap
-                  <input type="number" id="promo-max-redemptions" min="1" step="1" placeholder="Unlimited">
-                </label>
-                <label>Starts (optional)
-                  <input type="date" id="promo-starts">
-                </label>
-                <label>Expires (optional)
-                  <input type="date" id="promo-expires">
-                </label>
-                <label class="promo-active-label">
-                  <input type="checkbox" id="promo-active" checked> Active
-                </label>
+              <div class="promo-form-body">
+                <section class="promo-form-section">
+                  <p class="promo-form-legend">Basics</p>
+                  <div class="promo-form-grid">
+                    <label>Code
+                      <input type="text" id="promo-code" placeholder="NEW20" autocapitalize="characters" autocomplete="off" maxlength="32" required>
+                    </label>
+                    <label>Name
+                      <input type="text" id="promo-name" placeholder="Returning customer offer" maxlength="80">
+                    </label>
+                    <label>Description (optional)
+                      <input type="text" id="promo-description" placeholder="20% off for first-timers" maxlength="120">
+                    </label>
+                  </div>
+                </section>
+
+                <section class="promo-form-section">
+                  <p class="promo-form-legend">Discount</p>
+                  <div class="promo-form-grid">
+                    <label>Discount type
+                      <select id="promo-discount-type">
+                        <option value="percent">Percent (%)</option>
+                        <option value="fixed">Fixed ($)</option>
+                        <option value="free_addon">Free add-on</option>
+                      </select>
+                    </label>
+                    <label id="promo-value-field">Value
+                      <input type="number" id="promo-discount-value" min="0" step="0.01" placeholder="20">
+                    </label>
+                    <label>Applies to
+                      <select id="promo-applies-to">
+                        <option value="service_fees">Service fees (margin)</option>
+                        <option value="wash_and_fees">Service fees + wash price</option>
+                        <option value="total">Whole total (incl. fuel + wash)</option>
+                        <option value="fuel_service">Fuel service fee only</option>
+                        <option value="wash_service">Car wash service fee only</option>
+                        <option value="inspection">Vehicle Add-Ons fee only</option>
+                      </select>
+                    </label>
+                    <label>Eligible services
+                      <select id="promo-eligible-services" multiple size="4">
+                        <option value="all">All services</option>
+                        <option value="fuel">Fuel</option>
+                        <option value="wash">Car wash</option>
+                        <option value="fuel_wash">Fuel + Car wash</option>
+                      </select>
+                    </label>
+                  </div>
+                </section>
+
+                <section class="promo-form-section">
+                  <p class="promo-form-legend">Who can use it</p>
+                  <div class="promo-form-grid">
+                    <label>Audience
+                      <select id="promo-audience">
+                        <option value="everyone">Everyone</option>
+                        <option value="account">My Account customers</option>
+                        <option value="guest">Guest customers</option>
+                        <option value="inactive">Inactive customers</option>
+                        <option value="specific">Specific customer</option>
+                        <option value="new">New customers only</option>
+                        <option value="returning">Returning customers only</option>
+                      </select>
+                    </label>
+                    <label id="promo-inactive-field" hidden>Inactive days
+                      <input type="number" id="promo-inactive-days" min="1" step="1" placeholder="30">
+                    </label>
+                    <label class="promo-specific-field" hidden>Specific customer phone
+                      <input type="tel" id="promo-specific-phone" placeholder="Phone number">
+                    </label>
+                    <label class="promo-specific-field" hidden>Specific customer email
+                      <input type="email" id="promo-specific-email" placeholder="customer@example.com">
+                    </label>
+                    <label class="promo-specific-field" hidden>Specific customer ID
+                      <input type="text" id="promo-specific-customer-id" placeholder="Customer UUID">
+                    </label>
+                  </div>
+                </section>
+
+                <section class="promo-form-section">
+                  <p class="promo-form-legend">Limits &amp; schedule</p>
+                  <div class="promo-form-grid">
+                    <label>Minimum order ($)
+                      <input type="number" id="promo-min-order" min="0" step="0.01" placeholder="0">
+                    </label>
+                    <label>Uses per customer
+                      <input type="number" id="promo-per-customer" min="0" step="1" placeholder="1">
+                    </label>
+                    <label>Total redemption cap
+                      <input type="number" id="promo-max-redemptions" min="1" step="1" placeholder="Unlimited">
+                    </label>
+                    <label>Starts (optional)
+                      <input type="date" id="promo-starts">
+                    </label>
+                    <label>Expires (optional)
+                      <input type="date" id="promo-expires">
+                    </label>
+                    <label class="promo-active-label">
+                      <input type="checkbox" id="promo-active" checked> Active
+                    </label>
+                  </div>
+                </section>
               </div>
               <p id="promo-form-status" class="form-status" role="status"></p>
               <div class="admin-button-row">
@@ -600,7 +621,7 @@
         <div id="admin-worker-profile-list" class="worker-profile-list"></div>
       </section>
 
-      <section class="section admin-section" data-tab-panel="support" data-page-section="support" hidden>
+      <section class="section admin-section admin-support-panel" data-tab-panel="support" data-page-section="support services" hidden>
         <div class="admin-toolbar">
           <div>
             <p class="eyebrow">Customer care</p>
@@ -608,6 +629,24 @@
             <p class="field-help">Messages submitted from the public site. Reply by email, then mark the message resolved when handled.</p>
           </div>
           <button id="admin-support-refresh-btn" class="button secondary" type="button">Refresh</button>
+        </div>
+        <div class="admin-card support-identity-card">
+          <div class="admin-toolbar">
+            <div>
+              <p class="eyebrow">Identity support</p>
+              <h3>Customer profile lookup</h3>
+              <p class="field-help">Admin-only view for linked history, claims, saved details, promo redemptions, and identity conflicts.</p>
+            </div>
+          </div>
+          <form id="identity-support-form" class="admin-filter-bar">
+            <input id="identity-support-phone" type="tel" placeholder="Phone">
+            <input id="identity-support-email" type="email" placeholder="Email">
+            <input id="identity-support-customer-id" type="text" placeholder="Customer ID">
+            <input id="identity-support-request-id" type="text" placeholder="Request ID">
+            <button class="button primary" type="submit">Lookup</button>
+          </form>
+          <p id="identity-support-status" class="form-status" role="status"></p>
+          <div id="identity-support-results" class="identity-support-results"></div>
         </div>
         <div id="support-message-list" class="request-list"></div>
       </section>
@@ -635,6 +674,18 @@
             <h2>Settings</h2>
           </div>
         </div>
+        <!-- Phone-only Payroll entry. Payroll has its own top-nav tab on desktop but
+             no bottom-nav slot on phones, so surface it here to close the mobile gap. -->
+        <button type="button" class="admin-payroll-entry" data-page-action="payroll">
+          <span class="admin-payroll-entry-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 19V5m5 14V9m5 10V7m5 12V11"/></svg>
+          </span>
+          <span class="admin-payroll-entry-main">
+            <strong>Payroll &amp; payouts</strong>
+            <span>Worker earnings and company net — this week or month.</span>
+          </span>
+          <span class="admin-payroll-entry-chev" aria-hidden="true">&rarr;</span>
+        </button>
         <div class="settings-sa-inline">
           <p class="field-help" style="margin-bottom:.75rem">Draw or adjust the polygon that defines your delivery coverage. Changes go live within ~1 minute.</p>
           <div id="sa-token-banner" style="display:none;background:#7c2d12;color:#fef2f2;padding:.5rem .75rem;border-radius:6px;font-size:.85rem;margin-bottom:.5rem;">
@@ -843,6 +894,8 @@
               <span class="hero-stat-label">Completed all-time</span>
             </div>
           </div>
+          <!-- Phone-only: the "how are we doing" tap-through to the full Payroll page. -->
+          <button type="button" class="admin-snapshot-payroll-link" data-page-action="payroll">View full payroll &rarr;</button>
         </section>
       </aside>
       </div>
@@ -880,27 +933,25 @@
       </div>
     </footer>
 
-    <!-- Mobile app-style bottom tab bar (phones only) -->
-    <nav class="app-tabbar" data-app-tabbar aria-label="Admin navigation">
+    <!-- Mobile app-style bottom tab bar (phones only). Exactly 5 sections:
+         Home | Find | Workers | Services | Settings. Open/Progress/Done are
+         request *filters*, not app sections — they live on Home/Find, not here. -->
+    <nav class="app-tabbar" aria-label="Admin navigation">
       <button class="app-tab is-active" data-tab data-admin-mobile-nav data-page="dashboard" type="button">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 11l9-7 9 7"/><path d="M5 10v9h14v-9"/></svg>
         <span>Home</span>
       </button>
-      <button class="app-tab" data-tab data-admin-mobile-nav data-page="requests" data-request-view="open" type="button">
+      <button class="app-tab" data-tab data-admin-mobile-nav data-page="requests" type="button">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
-        <span>Open</span>
-      </button>
-      <button class="app-tab" data-tab data-admin-mobile-nav data-page="requests" data-request-view="in_progress" type="button">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 16l1.5-5a2 2 0 0 1 1.9-1.4h9.2A2 2 0 0 1 18.5 11L20 16"/><rect x="3" y="16" width="18" height="4" rx="1.4"/><circle cx="7.5" cy="20" r="1.1"/><circle cx="16.5" cy="20" r="1.1"/></svg>
-        <span>Progress</span>
-      </button>
-      <button class="app-tab" data-tab data-admin-mobile-nav data-page="requests" data-request-view="completed_today" type="button">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3l7 3v6c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6l7-3z"/><path d="M9 12l2 2 4-4"/></svg>
-        <span>Done</span>
+        <span>Find</span>
       </button>
       <button class="app-tab" data-tab data-admin-mobile-nav data-page="workers" type="button">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="9" cy="8" r="3"/><path d="M2.5 19c0-3 2.9-5.5 6.5-5.5s6.5 2.5 6.5 5.5"/><circle cx="17" cy="8.5" r="2.3"/><path d="M15.5 13.6c2.7.4 4.5 2.4 4.5 5"/></svg>
         <span>Workers</span>
+      </button>
+      <button class="app-tab" data-tab data-admin-mobile-nav data-page="services" type="button">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M14.7 6.3a4 4 0 0 1-5.4 5.4l-4.6 4.6a1.9 1.9 0 1 0 2.7 2.7l4.6-4.6a4 4 0 0 0 5.4-5.4l-2.3 2.3-2.1-2.1z"/></svg>
+        <span>Services</span>
       </button>
       <button class="app-tab" data-tab data-admin-mobile-nav data-page="settings" type="button">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="3"/><path d="M19.4 13.5a7.6 7.6 0 0 0 0-3l1.9-1.3-2-3.4-2.2.7a7.6 7.6 0 0 0-2.6-1.5L14 2.5h-4l-.5 2.5a7.6 7.6 0 0 0-2.6 1.5l-2.2-.7-2 3.4 1.9 1.3a7.6 7.6 0 0 0 0 3l-1.9 1.3 2 3.4 2.2-.7a7.6 7.6 0 0 0 2.6 1.5l.5 2.5h4l.5-2.5a7.6 7.6 0 0 0 2.6-1.5l2.2.7 2-3.4z"/></svg>

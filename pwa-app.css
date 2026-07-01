@@ -42,7 +42,7 @@ html.sf-standalone.sf-compact body.worker-portal-page [data-sf-applauncher]:not(
 html.sf-standalone.sf-compact body.admin-portal-page [data-sf-applauncher]:not([hidden]) {
   background: radial-gradient(120% 90% at 50% 0%, #262d55 0%, #1a1f3d 55%, #12162b 100%);
 }
-html.sf-standalone.sf-compact body.customer-account-page [data-sf-applauncher]:not([hidden]) {
+html.sf-compact body.customer-account-page [data-sf-applauncher]:not([hidden]) {
   background: radial-gradient(120% 90% at 50% 0%, #12514f 0%, #0d3b3b 55%, #082827 100%);
 }
 
@@ -127,21 +127,21 @@ html.sf-standalone.sf-compact .sf-apphome-btn {
 }
 html.sf-standalone.sf-compact .sf-apphome-btn svg { width: 20px; height: 20px; }
 /* Customer header is light — tint the button for contrast there. */
-html.sf-standalone.sf-compact body.customer-account-page .sf-apphome-btn {
+html.sf-compact body.customer-account-page .sf-apphome-btn {
   background: #0d3b3b; color: #fff;
 }
 
 /* ---- App chrome polish (installed phone app) ------------------------------ */
 html.sf-standalone.sf-compact body.worker-portal-page .portal-header,
 html.sf-standalone.sf-compact body.admin-portal-page .portal-header,
-html.sf-standalone.sf-compact body.customer-account-page .site-header {
+html.sf-compact body.customer-account-page .site-header {
   padding-top: calc(env(safe-area-inset-top) + 8px) !important;
 }
 
 /* Customer app: drop the marketing nav + footer, keep just the app header. */
-html.sf-standalone.sf-compact body.customer-account-page .site-header .nav,
-html.sf-standalone.sf-compact body.customer-account-page .site-header .mobile-menu-button,
-html.sf-standalone.sf-compact body.customer-account-page .site-footer {
+html.sf-compact body.customer-account-page .site-header .nav,
+html.sf-compact body.customer-account-page .site-header .mobile-menu-button,
+html.sf-compact body.customer-account-page .site-footer {
   display: none !important;
 }
 
@@ -161,24 +161,24 @@ html.sf-standalone.sf-compact .sf-apphome-btn { -webkit-tap-highlight-color: tra
    Gated on installed phone app + the customer surface only — browser + desktop
    are completely unaffected (they keep the normal responsive site).
    ========================================================================== */
-html.sf-standalone.sf-compact body.customer-account-page {
+html.sf-compact body.customer-account-page {
   background: linear-gradient(175deg, #12514f 0%, #0d3b3b 44%, #06231f 100%) fixed;
   color: #eaf4f2;
   min-height: 100vh;
   min-height: 100dvh;
   padding-bottom: calc(74px + env(safe-area-inset-bottom));
 }
-html.sf-standalone.sf-compact body.customer-account-page .customer-account-shell,
-html.sf-standalone.sf-compact body.customer-account-page .customer-dashboard { background: transparent; }
+html.sf-compact body.customer-account-page .customer-account-shell,
+html.sf-compact body.customer-account-page .customer-dashboard { background: transparent; }
 
 /* App header floats over the gradient */
-html.sf-standalone.sf-compact body.customer-account-page .site-header {
+html.sf-compact body.customer-account-page .site-header {
   background: transparent; border: 0; box-shadow: none; position: static;
 }
-html.sf-standalone.sf-compact body.customer-account-page .site-header .logo,
-html.sf-standalone.sf-compact body.customer-account-page .site-header .logo span { color: #fff; }
+html.sf-compact body.customer-account-page .site-header .logo,
+html.sf-compact body.customer-account-page .site-header .logo span { color: #fff; }
 
-html.sf-standalone.sf-compact body.customer-account-page .customer-account-shell {
+html.sf-compact body.customer-account-page .customer-account-shell {
   padding: 4px 16px 24px; max-width: 100%;
 }
 
@@ -197,37 +197,47 @@ html.sf-standalone.sf-compact body.customer-account-page .customer-account-shell
 }
 
 /* Greeting */
-html.sf-standalone.sf-compact body.customer-account-page .customer-dashboard-header { display: block; margin-bottom: 18px; }
-html.sf-standalone.sf-compact body.customer-account-page .customer-dashboard-kicker { display: none; }
-html.sf-standalone.sf-compact body.customer-account-page [data-customer-greeting] {
+html.sf-compact body.customer-account-page .customer-dashboard-header { display: flex; flex-direction: row; justify-content: space-between; align-items: flex-start; gap: 14px; margin-bottom: 18px; }
+html.sf-compact body.customer-account-page .customer-dashboard-kicker { display: none; }
+/* Phone app: the green Book CTA card + current-service card already cover book/track,
+   so the header quick-actions row is redundant here. */
+html.sf-compact body.customer-account-page .customer-dashboard-quickactions {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 4px 0 18px;
+}
+html.sf-compact body.customer-account-page .customer-dashboard-quickactions .button {
+  width: 100%; min-height: 58px; border-radius: 16px; font-weight: 800; font-size: 1rem;
+}
+/* The prominent Book/Track quick buttons replace the separate Book CTA card on phone. */
+html.sf-compact body.customer-account-page .customer-book-cta { display: none !important; }
+html.sf-compact body.customer-account-page [data-customer-greeting] {
   color: #fff; font-size: 1.85rem; font-weight: 800; letter-spacing: -.01em; margin: 0;
 }
-html.sf-standalone.sf-compact body.customer-account-page .customer-dashboard-subtitle {
+html.sf-compact body.customer-account-page .customer-dashboard-subtitle {
   color: rgba(255,255,255,.72); margin: 6px 0 0; font-size: .95rem;
 }
 
 /* Declutter: summary/stats and the extra action buttons aren't in the app home;
    keep only a subtle Sign out. */
-html.sf-standalone.sf-compact body.customer-account-page .customer-dashboard-summary,
-html.sf-standalone.sf-compact body.customer-account-page .customer-dashboard-stats { display: none !important; }
-html.sf-standalone.sf-compact body.customer-account-page .customer-dashboard-actions > * { display: none !important; }
-html.sf-standalone.sf-compact body.customer-account-page .customer-dashboard-actions {
+html.sf-compact body.customer-account-page .customer-dashboard-summary,
+html.sf-compact body.customer-account-page .customer-dashboard-stats { display: none !important; }
+html.sf-compact body.customer-account-page .customer-dashboard-actions > * { display: none !important; }
+html.sf-compact body.customer-account-page .customer-dashboard-actions {
   margin-top: 12px; justify-content: flex-start;
 }
-html.sf-standalone.sf-compact body.customer-account-page .customer-dashboard-actions [data-customer-sign-out] {
+html.sf-compact body.customer-account-page .customer-dashboard-actions [data-customer-sign-out] {
   display: inline-flex !important; background: transparent; border: 1px solid rgba(255,255,255,.32);
   color: rgba(255,255,255,.85); border-radius: 12px; padding: 10px 18px; font-weight: 700;
 }
 
 /* Book a Service CTA (installed app only) */
 .customer-book-cta { display: none; }
-html.sf-standalone.sf-compact body.customer-account-page .customer-book-cta {
+html.sf-compact body.customer-account-page .customer-book-cta {
   display: flex; align-items: center; gap: 14px; text-decoration: none;
   padding: 16px 18px; border-radius: 20px;
   background: linear-gradient(135deg, #1e7d52 0%, #12643f 100%);
   color: #fff; box-shadow: 0 14px 32px rgba(9,58,42,.42);
 }
-html.sf-standalone.sf-compact body.customer-account-page .customer-book-cta:active { transform: scale(.985); }
+html.sf-compact body.customer-account-page .customer-book-cta:active { transform: scale(.985); }
 .customer-book-cta-icon { width: 46px; height: 46px; flex: none; border-radius: 13px; display: grid; place-items: center; background: rgba(255,255,255,.18); }
 .customer-book-cta-icon svg { width: 24px; height: 24px; }
 .customer-book-cta-text { display: flex; flex-direction: column; gap: 2px; flex: 1 1 auto; min-width: 0; }
@@ -237,76 +247,108 @@ html.sf-standalone.sf-compact body.customer-account-page .customer-book-cta:acti
 .customer-book-cta-arrow svg { width: 22px; height: 22px; }
 
 /* Dashboard → single clean column */
-html.sf-standalone.sf-compact body.customer-account-page .customer-dashboard-layout {
+html.sf-compact body.customer-account-page .customer-dashboard-layout {
   display: flex; flex-direction: column; gap: 22px;
 }
 
 /* Section labels sit on the gradient (uppercase, light) */
-html.sf-standalone.sf-compact body.customer-account-page .customer-section-heading { margin: 0 4px 10px; }
-html.sf-standalone.sf-compact body.customer-account-page .customer-section-heading h3 {
+html.sf-compact body.customer-account-page .customer-section-heading { margin: 0 4px 10px; }
+html.sf-compact body.customer-account-page .customer-section-heading h3 {
   color: #fff; font-size: .82rem; font-weight: 700; letter-spacing: .07em; text-transform: uppercase; margin: 0;
 }
-html.sf-standalone.sf-compact body.customer-account-page .customer-section-heading > span {
+html.sf-compact body.customer-account-page .customer-section-heading > span {
   color: rgba(255,255,255,.72); background: rgba(255,255,255,.14); border-radius: 999px;
   min-width: 22px; height: 22px; padding: 0 7px; display: inline-flex; align-items: center; justify-content: center;
   font-size: .76rem; font-weight: 800;
 }
 
 /* Rounded white cards + soft shadow */
-html.sf-standalone.sf-compact body.customer-account-page .customer-request-card,
-html.sf-standalone.sf-compact body.customer-account-page .customer-data-card,
-html.sf-standalone.sf-compact body.customer-account-page .customer-empty-card {
+html.sf-compact body.customer-account-page .customer-request-card,
+html.sf-compact body.customer-account-page .customer-data-card,
+html.sf-compact body.customer-account-page .customer-empty-card {
   background: #fff; color: #0f2a28; border: 0; border-radius: 20px;
   box-shadow: 0 12px 30px rgba(4,26,24,.22); padding: 18px; margin: 0 0 12px;
 }
-html.sf-standalone.sf-compact body.customer-account-page .customer-card-list { display: flex; flex-direction: column; }
-html.sf-standalone.sf-compact body.customer-account-page .customer-card-list > *:last-child { margin-bottom: 0; }
+html.sf-compact body.customer-account-page .customer-card-list { display: flex; flex-direction: column; }
+html.sf-compact body.customer-account-page .customer-card-list > *:last-child { margin-bottom: 0; }
 
 /* Active "Current service" card — the hero */
-html.sf-standalone.sf-compact body.customer-account-page .customer-request-card-active > div:first-child strong {
+html.sf-compact body.customer-account-page .customer-request-card-active > div:first-child strong {
   font-size: 1.32rem; font-weight: 800; color: #0f2a28;
 }
-html.sf-standalone.sf-compact body.customer-account-page .customer-request-card-active > div:first-child span { color: #6b8582; font-size: .82rem; }
-html.sf-standalone.sf-compact body.customer-account-page .customer-request-card dl {
+html.sf-compact body.customer-account-page .customer-request-card-active > div:first-child span { color: #6b8582; font-size: .82rem; }
+html.sf-compact body.customer-account-page .customer-request-card dl {
   margin: 14px 0; display: grid; gap: 11px; border-top: 1px solid #eef2f1; padding-top: 14px;
 }
-html.sf-standalone.sf-compact body.customer-account-page .customer-request-card dl div { display: flex; justify-content: space-between; gap: 12px; }
-html.sf-standalone.sf-compact body.customer-account-page .customer-request-card dl dt {
+html.sf-compact body.customer-account-page .customer-request-card dl div { display: flex; justify-content: space-between; gap: 12px; }
+html.sf-compact body.customer-account-page .customer-request-card dl dt {
   color: #6b8582; font-size: .78rem; text-transform: uppercase; letter-spacing: .04em;
 }
-html.sf-standalone.sf-compact body.customer-account-page .customer-request-card dl dd { color: #0f2a28; font-weight: 700; font-size: .92rem; text-align: right; margin: 0; }
+html.sf-compact body.customer-account-page .customer-request-card dl dd { color: #0f2a28; font-weight: 700; font-size: .92rem; text-align: right; margin: 0; }
 /* status pill/dot on the first (Status) row */
-html.sf-standalone.sf-compact body.customer-account-page .customer-request-card-active dl div:first-child dd {
+html.sf-compact body.customer-account-page .customer-request-card-active dl div:first-child dd {
   color: #1e7d52; display: inline-flex; align-items: center; gap: 8px;
 }
-html.sf-standalone.sf-compact body.customer-account-page .customer-request-card-active dl div:first-child dd::before {
+html.sf-compact body.customer-account-page .customer-request-card-active dl div:first-child dd::before {
   content: ""; width: 9px; height: 9px; border-radius: 50%; background: #1e7d52; box-shadow: 0 0 0 4px rgba(30,125,82,.16);
 }
 /* Track/track button → full-width green primary */
-html.sf-standalone.sf-compact body.customer-account-page .customer-request-card .button {
+html.sf-compact body.customer-account-page .customer-request-card .button {
   display: flex; width: 100%; justify-content: center; margin-top: 6px;
   background: #1e7d52; color: #fff; border: 0; border-radius: 14px; padding: 13px; font-weight: 800; font-size: .98rem;
 }
-html.sf-standalone.sf-compact body.customer-account-page .customer-request-card .button + .button {
+html.sf-compact body.customer-account-page .customer-request-card .button + .button {
   margin-top: 8px; background: #fff; color: #12643f; border: 1.5px solid #d6e4e0;
 }
 
 /* Saved vehicle / address / history cards */
-html.sf-standalone.sf-compact body.customer-account-page .customer-data-card strong { color: #0f2a28; font-size: 1.02rem; }
-html.sf-standalone.sf-compact body.customer-account-page .customer-data-card span { color: #55706c; font-size: .88rem; }
-html.sf-standalone.sf-compact body.customer-account-page .customer-card-actions { margin-top: 12px; gap: 8px; flex-wrap: wrap; }
-html.sf-standalone.sf-compact body.customer-account-page .customer-card-actions .button {
+html.sf-compact body.customer-account-page .customer-data-card strong { color: #0f2a28; font-size: 1.02rem; }
+html.sf-compact body.customer-account-page .customer-data-card span { color: #55706c; font-size: .88rem; }
+html.sf-compact body.customer-account-page .customer-card-actions { margin-top: 12px; gap: 8px; flex-wrap: wrap; }
+html.sf-compact body.customer-account-page .customer-card-actions .button {
   background: #eef4f2; color: #12643f; border: 0; border-radius: 11px; padding: 9px 13px; font-size: .82rem; font-weight: 700;
 }
-html.sf-standalone.sf-compact body.customer-account-page .customer-empty-card { color: #55706c; }
-html.sf-standalone.sf-compact body.customer-account-page .customer-empty-card .button {
+html.sf-compact body.customer-account-page .customer-empty-card { color: #55706c; }
+html.sf-compact body.customer-account-page .customer-empty-card .button {
   background: #1e7d52; color: #fff; border: 0; border-radius: 12px; padding: 11px 16px; font-weight: 800; display: inline-flex; margin-top: 10px;
 }
 
+/* "Recommended for you" cards: the base layout is a flex row (copy + button).
+   In the narrow phone card that crushes the copy into a one-word-per-line column
+   with the button overlapping — so stack it like the other app cards. */
+html.sf-compact body.customer-account-page .customer-recommend-card {
+  flex-direction: column; align-items: stretch; gap: 12px;
+  border-radius: 20px; padding: 18px; box-shadow: 0 12px 30px rgba(4,26,24,.22);
+}
+html.sf-compact body.customer-account-page .customer-recommend-copy strong { color: #0f2a28; font-size: 1.02rem; }
+html.sf-compact body.customer-account-page .customer-recommend-card .button {
+  width: 100%; justify-content: center;
+  background: #1e7d52; color: #fff; border: 0; border-radius: 14px; padding: 13px; font-weight: 800;
+}
+
+/* ── Signed-in dashboard redesign components inside the phone app ────────────
+   White cards read fine on the gradient; these fix the elements that used a
+   translucent green tint (invisible on green) + put the avatar in the header. */
+html.sf-compact body.customer-account-page .customer-welcome-banner {
+  background: rgba(255,255,255,.12); border-color: rgba(255,255,255,.22); color: #eaf4f2;
+}
+html.sf-compact body.customer-account-page .customer-welcome-banner-icon { background: rgba(255,255,255,.18); color: #fff; }
+html.sf-compact body.customer-account-page .customer-quickaction { border: 0; box-shadow: 0 10px 26px rgba(4,26,24,.2); }
+html.sf-compact body.customer-account-page .customer-shortcut { border: 0; box-shadow: 0 10px 26px rgba(4,26,24,.2); }
+html.sf-compact body.customer-account-page .customer-section-heading-actions > span {
+  color: rgba(255,255,255,.75); background: rgba(255,255,255,.14);
+  min-width: 22px; height: 22px; padding: 0 7px; border-radius: 999px;
+  display: inline-flex; align-items: center; justify-content: center; font-size: .76rem; font-weight: 800;
+}
+html.sf-compact body.customer-account-page .customer-section-add { background: rgba(255,255,255,.16); color: #fff; }
+/* MU avatar lives in the top-right of the app header. */
+html.sf-compact body.customer-account-page .customer-header-signed { margin-left: auto; }
+html.sf-compact body.customer-account-page .customer-avatar-btn { color: #fff; }
+
 /* Bottom navigation (customer app only) */
 .customer-tabbar { display: none; }
-html.sf-standalone.sf-compact body.customer-account-page .customer-tabbar { display: flex; }
-html.sf-standalone.sf-compact body.customer-account-page .customer-tabbar .app-tab.is-active {
+html.sf-compact body.customer-account-page .customer-tabbar { display: flex; }
+html.sf-compact body.customer-account-page .customer-tabbar .app-tab.is-active {
   color: #1e7d52; background: rgba(30,125,82,.12);
 }
 
@@ -420,17 +462,68 @@ html.sf-standalone.sf-compact body.account-page .account-content {
   max-height: none;
 }
 
+/* ── Settings page (account.html) — match the DASHBOARD's dark-green gradient in
+   ALL compact modes (mobile browser + installed PWA), not just standalone. The
+   dashboard theme is `html.sf-compact body.customer-account-page`; the settings
+   theme was only `sf-standalone.sf-compact`, so a mobile browser fell back to the
+   light account.css theme. These rules mirror the standalone values above so the
+   browser and the app look identical. Desktop (sf-wide) keeps the light theme,
+   which matches the desktop dashboard. Everything readable stays inside the white
+   .account-layout card, so no white-on-gradient contrast issues. */
+html.sf-compact body.account-page {
+  background: linear-gradient(175deg, #12514f 0%, #0d3b3b 44%, #06231f 100%) fixed;
+  color: #eaf4f2;
+  min-height: 100vh;
+  min-height: 100dvh;
+  padding-bottom: calc(86px + env(safe-area-inset-bottom));
+  overflow-x: hidden;
+}
+html.sf-compact body.account-page .customer-tabbar { display: flex !important; }
+html.sf-compact body.account-page .customer-tabbar .app-tab.is-active { color: #1e7d52; background: rgba(30,125,82,.12); }
+html.sf-compact body.account-page .site-header {
+  position: static; background: transparent; border: 0; box-shadow: none;
+  padding: calc(env(safe-area-inset-top) + 10px) 18px 12px !important;
+}
+html.sf-compact body.account-page .site-header .logo,
+html.sf-compact body.account-page .site-header .logo span { color: #fff; }
+html.sf-compact body.account-page .site-footer { display: none !important; }
+html.sf-compact body.account-page .account-header-nav { display: flex; gap: 10px; }
+html.sf-compact body.account-page .account-header-nav a { color: rgba(255,255,255,.82); }
+html.sf-compact body.account-page .account-layout {
+  background: #fff; color: #0f2a28; border: 0; border-radius: 20px;
+  box-shadow: 0 12px 30px rgba(4,26,24,.22);
+  display: block; margin: 8px 16px 22px; min-height: 0; overflow: hidden;
+}
+html.sf-compact body.account-page .account-sidebar { border: 0; background: #f7fbfa; }
+html.sf-compact body.account-page .account-content { max-height: none; }
+
+/* Mobile account is a drill-down MENU. In menu view the white .account-layout
+   card is dropped so the row cards sit directly on the gradient (like the
+   dashboard); the heading goes white. Detail view keeps the white content card. */
+html.sf-compact body.account-page[data-acct-view="menu"] .account-layout {
+  background: transparent; box-shadow: none; border-radius: 0; margin: 4px 8px 22px; overflow: visible;
+}
+html.sf-compact body.account-page[data-acct-view="menu"] .account-sidebar { background: transparent; }
+html.sf-compact body.account-page[data-acct-view="menu"] .account-sidebar-header h1 { color: #fff; }
+html.sf-compact body.account-page[data-acct-view="menu"] .account-sidebar-subtitle { color: rgba(255,255,255,.72); }
+
+/* Signed-in Track: drop the guest marketing hero so it reads as an app "your
+   services" view. The lookup form stays (prefilled) as a safe fallback + for
+   looking up a different request. Applies on every surface, not just the PWA. */
+body.track-authed .track-hero-redesign { display: none; }
+body.track-authed .track-search-note { display: none; }
+
 /* ---- Logged-out state → app sign-in styling ------------------------------ */
-html.sf-standalone.sf-compact body.customer-account-page .customer-account-intro .customer-dashboard-kicker { display: none; }
-html.sf-standalone.sf-compact body.customer-account-page .customer-account-intro h1 { color: #fff; font-size: 1.9rem; font-weight: 800; }
-html.sf-standalone.sf-compact body.customer-account-page .customer-account-intro p { color: rgba(255,255,255,.75); }
-html.sf-standalone.sf-compact body.customer-account-page .customer-account-access-grid { display: flex; flex-direction: column; gap: 16px; }
-html.sf-standalone.sf-compact body.customer-account-page .customer-account-actions-card,
-html.sf-standalone.sf-compact body.customer-account-page .customer-account-option-card,
-html.sf-standalone.sf-compact body.customer-account-page .customer-account-panel {
+html.sf-compact body.customer-account-page .customer-account-intro .customer-dashboard-kicker { display: none; }
+html.sf-compact body.customer-account-page .customer-account-intro h1 { color: #fff; font-size: 1.9rem; font-weight: 800; }
+html.sf-compact body.customer-account-page .customer-account-intro p { color: rgba(255,255,255,.75); }
+html.sf-compact body.customer-account-page .customer-account-access-grid { display: flex; flex-direction: column; gap: 16px; }
+html.sf-compact body.customer-account-page .customer-account-actions-card,
+html.sf-compact body.customer-account-page .customer-account-option-card,
+html.sf-compact body.customer-account-page .customer-account-panel {
   background: #fff; color: #0f2a28; border: 0; border-radius: 20px; box-shadow: 0 12px 30px rgba(4,26,24,.22);
 }
-html.sf-standalone.sf-compact body.customer-account-page .customer-account-reassure { color: #55706c; }
+html.sf-compact body.customer-account-page .customer-account-reassure { color: #55706c; }
 
 /* Logged-out customer PWA: app-native sign-in screen. */
 .customer-pwa-guest-actions,
@@ -641,6 +734,29 @@ html.sf-compact body.customer-account-page:not(.customer-account-loaded) .custom
   font-weight: 900;
 }
 
+/* Issue #1: phone input, email input, Sign In, and Create Account must be the
+   exact same width with aligned edges. Force every wrapper to full width with no
+   stray horizontal padding/margin so all four share one left/right edge. */
+html.sf-compact body.customer-account-page:not(.customer-account-loaded) .customer-account-mode-panel,
+html.sf-compact body.customer-account-page:not(.customer-account-loaded) .customer-account-form,
+html.sf-compact body.customer-account-page:not(.customer-account-loaded) .customer-account-form label,
+html.sf-compact body.customer-account-page:not(.customer-account-loaded) .customer-account-tabs {
+  width: 100%;
+  box-sizing: border-box;
+  margin-left: 0;
+  margin-right: 0;
+  padding-left: 0;
+  padding-right: 0;
+}
+html.sf-compact body.customer-account-page:not(.customer-account-loaded) .customer-account-form input,
+html.sf-compact body.customer-account-page:not(.customer-account-loaded) .customer-account-form .button.primary,
+html.sf-compact body.customer-account-page:not(.customer-account-loaded) .customer-account-tab[data-account-mode="create"] {
+  width: 100%;
+  box-sizing: border-box;
+  margin-left: 0;
+  margin-right: 0;
+}
+
 html.sf-compact body.customer-account-page:not(.customer-account-loaded) .form-status:empty {
   display: none;
 }
@@ -795,7 +911,7 @@ html.sf-compact body.customer-account-page:not(.customer-account-loaded) .site-f
 }
 
 /* Batch 1: installed customer app shell consistency. */
-html.sf-standalone.sf-compact body.customer-account-page,
+html.sf-compact body.customer-account-page,
 html.sf-standalone.sf-compact body.booking-page,
 html.sf-standalone.sf-compact body.track-page,
 html.sf-standalone.sf-compact body.account-page {
@@ -805,14 +921,14 @@ html.sf-standalone.sf-compact body.account-page {
   padding-bottom: var(--sf-pwa-tabbar-clearance);
 }
 
-html.sf-standalone.sf-compact body.customer-account-page .customer-tabbar,
+html.sf-compact body.customer-account-page .customer-tabbar,
 html.sf-standalone.sf-compact body.booking-page .customer-tabbar,
 html.sf-standalone.sf-compact body.track-page .customer-tabbar,
 html.sf-standalone.sf-compact body.account-page .customer-tabbar {
   min-height: var(--sf-pwa-tabbar-clearance);
 }
 
-html.sf-standalone.sf-compact body.customer-account-page.customer-account-loaded .customer-account-shell,
+html.sf-compact body.customer-account-page.customer-account-loaded .customer-account-shell,
 html.sf-standalone.sf-compact body.booking-page .booking-flow-shell,
 html.sf-standalone.sf-compact body.track-page .track-shell {
   padding-left: 16px;
@@ -822,21 +938,21 @@ html.sf-standalone.sf-compact body.track-page .track-shell {
 /* Batch 4: installed customer app loop polish.
    Keep app routes feeling native and reduce public-site clutter only when the
    app is installed/standalone. */
-html.sf-standalone.sf-compact body.customer-account-page.customer-account-loaded,
+html.sf-compact body.customer-account-page.customer-account-loaded,
 html.sf-standalone.sf-compact body.booking-page,
 html.sf-standalone.sf-compact body.track-page,
 html.sf-standalone.sf-compact body.account-page {
   --sf-customer-app-gutter: clamp(14px, 4vw, 18px);
 }
 
-html.sf-standalone.sf-compact body.customer-account-page.customer-account-loaded .customer-account-shell,
+html.sf-compact body.customer-account-page.customer-account-loaded .customer-account-shell,
 html.sf-standalone.sf-compact body.booking-page .booking-flow-shell,
 html.sf-standalone.sf-compact body.track-page .track-shell {
   padding-left: var(--sf-customer-app-gutter);
   padding-right: var(--sf-customer-app-gutter);
 }
 
-html.sf-standalone.sf-compact body.customer-account-page.customer-account-loaded .customer-dashboard,
+html.sf-compact body.customer-account-page.customer-account-loaded .customer-dashboard,
 html.sf-standalone.sf-compact body.booking-page .booking-flow,
 html.sf-standalone.sf-compact body.track-page .track-search-card,
 html.sf-standalone.sf-compact body.track-page .track-request-card {
@@ -844,30 +960,30 @@ html.sf-standalone.sf-compact body.track-page .track-request-card {
   box-shadow: 0 14px 34px rgba(4, 26, 24, 0.2);
 }
 
-html.sf-standalone.sf-compact body.customer-account-page.customer-account-loaded .customer-dashboard-layout {
+html.sf-compact body.customer-account-page.customer-account-loaded .customer-dashboard-layout {
   display: grid;
   grid-template-columns: 1fr;
   gap: 14px;
 }
 
-html.sf-standalone.sf-compact body.customer-account-page.customer-account-loaded .customer-dashboard-section {
+html.sf-compact body.customer-account-page.customer-account-loaded .customer-dashboard-section {
   min-width: 0;
 }
 
-html.sf-standalone.sf-compact body.customer-account-page.customer-account-loaded .customer-request-card,
-html.sf-standalone.sf-compact body.customer-account-page.customer-account-loaded .customer-data-card,
-html.sf-standalone.sf-compact body.customer-account-page.customer-account-loaded .customer-empty-card {
+html.sf-compact body.customer-account-page.customer-account-loaded .customer-request-card,
+html.sf-compact body.customer-account-page.customer-account-loaded .customer-data-card,
+html.sf-compact body.customer-account-page.customer-account-loaded .customer-empty-card {
   padding: 16px;
   border-radius: 18px;
 }
 
-html.sf-standalone.sf-compact body.customer-account-page.customer-account-loaded .customer-card-actions {
+html.sf-compact body.customer-account-page.customer-account-loaded .customer-card-actions {
   display: grid;
   grid-template-columns: 1fr;
   gap: 8px;
 }
 
-html.sf-standalone.sf-compact body.customer-account-page.customer-account-loaded .customer-card-actions .button {
+html.sf-compact body.customer-account-page.customer-account-loaded .customer-card-actions .button {
   width: 100%;
   min-height: 48px;
   border-radius: 14px;
@@ -929,23 +1045,23 @@ html.sf-standalone.sf-compact body.track-page .review-panel {
 
 html.sf-standalone.sf-compact body.track-page .app-tab[href*="/track"],
 html.sf-standalone.sf-compact body.booking-page .app-tab[href*="/book"],
-html.sf-standalone.sf-compact body.customer-account-page .app-tab.is-active,
+html.sf-compact body.customer-account-page .app-tab.is-active,
 html.sf-standalone.sf-compact body.account-page .app-tab.is-active {
   color: #1e7d52;
   background: rgba(30,125,82,.12);
 }
 
-html.sf-standalone.sf-compact body.customer-account-page .customer-request-card,
-html.sf-standalone.sf-compact body.customer-account-page .customer-data-card,
-html.sf-standalone.sf-compact body.customer-account-page .customer-empty-card,
+html.sf-compact body.customer-account-page .customer-request-card,
+html.sf-compact body.customer-account-page .customer-data-card,
+html.sf-compact body.customer-account-page .customer-empty-card,
 html.sf-standalone.sf-compact body.booking-page .booking-flow,
 html.sf-standalone.sf-compact body.track-page .track-search-card,
 html.sf-standalone.sf-compact body.account-page .account-layout {
   border-radius: var(--sf-pwa-card-radius);
 }
 
-html.sf-standalone.sf-compact body.customer-account-page .customer-request-card .button,
-html.sf-standalone.sf-compact body.customer-account-page .customer-data-card .button,
+html.sf-compact body.customer-account-page .customer-request-card .button,
+html.sf-compact body.customer-account-page .customer-data-card .button,
 html.sf-standalone.sf-compact body.booking-page .button,
 html.sf-standalone.sf-compact body.track-page .button,
 html.sf-standalone.sf-compact body.account-page .button {
@@ -968,6 +1084,11 @@ html.sf-compact body.customer-account-page:not(.customer-account-loaded) .site-h
 html.sf-compact body.customer-account-page:not(.customer-account-loaded) .site-header .logo-mark {
   width: 40px;
   height: 40px;
+}
+/* No website hamburger nav on the app sign-in screen (it was opening behind the card). */
+html.sf-compact body.customer-account-page:not(.customer-account-loaded) .site-header .nav,
+html.sf-compact body.customer-account-page:not(.customer-account-loaded) .site-header .mobile-menu-button {
+  display: none !important;
 }
 html.sf-compact body.customer-account-page:not(.customer-account-loaded) .customer-account-shell {
   padding: 12px clamp(18px, 6vw, 32px) 16px;
@@ -1000,14 +1121,14 @@ html.sf-compact body.customer-account-page:not(.customer-account-loaded) .custom
   padding: 18px 18px 20px;
 }
 html.sf-compact body.customer-account-page:not(.customer-account-loaded) .customer-account-form {
-  gap: 13px;
+  gap: 16px;
 }
 html.sf-compact body.customer-account-page:not(.customer-account-loaded) .customer-account-form input {
-  min-height: 54px;
+  min-height: 58px;
 }
 html.sf-compact body.customer-account-page:not(.customer-account-loaded) .customer-account-form .button.primary {
-  min-height: 54px;
-  margin-top: 6px;
+  min-height: 56px;
+  margin-top: 10px;
 }
 html.sf-compact body.customer-account-page:not(.customer-account-loaded) .customer-account-tab[data-account-mode="create"] {
   min-height: 50px !important;
@@ -1020,4 +1141,141 @@ html.sf-compact body.customer-account-page:not(.customer-account-loaded) .custom
 html.sf-compact body.customer-account-page:not(.customer-account-loaded) .site-footer,
 html.sf-compact body.customer-account-page:not(.customer-account-loaded) .customer-pwa-security-note {
   display: none !important;
+}
+
+/* ── Sign-in card fixes ─────────────────────────────────────────────────────
+   1) Autofilled phone/email stay white (browser autofill was tinting them lavender).
+   2) Tab shows only the OTHER mode's button — kills the duplicate "Create Account". */
+html.sf-compact body.customer-account-page:not(.customer-account-loaded) .customer-account-form input:-webkit-autofill,
+html.sf-compact body.customer-account-page:not(.customer-account-loaded) .customer-account-form input:-webkit-autofill:hover,
+html.sf-compact body.customer-account-page:not(.customer-account-loaded) .customer-account-form input:-webkit-autofill:focus {
+  -webkit-box-shadow: 0 0 0 1000px #fff inset;
+  -webkit-text-fill-color: #092f2d;
+  caret-color: #092f2d;
+}
+html.sf-compact body.customer-account-page:not(.customer-account-loaded) .customer-account-tab[data-account-mode="create"].is-active {
+  display: none !important;
+}
+html.sf-compact body.customer-account-page:not(.customer-account-loaded) .customer-account-tab[data-account-mode="login"]:not(.is-active) {
+  display: flex; align-items: center; justify-content: center;
+  width: 100%; box-sizing: border-box; min-height: 50px; padding: 0 18px; margin: 0;
+  border: 1.5px solid #c9d4d2; border-radius: 14px; background: #fff;
+  color: #092f2d; font-size: 1.04rem; font-weight: 900;
+}
+
+/* ============================================================================
+   LANDING-STYLE LIGHT THEME — signed-in customer app surfaces
+   ----------------------------------------------------------------------------
+   Re-skins the four signed-in customer surfaces (account dashboard, Book, Track,
+   Account Settings) to match the public landing page instead of the dark-green
+   PWA gradient: off-white body, a solid dark-green header BAND (like
+   `.site-header` / `.landing-header`), and white cards with the landing's subtle
+   green border + soft shadow. Applies to mobile-web browser AND installed PWA
+   (`sf-compact`); the dashboard/settings gradients were already `sf-compact`, and
+   Book/Track only went dark in `sf-standalone`, so we mirror that scope for them.
+
+   DELIBERATELY EXCLUDED: the logged-out customer sign-in gate
+   (`body.customer-account-page:not(.customer-account-loaded)`) — it keeps its
+   dark hero design. Every customer rule below is scoped to
+   `.customer-account-loaded`, which the gate never has, so it stays untouched.
+   Worker/admin portals are out of scope and unaffected.
+
+   These rules are appended last on purpose: same-specificity source order (plus
+   `!important` where the dark rules used it) lets them win cleanly.
+   ========================================================================== */
+
+/* Light off-white body — same background as the public site */
+html.sf-compact body.customer-account-page.customer-account-loaded,
+html.sf-compact body.account-page,
+html.sf-standalone.sf-compact body.booking-page,
+html.sf-standalone.sf-compact body.track-page,
+html.sf-standalone.sf-compact body.account-page {
+  background:
+    radial-gradient(circle at top left, rgba(167, 191, 166, 0.18), transparent 34rem),
+    var(--sf-off-white);
+  color: var(--sf-charcoal);
+}
+
+/* Solid dark-green header band (matches the landing page header) */
+html.sf-compact body.customer-account-page.customer-account-loaded .site-header,
+html.sf-compact body.account-page .site-header,
+html.sf-standalone.sf-compact body.account-page .site-header,
+html.sf-standalone.sf-compact body.booking-page .site-header,
+html.sf-standalone.sf-compact body.track-page .site-header {
+  position: static;
+  width: auto;
+  margin: calc(env(safe-area-inset-top) + 10px) 14px 4px !important;
+  padding: 14px 18px !important;
+  color: var(--sf-white);
+  background: linear-gradient(135deg, var(--sf-teal), var(--sf-teal-dark));
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: var(--sf-radius-sm);
+  box-shadow: var(--sf-shadow-header);
+}
+/* Logo + header-nav text stay white — they sit on the dark band */
+html.sf-compact body.customer-account-page.customer-account-loaded .site-header .logo,
+html.sf-compact body.customer-account-page.customer-account-loaded .site-header .logo span,
+html.sf-compact body.account-page .site-header .logo,
+html.sf-compact body.account-page .site-header .logo span,
+html.sf-standalone.sf-compact body.booking-page .site-header .logo,
+html.sf-standalone.sf-compact body.booking-page .site-header .logo span,
+html.sf-standalone.sf-compact body.track-page .site-header .logo,
+html.sf-standalone.sf-compact body.track-page .site-header .logo span {
+  color: var(--sf-white);
+}
+
+/* Greeting + subtitle now sit on the light body → dark text */
+html.sf-compact body.customer-account-page.customer-account-loaded [data-customer-greeting] {
+  color: var(--sf-teal-dark);
+}
+html.sf-compact body.customer-account-page.customer-account-loaded .customer-dashboard-subtitle {
+  color: var(--sf-muted);
+}
+
+/* Section headings on the light body → dark label + green count chip */
+html.sf-compact body.customer-account-page.customer-account-loaded .customer-section-heading h3 {
+  color: var(--sf-teal-dark);
+}
+html.sf-compact body.customer-account-page.customer-account-loaded .customer-section-heading > span,
+html.sf-compact body.customer-account-page.customer-account-loaded .customer-section-heading-actions > span {
+  color: #12643f;
+  background: var(--sf-sage-light);
+}
+html.sf-compact body.customer-account-page.customer-account-loaded .customer-section-add {
+  color: #12643f;
+  background: var(--sf-sage-light);
+}
+
+/* Welcome banner: was translucent-white-on-green → white card on light body */
+html.sf-compact body.customer-account-page.customer-account-loaded .customer-welcome-banner {
+  color: var(--sf-charcoal);
+  background: var(--sf-white);
+  border-color: var(--sf-border);
+  box-shadow: var(--sf-shadow-soft);
+}
+html.sf-compact body.customer-account-page.customer-account-loaded .customer-welcome-banner-icon {
+  color: #12643f;
+  background: var(--sf-sage-light);
+}
+
+/* Sign-out: outline reads dark on the light body */
+html.sf-compact body.customer-account-page.customer-account-loaded .customer-dashboard-actions [data-customer-sign-out] {
+  color: var(--sf-teal-dark);
+  border-color: var(--sf-border);
+}
+
+/* White cards get the landing page's subtle border + soft shadow (was borderless
+   with a heavy drop shadow, which suited the dark gradient) */
+html.sf-compact body.customer-account-page.customer-account-loaded .customer-request-card,
+html.sf-compact body.customer-account-page.customer-account-loaded .customer-data-card,
+html.sf-compact body.customer-account-page.customer-account-loaded .customer-empty-card,
+html.sf-compact body.customer-account-page.customer-account-loaded .customer-recommend-card,
+html.sf-compact body.customer-account-page.customer-account-loaded .customer-quickaction,
+html.sf-compact body.customer-account-page.customer-account-loaded .customer-shortcut,
+html.sf-compact body.account-page .account-layout,
+html.sf-standalone.sf-compact body.account-page .account-layout,
+html.sf-standalone.sf-compact body.booking-page .booking-flow,
+html.sf-standalone.sf-compact body.track-page .track-search-card {
+  border: 1px solid var(--sf-border);
+  box-shadow: var(--sf-shadow-soft);
 }

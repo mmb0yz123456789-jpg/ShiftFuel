@@ -1,4 +1,4 @@
-/* Shared layout width/alignment polish for Book Now and Track My Vehicle.
+/* Shared layout width/alignment polish for Book Now, Track My Vehicle, and My Account.
    Visual-only: keeps forms/search logic untouched. */
 
 :root {
@@ -10,12 +10,15 @@
 /* Keep the main page columns aligned with the same wide landing-page grid. */
 .booking-page .site-header,
 .track-page .site-header,
+.customer-account-page .site-header,
 .booking-page .site-footer,
 .track-page .site-footer,
+.customer-account-page .site-footer,
 .booking-page .booking-flow-shell,
 .track-page .track-shell,
 .track-page #tracking-result,
-.track-page .portal-closing-banner {
+.track-page .portal-closing-banner,
+.customer-account-page .customer-account-shell {
   width: var(--sf-content-width) !important;
   max-width: var(--sf-page-width) !important;
   margin-left: auto !important;
@@ -136,21 +139,78 @@
   width: 100%;
 }
 
+/* My Account: align the authenticated dashboard with the landing page instead
+   of keeping it inside a smaller floating card. Inner cards still carry the
+   surface styling; the page itself uses the same full-width section lane. */
+.customer-account-page .customer-account-shell {
+  display: grid;
+  gap: clamp(24px, 3vw, 40px);
+  padding-left: 0;
+  padding-right: 0;
+}
+
+.customer-account-page .customer-dashboard {
+  width: 100% !important;
+  max-width: none !important;
+  padding: 0 !important;
+  background: transparent !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+}
+
+.customer-account-page .customer-dashboard-header,
+.customer-account-page .customer-dashboard-quickactions,
+.customer-account-page .customer-claim-panel,
+.customer-account-page .customer-recommend,
+.customer-account-page .customer-dashboard-summary,
+.customer-account-page .customer-dashboard-stats,
+.customer-account-page .customer-dashboard-layout {
+  width: 100%;
+}
+
+.customer-account-page .customer-dashboard-layout {
+  grid-template-columns: minmax(0, 1fr) minmax(360px, 0.9fr);
+  gap: clamp(18px, 2vw, 30px);
+}
+
+.customer-account-page .customer-dashboard-section-primary,
+.customer-account-page .customer-dashboard-section-soft,
+.customer-account-page #account-history {
+  grid-column: 1 / -1;
+}
+
+.customer-account-page .customer-dashboard-section-primary .customer-card-list,
+.customer-account-page .customer-dashboard-section-soft .customer-card-list,
+.customer-account-page #account-history .customer-card-list {
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+}
+
 @media (max-width: 980px) {
   .booking-page .site-header,
   .track-page .site-header,
+  .customer-account-page .site-header,
   .booking-page .site-footer,
   .track-page .site-footer,
+  .customer-account-page .site-footer,
   .booking-page .booking-flow-shell,
   .track-page .track-shell,
   .track-page #tracking-result,
   .track-page .portal-closing-banner,
-  .track-page .track-search-card {
+  .track-page .track-search-card,
+  .customer-account-page .customer-account-shell {
     width: var(--sf-content-width-mobile) !important;
     max-width: 760px !important;
   }
 
   .booking-page .booking-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .customer-account-page .customer-dashboard-layout,
+  .customer-account-page .customer-dashboard-section-primary .customer-card-list,
+  .customer-account-page .customer-dashboard-section-soft .customer-card-list,
+  .customer-account-page #account-history .customer-card-list {
     grid-template-columns: 1fr;
   }
 

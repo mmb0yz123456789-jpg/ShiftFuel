@@ -67,7 +67,7 @@
     setupTabNavigation();
     setupForms();
     setupSignOut();
-    setupAddButtons();
+    setupSavedOptionsUI();
 
     // Load account data
     await loadAccountData();
@@ -95,28 +95,69 @@
     currentAccountSession = null;
   }
 
+  async function lookupCustomerAccount(phone = currentAccountSession?.phone, email = currentAccountSession?.email) {
+    if (!db || !phone || !email) return null;
+    const { data, error } = await db.rpc('public_lookup_customer_account', {
+      p_phone: phone,
+      p_email: email,
+    });
+    if (error) throw error;
+    return data && typeof data === 'object' ? data : null;
+  }
+
   // ============================================================
   // Tab Navigation
   // ============================================================
+  // Mobile drill-down: the Account tab opens a clean MENU (nav list) and each row
+  // opens a detail PAGE. Desktop keeps the sidebar + content side by side (the CSS
+  // ignores data-acct-view above 768px), so this is mobile-only behaviour.
+  const isMobileAccount = () => window.matchMedia && window.matchMedia('(max-width: 768px)').matches;
+  function setAcctView(view) {
+    document.body.setAttribute('data-acct-view', view);
+    if (view === 'detail') { window.scrollTo(0, 0); const c = document.querySelector('.account-content'); if (c) c.scrollTop = 0; }
+  }
+
   function setupTabNavigation() {
     accountTabButtons.forEach(button => {
       button.addEventListener('click', () => {
         const tabName = button.dataset.accountTab;
         switchToTab(tabName);
+        if (isMobileAccount()) setAcctView('detail');
         // Keep the URL hash in sync so the tab survives a refresh / is shareable.
         if (history.replaceState) history.replaceState(null, '', '#' + tabName);
       });
     });
 
-    // Deep-link: open the tab named in the URL hash (e.g. /account/settings#vehicles,
-    // used by the dashboard's "Manage vehicles & addresses" link). Only honour tabs
-    // whose nav button exists and isn't hidden (so a hidden Billing can't be opened).
+    // Back button (mobile): return from a detail page to the account menu.
+    const backBtn = document.querySelector('[data-account-back]');
+    if (backBtn) backBtn.addEventListener('click', () => {
+      setAcctView('menu');
+      if (history.replaceState) history.replaceState(null, '', location.pathname);
+    });
+
+    // Deep-link: open the tab named in the URL hash (e.g. /account/settings#vehicles).
+    // The dashboard's "Add Vehicle"/"Add Service Address" quick actions link to
+    // #add-vehicle / #add-address — those open the matching tab AND reveal its add
+    // form. Only honour tabs whose nav button exists and isn't hidden.
+    const addFormHash = { 'add-vehicle': { tab: 'vehicles', form: '[data-add-vehicle-form]' },
+                          'add-address': { tab: 'addresses', form: '[data-add-address-form]' } };
     const applyHash = () => {
-      const name = (location.hash || '').replace('#', '').trim();
-      if (!name) return;
+      const raw = (location.hash || '').replace('#', '').trim();
+      if (!raw) { setAcctView('menu'); return; }
+      const add = addFormHash[raw];
+      const name = add ? add.tab : raw;
       const btn = document.querySelector(`[data-account-tab="${name}"]`);
-      if (btn && !btn.hidden) switchToTab(name);
+      if (btn && !btn.hidden) {
+        switchToTab(name);
+        if (isMobileAccount()) setAcctView('detail');
+      }
+      if (add) {
+        const form = document.querySelector(add.form);
+        if (form) toggleAddForm(form, true);
+      }
     };
+    // Default to the menu on mobile; a deep-link hash jumps straight to its detail page.
+    setAcctView('menu');
     applyHash();
     window.addEventListener('hashchange', applyHash);
   }
@@ -154,11 +195,8 @@
       // Load profile data
       await loadProfileData();
 
-      // Load saved vehicles
-      await loadSavedVehicles();
-
-      // Load saved addresses
-      await loadSavedAddresses();
+      // Load saved vehicles + addresses (single RPC)
+      await refreshSavedOptions();
 
       // Load notification preferences
       await loadNotificationPreferences();
@@ -171,141 +209,110 @@
   async function loadProfileData() {
     if (!profileForm || !currentAccountSession) return;
 
+    // Always pre-fill from the signed-in session FIRST so the Profile tab shows
+    // the customer's own details immediately. Without this, a failed/empty profile
+    // lookup left the name/phone/email fields blank, which looks like a sign-in
+    // form and makes signed-in users think they've been logged out.
+    const nameParts = (currentAccountSession.name || '').split(' ');
+    profileForm.elements.firstName.value = nameParts[0] || '';
+    profileForm.elements.lastName.value = nameParts.slice(1).join(' ') || '';
+    profileForm.elements.phone.value = formatPhoneDisplay(currentAccountSession.phone);
+    profileForm.elements.email.value = currentAccountSession.email;
+
     try {
-      // Try to find customer by phone/email
-      const { data, error } = await db
-        .from('customers')
-        .select('*')
-        .eq('phone', currentAccountSession.phone)
-        .eq('email', currentAccountSession.email)
-        .maybeSingle();
+      const data = await lookupCustomerAccount();
+      if (!data) return;
 
-      if (error || !data) {
-        // Pre-fill from session if no database record
-        profileForm.elements.firstName.value = currentAccountSession.name.split(' ')[0] || '';
-        profileForm.elements.lastName.value = currentAccountSession.name.split(' ').slice(1).join(' ') || '';
-        profileForm.elements.phone.value = formatPhoneDisplay(currentAccountSession.phone);
-        profileForm.elements.email.value = currentAccountSession.email;
-        return;
-      }
-
-      // Populate form with database values
-      profileForm.elements.firstName.value = data.first_name || '';
-      profileForm.elements.lastName.value = data.last_name || '';
-      profileForm.elements.phone.value = formatPhoneDisplay(data.phone);
-      profileForm.elements.email.value = data.email || '';
-      profileForm.elements.serviceArea.value = data.service_area || '';
-      profileForm.elements.zipCode.value = data.zip_code || '';
+      // Enrich with database values where present (keep session values otherwise).
+      if (data.first_name) profileForm.elements.firstName.value = data.first_name;
+      if (data.last_name) profileForm.elements.lastName.value = data.last_name;
+      if (data.phone) profileForm.elements.phone.value = formatPhoneDisplay(data.phone);
+      if (data.email) profileForm.elements.email.value = data.email;
+      if (data.service_area) profileForm.elements.serviceArea.value = data.service_area;
+      if (data.zip_code) profileForm.elements.zipCode.value = data.zip_code;
 
     } catch (error) {
       console.error('Failed to load profile:', error);
     }
   }
 
-  async function loadSavedVehicles() {
-    if (!vehiclesList || !currentAccountSession) return;
+  // Saved vehicles + addresses come from the same RPC the returning-customer
+  // booking flow uses (tables: saved_customer_vehicles / saved_service_addresses).
+  async function loadReturningOptions() {
+    if (!db || !currentAccountSession) return { vehicles: [], addresses: [] };
+    const { data, error } = await db.rpc('public_returning_customer_options', {
+      p_phone: currentAccountSession.phone,
+      p_email: currentAccountSession.email,
+    });
+    if (error) throw error;
+    const opts = data && typeof data === 'object' ? data : {};
+    return {
+      vehicles: Array.isArray(opts.vehicles) ? opts.vehicles : [],
+      addresses: Array.isArray(opts.addresses) ? opts.addresses : [],
+    };
+  }
 
+  // Load both lists in one call and render them. Called on load and after any
+  // add/remove so the UI always reflects the database.
+  async function refreshSavedOptions() {
+    if (!currentAccountSession) return;
     try {
-      // Get customer ID
-      const { data: customer } = await db
-        .from('customers')
-        .select('id')
-        .eq('phone', currentAccountSession.phone)
-        .eq('email', currentAccountSession.email)
-        .maybeSingle();
-
-      if (!customer) {
-        vehiclesList.innerHTML = '<p class="form-help">No saved vehicles yet.</p>';
-        return;
-      }
-
-      // Get vehicles
-      const { data: vehicles, error } = await db
-        .from('vehicles')
-        .select('*')
-        .eq('user_id', customer.id)
-        .order('created_at', { ascending: false });
-
-      if (error || !vehicles || vehicles.length === 0) {
-        vehiclesList.innerHTML = '<p class="form-help">No saved vehicles yet. Add one to book faster.</p>';
-        return;
-      }
-
-      vehiclesList.innerHTML = vehicles.map(vehicle => `
-        <div class="account-vehicle-card">
-          <div class="account-vehicle-info">
-            <strong>${escapeHtml([vehicle.year, vehicle.make, vehicle.model].filter(Boolean).join(' '))}</strong>
-            <span>${escapeHtml(vehicle.color || '')}${vehicle.license_plate ? ` · Plate: ${escapeHtml(vehicle.license_plate)}` : ''}${vehicle.fuel_type ? ` · ${escapeHtml(vehicle.fuel_type)}` : ''}</span>
-          </div>
-          <div class="account-card-actions">
-            <button class="button secondary" type="button" data-edit-vehicle="${vehicle.id}">Edit</button>
-            <button class="button danger" type="button" data-delete-vehicle="${vehicle.id}">Delete</button>
-          </div>
-        </div>
-      `).join('');
-
-      // Add delete handlers
-      vehiclesList.querySelectorAll('[data-delete-vehicle]').forEach(btn => {
-        btn.addEventListener('click', () => deleteVehicle(btn.dataset.deleteVehicle));
-      });
-
+      const { vehicles, addresses } = await loadReturningOptions();
+      renderVehicles(vehicles);
+      renderAddresses(addresses);
     } catch (error) {
-      console.error('Failed to load vehicles:', error);
-      vehiclesList.innerHTML = '<p class="form-help">Could not load vehicles. Please refresh.</p>';
+      console.error('Failed to load saved options:', error);
+      if (vehiclesList) vehiclesList.innerHTML = '<p class="form-help">Could not load vehicles. Please refresh.</p>';
+      if (addressesList) addressesList.innerHTML = '<p class="form-help">Could not load addresses. Please refresh.</p>';
     }
   }
 
-  async function loadSavedAddresses() {
-    if (!addressesList || !currentAccountSession) return;
-
-    try {
-      // Get customer ID
-      const { data: customer } = await db
-        .from('customers')
-        .select('id')
-        .eq('phone', currentAccountSession.phone)
-        .eq('email', currentAccountSession.email)
-        .maybeSingle();
-
-      if (!customer) {
-        addressesList.innerHTML = '<p class="form-help">No saved addresses yet.</p>';
-        return;
-      }
-
-      // Get addresses
-      const { data: addresses, error } = await db
-        .from('saved_addresses')
-        .select('*')
-        .eq('customer_id', customer.id)
-        .order('created_at', { ascending: false });
-
-      if (error || !addresses || addresses.length === 0) {
-        addressesList.innerHTML = '<p class="form-help">No saved addresses yet. Add one for faster booking.</p>';
-        return;
-      }
-
-      addressesList.innerHTML = addresses.map(addr => `
-        <div class="account-address-card">
-          <div class="account-address-info">
-            <strong>${escapeHtml([addr.street, addr.unit].filter(Boolean).join(', '))}</strong>
-            <span>${escapeHtml([addr.city, addr.state, addr.zip].filter(Boolean).join(', '))}</span>
+  function renderVehicles(vehicles) {
+    if (!vehiclesList) return;
+    if (!vehicles.length) {
+      vehiclesList.innerHTML = '<p class="form-help">No saved vehicles yet. Add one to book faster.</p>';
+      return;
+    }
+    vehiclesList.innerHTML = vehicles.map((v) => {
+      const title = [v.vehicle_year, v.vehicle_make, v.vehicle_model].filter(Boolean).join(' ') || 'Saved vehicle';
+      const details = [
+        v.vehicle_color,
+        v.license_plate ? `Plate: ${v.license_plate}` : '',
+        v.fuel_type,
+      ].filter(Boolean).join(' · ');
+      return `
+        <div class="account-vehicle-card">
+          <div class="account-vehicle-info">
+            <strong>${escapeHtml(title)}</strong>
+            <span>${escapeHtml(details)}</span>
           </div>
           <div class="account-card-actions">
-            <button class="button secondary" type="button" data-edit-address="${addr.id}">Edit</button>
-            <button class="button danger" type="button" data-delete-address="${addr.id}">Delete</button>
+            <button class="button danger" type="button" data-delete-vehicle="${escapeHtml(v.id)}">Remove</button>
           </div>
-        </div>
-      `).join('');
+        </div>`;
+    }).join('');
+  }
 
-      // Add delete handlers
-      addressesList.querySelectorAll('[data-delete-address]').forEach(btn => {
-        btn.addEventListener('click', () => deleteAddress(btn.dataset.deleteAddress));
-      });
-
-    } catch (error) {
-      console.error('Failed to load addresses:', error);
-      addressesList.innerHTML = '<p class="form-help">Could not load addresses. Please refresh.</p>';
+  function renderAddresses(addresses) {
+    if (!addressesList) return;
+    if (!addresses.length) {
+      addressesList.innerHTML = '<p class="form-help">No saved addresses yet. Add one for faster booking.</p>';
+      return;
     }
+    addressesList.innerHTML = addresses.map((a) => {
+      const line1 = a.address_street || a.hospital || 'Saved address';
+      const line2 = [a.address_apt, a.address_city, a.address_state, a.address_zip].filter(Boolean).join(', ');
+      return `
+        <div class="account-address-card">
+          <div class="account-address-info">
+            <strong>${escapeHtml(line1)}</strong>
+            <span>${escapeHtml(line2)}</span>
+          </div>
+          <div class="account-card-actions">
+            <button class="button danger" type="button" data-delete-address="${escapeHtml(a.id)}">Remove</button>
+          </div>
+        </div>`;
+    }).join('');
   }
 
   async function loadNotificationPreferences() {
@@ -407,18 +414,22 @@
         updated_at: new Date().toISOString(),
       };
 
-      // Upsert customer record
-      const { data, error } = await db
-        .from('customers')
-        .upsert(updates, { onConflict: 'phone' })
-        .select()
-        .single();
+      const { data, error } = await db.rpc('public_upsert_customer_account', {
+        p_phone: updates.phone,
+        p_email: updates.email,
+        p_first_name: updates.first_name,
+        p_last_name: updates.last_name,
+        p_name: `${updates.first_name} ${updates.last_name}`.trim(),
+        p_service_area: updates.service_area,
+        p_zip_code: updates.zip_code,
+      });
 
       if (error) throw error;
 
       // Update session
-      currentAccountSession.name = `${updates.first_name} ${updates.last_name}`.trim();
-      currentAccountSession.email = updates.email;
+      currentAccountSession.phone = cleanPhone(data?.phone || updates.phone);
+      currentAccountSession.name = data?.name || `${updates.first_name} ${updates.last_name}`.trim();
+      currentAccountSession.email = String(data?.email || updates.email).toLowerCase().trim();
       localStorage.setItem('shiftfuel_customer_account', JSON.stringify(currentAccountSession));
 
       // Update greeting
@@ -555,61 +566,185 @@
   }
 
   // ============================================================
-  // Vehicle Management
+  // Vehicle & Address Management (add / remove)
   // ============================================================
-  function setupAddButtons() {
-    if (addVehicleBtn) {
-      addVehicleBtn.addEventListener('click', () => {
-        // TODO: Open add vehicle modal/form
-        alert('Add vehicle form coming soon!');
-      });
-    }
+  function setFormStatus(el, type, message) {
+    if (!el) return;
+    el.textContent = message || '';
+    if (type) el.setAttribute('data-status', type);
+    else el.removeAttribute('data-status');
+  }
 
-    if (addAddressBtn) {
-      addAddressBtn.addEventListener('click', () => {
-        // TODO: Open add address modal/form
-        alert('Add address form coming soon!');
-      });
+  function toggleAddForm(form, show) {
+    if (!form) return;
+    form.hidden = !show;
+    if (show) {
+      const first = form.querySelector('input, select');
+      if (first) { try { first.focus(); } catch (_) { /* best effort */ } }
+    } else {
+      form.reset();
+      setFormStatus(form.querySelector('.form-status'), '', '');
     }
   }
 
-  async function deleteVehicle(vehicleId) {
-    if (!confirm('Are you sure you want to delete this vehicle?')) return;
+  // Surface the RPC's own guardrail messages (duplicate / outside area) to the
+  // user; fall back to a generic message for anything unexpected.
+  function friendlyRpcError(error, fallback) {
+    const msg = String((error && (error.message || error.hint || error.details)) || '').trim();
+    if (/already saved|already appears|outside the service area/i.test(msg)) return msg;
+    return fallback;
+  }
 
+  async function addVehicle(form) {
+    const status = form.querySelector('[data-add-vehicle-status]');
+    const fd = new FormData(form);
+    const data = {
+      customer_name: currentAccountSession.name || '',
+      vehicle_year: String(fd.get('vehicleYear') || '').trim(),
+      vehicle_make: String(fd.get('vehicleMake') || '').trim(),
+      vehicle_model: String(fd.get('vehicleModel') || '').trim(),
+      vehicle_color: String(fd.get('vehicleColor') || '').trim(),
+      license_plate: String(fd.get('licensePlate') || '').trim(),
+      fuel_type: String(fd.get('fuelType') || '').trim(),
+    };
+    if (!data.vehicle_make || !data.vehicle_model || !data.license_plate) {
+      setFormStatus(status, 'error', 'Make, model, and license plate are required.');
+      return;
+    }
+    const submitBtn = form.querySelector('button[type="submit"]');
+    submitBtn.disabled = true; submitBtn.textContent = 'Saving...';
+    setFormStatus(status, 'warning', 'Saving vehicle...');
     try {
-      const { error } = await db
-        .from('vehicles')
-        .delete()
-        .eq('id', vehicleId);
-
+      const { error } = await db.rpc('public_add_saved_vehicle', {
+        p_phone: currentAccountSession.phone,
+        p_email: currentAccountSession.email,
+        p_data: data,
+      });
       if (error) throw error;
-
-      // Reload vehicles
-      await loadSavedVehicles();
-
+      toggleAddForm(form, false);
+      await refreshSavedOptions();
     } catch (error) {
-      console.error('Failed to delete vehicle:', error);
-      alert('Could not delete vehicle. Please try again.');
+      console.error('Failed to add vehicle:', error);
+      setFormStatus(status, 'error', friendlyRpcError(error, 'Could not save the vehicle. Please try again.'));
+    } finally {
+      submitBtn.disabled = false; submitBtn.textContent = 'Save vehicle';
+    }
+  }
+
+  async function addAddress(form) {
+    const status = form.querySelector('[data-add-address-status]');
+    const fd = new FormData(form);
+    const street = String(fd.get('street') || '').trim();
+    const unit = String(fd.get('unit') || '').trim();
+    const city = String(fd.get('city') || '').trim();
+    const state = (String(fd.get('state') || '').trim() || 'DE').toUpperCase();
+    const zip = String(fd.get('zip') || '').trim();
+    const parking = String(fd.get('parking') || '').trim();
+    const keys = String(fd.get('keys') || '').trim();
+    if (!street || !city || !state || !zip) {
+      setFormStatus(status, 'error', 'Street, city, state, and ZIP are required.');
+      return;
+    }
+    const submitBtn = form.querySelector('button[type="submit"]');
+    submitBtn.disabled = true; submitBtn.textContent = 'Checking area...';
+    setFormStatus(status, 'warning', 'Checking that we serve this address...');
+    try {
+      // Same server-side service-area check the booking flow uses. The add RPC
+      // rejects addresses that aren't validated, so this gate is required.
+      const res = await fetch('/api/address', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'validate_service_area', street, apt: unit, city, state, zip }),
+      });
+      const vd = await res.json().catch(() => ({}));
+      if (!res.ok || !vd.valid) {
+        setFormStatus(status, 'error', vd.message || 'We do not currently serve this area.');
+        return;
+      }
+      setFormStatus(status, 'warning', 'Saving address...');
+      const { error } = await db.rpc('public_add_saved_address', {
+        p_phone: currentAccountSession.phone,
+        p_email: currentAccountSession.email,
+        p_data: {
+          customer_name: currentAccountSession.name || '',
+          hospital: [street, city, state, zip].filter(Boolean).join(', '),
+          address_street: street,
+          address_apt: unit,
+          address_city: city,
+          address_state: state,
+          address_zip: zip,
+          parking_location: parking,
+          key_handoff_details: keys,
+          service_area_valid: true,
+        },
+      });
+      if (error) throw error;
+      toggleAddForm(form, false);
+      await refreshSavedOptions();
+    } catch (error) {
+      console.error('Failed to add address:', error);
+      setFormStatus(status, 'error', friendlyRpcError(error, 'Could not save the address. Please try again.'));
+    } finally {
+      submitBtn.disabled = false; submitBtn.textContent = 'Save address';
+    }
+  }
+
+  function setupSavedOptionsUI() {
+    const addVehicleForm = document.querySelector('[data-add-vehicle-form]');
+    const addAddressForm = document.querySelector('[data-add-address-form]');
+
+    if (addVehicleBtn && addVehicleForm) {
+      addVehicleBtn.addEventListener('click', () => toggleAddForm(addVehicleForm, addVehicleForm.hidden));
+      addVehicleForm.querySelector('[data-cancel-add-vehicle]')?.addEventListener('click', () => toggleAddForm(addVehicleForm, false));
+      addVehicleForm.addEventListener('submit', (e) => { e.preventDefault(); addVehicle(addVehicleForm); });
+    }
+    if (addAddressBtn && addAddressForm) {
+      addAddressBtn.addEventListener('click', () => toggleAddForm(addAddressForm, addAddressForm.hidden));
+      addAddressForm.querySelector('[data-cancel-add-address]')?.addEventListener('click', () => toggleAddForm(addAddressForm, false));
+      addAddressForm.addEventListener('submit', (e) => { e.preventDefault(); addAddress(addAddressForm); });
+    }
+
+    // Delete via event delegation — the card lists are re-rendered on every
+    // refresh, so binding the container once survives re-renders.
+    if (vehiclesList) vehiclesList.addEventListener('click', (e) => {
+      const btn = e.target.closest('[data-delete-vehicle]');
+      if (btn) deleteVehicle(btn.dataset.deleteVehicle);
+    });
+    if (addressesList) addressesList.addEventListener('click', (e) => {
+      const btn = e.target.closest('[data-delete-address]');
+      if (btn) deleteAddress(btn.dataset.deleteAddress);
+    });
+  }
+
+  async function deleteVehicle(vehicleId) {
+    if (!confirm('Remove this vehicle from your saved list?')) return;
+    try {
+      const { error } = await db.rpc('public_soft_delete_saved_vehicle', {
+        p_vehicle_id: vehicleId,
+        p_phone: currentAccountSession.phone,
+        p_email: currentAccountSession.email,
+      });
+      if (error) throw error;
+      await refreshSavedOptions();
+    } catch (error) {
+      console.error('Failed to remove vehicle:', error);
+      alert('Could not remove the vehicle. Please try again.');
     }
   }
 
   async function deleteAddress(addressId) {
-    if (!confirm('Are you sure you want to delete this address?')) return;
-
+    if (!confirm('Remove this address from your saved list?')) return;
     try {
-      const { error } = await db
-        .from('saved_addresses')
-        .delete()
-        .eq('id', addressId);
-
+      const { error } = await db.rpc('public_soft_delete_saved_address', {
+        p_address_id: addressId,
+        p_phone: currentAccountSession.phone,
+        p_email: currentAccountSession.email,
+      });
       if (error) throw error;
-
-      // Reload addresses
-      await loadSavedAddresses();
-
+      await refreshSavedOptions();
     } catch (error) {
-      console.error('Failed to delete address:', error);
-      alert('Could not delete address. Please try again.');
+      console.error('Failed to remove address:', error);
+      alert('Could not remove the address. Please try again.');
     }
   }
 
@@ -640,11 +775,11 @@
 
   function escapeHtml(value) {
     return String(value ?? '')
-      .replaceAll('&', '&')
-      .replaceAll('<', '<')
-      .replaceAll('>', '>')
-      .replaceAll('"', '"')
-      .replaceAll("'", '&#039;');
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#039;');
   }
 
   // ============================================================

@@ -65,6 +65,10 @@ navToggle?.addEventListener("click", () => {
 const sharedSteps = ["Vehicle", "Service", "Service Details", "Schedule", "Handoff", "Payment", "Review"];
 const flows = {
   "book-now": ["Customer", "Address", ...sharedSteps],
+  // Signed-in Book flow (Uber/Lyft-style). Same steps as book-now minus the
+  // Customer step — identity is prefilled silently from the logged-in account,
+  // and saved addresses/vehicles are offered as selectable cards on their steps.
+  "book-now-account": ["Address", ...sharedSteps],
   returning: ["Verify", "Service Address", ...sharedSteps],
 };
 
@@ -1215,7 +1219,11 @@ function renderSummarySidebar(steps, flowName, unlockedIndex) {
   const paymentContent = bookingState.payment.authorized ? "Payment method authorized" : "";
 
   const rows = [
-    summaryRow({ label: "Customer", stepName: customerStep, content: customerContent, unlockedIndex, steps }),
+    // The signed-in Book flow drops the Customer step (identity is prefilled), so
+    // only show the Customer summary row when that step is actually in the flow.
+    steps.includes(customerStep)
+      ? summaryRow({ label: "Customer", stepName: customerStep, content: customerContent, unlockedIndex, steps })
+      : "",
     summaryRow({ label: "Address", stepName: addressStep, content: addressContent, unlockedIndex, steps }),
     summaryRow({ label: "Vehicle", stepName: "Vehicle", content: vehicleContent, unlockedIndex, steps }),
     summaryRow({ label: "Service", stepName: "Service", content: serviceContent, unlockedIndex, steps }),
@@ -2604,6 +2612,7 @@ async function confirmPaymentAuthorization(panel, button) {
       body: JSON.stringify({
         action: "create_intent",
         amount_cents: Math.round(totals.estimatedTotal * 100),
+        booking: buildBookingPayload(),
         customer_name: customerName(),
         customer_email: bookingState.values.customerEmail,
         service_label: serviceLabel(),
@@ -3145,6 +3154,11 @@ function renderFlow(root) {
 
   const render = () => {
     root.innerHTML = `
+      ${flowName === "book-now-account" ? `
+        <div class="booking-account-intro">
+          <h2>Book your service</h2>
+          <p>Choose your vehicle, service, and pickup details — your info is already saved.</p>
+        </div>` : ""}
       ${renderProgressRail(steps, unlockedIndex, openIndex, flowName)}
       <div class="booking-layout">
         <div class="booking-cards">
@@ -3702,12 +3716,56 @@ async function autoVerifyReturningCustomer() {
   await verifyReturningCustomer(panel);
 }
 
+// Signed-in Book: switch the standard book-now flow to the streamlined account
+// flow (no Customer step). Gated on a stored name so the booking always has a
+// customer name without re-asking. Signed-in customers with no saved name keep
+// the full guest flow (which still prefills phone/email + offers saved cards).
+function maybeEnableAccountBookFlow() {
+  if (!flowRoot || flowRoot.dataset.bookingFlow !== "book-now") return false;
+  const session = getCustomerAccountSession();
+  if (!session || !session.name) return false;
+  flowRoot.dataset.bookingFlow = "book-now-account";
+  document.body.classList.add("booking-account-mode");
+  return true;
+}
+
+// Load the signed-in customer's saved addresses/vehicles up front so they appear
+// as selectable cards on the first render of the Address/Vehicle steps. Unlike
+// detectReturningCustomer(), this doesn't require past bookings — a saved vehicle
+// or address alone is enough to offer the card.
+async function preloadAccountSavedOptions() {
+  const session = getCustomerAccountSession();
+  if (!session || !window.ShiftFuelSupabase) return;
+  const phone = normalizePhone(session.phone || "");
+  const email = String(session.email || "").trim();
+  if (!phone || !email) return;
+  try {
+    const saved = await window.ShiftFuelSupabase
+      .rpc("public_returning_customer_options", { p_phone: phone, p_email: email })
+      .catch(() => ({ data: null, error: true }));
+    if (saved && !saved.error && saved.data) {
+      const options = savedOptionsToReturningOptions(saved.data);
+      if (options.addresses.length || options.vehicles.length) {
+        bookingState.returning.addresses = dedupeReturningAddresses(options.addresses);
+        bookingState.returning.vehicles = options.vehicles;
+        bookingState.returning.detectedOnBookNow = true;
+        bookingState.returning.customerName = bookingState.values.firstName
+          || String(session.name || "").split(/\s+/)[0] || "";
+      }
+    }
+  } catch (error) {
+    console.warn("Account saved-options preload failed:", error);
+  }
+}
+
 async function initBookingFlow() {
   if (!flowRoot) return;
   await livePricingReady;
   applyCustomerAccountSession();
   applyPreselectedService();
+  const accountFlow = maybeEnableAccountBookFlow();
   bindBookingFlowAnchorScroll();
+  if (accountFlow) await preloadAccountSavedOptions();
   renderFlow(flowRoot);
   scrollBookingFlowStartAfterRender();
   autoVerifyReturningCustomer().catch((error) => {

@@ -17,12 +17,24 @@ const vehiclesMount = document.querySelector("[data-saved-vehicles]");
 const addressesMount = document.querySelector("[data-saved-addresses]");
 const historyMount = document.querySelector("[data-service-history]");
 const promosMount = document.querySelector("[data-customer-promos]");
+const recommendMount = document.querySelector("[data-customer-recommend]");
+const recommendSection = document.querySelector("[data-customer-recommend-section]");
+const claimPanel = document.querySelector("[data-customer-claim-panel]");
 const accountSummary = document.querySelector("[data-customer-account-summary]");
 const greeting = document.querySelector("[data-customer-greeting]");
+const customerInitialsEl = document.querySelector("[data-customer-initials]");
 const accountIntroTitle = document.querySelector("#customer-account-title");
 const accountIntroCopy = document.querySelector(".customer-account-intro p:not(.customer-dashboard-kicker)");
 let activeAccountSession = null;
 let activeAccountData = { requests: [], addresses: [], vehicles: [] };
+
+// Initials for the signed-in avatar (top-right account menu), mirroring the admin pattern.
+function customerInitials(fullName) {
+  const parts = String(fullName || "").trim().split(/\s+/).filter(Boolean);
+  if (!parts.length) return "·";
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+}
 
 const terminalStatuses = new Set([
   "completed",
@@ -87,10 +99,48 @@ function statusLabel(status) {
 }
 
 function customerNameFrom(requests = [], options = {}) {
+  const profile = options.profile || {};
+  const profileName = profile.name || [profile.first_name, profile.last_name].filter(Boolean).join(" ");
   const firstRequest = requests.find((item) => item.customer_name)?.customer_name || "";
   const firstAddress = (options.addresses || []).find((item) => item.customer_name)?.customer_name || "";
   const firstVehicle = (options.vehicles || []).find((item) => item.customer_name)?.customer_name || "";
-  return firstRequest || firstAddress || firstVehicle || "";
+  return firstRequest || firstAddress || firstVehicle || profileName || "";
+}
+
+function simpleKey(parts) {
+  return parts.map((part) => String(part || "").trim().toLowerCase().replace(/\s+/g, " ")).join("|");
+}
+
+function uniqueVehicles(vehicles = []) {
+  const seen = new Set();
+  return vehicles.filter((vehicle) => {
+    const key = simpleKey([
+      vehicle.vehicle_year,
+      vehicle.vehicle_make,
+      vehicle.vehicle_model,
+      vehicle.vehicle_color,
+      String(vehicle.license_plate || "").replace(/[\s-]+/g, "").toUpperCase(),
+    ]);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+function uniqueAddresses(addresses = []) {
+  const seen = new Set();
+  return addresses.filter((address) => {
+    const key = simpleKey([
+      address.address_street || address.hospital,
+      address.address_apt,
+      address.address_city,
+      address.address_state,
+      String(address.address_zip || "").replace(/\D/g, ""),
+    ]);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }
 
 function readSession() {
@@ -192,13 +242,43 @@ function accountHasData(data = {}) {
   return Boolean(data.requests?.length || data.addresses?.length || data.vehicles?.length);
 }
 
+function accountExists(data = {}) {
+  return accountHasData(data) || Boolean(data.profile?.id);
+}
+
+async function loadCustomerProfile(phone, email) {
+  try {
+    const { data, error } = await customerDb.rpc("public_lookup_customer_account", {
+      p_phone: phone,
+      p_email: email,
+    });
+    if (error) throw error;
+    return data && typeof data === "object" ? data : null;
+  } catch (error) {
+    console.warn("[customer-account] customer profile lookup unavailable:", error);
+    return null;
+  }
+}
+
+async function saveCustomerProfile(session, firstName = "", lastName = "") {
+  const { data, error } = await customerDb.rpc("public_upsert_customer_account", {
+    p_phone: session.phone,
+    p_email: session.email,
+    p_first_name: firstName,
+    p_last_name: lastName,
+    p_name: session.name || [firstName, lastName].filter(Boolean).join(" "),
+  });
+  if (error) throw error;
+  return data && typeof data === "object" ? data : null;
+}
+
 async function loadAccountData(session) {
   if (!customerDb) throw new Error("Account lookup is unavailable right now.");
   const phone = cleanPhone(session.phone);
   const email = String(session.email || "").trim().toLowerCase();
   if (!phone || !email) throw new Error("Phone and email are required.");
 
-  const [requestsResult, optionsResult] = await Promise.all([
+  const [requestsResult, optionsResult, profile] = await Promise.all([
     customerDb.rpc("public_track_request", {
       p_request_id: null,
       p_phone: phone,
@@ -208,6 +288,7 @@ async function loadAccountData(session) {
       p_phone: phone,
       p_email: email,
     }),
+    loadCustomerProfile(phone, email),
   ]);
 
   if (requestsResult.error) throw requestsResult.error;
@@ -217,7 +298,7 @@ async function loadAccountData(session) {
   const options = optionsResult.data || {};
   const addresses = Array.isArray(options.addresses) ? options.addresses : [];
   const vehicles = Array.isArray(options.vehicles) ? options.vehicles : [];
-  return { requests, addresses, vehicles };
+  return { requests, addresses, vehicles, profile };
 }
 
 async function loadEligiblePromos(session, customerId = "") {
@@ -238,6 +319,74 @@ async function loadEligiblePromos(session, customerId = "") {
   } catch (error) {
     console.warn("[customer-account] promos unavailable:", error);
     return [];
+  }
+}
+
+function claimCount(group = {}) {
+  return ["service_requests", "saved_vehicles", "saved_addresses", "promo_redemptions"]
+    .reduce((sum, key) => sum + (Number(group[key]) || 0), 0);
+}
+
+function renderClaimPanel(result) {
+  if (!claimPanel) return;
+  const claimable = claimCount(result?.claimable);
+  const potential = claimCount(result?.potential_matches);
+  claimPanel.hidden = true;
+  claimPanel.innerHTML = "";
+
+  if (result?.ok && result.status === "claimed" && claimable > 0) {
+    claimPanel.hidden = false;
+    claimPanel.innerHTML = `
+      <article class="customer-data-card customer-claim-card" data-status="success">
+        <strong>Your past services have been added to your account.</strong>
+        <span>We connected ${claimable} past item${claimable === 1 ? "" : "s"} from this phone and email.</span>
+      </article>
+    `;
+    return;
+  }
+
+  if (result?.ok && claimable > 0) {
+    claimPanel.hidden = false;
+    claimPanel.innerHTML = `
+      <article class="customer-data-card customer-claim-card">
+        <strong>We found past ShiftFuel services connected to this phone and email.</strong>
+        <span>Add ${claimable} past item${claimable === 1 ? "" : "s"} to keep your account history together.</span>
+        <button class="button primary" type="button" data-claim-history>Add these past services to my account</button>
+      </article>
+    `;
+    return;
+  }
+
+  if (potential > 0 || result?.status === "conflict") {
+    claimPanel.hidden = false;
+    claimPanel.innerHTML = `
+      <article class="customer-data-card customer-claim-card" data-status="warning">
+        <strong>We found possible past ShiftFuel services.</strong>
+        <span>Some details do not exactly match this account, so they were not added automatically.</span>
+      </article>
+    `;
+  }
+}
+
+async function checkClaimHistory(session, execute = false) {
+  try {
+    const res = await fetch("/api/customer-account", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        action: "claim_history",
+        phone: session.phone,
+        email: session.email,
+        execute,
+      }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || "Could not check past services.");
+    renderClaimPanel(data);
+    return data;
+  } catch (error) {
+    console.warn("[customer-account] claim history unavailable:", error);
+    return null;
   }
 }
 
@@ -307,6 +456,40 @@ function addressCard(address) {
   `;
 }
 
+function recommendCard(title, sub, href, cta) {
+  return `
+    <article class="customer-recommend-card">
+      <div class="customer-recommend-copy">
+        <strong>${escapeHtml(title)}</strong>
+        <span>${escapeHtml(sub)}</span>
+      </div>
+      <a class="button primary" href="${href}">${escapeHtml(cta)}</a>
+    </article>`;
+}
+
+// Smart suggestions from the customer's own data (rebook last service, book a saved
+// vehicle, or get started). Rendered in the "Recommended for you" dashboard section.
+function buildRecommendations(active, history, data) {
+  const cards = [];
+  const lastDone = history && history[0];
+  if (lastDone) {
+    const label = lastDone.service_label || lastDone.service_type || "your last service";
+    cards.push(recommendCard("Rebook your last service", `Repeat ${label} in a couple taps.`,
+      `/book?repeat=${encodeURIComponent(publicNumber(lastDone.id))}#booking-flow`, "Rebook"));
+  }
+  if (data && data.vehicles && data.vehicles.length) {
+    const v = data.vehicles[0];
+    const vName = [v.vehicle_year, v.vehicle_make, v.vehicle_model].filter(Boolean).join(" ") || "your saved vehicle";
+    cards.push(recommendCard(`Book ${vName}`, "Use your saved vehicle for a faster booking.",
+      "/book#booking-flow", "Book"));
+  }
+  if (!cards.length) {
+    cards.push(recommendCard("Book your first service", "Fuel delivery, car wash, or a quick inspection — we come to you.",
+      "/book#booking-flow", "Get started"));
+  }
+  return cards.slice(0, 2).join("");
+}
+
 function promoDiscountLabel(promo) {
   const value = Number(promo.discount_value) || 0;
   if (promo.discount_type === "free_addon") return "Free add-on";
@@ -340,13 +523,59 @@ function renderStats(active, history, addresses, vehicles) {
   `).join("");
 }
 
+function scrollAccountHashIntoView() {
+  const hash = window.location.hash;
+  if (hash !== "#account-saved-details") return;
+  requestAnimationFrame(() => {
+    document.querySelector(hash)?.scrollIntoView({ behavior: "smooth", block: "start" });
+  });
+}
+
+// Welcome-back banner: show a small dismissible banner only when the customer
+// hasn't been active for more than 7 days. Every load records "now" as the new
+// last-active timestamp; dismissal is remembered for the current tab session so
+// it doesn't reappear after an in-session refresh.
+const WELCOME_LAST_ACTIVE_KEY = "shiftfuel_customer_last_active";
+const WELCOME_DISMISS_KEY = "shiftfuel_welcome_dismissed";
+let welcomeChecked = false;
+
+function maybeShowWelcomeBanner(name) {
+  if (welcomeChecked) return;
+  welcomeChecked = true;
+  const banner = document.querySelector("[data-welcome-banner]");
+  const textEl = document.querySelector("[data-welcome-banner-text]");
+  const now = Date.now();
+  let lastActive = 0;
+  try { lastActive = Number(localStorage.getItem(WELCOME_LAST_ACTIVE_KEY)) || 0; } catch (_) {}
+  let dismissed = false;
+  try { dismissed = sessionStorage.getItem(WELCOME_DISMISS_KEY) === "1"; } catch (_) {}
+  const sevenDays = 7 * 24 * 60 * 60 * 1000;
+  const awayAwhile = lastActive > 0 && (now - lastActive) > sevenDays;
+  if (banner && textEl && awayAwhile && !dismissed) {
+    const first = name ? name.split(/\s+/)[0] : "";
+    textEl.textContent = first
+      ? `Welcome back, ${first} — it's been a while. Here's your dashboard.`
+      : "Welcome back — it's been a while.";
+    banner.hidden = false;
+  } else if (banner) {
+    banner.hidden = true;
+  }
+  try { localStorage.setItem(WELCOME_LAST_ACTIVE_KEY, String(now)); } catch (_) {}
+}
+
 function renderAccount(session, data, promos = []) {
+  const renderData = {
+    ...data,
+    requests: Array.isArray(data.requests) ? data.requests : [],
+    addresses: uniqueAddresses(data.addresses || []),
+    vehicles: uniqueVehicles(data.vehicles || []),
+  };
   activeAccountSession = session;
-  activeAccountData = data;
-  const requests = [...data.requests].sort((a, b) => new Date(b.created_at || b.service_date || 0) - new Date(a.created_at || a.service_date || 0));
+  activeAccountData = renderData;
+  const requests = [...renderData.requests].sort((a, b) => new Date(b.created_at || b.service_date || 0) - new Date(a.created_at || a.service_date || 0));
   const active = requests.filter((request) => !terminalStatuses.has(canonicalBookingStatus(request.status)));
   const history = requests.filter((request) => terminalStatuses.has(canonicalBookingStatus(request.status)));
-  const name = session.name || customerNameFrom(requests, data);
+  const name = session.name || customerNameFrom(requests, renderData);
   const phone = formatPhone(session.phone);
   const email = String(session.email || "").trim().toLowerCase();
   const promoHeading = requests.length ? "Returning customer" : "Promo eligibility";
@@ -354,7 +583,11 @@ function renderAccount(session, data, promos = []) {
     ? "You are recognized as a returning customer. Eligible promo codes are validated during booking and usage caps are tracked by your phone and email."
     : "Your account is linked to saved details. Enter promo codes during booking to see if you qualify.";
 
-  if (greeting) greeting.textContent = name ? `Welcome back, ${name.split(/\s+/)[0]}` : "Welcome back";
+  // Clean, modest dashboard heading — "Welcome back" is reserved for the
+  // dismissible away-more-than-7-days banner below, not a permanent hero.
+  if (greeting) greeting.textContent = name ? `Hi, ${name.split(/\s+/)[0]}` : "Your dashboard";
+  if (customerInitialsEl) customerInitialsEl.textContent = customerInitials(name);
+  maybeShowWelcomeBanner(name);
   if (accountSummary) {
     accountSummary.innerHTML = `
       <article class="customer-data-card customer-account-card">
@@ -370,22 +603,24 @@ function renderAccount(session, data, promos = []) {
 
   document.querySelector("[data-active-count]").textContent = active.length;
   document.querySelector("[data-history-count]").textContent = history.length;
-  document.querySelector("[data-vehicle-count]").textContent = data.vehicles.length;
-  document.querySelector("[data-address-count]").textContent = data.addresses.length;
+  document.querySelector("[data-vehicle-count]").textContent = renderData.vehicles.length;
+  document.querySelector("[data-address-count]").textContent = renderData.addresses.length;
 
-  renderStats(active, history, data.addresses, data.vehicles);
+  renderStats(active, history, renderData.addresses, renderData.vehicles);
   activeMount.innerHTML = active.length
     ? active.map((request) => requestCard(request, "active")).join("")
     : emptyCard("No active services right now.", `<a class="button primary" href="/book#booking-flow">Book a saved vehicle</a>`);
-  vehiclesMount.innerHTML = data.vehicles.length
-    ? data.vehicles.map(vehicleCard).join("")
-    : emptyCard("No saved vehicles yet. Your next completed booking will save one for faster future booking.");
-  addressesMount.innerHTML = data.addresses.length
-    ? data.addresses.map(addressCard).join("")
-    : emptyCard("No saved service addresses yet. Use Book Now or My Account to add one.");
+  vehiclesMount.innerHTML = renderData.vehicles.length
+    ? renderData.vehicles.map(vehicleCard).join("")
+    : emptyCard("No saved vehicles yet. Add one for faster booking.", `<a class="button primary" href="/account/settings#add-vehicle">Add Vehicle</a>`);
+  addressesMount.innerHTML = renderData.addresses.length
+    ? renderData.addresses.map(addressCard).join("")
+    : emptyCard("No saved service addresses yet. Add one for faster booking.", `<a class="button primary" href="/account/settings#add-address">Add Service Address</a>`);
   historyMount.innerHTML = history.length
     ? history.slice(0, 8).map((request) => requestCard(request, "history")).join("")
     : emptyCard("No completed service history is available for this phone and email yet.");
+  if (recommendMount) recommendMount.innerHTML = buildRecommendations(active, history, renderData);
+  if (recommendSection) recommendSection.hidden = false;
   promosMount.innerHTML = promos.length
     ? promos.map(promoCard).join("")
     : `
@@ -517,10 +752,11 @@ async function deleteSavedAddress(addressId) {
 async function openAccount(session) {
   setStatus("warning", "Loading your account...");
   const data = await loadAccountData(session);
-  if (!accountHasData(data)) {
+  if (!accountExists(data)) {
     if (session.isNewAccount) {
       renderAccount(session, data, []);
       setStatus("success", "Account loaded. Saved details will appear here after booking.");
+      checkClaimHistory(session, false);
       return;
     }
     throw new Error("We could not find saved customer details for that phone and email.");
@@ -532,6 +768,7 @@ async function openAccount(session) {
   writeSession(nextSession);
   renderAccount(nextSession, data, promos);
   setStatus("success", "Account loaded.");
+  checkClaimHistory(nextSession, false);
 }
 
 loginForm?.addEventListener("submit", async (event) => {
@@ -586,7 +823,7 @@ createForm?.addEventListener("submit", async (event) => {
     setCreateStatus("warning", "Checking for an existing account...");
     const session = { phone, email, name: `${firstName} ${lastName}`.trim(), isNewAccount: true };
     const data = await loadAccountData(session);
-    if (accountHasData(data)) {
+    if (data.profile?.id) {
       switchAccountMode("login");
       if (loginForm) {
         loginForm.elements.phone.value = formatPhone(phone);
@@ -596,9 +833,12 @@ createForm?.addEventListener("submit", async (event) => {
       return;
     }
 
-    writeSession(session);
-    renderAccount(session, { requests: [], addresses: [], vehicles: [] }, []);
+    const profile = await saveCustomerProfile(session, firstName, lastName);
+    const nextSession = { ...session, name: customerNameFrom([], { profile }) || session.name, isNewAccount: false };
+    writeSession(nextSession);
+    renderAccount(nextSession, { requests: [], addresses: [], vehicles: [], profile }, []);
     setStatus("success", "Account created. You can book service and saved details will appear here after booking.");
+    checkClaimHistory(nextSession, false);
   } catch (error) {
     console.error("[customer-account] create account failed:", error);
     setCreateStatus("error", error.message || "Could not create your account. Please try again.");
@@ -608,6 +848,12 @@ createForm?.addEventListener("submit", async (event) => {
       button.textContent = "Create Account";
     }
   }
+});
+
+document.querySelector("[data-welcome-dismiss]")?.addEventListener("click", () => {
+  const banner = document.querySelector("[data-welcome-banner]");
+  if (banner) banner.hidden = true;
+  try { sessionStorage.setItem(WELCOME_DISMISS_KEY, "1"); } catch (_) { /* best effort */ }
 });
 
 document.querySelector("[data-customer-sign-out]")?.addEventListener("click", () => {
@@ -636,17 +882,30 @@ document.querySelector("[data-customer-sign-out]")?.addEventListener("click", ()
 });
 
 dashboard?.addEventListener("click", async (event) => {
+  const claimButton = event.target.closest("[data-claim-history]");
   const vehicleEdit = event.target.closest("[data-edit-vehicle]");
   const vehicleDelete = event.target.closest("[data-delete-vehicle]");
   const addressEdit = event.target.closest("[data-edit-address]");
   const addressDelete = event.target.closest("[data-delete-address]");
-  if (!vehicleEdit && !vehicleDelete && !addressEdit && !addressDelete) return;
+  if (!claimButton && !vehicleEdit && !vehicleDelete && !addressEdit && !addressDelete) return;
   if (!activeAccountSession || !customerDb) {
     setStatus("error", "Open My Account before editing saved details.");
     return;
   }
   try {
-    if (vehicleEdit) {
+    if (claimButton) {
+      claimButton.disabled = true;
+      claimButton.textContent = "Adding...";
+      const result = await checkClaimHistory(activeAccountSession, true);
+      if (result?.ok && result.status === "claimed") {
+        setStatus("success", "Your past services have been added to your account.");
+        await refreshAccount();
+      } else {
+        claimButton.disabled = false;
+        claimButton.textContent = "Add these past services to my account";
+        setStatus("warning", "We could not add those services automatically.");
+      }
+    } else if (vehicleEdit) {
       const vehicle = activeAccountData.vehicles.find((item) => String(item.id) === String(vehicleEdit.dataset.editVehicle));
       if (vehicle) await updateSavedVehicle(vehicle);
     } else if (vehicleDelete) {
@@ -686,11 +945,25 @@ dashboard?.addEventListener("click", async (event) => {
   });
   bindEmailLowercase();
 
-  function scrollAccountHashIntoView() {
-    const hash = window.location.hash;
-    if (hash !== "#account-saved-details") return;
-    requestAnimationFrame(() => {
-      document.querySelector(hash)?.scrollIntoView({ behavior: "smooth", block: "start" });
+  // Signed-in account menu — the top-right avatar dropdown.
+  const accountMenuToggle = document.querySelector("[data-customer-menu-toggle]");
+  const accountMenu = document.querySelector("[data-customer-menu]");
+  if (accountMenuToggle && accountMenu) {
+    const closeAccountMenu = () => {
+      accountMenu.hidden = true;
+      accountMenuToggle.setAttribute("aria-expanded", "false");
+    };
+    accountMenuToggle.addEventListener("click", (event) => {
+      event.stopPropagation();
+      const willOpen = accountMenu.hidden;
+      accountMenu.hidden = !willOpen;
+      accountMenuToggle.setAttribute("aria-expanded", String(willOpen));
+    });
+    accountMenu.addEventListener("click", (event) => {
+      if (event.target.closest("[role='menuitem']")) closeAccountMenu();
+    });
+    document.addEventListener("click", (event) => {
+      if (!accountMenu.hidden && !event.target.closest("[data-customer-identity]")) closeAccountMenu();
     });
   }
 
@@ -723,14 +996,21 @@ dashboard?.addEventListener("click", async (event) => {
   loginForm.elements.email.value = session.email;
   openAccount(session).catch((error) => {
     console.warn("[customer-account] saved session could not be loaded:", error);
-    clearSession();
+    // Only sign the user out for a DEFINITIVE "no account for these credentials".
+    // A transient RPC/network error must NOT delete the session — otherwise a
+    // brief hiccup logs a signed-in customer out and forces them to sign in again.
+    const msg = String((error && error.message) || "").toLowerCase();
+    const accountNotFound = msg.includes("could not find") || msg.includes("not find saved");
+    if (accountNotFound) clearSession();
     if (compact) {
-      setStatus("", "");
+      setStatus(accountNotFound ? "" : "warning", accountNotFound ? "" : "We couldn't reach your account just now — please try again.");
       if (accountIntroTitle) accountIntroTitle.textContent = "Welcome back";
       if (accountIntroCopy) accountIntroCopy.textContent = "Sign in to access your saved vehicles and bookings.";
       openAccountForm("login", { focus: false, scroll: false });
     } else {
-      setStatus("warning", "Please enter your phone and email to open My Account.");
+      setStatus("warning", accountNotFound
+        ? "Please enter your phone and email to open My Account."
+        : "We couldn't reach your account just now — please refresh to try again.");
     }
   });
 })();

@@ -13,19 +13,21 @@
       || document.body?.classList.contains('booking-page')
       || document.body?.classList.contains('track-page')
       || document.body?.classList.contains('account-page');
+    const isCustomerSignedIn = () => {
+      try {
+        const s = JSON.parse(localStorage.getItem('shiftfuel_customer_account') || 'null');
+        return !!(s && s.phone && s.email);
+      } catch (_) { return false; }
+    };
 
+    // Installed PWA only: keep in-page links inside the app shell instead of the
+    // public marketing site. The logo + Home tab are handled by
+    // syncCustomerNavTargets (they must follow sign-in state), so skip them here.
     function keepCustomerLinksInApp() {
       if (!isStandalonePage() || !isCompactPage() || !isCustomerSurface()) return;
-      const logo = document.querySelector('.site-header .logo');
-      if (logo) {
-        logo.setAttribute('href', '/account');
-        logo.setAttribute('aria-label', 'ShiftFuel Concierge app home');
-      }
       document.querySelectorAll('a[href="index.html"], a[href^="index.html#"], a[href="/"]').forEach((link) => {
+        if (link.classList.contains('logo') || link.hasAttribute('data-cust-tab')) return;
         link.setAttribute('href', '/account');
-      });
-      document.querySelectorAll('a[href="/account/settings"], a[href^="/account/settings#"]').forEach((link) => {
-        link.setAttribute('href', '/account#account-saved-details');
       });
       document.querySelectorAll('a[href^="returning.html"]').forEach((link) => {
         const href = link.getAttribute('href') || '';
@@ -36,30 +38,62 @@
       });
     }
 
+    // Role-aware "home" destination for the logo/brand. A signed-in user must be
+    // kept INSIDE their app; only guests go to the public marketing homepage.
+    //   admin    → /admin/dashboard
+    //   worker   → /worker/dashboard
+    //   customer → /account (the signed-in dashboard)
+    //   guest    → / (public homepage)
+    function roleAwareHome() {
+      try {
+        if (sessionStorage.getItem('shiftfuel_admin') === 'true') return '/admin/dashboard';
+        if (sessionStorage.getItem('shiftfuel_worker_token')) return '/worker/dashboard';
+        const s = JSON.parse(localStorage.getItem('shiftfuel_customer_account') || 'null');
+        if (s && s.phone && s.email) return '/account';
+      } catch (_) {}
+      return '/';
+    }
+
+    // Top-left logo + Home tab, role-aware and mode-independent. Sets the href AND
+    // binds a click handler that recomputes the destination at click time, so the
+    // logo can NEVER dump a signed-in user onto the public site — even if some
+    // other script races to change the href. Runs in every mode.
+    function syncCustomerNavTargets() {
+      if (!isCustomerSurface()) return;
+      const home = roleAwareHome();
+      const signedIn = home !== '/';
+      const logo = document.querySelector('.site-header .logo');
+      if (logo) {
+        logo.setAttribute('href', home);
+        logo.setAttribute('aria-label', signedIn ? 'ShiftFuel Concierge home' : 'ShiftFuel Concierge');
+        if (!logo.dataset.roleHomeBound) {
+          logo.dataset.roleHomeBound = '1';
+          logo.addEventListener('click', (e) => {
+            if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return; // allow open-in-new-tab
+            e.preventDefault();
+            window.location.href = roleAwareHome();
+          });
+        }
+      }
+      const homeTab = document.querySelector('.customer-tabbar [data-cust-tab="home"]');
+      if (homeTab) homeTab.setAttribute('href', signedIn ? '/account' : '/');
+    }
+
+    // Highlight the bottom tab that matches the current route. Home (/account) and
+    // Account (/account/settings) are distinct paths so they never both light up.
     function syncCustomerTabbarActive() {
       if (!isCustomerSurface()) return;
       const tabs = Array.from(document.querySelectorAll('.customer-tabbar .app-tab'));
       if (!tabs.length) return;
-      const currentPath = window.location.pathname.replace(/\/$/, '') || '/';
-      const currentHash = window.location.hash || '';
-      let activeTab = null;
-
-      if (currentPath === '/account' && currentHash === '#account-saved-details') {
-        activeTab = tabs.find((tab) => (tab.getAttribute('href') || '') === '/account#account-saved-details');
-      }
-      if (!activeTab) {
-        activeTab = tabs.find((tab) => {
-          const href = tab.getAttribute('href') || '';
-          const url = new URL(href, window.location.origin);
-          const tabPath = url.pathname.replace(/\/$/, '') || '/';
-          if (currentPath !== tabPath) return false;
-          if (currentPath === '/account') return !url.hash || url.hash === currentHash;
-          return true;
-        });
-      }
+      const path = (window.location.pathname || '/').replace(/\/$/, '') || '/';
+      let key = 'home';
+      if (path === '/book') key = 'book';
+      else if (path === '/track') key = 'track';
+      else if (path === '/account/settings' || path === '/settings') key = 'account';
+      else key = 'home'; // /account, /my-account, or any other customer surface
 
       tabs.forEach((tab) => {
-        const isActive = tab === activeTab;
+        const isActive = tab.getAttribute('data-cust-tab') === key;
         tab.classList.toggle('is-active', isActive);
         if (isActive) tab.setAttribute('aria-current', 'page');
         else tab.removeAttribute('aria-current');
@@ -67,6 +101,7 @@
     }
 
     keepCustomerLinksInApp();
+    syncCustomerNavTargets();
     syncCustomerTabbarActive();
     window.addEventListener('hashchange', syncCustomerTabbarActive);
     window.addEventListener('popstate', syncCustomerTabbarActive);
@@ -153,7 +188,7 @@
     // available from the header home button, but it should never cover the first
     // screen after opening the app or signing in.
     close();
-    window.addEventListener('sf-mode-change', () => { keepCustomerLinksInApp(); if (!canApp()) close(); });
+    window.addEventListener('sf-mode-change', () => { keepCustomerLinksInApp(); syncCustomerNavTargets(); if (!canApp()) close(); });
   }
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);

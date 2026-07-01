@@ -135,6 +135,13 @@
   stroke: #ffffff;
 }
 
+/* Desktop: nav rows show label only (no description or chevron); no back button. */
+.account-nav-text { display: inline-flex; flex-direction: column; }
+.account-nav-label { font-weight: 500; }
+.account-nav-desc { display: none; }
+.account-back { display: none; }
+.account-nav-link { text-decoration: none; }
+
 /* Sidebar Footer */
 .account-sidebar-footer {
   margin-top: auto;
@@ -229,6 +236,18 @@
   display: grid;
   grid-template-columns: repeat(2, 1fr);
   gap: 20px;
+}
+
+/* A field that spans both grid columns (e.g. street address, parking notes). */
+.form-grid-full {
+  grid-column: 1 / -1;
+}
+
+/* Inline "add vehicle / add address" form, revealed under its list. */
+.account-add-form {
+  margin-top: 18px;
+  padding-top: 20px;
+  border-top: 1px solid #e5e7e9;
 }
 
 .form-grid label {
@@ -446,12 +465,12 @@
 }
 
 .button.primary {
-  background: #073233;
+  background: linear-gradient(135deg, #14904c, #0b6b3d);
   color: #ffffff;
 }
 
 .button.primary:hover {
-  background: #0a4547;
+  background: linear-gradient(135deg, #128445, #095c34);
 }
 
 .button.primary:disabled {
@@ -478,85 +497,134 @@
   background: #b91c1c;
 }
 
-/* Responsive Design */
+/* Responsive Design
+   ------------------------------------------------------------------
+   Mobile = an app-style drill-down, NOT a squeezed desktop sidebar.
+   The Account tab opens a clean MENU (list of tappable rows); each row
+   opens a detail PAGE (with a back button). Driven by body[data-acct-view].
+   ------------------------------------------------------------------ */
 @media (max-width: 768px) {
   .account-layout {
+    display: block;
     grid-template-columns: 1fr;
+    margin: 0;
   }
 
+  /* View states (mobile only). */
+  body[data-acct-view="detail"] .account-sidebar { display: none; }
+  body[data-acct-view="menu"] .account-content { display: none; }
+
+  /* Sidebar = the account MENU. Transparent so the white rows read as cards. */
   .account-sidebar {
     position: relative;
     top: 0;
     height: auto;
-    border-right: none;
-    border-bottom: 1px solid #e5e7e9;
-    padding: 20px;
+    overflow: visible;
+    border: 0;
+    padding: 6px 16px 22px;
+    background: transparent;
   }
+  .account-sidebar-header { margin-bottom: 14px; }
+  .account-sidebar-header h1 { font-size: 1.6rem; }
+  .account-sidebar-subtitle { font-size: 0.9rem; }
 
   .account-sidebar-nav {
-    flex-direction: row;
-    overflow-x: auto;
-    gap: 8px;
-  }
-
-  .account-nav-item {
-    flex-shrink: 0;
-    padding: 10px 14px;
-    font-size: 0.875rem;
-  }
-
-  .account-nav-item svg {
-    width: 18px;
-    height: 18px;
-  }
-
-  .account-content {
-    padding: 20px;
-  }
-
-  .account-tab-body {
-    padding: 20px;
-  }
-
-  .form-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .account-header {
-    padding: 12px 16px;
-  }
-
-  .account-header .logo span:last-child {
-    display: none;
-  }
-}
-
-@media (max-width: 480px) {
-  .account-sidebar-header h1 {
-    font-size: 1.25rem;
-  }
-
-  .account-nav-item span {
-    display: none;
-  }
-
-  .account-nav-item {
-    padding: 10px;
-    justify-content: center;
-  }
-
-  .account-tab-header h2 {
-    font-size: 1.5rem;
-  }
-
-  .form-actions {
     flex-direction: column;
-    align-items: stretch;
+    overflow: visible;
+    gap: 10px;
   }
 
-  .form-actions .button {
+  /* Clean tappable row: icon · label + description · chevron. */
+  .account-nav-item {
+    display: flex;
+    align-items: center;
+    gap: 14px;
     width: 100%;
+    justify-content: flex-start;
+    text-align: left;
+    flex-shrink: 0;
+    padding: 15px 16px;
+    border-radius: 14px;
+    background: #ffffff;
+    border: 1px solid #e6ebe9;
+    box-shadow: 0 2px 10px rgba(7, 50, 51, 0.05);
+    color: #0f2a28;
+    font-size: 1rem;
   }
+  .account-nav-item svg { width: 22px; height: 22px; flex-shrink: 0; stroke: #0b6b3d; }
+  .account-nav-item.is-active { background: #ffffff; color: #0f2a28; }
+  .account-nav-item.is-active svg { stroke: #0b6b3d; }
+  .account-nav-text {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+    flex: 1 1 auto;
+  }
+  .account-nav-label { font-weight: 700; }
+  .account-nav-desc { display: block; font-size: 0.8rem; color: #5b6b67; }
+  .account-nav-item::after {
+    content: "";
+    flex: 0 0 auto;
+    width: 9px;
+    height: 9px;
+    margin-left: 6px;
+    border-right: 2px solid #b6c2be;
+    border-bottom: 2px solid #b6c2be;
+    transform: rotate(-45deg);
+  }
+
+  /* Sign out — a full-width button at the bottom of the menu. */
+  .account-sidebar-footer {
+    margin-top: 16px;
+    padding-top: 0;
+    border-top: 0;
+  }
+  .account-sidebar-footer .button { width: 100%; }
+
+  /* Detail page: a back link, then the section content — no repeated hero block. */
+  .account-back {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    margin: 0 0 12px;
+    padding: 8px 12px 8px 4px;
+    border: 0;
+    border-radius: 10px;
+    background: transparent;
+    color: #0b6b3d;
+    font-weight: 700;
+    font-size: 0.95rem;
+    cursor: pointer;
+  }
+  .account-back svg { width: 20px; height: 20px; }
+
+  .account-content { padding: 16px; }
+  .account-tab-header { margin-bottom: 18px; }
+  .account-tab-header h2 { font-size: 1.6rem; }
+  .account-tab-body { padding: 18px; }
+
+  /* Full mobile width: cards and forms span the container, no skinny columns. */
+  .account-layout,
+  .account-content,
+  .account-form {
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+  }
+
+  .form-grid { grid-template-columns: 1fr; }
+  .form-grid input,
+  .form-grid select {
+    width: 100%;
+    box-sizing: border-box;
+  }
+
+  .account-header { padding: 12px 16px; }
+  .account-header .logo span:last-child { display: none; }
+
+  .form-actions { flex-direction: column; align-items: stretch; }
+  .form-actions .button { width: 100%; }
 }
 
 /* Loading States */

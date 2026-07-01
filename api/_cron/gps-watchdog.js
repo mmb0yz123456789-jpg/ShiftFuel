@@ -1,20 +1,26 @@
 /**
- * /api/gps-watchdog.js — nudge workers whose live GPS has gone dark.
+ * _cron/gps-watchdog.js — nudge workers whose live GPS has gone dark.
  *
  * A backgrounded/closed PWA suspends its JavaScript, so worker-gps-tracking.js
  * stops sending pings and the customer's live map freezes. The app can't notify
- * itself while suspended, so this endpoint runs server-side on a schedule
- * (a free external cron — see README/SETUP) and pushes a "reopen the app" alert
- * that reaches the phone even when the worker is in a totally different app.
+ * itself while suspended, so this job runs server-side on a schedule (a free
+ * external cron — see README/SETUP + memory gps-watchdog-external-cron) and
+ * pushes a "reopen the app" alert that reaches the phone even when the worker is
+ * in a totally different app.
  *
  * Tapping the notification reopens /worker/dashboard, where refreshGpsPanels()
  * auto-resumes tracking (permission was already granted at "Key received").
  *
+ * Served via the shared /api/cron dispatcher (job=gps-watchdog). The public
+ * /api/gps-watchdog path is preserved by a vercel.json rewrite so the external
+ * cron-job.org trigger keeps working without a URL change. Consolidated here to
+ * stay under Vercel Hobby's 12-function limit.
+ *
  * Auth: same Bearer CRON_SECRET as the other scheduled jobs.
  */
 
-const { getSupabaseAdmin } = require('./_auth');
-const { sendToSubs } = require('./_push');
+const { getSupabaseAdmin } = require('../_auth');
+const { sendToSubs } = require('../_push');
 
 module.exports = async (req, res) => {
   const cronSecret = process.env.CRON_SECRET;
