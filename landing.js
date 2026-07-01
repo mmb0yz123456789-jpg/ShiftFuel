@@ -84,6 +84,27 @@ loadServicePricing();
 
 const supportForm = document.querySelector("#support-form");
 const supportStatus = document.querySelector("#support-status");
+const supportModal = document.querySelector("[data-support-modal]");
+const supportOpenButtons = document.querySelectorAll("[data-support-open]");
+const supportCloseButtons = document.querySelectorAll("[data-support-close]");
+
+supportOpenButtons.forEach((button) => {
+  button.addEventListener("click", () => {
+    if (supportModal?.showModal) {
+      supportModal.showModal();
+    } else {
+      window.location.href = "mailto:shiftfuel005@gmail.com";
+    }
+  });
+});
+
+supportCloseButtons.forEach((button) => {
+  button.addEventListener("click", () => supportModal?.close());
+});
+
+supportModal?.addEventListener("click", (event) => {
+  if (event.target === supportModal) supportModal.close();
+});
 
 supportForm?.addEventListener("submit", async (event) => {
   event.preventDefault();

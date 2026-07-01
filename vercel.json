@@ -29,7 +29,11 @@
     { "source": "/worker/login", "destination": "/worker-login.html" },
     { "source": "/worker/dashboard", "destination": "/worker.html" },
     { "source": "/admin/login", "destination": "/admin-login.html" },
-    { "source": "/admin/dashboard", "destination": "/admin.html" }
+    { "source": "/admin/dashboard", "destination": "/admin.html" },
+    { "source": "/admin/(.*)", "destination": "/$1" },
+    { "source": "/worker/(.*)", "destination": "/$1" },
+    { "source": "/account/(.*)", "destination": "/$1" },
+    { "source": "/staff/(.*)", "destination": "/$1" }
   ],
   "headers": [
     {

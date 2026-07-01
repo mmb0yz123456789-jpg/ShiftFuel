@@ -258,12 +258,24 @@
 		  </div>
 		</section>
 
-      <section id="support" class="landing-section support-section">
-        <div class="support-layout">
-          <div class="section-heading">
-            <h2>Contact support</h2>
-            <p>Need help with a booking, payment, or service question? Send a message and we will follow up by email.</p>
-            <p class="support-direct">Direct email: <a href="mailto:shiftfuel005@gmail.com">shiftfuel005@gmail.com</a></p>
+      <section id="support" class="support-strip" aria-labelledby="support-title">
+        <div class="support-strip-copy">
+          <p class="support-strip-kicker">Need help?</p>
+          <h2 id="support-title">Questions about booking, payment, or an active service?</h2>
+          <p>Contact support and we'll follow up by email. Direct email: <a href="mailto:shiftfuel005@gmail.com">shiftfuel005@gmail.com</a></p>
+        </div>
+        <button class="button primary" type="button" data-support-open>Contact Support</button>
+      </section>
+
+      <dialog class="support-modal" data-support-modal aria-labelledby="support-modal-title">
+        <div class="support-modal-card">
+          <div class="support-modal-head">
+            <div>
+              <p class="support-strip-kicker">Support</p>
+              <h2 id="support-modal-title">Contact support</h2>
+              <p>Send a message and we'll follow up by email.</p>
+            </div>
+            <button class="support-modal-close" type="button" data-support-close aria-label="Close support form">&times;</button>
           </div>
           <form id="support-form" class="support-form" novalidate>
             <input type="text" name="website" tabindex="-1" autocomplete="off" class="support-hp" aria-hidden="true">
@@ -298,7 +310,7 @@
             </div>
           </form>
         </div>
-      </section>
+      </dialog>
     </main>
 
     <footer class="site-footer">

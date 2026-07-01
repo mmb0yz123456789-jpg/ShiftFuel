@@ -4,10 +4,10 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>My Account | ShiftFuel Concierge</title>
-    <link rel="icon" href="icon-main.svg" type="image/svg+xml">
-    <link rel="icon" href="icon-main.svg" sizes="any">
-    <link rel="apple-touch-icon" href="apple-touch-icon.png">
-    <link rel="manifest" href="manifest.webmanifest">
+    <link rel="icon" href="/icon-main.svg" type="image/svg+xml">
+    <link rel="icon" href="/icon-main.svg" sizes="any">
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+    <link rel="manifest" href="/manifest.webmanifest">
     <meta name="theme-color" content="#0d3b3b">
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">
@@ -19,15 +19,15 @@
         c=!m||m('(max-width: 760px)').matches;
         d.classList.add(s?'sf-standalone':'sf-browser',c?'sf-compact':'sf-wide');})();
     </script>
-    <link rel="stylesheet" href="styles.css">
-    <link rel="stylesheet" href="account.css">
-    <link rel="stylesheet" href="pwa-app.css" data-pwa-app="1">
-    <script defer src="pwa-app.js" data-pwa-app="1"></script>
+    <link rel="stylesheet" href="/styles.css">
+    <link rel="stylesheet" href="/account.css">
+    <link rel="stylesheet" href="/pwa-app.css" data-pwa-app="1">
+    <script defer src="/pwa-app.js" data-pwa-app="1"></script>
   </head>
   <body class="account-page">
     <header class="site-header account-header">
       <a class="logo" href="/account" aria-label="ShiftFuel Concierge app home">
-        <span class="logo-mark"><img src="icon-main.svg" alt="" aria-hidden="true"></span>
+        <span class="logo-mark"><img src="/icon-main.svg" alt="" aria-hidden="true"></span>
         <span>ShiftFuel Concierge</span>
       </a>
       <nav class="account-header-nav" aria-label="Account navigation">
@@ -287,8 +287,50 @@
             <div class="account-vehicles-list" data-saved-vehicles-list>
               <p class="form-help">Loading your saved vehicles...</p>
             </div>
-            <!-- Hidden until wired: handler is a "coming soon" stub. Vehicles are saved automatically after a booking. -->
-            <button class="button secondary" type="button" data-add-vehicle-btn hidden>+ Add new vehicle</button>
+            <button class="button secondary" type="button" data-add-vehicle-btn>+ Add new vehicle</button>
+            <form class="account-add-form" data-add-vehicle-form hidden>
+              <div class="form-section">
+                <h3>Add a vehicle</h3>
+                <div class="form-grid">
+                  <label>
+                    <span>Year</span>
+                    <input type="text" name="vehicleYear" inputmode="numeric" maxlength="4" placeholder="2021">
+                  </label>
+                  <label>
+                    <span>Make</span>
+                    <input type="text" name="vehicleMake" placeholder="Toyota" required>
+                  </label>
+                  <label>
+                    <span>Model</span>
+                    <input type="text" name="vehicleModel" placeholder="Camry" required>
+                  </label>
+                  <label>
+                    <span>Color</span>
+                    <input type="text" name="vehicleColor" placeholder="Blue">
+                  </label>
+                  <label>
+                    <span>License plate</span>
+                    <input type="text" name="licensePlate" placeholder="ABC1234" required>
+                  </label>
+                  <label>
+                    <span>Fuel type</span>
+                    <select name="fuelType">
+                      <option value="">Not sure</option>
+                      <option value="Regular">Regular</option>
+                      <option value="Midgrade">Midgrade</option>
+                      <option value="Premium">Premium</option>
+                      <option value="Diesel">Diesel</option>
+                      <option value="Electric">Electric</option>
+                    </select>
+                  </label>
+                </div>
+              </div>
+              <div class="form-actions">
+                <button type="submit" class="button primary">Save vehicle</button>
+                <button type="button" class="button secondary" data-cancel-add-vehicle>Cancel</button>
+                <span class="form-status" data-add-vehicle-status></span>
+              </div>
+            </form>
           </div>
         </section>
 
@@ -302,8 +344,48 @@
             <div class="account-addresses-list" data-saved-addresses-list>
               <p class="form-help">Loading your saved addresses...</p>
             </div>
-            <!-- Hidden until wired: handler is a "coming soon" stub. Addresses are saved during booking. -->
-            <button class="button secondary" type="button" data-add-address-btn hidden>+ Add new address</button>
+            <button class="button secondary" type="button" data-add-address-btn>+ Add new address</button>
+            <form class="account-add-form" data-add-address-form hidden>
+              <div class="form-section">
+                <h3>Add a service address</h3>
+                <p class="form-help">We only serve select areas — the address is checked before it's saved.</p>
+                <div class="form-grid">
+                  <label class="form-grid-full">
+                    <span>Street address</span>
+                    <input type="text" name="street" autocomplete="address-line1" placeholder="123 Main Street" required>
+                  </label>
+                  <label>
+                    <span>Unit / suite / apt</span>
+                    <input type="text" name="unit" autocomplete="address-line2" placeholder="Optional">
+                  </label>
+                  <label>
+                    <span>City</span>
+                    <input type="text" name="city" autocomplete="address-level2" placeholder="Wilmington" required>
+                  </label>
+                  <label>
+                    <span>State</span>
+                    <input type="text" name="state" autocomplete="address-level1" placeholder="DE" value="DE" required>
+                  </label>
+                  <label>
+                    <span>ZIP code</span>
+                    <input type="text" name="zip" inputmode="numeric" autocomplete="postal-code" placeholder="19804" required>
+                  </label>
+                  <label class="form-grid-full">
+                    <span>Parking location</span>
+                    <input type="text" name="parking" placeholder="e.g. Main lot, row C, space 12">
+                  </label>
+                  <label class="form-grid-full">
+                    <span>Key handoff details</span>
+                    <input type="text" name="keys" placeholder="e.g. Front desk, security desk, or meet at vehicle">
+                  </label>
+                </div>
+              </div>
+              <div class="form-actions">
+                <button type="submit" class="button primary">Save address</button>
+                <button type="button" class="button secondary" data-cancel-add-address>Cancel</button>
+                <span class="form-status" data-add-address-status></span>
+              </div>
+            </form>
           </div>
         </section>
       </div>
@@ -313,9 +395,9 @@
       <div class="footer-main">
         <p class="footer-copy">&copy; <span id="year"></span> ShiftFuel Concierge. All rights reserved.</p>
         <nav class="footer-links" aria-label="Legal links">
-          <a href="privacy.html">Privacy Policy</a>
-          <a href="terms.html">Terms of Service</a>
-          <a href="liability-waiver.html">Liability Waiver</a>
+          <a href="/privacy.html">Privacy Policy</a>
+          <a href="/terms.html">Terms of Service</a>
+          <a href="/liability-waiver.html">Liability Waiver</a>
         </nav>
       </div>
     </footer>
@@ -338,11 +420,11 @@
       </a>
     </nav>
 
-    <script src="runtime-config.js"></script>
+    <script src="/runtime-config.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <script src="supabase-client.js"></script>
-    <script src="phone-utils.js"></script>
-    <script src="account.js"></script>
-    <script src="pwa-register.js"></script>
+    <script src="/supabase-client.js"></script>
+    <script src="/phone-utils.js"></script>
+    <script src="/account.js"></script>
+    <script src="/pwa-register.js"></script>
   </body>
 </html>

@@ -2376,6 +2376,9 @@ function sortFilteredRequests(list) {
 }
 
 function renderRequests() {
+  if (activeStatCard === 'workers' || activeStatCard === 'revenue') {
+    setActiveStatCard(null);
+  }
   const filtered = adminState.allRequests.filter((request) => {
     if (!matchesQueueFilters(request)) return false;
     // The date range is a global filter — it applies to EVERY view (All, Open,
@@ -7089,6 +7092,9 @@ document.querySelectorAll('[data-page-action]').forEach((btn) => {
     switchPageTab(btn.dataset.pageAction);
     if (btn.dataset.requestView) {
       adminState.currentView = normalizeRequestFilter(btn.dataset.requestView);
+      if (activeStatCard === 'workers' || activeStatCard === 'revenue') {
+        setActiveStatCard(null);
+      }
       renderRequests();
     }
   });
@@ -7118,7 +7124,9 @@ function openAdminRequestQueueView(view, options = {}) {
 }
 
 function setActiveStatCard(cardId) {
-  document.querySelectorAll('.admin-stat-card--clickable').forEach((c) => c.classList.remove('stat-card--active'));
+  document.querySelectorAll('.admin-stat-card--clickable').forEach((c) => {
+    c.classList.remove('stat-card--active', 'active', 'is-active');
+  });
   if (cardId) document.getElementById(`stat-card-${cardId}`)?.classList.add('stat-card--active');
   activeStatCard = cardId;
   // Stat cards render into the requests panel — make sure it's the visible tab
@@ -7135,6 +7143,9 @@ function setActiveStatCard(cardId) {
 }
 
 function statCardNav(view, cardId) {
+  if (activeStatCard === 'workers' || activeStatCard === 'revenue') {
+    activeStatCard = null;
+  }
   openAdminRequestQueueView(view, { cardId, scroll: true });
 }
 
