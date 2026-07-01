@@ -1,5 +1,5 @@
 -- Customer support messages captured from the public site and surfaced in admin.
--- Public writes go through /api/support using the service-role key. Admin reads
+-- Public writes go through /api/promos action submit_support using the service-role key. Admin reads
 -- and status updates go through token-gated RPCs.
 
 begin;
