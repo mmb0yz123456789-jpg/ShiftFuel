@@ -186,8 +186,14 @@
         </div>
         <div class="customer-dashboard-quickactions">
           <a class="button primary" href="/book#booking-flow">Book a Service</a>
-          <a class="button secondary" href="#account-active-services">Track current service</a>
+          <a class="button secondary" href="/track?me=1">Track My Vehicle</a>
         </div>
+        <section class="customer-recommend" aria-label="Recommended for you" data-customer-recommend-section hidden>
+          <div class="customer-section-heading">
+            <h3>Recommended for you</h3>
+          </div>
+          <div class="customer-card-list" data-customer-recommend></div>
+        </section>
         <div class="customer-dashboard-summary" data-customer-account-summary></div>
         <div class="customer-dashboard-stats" data-customer-stats></div>
         <div class="customer-dashboard-layout">

@@ -17,6 +17,8 @@ const vehiclesMount = document.querySelector("[data-saved-vehicles]");
 const addressesMount = document.querySelector("[data-saved-addresses]");
 const historyMount = document.querySelector("[data-service-history]");
 const promosMount = document.querySelector("[data-customer-promos]");
+const recommendMount = document.querySelector("[data-customer-recommend]");
+const recommendSection = document.querySelector("[data-customer-recommend-section]");
 const accountSummary = document.querySelector("[data-customer-account-summary]");
 const greeting = document.querySelector("[data-customer-greeting]");
 const customerInitialsEl = document.querySelector("[data-customer-initials]");
@@ -96,10 +98,12 @@ function statusLabel(status) {
 }
 
 function customerNameFrom(requests = [], options = {}) {
+  const profile = options.profile || {};
+  const profileName = profile.name || [profile.first_name, profile.last_name].filter(Boolean).join(" ");
   const firstRequest = requests.find((item) => item.customer_name)?.customer_name || "";
   const firstAddress = (options.addresses || []).find((item) => item.customer_name)?.customer_name || "";
   const firstVehicle = (options.vehicles || []).find((item) => item.customer_name)?.customer_name || "";
-  return firstRequest || firstAddress || firstVehicle || "";
+  return firstRequest || firstAddress || firstVehicle || profileName || "";
 }
 
 function readSession() {
@@ -201,13 +205,43 @@ function accountHasData(data = {}) {
   return Boolean(data.requests?.length || data.addresses?.length || data.vehicles?.length);
 }
 
+function accountExists(data = {}) {
+  return accountHasData(data) || Boolean(data.profile?.id);
+}
+
+async function loadCustomerProfile(phone, email) {
+  try {
+    const { data, error } = await customerDb.rpc("public_lookup_customer_account", {
+      p_phone: phone,
+      p_email: email,
+    });
+    if (error) throw error;
+    return data && typeof data === "object" ? data : null;
+  } catch (error) {
+    console.warn("[customer-account] customer profile lookup unavailable:", error);
+    return null;
+  }
+}
+
+async function saveCustomerProfile(session, firstName = "", lastName = "") {
+  const { data, error } = await customerDb.rpc("public_upsert_customer_account", {
+    p_phone: session.phone,
+    p_email: session.email,
+    p_first_name: firstName,
+    p_last_name: lastName,
+    p_name: session.name || [firstName, lastName].filter(Boolean).join(" "),
+  });
+  if (error) throw error;
+  return data && typeof data === "object" ? data : null;
+}
+
 async function loadAccountData(session) {
   if (!customerDb) throw new Error("Account lookup is unavailable right now.");
   const phone = cleanPhone(session.phone);
   const email = String(session.email || "").trim().toLowerCase();
   if (!phone || !email) throw new Error("Phone and email are required.");
 
-  const [requestsResult, optionsResult] = await Promise.all([
+  const [requestsResult, optionsResult, profile] = await Promise.all([
     customerDb.rpc("public_track_request", {
       p_request_id: null,
       p_phone: phone,
@@ -217,6 +251,7 @@ async function loadAccountData(session) {
       p_phone: phone,
       p_email: email,
     }),
+    loadCustomerProfile(phone, email),
   ]);
 
   if (requestsResult.error) throw requestsResult.error;
@@ -226,7 +261,7 @@ async function loadAccountData(session) {
   const options = optionsResult.data || {};
   const addresses = Array.isArray(options.addresses) ? options.addresses : [];
   const vehicles = Array.isArray(options.vehicles) ? options.vehicles : [];
-  return { requests, addresses, vehicles };
+  return { requests, addresses, vehicles, profile };
 }
 
 async function loadEligiblePromos(session, customerId = "") {
@@ -316,6 +351,40 @@ function addressCard(address) {
   `;
 }
 
+function recommendCard(title, sub, href, cta) {
+  return `
+    <article class="customer-recommend-card">
+      <div class="customer-recommend-copy">
+        <strong>${escapeHtml(title)}</strong>
+        <span>${escapeHtml(sub)}</span>
+      </div>
+      <a class="button primary" href="${href}">${escapeHtml(cta)}</a>
+    </article>`;
+}
+
+// Smart suggestions from the customer's own data (rebook last service, book a saved
+// vehicle, or get started). Rendered in the "Recommended for you" dashboard section.
+function buildRecommendations(active, history, data) {
+  const cards = [];
+  const lastDone = history && history[0];
+  if (lastDone) {
+    const label = lastDone.service_label || lastDone.service_type || "your last service";
+    cards.push(recommendCard("Rebook your last service", `Repeat ${label} in a couple taps.`,
+      `/book?repeat=${encodeURIComponent(publicNumber(lastDone.id))}#booking-flow`, "Rebook"));
+  }
+  if (data && data.vehicles && data.vehicles.length) {
+    const v = data.vehicles[0];
+    const vName = [v.vehicle_year, v.vehicle_make, v.vehicle_model].filter(Boolean).join(" ") || "your saved vehicle";
+    cards.push(recommendCard(`Book ${vName}`, "Use your saved vehicle for a faster booking.",
+      "/book#booking-flow", "Book"));
+  }
+  if (!cards.length) {
+    cards.push(recommendCard("Book your first service", "Fuel delivery, car wash, or a quick inspection — we come to you.",
+      "/book#booking-flow", "Get started"));
+  }
+  return cards.slice(0, 2).join("");
+}
+
 function promoDiscountLabel(promo) {
   const value = Number(promo.discount_value) || 0;
   if (promo.discount_type === "free_addon") return "Free add-on";
@@ -396,6 +465,8 @@ function renderAccount(session, data, promos = []) {
   historyMount.innerHTML = history.length
     ? history.slice(0, 8).map((request) => requestCard(request, "history")).join("")
     : emptyCard("No completed service history is available for this phone and email yet.");
+  if (recommendMount) recommendMount.innerHTML = buildRecommendations(active, history, data);
+  if (recommendSection) recommendSection.hidden = false;
   promosMount.innerHTML = promos.length
     ? promos.map(promoCard).join("")
     : `
@@ -527,7 +598,7 @@ async function deleteSavedAddress(addressId) {
 async function openAccount(session) {
   setStatus("warning", "Loading your account...");
   const data = await loadAccountData(session);
-  if (!accountHasData(data)) {
+  if (!accountExists(data)) {
     if (session.isNewAccount) {
       renderAccount(session, data, []);
       setStatus("success", "Account loaded. Saved details will appear here after booking.");
@@ -596,7 +667,7 @@ createForm?.addEventListener("submit", async (event) => {
     setCreateStatus("warning", "Checking for an existing account...");
     const session = { phone, email, name: `${firstName} ${lastName}`.trim(), isNewAccount: true };
     const data = await loadAccountData(session);
-    if (accountHasData(data)) {
+    if (accountExists(data)) {
       switchAccountMode("login");
       if (loginForm) {
         loginForm.elements.phone.value = formatPhone(phone);
@@ -606,8 +677,10 @@ createForm?.addEventListener("submit", async (event) => {
       return;
     }
 
-    writeSession(session);
-    renderAccount(session, { requests: [], addresses: [], vehicles: [] }, []);
+    const profile = await saveCustomerProfile(session, firstName, lastName);
+    const nextSession = { ...session, name: customerNameFrom([], { profile }) || session.name, isNewAccount: false };
+    writeSession(nextSession);
+    renderAccount(nextSession, { requests: [], addresses: [], vehicles: [], profile }, []);
     setStatus("success", "Account created. You can book service and saved details will appear here after booking.");
   } catch (error) {
     console.error("[customer-account] create account failed:", error);

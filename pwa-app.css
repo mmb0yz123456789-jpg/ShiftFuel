@@ -201,7 +201,14 @@ html.sf-compact body.customer-account-page .customer-dashboard-header { display:
 html.sf-compact body.customer-account-page .customer-dashboard-kicker { display: none; }
 /* Phone app: the green Book CTA card + current-service card already cover book/track,
    so the header quick-actions row is redundant here. */
-html.sf-compact body.customer-account-page .customer-dashboard-quickactions { display: none; }
+html.sf-compact body.customer-account-page .customer-dashboard-quickactions {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 4px 0 18px;
+}
+html.sf-compact body.customer-account-page .customer-dashboard-quickactions .button {
+  width: 100%; min-height: 58px; border-radius: 16px; font-weight: 800; font-size: 1rem;
+}
+/* The prominent Book/Track quick buttons replace the separate Book CTA card on phone. */
+html.sf-compact body.customer-account-page .customer-book-cta { display: none !important; }
 html.sf-compact body.customer-account-page [data-customer-greeting] {
   color: #fff; font-size: 1.85rem; font-weight: 800; letter-spacing: -.01em; margin: 0;
 }
@@ -1028,4 +1035,24 @@ html.sf-compact body.customer-account-page:not(.customer-account-loaded) .custom
 html.sf-compact body.customer-account-page:not(.customer-account-loaded) .site-footer,
 html.sf-compact body.customer-account-page:not(.customer-account-loaded) .customer-pwa-security-note {
   display: none !important;
+}
+
+/* ── Sign-in card fixes ─────────────────────────────────────────────────────
+   1) Autofilled phone/email stay white (browser autofill was tinting them lavender).
+   2) Tab shows only the OTHER mode's button — kills the duplicate "Create Account". */
+html.sf-compact body.customer-account-page:not(.customer-account-loaded) .customer-account-form input:-webkit-autofill,
+html.sf-compact body.customer-account-page:not(.customer-account-loaded) .customer-account-form input:-webkit-autofill:hover,
+html.sf-compact body.customer-account-page:not(.customer-account-loaded) .customer-account-form input:-webkit-autofill:focus {
+  -webkit-box-shadow: 0 0 0 1000px #fff inset;
+  -webkit-text-fill-color: #092f2d;
+  caret-color: #092f2d;
+}
+html.sf-compact body.customer-account-page:not(.customer-account-loaded) .customer-account-tab[data-account-mode="create"].is-active {
+  display: none !important;
+}
+html.sf-compact body.customer-account-page:not(.customer-account-loaded) .customer-account-tab[data-account-mode="login"]:not(.is-active) {
+  display: flex; align-items: center; justify-content: center;
+  width: 100%; box-sizing: border-box; min-height: 50px; padding: 0 18px; margin: 0;
+  border: 1.5px solid #c9d4d2; border-radius: 14px; background: #fff;
+  color: #092f2d; font-size: 1.04rem; font-weight: 900;
 }

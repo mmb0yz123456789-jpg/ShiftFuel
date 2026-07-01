@@ -95,6 +95,16 @@
     currentAccountSession = null;
   }
 
+  async function lookupCustomerAccount(phone = currentAccountSession?.phone, email = currentAccountSession?.email) {
+    if (!db || !phone || !email) return null;
+    const { data, error } = await db.rpc('public_lookup_customer_account', {
+      p_phone: phone,
+      p_email: email,
+    });
+    if (error) throw error;
+    return data && typeof data === 'object' ? data : null;
+  }
+
   // ============================================================
   // Tab Navigation
   // ============================================================
@@ -172,15 +182,8 @@
     if (!profileForm || !currentAccountSession) return;
 
     try {
-      // Try to find customer by phone/email
-      const { data, error } = await db
-        .from('customers')
-        .select('*')
-        .eq('phone', currentAccountSession.phone)
-        .eq('email', currentAccountSession.email)
-        .maybeSingle();
-
-      if (error || !data) {
+      const data = await lookupCustomerAccount();
+      if (!data) {
         // Pre-fill from session if no database record
         profileForm.elements.firstName.value = currentAccountSession.name.split(' ')[0] || '';
         profileForm.elements.lastName.value = currentAccountSession.name.split(' ').slice(1).join(' ') || '';
@@ -407,18 +410,22 @@
         updated_at: new Date().toISOString(),
       };
 
-      // Upsert customer record
-      const { data, error } = await db
-        .from('customers')
-        .upsert(updates, { onConflict: 'phone' })
-        .select()
-        .single();
+      const { data, error } = await db.rpc('public_upsert_customer_account', {
+        p_phone: updates.phone,
+        p_email: updates.email,
+        p_first_name: updates.first_name,
+        p_last_name: updates.last_name,
+        p_name: `${updates.first_name} ${updates.last_name}`.trim(),
+        p_service_area: updates.service_area,
+        p_zip_code: updates.zip_code,
+      });
 
       if (error) throw error;
 
       // Update session
-      currentAccountSession.name = `${updates.first_name} ${updates.last_name}`.trim();
-      currentAccountSession.email = updates.email;
+      currentAccountSession.phone = cleanPhone(data?.phone || updates.phone);
+      currentAccountSession.name = data?.name || `${updates.first_name} ${updates.last_name}`.trim();
+      currentAccountSession.email = String(data?.email || updates.email).toLowerCase().trim();
       localStorage.setItem('shiftfuel_customer_account', JSON.stringify(currentAccountSession));
 
       // Update greeting

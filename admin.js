@@ -138,6 +138,52 @@ const BOOKING_STATUSES = window.SF.BOOKING_STATUSES;
 const canonicalBookingStatus = window.SF.canonicalBookingStatus;
 const OPEN_REQUEST_STATUSES = window.SF.OPEN_REQUEST_STATUSES;
 const IN_PROGRESS_REQUEST_STATUSES = window.SF.IN_PROGRESS_REQUEST_STATUSES;
+let activeStatCard = null;
+
+document.addEventListener('click', (event) => {
+  const mobileNavButton = event.target.closest('[data-admin-mobile-nav]');
+  if (mobileNavButton) {
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    openAdminMobileDestination(mobileNavButton.dataset.page, mobileNavButton.dataset.requestView);
+    return;
+  }
+
+  const statCard = event.target.closest('.admin-stat-card--clickable');
+  if (statCard?.id) {
+    const statActions = {
+      'stat-card-open': () => statCardNav('open', 'open'),
+      'stat-card-inprogress': () => statCardNav('in_progress', 'inprogress'),
+      'stat-card-completed': () => statCardNav('completed_today', 'completed'),
+      'stat-card-workers': () => openWorkersPanel(),
+      'stat-card-revenue': () => openRevenuePanel(),
+    };
+    const action = statActions[statCard.id];
+    if (action) {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      action();
+      return;
+    }
+  }
+
+  const queueTab = event.target.closest('.admin-request-tabs .summary-button');
+  if (queueTab) {
+    const viewById = {
+      'show-all': 'all',
+      'show-open': 'open',
+      'show-inprogress': 'in_progress',
+      'show-complete': 'completed_today',
+      'show-denied': 'cancelled',
+    };
+    const view = viewById[queueTab.id];
+    if (view) {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      openAdminRequestQueueView(view);
+    }
+  }
+}, true);
 
 function adminAuthToken() {
   return sessionStorage.getItem('shiftfuel_admin_token');
@@ -6069,21 +6115,6 @@ requestList.addEventListener('input', (event) => {
   panel.querySelectorAll('.doorjamb-echo').forEach((el) => { el.textContent = value; });
 });
 
-showAll?.addEventListener('click', () => {
-  openAdminRequestQueueView('all');
-});
-showOpen?.addEventListener('click', () => {
-  openAdminRequestQueueView('open');
-});
-showInProgress?.addEventListener('click', () => {
-  openAdminRequestQueueView('in_progress');
-});
-showComplete?.addEventListener('click', () => {
-  openAdminRequestQueueView('completed_today');
-});
-showDenied?.addEventListener('click', () => {
-  openAdminRequestQueueView('cancelled');
-});
 showReviews?.addEventListener('click', () => switchAdminTab('reviews'));
 showApplicants?.addEventListener('click', () => switchAdminTab('applicants'));
 
@@ -6832,11 +6863,6 @@ function switchAdminTab(tab) {
 adminPageTabs.forEach((btn) => {
   btn.addEventListener('click', () => switchPageTab(btn.dataset.page));
 });
-document.querySelectorAll('[data-admin-mobile-nav]').forEach((btn) => {
-  btn.addEventListener('click', () => {
-    openAdminMobileDestination(btn.dataset.page, btn.dataset.requestView);
-  });
-});
 document.querySelectorAll('[data-page-action]').forEach((btn) => {
   btn.addEventListener('click', () => {
     switchPageTab(btn.dataset.pageAction);
@@ -6854,8 +6880,6 @@ adminSupportRefreshBtn?.addEventListener('click', () => refreshAdminView(adminSu
 // ── Dashboard stat card drilldown ────────────────────────────────────────────
 
 // ── Stat card inline filtering ────────────────────────────────────────────────
-
-let activeStatCard = null;
 
 function scrollAdminQueueIntoView() {
   const queueCard = document.querySelector('.admin-queue-section .admin-queue-card');

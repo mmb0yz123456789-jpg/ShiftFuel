@@ -11845,3 +11845,15 @@ display: block;
 .customer-account-menu-item:hover { background: #eef4f2; }
 .customer-account-menu-signout { color: #b42318; }
 .customer-dashboard-quickactions { display: flex; flex-wrap: wrap; gap: 10px; margin: 14px 0 4px; }
+
+/* ── Customer dashboard: "Recommended for you" cards (Phase 3b) ── */
+.customer-recommend { margin: 0 0 4px; }
+.customer-recommend-card {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 14px 16px; border-radius: 16px; margin-bottom: 10px;
+  background: #fff; color: #0f2a28; box-shadow: 0 8px 22px rgba(4,26,24,.12);
+}
+.customer-recommend-copy { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.customer-recommend-copy strong { font-weight: 800; }
+.customer-recommend-copy span { font-size: .84rem; opacity: .78; }
+.customer-recommend-card .button { flex: none; }

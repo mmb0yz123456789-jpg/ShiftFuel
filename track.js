@@ -95,11 +95,14 @@ function formatPhoneForTracking(value) {
 
   const params = new URLSearchParams(window.location.search || "");
   const request = params.get("request") || "";
+  // ?me=1 comes from the signed-in dashboard "Track My Vehicle" button — auto-load
+  // the customer's own requests using their saved phone/email, no re-entry needed.
+  const autoMe = params.get("me") === "1";
   if (session?.phone && trackingPhone && !trackingPhone.value) trackingPhone.value = formatPhoneForTracking(session.phone);
   if (session?.email && trackingEmail && !trackingEmail.value) trackingEmail.value = String(session.email || "").trim().toLowerCase();
   if (request && trackingId && !trackingId.value) trackingId.value = request;
 
-  if (request && session?.phone && session?.email) {
+  if ((request || autoMe) && session?.phone && session?.email) {
     window.addEventListener("load", () => {
       window.setTimeout(() => trackForm?.requestSubmit(), 100);
     });
