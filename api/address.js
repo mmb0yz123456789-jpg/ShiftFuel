@@ -60,9 +60,9 @@ function stationCacheSet(key, data) {
   stationCache.set(key, { at: Date.now(), data });
 }
 
-// Public Mapbox token. Prefer an env var; fall back to the same public pk.*
-// token the live-tracking map already ships in the browser. Search Box API
-// works fine with a public token, so this stays a safe no-secret default.
+// Public Mapbox token, read from env (MAPBOX_TOKEN) — the same public token the
+// browser maps use. Search Box API works fine with a public token; there is no
+// secret key involved.
 const MAPBOX_TOKEN =
   process.env.MAPBOX_TOKEN ||
   process.env.MAPBOX_ACCESS_TOKEN ||

@@ -403,6 +403,7 @@ function renderAccount(session, data, promos = []) {
   dashboard.hidden = false;
   document.body.classList.add("customer-account-loaded");
   loginForm?.classList.add("is-compact");
+  scrollAccountHashIntoView();
 }
 
 async function refreshAccount() {
@@ -626,9 +627,9 @@ document.querySelector("[data-customer-sign-out]")?.addEventListener("click", ()
   const compact = window.SF_MODE?.compact
     || !window.matchMedia
     || window.matchMedia("(max-width: 760px)").matches;
-  if (standalone && compact) {
+  if (compact) {
     if (accountIntroTitle) accountIntroTitle.textContent = "Welcome back";
-    if (accountIntroCopy) accountIntroCopy.textContent = "Sign in to access your saved vehicles, addresses, and bookings.";
+    if (accountIntroCopy) accountIntroCopy.textContent = "Sign in to access your saved vehicles and bookings.";
     openAccountForm("login", { focus: false, scroll: false });
   }
   setStatus("warning", "Signed out on this device.");
@@ -685,10 +686,19 @@ dashboard?.addEventListener("click", async (event) => {
   });
   bindEmailLowercase();
 
+  function scrollAccountHashIntoView() {
+    const hash = window.location.hash;
+    if (hash !== "#account-saved-details") return;
+    requestAnimationFrame(() => {
+      document.querySelector(hash)?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+  }
+
   // Deep links / the "My Account" nav item should open the collapsed form.
   function openFormFromHash(hash) {
     if (hash === "#create") openAccountForm("create");
     else if (hash === "#customer-account-panel") openAccountForm("login");
+    else scrollAccountHashIntoView();
   }
   openFormFromHash(window.location.hash);
   if (window.location.hash !== "#create") switchAccountMode("login");
@@ -701,9 +711,9 @@ dashboard?.addEventListener("click", async (event) => {
     || !window.matchMedia
     || window.matchMedia("(max-width: 760px)").matches;
 
-  if (standalone && compact) {
+  if (compact) {
     if (accountIntroTitle) accountIntroTitle.textContent = "Welcome back";
-    if (accountIntroCopy) accountIntroCopy.textContent = "Sign in to access your saved vehicles, addresses, and bookings.";
+    if (accountIntroCopy) accountIntroCopy.textContent = "Sign in to access your saved vehicles and bookings.";
     openAccountForm("login", { focus: false, scroll: false });
   }
 
@@ -714,10 +724,10 @@ dashboard?.addEventListener("click", async (event) => {
   openAccount(session).catch((error) => {
     console.warn("[customer-account] saved session could not be loaded:", error);
     clearSession();
-    if (standalone && compact) {
+    if (compact) {
       setStatus("", "");
       if (accountIntroTitle) accountIntroTitle.textContent = "Welcome back";
-      if (accountIntroCopy) accountIntroCopy.textContent = "Sign in to access your saved vehicles, addresses, and bookings.";
+      if (accountIntroCopy) accountIntroCopy.textContent = "Sign in to access your saved vehicles and bookings.";
       openAccountForm("login", { focus: false, scroll: false });
     } else {
       setStatus("warning", "Please enter your phone and email to open My Account.");

@@ -8,11 +8,13 @@
 // Strategy: always try the network first (so an online user always gets the
 // latest deployed assets), and fall back to the cached copy only when offline.
 
-const RUNTIME_CACHE = 'shiftfuel-runtime-v2';
+const RUNTIME_CACHE = 'shiftfuel-runtime-v3';
+const OFFLINE_URL = '/offline.html';
 
-self.addEventListener('install', () => {
+self.addEventListener('install', (event) => {
   // Activate this version immediately on next load.
   self.skipWaiting();
+  event.waitUntil(caches.open(RUNTIME_CACHE).then((cache) => cache.add(OFFLINE_URL)).catch(() => {}));
 });
 
 self.addEventListener('activate', (event) => {
@@ -83,6 +85,8 @@ self.addEventListener('fetch', (event) => {
       const cached = await caches.match(request);
       if (cached) return cached;
       if (request.mode === 'navigate') {
+        const offline = await caches.match(OFFLINE_URL);
+        if (offline) return offline;
         return new Response('ShiftFuel is offline. Please reconnect and refresh.', {
           status: 503,
           headers: { 'Content-Type': 'text/plain; charset=utf-8' },

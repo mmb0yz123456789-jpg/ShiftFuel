@@ -2376,6 +2376,7 @@ function renderRequests() {
   if (adminState.currentView === 'in_progress') showInProgress?.classList.add('active');
   if (adminState.currentView === 'completed_today') showComplete?.classList.add('active');
   if (adminState.currentView === 'cancelled') showDenied?.classList.add('active');
+  syncAdminMobileNav(adminState.currentPageTab, adminState.currentView);
 
   if (sortedFiltered.length === 0) {
     const hasActiveFilters = Boolean(adminState.queueFilters.search || adminState.queueFilters.serviceType || adminState.queueFilters.worker || adminState.queueFilters.payment);
@@ -6745,6 +6746,32 @@ document.addEventListener('click', async (event) => {
   }
 });
 
+function syncAdminMobileNav(page = adminState.currentPageTab, view = adminState.currentView) {
+  document.querySelectorAll('[data-admin-mobile-nav]').forEach((btn) => {
+    const pageMatches = btn.dataset.page === page;
+    const requestView = btn.dataset.requestView;
+    const viewMatches = !requestView || normalizeRequestFilter(requestView) === normalizeRequestFilter(view);
+    const isActive = pageMatches && viewMatches;
+    btn.classList.toggle('active', isActive);
+    btn.classList.toggle('is-active', isActive);
+    if (isActive) btn.setAttribute('aria-current', 'page');
+    else btn.removeAttribute('aria-current');
+  });
+}
+
+function openAdminMobileDestination(page, view) {
+  const destination = page || 'dashboard';
+  switchPageTab(destination);
+  if (destination === 'requests' && view) {
+    adminState.currentView = normalizeRequestFilter(view);
+    adminState.showAllTime = false;
+    setActiveStatCard(null);
+    switchAdminTab('requests');
+    renderRequests();
+  }
+  syncAdminMobileNav(destination, adminState.currentView);
+}
+
 function switchPageTab(page) {
   adminState.currentPageTab = page;
   // Expose the active page so CSS can hide the dashboard-only sidebar/shortcuts
@@ -6811,6 +6838,7 @@ function switchPageTab(page) {
     loadPromos();
   }
   renderRequests();
+  syncAdminMobileNav(page, adminState.currentView);
 }
 
 function switchAdminTab(tab) {
@@ -6827,6 +6855,11 @@ function switchAdminTab(tab) {
 
 adminPageTabs.forEach((btn) => {
   btn.addEventListener('click', () => switchPageTab(btn.dataset.page));
+});
+document.querySelectorAll('[data-admin-mobile-nav]').forEach((btn) => {
+  btn.addEventListener('click', () => {
+    openAdminMobileDestination(btn.dataset.page, btn.dataset.requestView);
+  });
 });
 document.querySelectorAll('[data-page-action]').forEach((btn) => {
   btn.addEventListener('click', () => {

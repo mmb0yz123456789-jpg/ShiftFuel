@@ -1440,15 +1440,13 @@
 .track-page .tk-completed-updates { margin-top: 14px; }
 
 /* ─────────────────────────────────────────────────────────────────────────
-   No bottom tab bar — the tracker matches the marketing landing page (a clean
-   vertical scroll, no bottom action bar). The .app-tabbar markup in track.html
-   stays inert; it's simply never shown.
+   Desktop tracker stays website-like; compact mobile/PWA keeps the customer
+   bottom navigation tappable as part of the app loop.
    ───────────────────────────────────────────────────────────────────────── */
-.track-page .app-tabbar { display: none !important; }
+html.sf-wide .track-page .app-tabbar { display: none !important; }
 
 @media (max-width: 767px) {
-  /* No fixed bar to clear — reset the reserved bottom padding. */
-  .track-page { padding-bottom: 24px; }
+  .track-page { padding-bottom: calc(96px + env(safe-area-inset-bottom)); }
 }
 
 /* ─────────────────────────────────────────────────────────────────────────
