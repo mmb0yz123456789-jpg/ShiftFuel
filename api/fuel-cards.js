@@ -16,18 +16,13 @@
  * Stripe in TEST mode; in live you'd use Issuing Elements client-side.
  */
 
-const Stripe = require('stripe');
 const {
   setCorsHeaders,
   getSupabaseAdmin,
   verifyAdminToken,
   verifyWorkerToken,
 } = require('./_auth');
-
-function getStripe() {
-  if (!process.env.STRIPE_SECRET_KEY) throw new Error('STRIPE_SECRET_KEY not configured');
-  return new Stripe(process.env.STRIPE_SECRET_KEY);
-}
+const { getStripe } = require('./_utils');
 
 // Fuel + car-wash merchant categories (Stripe Issuing MCC groups).
 const FUEL_WASH_CATEGORIES = ['automated_fuel_dispensers', 'service_stations', 'car_washes'];

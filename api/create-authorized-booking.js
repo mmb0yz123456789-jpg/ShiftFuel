@@ -5,43 +5,19 @@
  * instead of recalculating with current admin pricing after authorization.
  */
 
-const Stripe = require('stripe');
 const { setCorsHeaders, getSupabaseAdmin } = require('./_auth');
 const { notifyWorkersNewJob } = require('./_push');
 const { amountsFromRow, validatePromoForCustomer, recordPromoRedemption } = require('./_promos');
-
-function getStripe() {
-  if (!process.env.STRIPE_SECRET_KEY) throw new Error('STRIPE_SECRET_KEY not configured');
-  return new Stripe(process.env.STRIPE_SECRET_KEY);
-}
-
-function cleanPhone(value) {
-  return String(value || '').replace(/\D/g, '');
-}
-
-function savedVehiclePlateKey(value) {
-  return String(value || '').trim().toUpperCase().replace(/[\s-]+/g, '');
-}
-
-function savedVehicleColorKey(value) {
-  return String(value || '').trim().toLowerCase();
-}
-
-function savedAddressTextKey(value) {
-  return String(value || '').trim().replace(/\s+/g, ' ').toLowerCase();
-}
-
-function savedAddressStateKey(value) {
-  return String(value || '').trim().toUpperCase();
-}
-
-function savedAddressZipKey(value) {
-  return String(value || '').replace(/\D/g, '');
-}
-
-function roundMoney(value) {
-  return Math.round((Number(value) || 0) * 100) / 100;
-}
+const {
+  getStripe,
+  cleanPhone,
+  roundMoney,
+  savedVehiclePlateKey,
+  savedVehicleColorKey,
+  savedAddressTextKey,
+  savedAddressStateKey,
+  savedAddressZipKey,
+} = require('./_utils');
 
 function isUuid(value) {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(value || '').trim());

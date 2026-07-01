@@ -7,16 +7,43 @@
 // mobile-web behaviour changes. In a normal browser this file is inert.
 (function () {
   function init() {
+    const isStandalonePage = () => document.documentElement.classList.contains('sf-standalone');
+    const isCompactPage = () => !window.matchMedia || window.matchMedia('(max-width: 760px)').matches;
+    const isCustomerSurface = () => document.body?.classList.contains('customer-account-page')
+      || document.body?.classList.contains('booking-page')
+      || document.body?.classList.contains('track-page')
+      || document.body?.classList.contains('account-page');
+
+    function keepCustomerLinksInApp() {
+      if (!isStandalonePage() || !isCompactPage() || !isCustomerSurface()) return;
+      const logo = document.querySelector('.site-header .logo');
+      if (logo) {
+        logo.setAttribute('href', '/account');
+        logo.setAttribute('aria-label', 'ShiftFuel Concierge app home');
+      }
+      document.querySelectorAll('a[href="index.html"], a[href^="index.html#"], a[href="/"]').forEach((link) => {
+        link.setAttribute('href', '/account');
+      });
+      document.querySelectorAll('a[href^="returning.html"]').forEach((link) => {
+        const href = link.getAttribute('href') || '';
+        const queryStart = href.indexOf('?');
+        const hashStart = href.indexOf('#');
+        const query = queryStart > -1 ? href.slice(queryStart, hashStart > -1 ? hashStart : undefined) : '';
+        link.setAttribute('href', `/book${query}#booking-flow`);
+      });
+    }
+
+    keepCustomerLinksInApp();
+
     const launcher = document.querySelector('[data-sf-applauncher]');
     if (!launcher) return; // page has no app-home → nothing to do
 
     const body = document.body;
-    const isStandalone = () => document.documentElement.classList.contains('sf-standalone');
-    const isCompact = () => !window.matchMedia || window.matchMedia('(max-width: 760px)').matches;
+    const isStandalone = isStandalonePage;
+    const isCompact = isCompactPage;
     // App-home is a phone-app experience: installed AND phone-width. A desktop-
     // installed PWA (rare) keeps the full desktop dashboard instead.
     const canApp = () => isStandalone() && isCompact();
-
     const open = () => {
       if (!canApp()) return;
       launcher.hidden = false;
@@ -82,11 +109,11 @@
       });
     }
 
-    // Open the launcher by default when launched as an installed phone app — unless
-    // a shortcut deep-linked straight to a screen. Re-evaluate if the display mode
-    // or width flips (some UAs do this without a reload).
-    if (canApp() && !deepLinked) open(); else close();
-    window.addEventListener('sf-mode-change', () => { if (!canApp()) close(); });
+    // Keep installed apps on the real dashboard by default. The launcher remains
+    // available from the header home button, but it should never cover the first
+    // screen after opening the app or signing in.
+    close();
+    window.addEventListener('sf-mode-change', () => { keepCustomerLinksInApp(); if (!canApp()) close(); });
   }
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);

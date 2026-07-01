@@ -128,76 +128,13 @@ let expandedSummaryId = null;
 let dashboardRange = 'today';
 let customRange = { start: '', end: '' };
 let queueFilters = { search: '', serviceType: '', status: '', worker: '', payment: '', sort: 'newest' };
-const BOOKING_STATUSES = [
-  'new',
-  'assigned',
-  'en_route',
-  'in_service',
-  'returning',
-  'completed',
-  'cancelled',
-];
-
-function canonicalBookingStatus(status) {
-  const value = String(status || 'new').toLowerCase();
-  if (BOOKING_STATUSES.includes(value)) return value;
-  if (['pending', 'request_received', 'pending_customer_info'].includes(value)) return 'new';
-  if (['accepted'].includes(value)) return 'assigned';
-  // key_received = worker has the key and is starting the trip → counts as In
-  // Progress (en_route), not Open. accepted (claimed, no key yet) stays Open.
-  if (['key_received', 'vehicle_picked_up', 'pickup_vehicle_photo_uploaded', 'pickup_odometer_photo_uploaded', 'pickup_fuel_gauge_photo_uploaded'].includes(value)) return 'en_route';
-  if ([
-    'in_progress',
-    'service_in_progress',
-    'fueling_in_progress',
-    'car_wash_in_progress',
-    'car_wash_after_fuel_in_progress',
-    'fueling_after_wash_in_progress',
-    'partial_service_complete',
-    'fueling_complete',
-    'car_wash_complete',
-    'fuel_receipt_uploaded',
-    'wash_receipt_uploaded',
-    'fuel_receipt_after_wash_uploaded',
-    'wash_receipt_after_fuel_uploaded',
-    'fuel_and_wash_complete',
-    'service_complete',
-    'receipts_recorded',
-    'inspection_needed',
-    'inspection_recorded',
-    'payment_issue',
-    'authorization_too_low',
-    'pending_customer_payment',
-  ].includes(value)) return 'in_service';
-  if ([
-    'returned_location_pending',
-    'return_location_recorded',
-    'return_photos_needed',
-    'dropoff_vehicle_photo_uploaded',
-    'dropoff_odometer_photo_uploaded',
-    'dropoff_fuel_gauge_photo_uploaded',
-    'vehicle_returned',
-    'final_payment_processed',
-    'awaiting_key_return',
-    'return_requested',
-    'customer_return_requested',
-  ].includes(value)) return 'returning';
-  if (['complete', 'keys_returned', 'finalized'].includes(value)) return 'completed';
-  if ([
-    'denied',
-    'customer_canceled',
-    'canceled',
-    'cancelled_pending_key_return',
-    'unable_to_complete',
-    'auto_reversed',
-    'closed_no_charge',
-    'canceled_return_completed',
-  ].includes(value)) return 'cancelled';
-  return 'new';
-}
-
-const OPEN_REQUEST_STATUSES = ['new', 'assigned'];
-const IN_PROGRESS_REQUEST_STATUSES = ['en_route', 'in_service', 'returning'];
+// Booking-status logic is the single source of truth in shared-status.js
+// (loaded via <script src="shared-status.js"> before this file). This map is
+// identical to the admin mapping it replaced — key_received → en_route.
+const BOOKING_STATUSES = window.SF.BOOKING_STATUSES;
+const canonicalBookingStatus = window.SF.canonicalBookingStatus;
+const OPEN_REQUEST_STATUSES = window.SF.OPEN_REQUEST_STATUSES;
+const IN_PROGRESS_REQUEST_STATUSES = window.SF.IN_PROGRESS_REQUEST_STATUSES;
 
 function adminAuthToken() {
   return sessionStorage.getItem('shiftfuel_admin_token');
@@ -566,8 +503,8 @@ let adminPhotoDeleted = false; // true when admin clicks "Delete photo"
 
 // Unified terminal/closed status list — keep in sync with worker.js, track.js,
 // and the SQL terminal-status list in supabase-production-rls-lockdown.sql.
-const terminalStatuses = ['completed', 'cancelled'];
-const closedStatuses = ['cancelled'];
+const terminalStatuses = window.SF.TERMINAL_STATUSES;
+const closedStatuses = window.SF.CLOSED_STATUSES;
 
 // Friendly labels for every status — keep in sync with worker.js and track.js.
 // Raw database status strings must never be shown to a user; this map is the
@@ -680,7 +617,7 @@ const PAYMENT_STATUS_LABELS = {
   capture_failed:         'Capture failed — customer must repay',
 };
 
-const CLOSED_STATUSES = ['cancelled'];
+const CLOSED_STATUSES = window.SF.CLOSED_STATUSES;
 
 function paymentStatusLabel(request) {
   const label = PAYMENT_STATUS_LABELS[request.payment_status] || request.payment_status || 'Unknown';
@@ -702,91 +639,10 @@ function formatTimestamp(iso) {
   return new Date(iso).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' });
 }
 
-// Common door-jamb PSI by make/model — a STARTING suggestion only (matched on
-// make+model, not year/trim); the worker/admin confirms the real number off the
-// door-jamb sticker. Keep in sync with worker.js.
-const fallbackPsiGuides = [
-  { make: 'Toyota', model: 'Camry', front_psi: 35, rear_psi: 35 },
-  { make: 'Toyota', model: 'Corolla', front_psi: 32, rear_psi: 32 },
-  { make: 'Toyota', model: 'RAV4', front_psi: 35, rear_psi: 35 },
-  { make: 'Toyota', model: 'Highlander', front_psi: 35, rear_psi: 35 },
-  { make: 'Toyota', model: 'Tacoma', front_psi: 30, rear_psi: 35 },
-  { make: 'Toyota', model: 'Tundra', front_psi: 35, rear_psi: 35 },
-  { make: 'Toyota', model: '4Runner', front_psi: 32, rear_psi: 32 },
-  { make: 'Toyota', model: 'Prius', front_psi: 35, rear_psi: 33 },
-  { make: 'Toyota', model: 'Sienna', front_psi: 36, rear_psi: 36 },
-  { make: 'Honda', model: 'Civic', front_psi: 32, rear_psi: 32 },
-  { make: 'Honda', model: 'Accord', front_psi: 32, rear_psi: 32 },
-  { make: 'Honda', model: 'CR-V', front_psi: 32, rear_psi: 32 },
-  { make: 'Honda', model: 'Pilot', front_psi: 35, rear_psi: 35 },
-  { make: 'Honda', model: 'Odyssey', front_psi: 35, rear_psi: 35 },
-  { make: 'Honda', model: 'HR-V', front_psi: 33, rear_psi: 33 },
-  { make: 'Honda', model: 'Passport', front_psi: 35, rear_psi: 35 },
-  { make: 'Nissan', model: 'Altima', front_psi: 32, rear_psi: 32 },
-  { make: 'Nissan', model: 'Rogue', front_psi: 33, rear_psi: 33 },
-  { make: 'Nissan', model: 'Sentra', front_psi: 33, rear_psi: 33 },
-  { make: 'Nissan', model: 'Murano', front_psi: 35, rear_psi: 35 },
-  { make: 'Nissan', model: 'Pathfinder', front_psi: 35, rear_psi: 35 },
-  { make: 'Nissan', model: 'Frontier', front_psi: 32, rear_psi: 32 },
-  { make: 'Nissan', model: 'Kicks', front_psi: 33, rear_psi: 33 },
-  { make: 'Hyundai', model: 'Elantra', front_psi: 33, rear_psi: 33 },
-  { make: 'Hyundai', model: 'Sonata', front_psi: 34, rear_psi: 34 },
-  { make: 'Hyundai', model: 'Tucson', front_psi: 35, rear_psi: 33 },
-  { make: 'Hyundai', model: 'Santa Fe', front_psi: 35, rear_psi: 35 },
-  { make: 'Hyundai', model: 'Kona', front_psi: 33, rear_psi: 33 },
-  { make: 'Hyundai', model: 'Palisade', front_psi: 35, rear_psi: 35 },
-  { make: 'Kia', model: 'Forte', front_psi: 33, rear_psi: 33 },
-  { make: 'Kia', model: 'K5', front_psi: 35, rear_psi: 35 },
-  { make: 'Kia', model: 'Sportage', front_psi: 35, rear_psi: 33 },
-  { make: 'Kia', model: 'Sorento', front_psi: 35, rear_psi: 35 },
-  { make: 'Kia', model: 'Soul', front_psi: 33, rear_psi: 33 },
-  { make: 'Kia', model: 'Telluride', front_psi: 35, rear_psi: 35 },
-  { make: 'Ford', model: 'F-150', front_psi: 35, rear_psi: 35 },
-  { make: 'Ford', model: 'Escape', front_psi: 35, rear_psi: 35 },
-  { make: 'Ford', model: 'Explorer', front_psi: 35, rear_psi: 35 },
-  { make: 'Ford', model: 'Edge', front_psi: 34, rear_psi: 34 },
-  { make: 'Ford', model: 'Mustang', front_psi: 32, rear_psi: 30 },
-  { make: 'Ford', model: 'Ranger', front_psi: 35, rear_psi: 35 },
-  { make: 'Ford', model: 'Bronco', front_psi: 38, rear_psi: 38 },
-  { make: 'Chevrolet', model: 'Silverado', front_psi: 35, rear_psi: 35 },
-  { make: 'Chevrolet', model: 'Equinox', front_psi: 35, rear_psi: 35 },
-  { make: 'Chevrolet', model: 'Malibu', front_psi: 35, rear_psi: 35 },
-  { make: 'Chevrolet', model: 'Traverse', front_psi: 35, rear_psi: 35 },
-  { make: 'Chevrolet', model: 'Tahoe', front_psi: 35, rear_psi: 35 },
-  { make: 'Chevrolet', model: 'Trailblazer', front_psi: 33, rear_psi: 33 },
-  { make: 'GMC', model: 'Sierra', front_psi: 35, rear_psi: 35 },
-  { make: 'GMC', model: 'Terrain', front_psi: 35, rear_psi: 35 },
-  { make: 'GMC', model: 'Acadia', front_psi: 35, rear_psi: 35 },
-  { make: 'GMC', model: 'Yukon', front_psi: 35, rear_psi: 35 },
-  { make: 'Jeep', model: 'Wrangler', front_psi: 37, rear_psi: 37 },
-  { make: 'Jeep', model: 'Grand Cherokee', front_psi: 36, rear_psi: 36 },
-  { make: 'Jeep', model: 'Cherokee', front_psi: 34, rear_psi: 34 },
-  { make: 'Jeep', model: 'Compass', front_psi: 33, rear_psi: 33 },
-  { make: 'Jeep', model: 'Gladiator', front_psi: 37, rear_psi: 37 },
-  { make: 'Ram', model: '1500', front_psi: 35, rear_psi: 35 },
-  { make: 'Dodge', model: 'Charger', front_psi: 35, rear_psi: 32 },
-  { make: 'Dodge', model: 'Durango', front_psi: 36, rear_psi: 36 },
-  { make: 'Chrysler', model: 'Pacifica', front_psi: 36, rear_psi: 36 },
-  { make: 'Subaru', model: 'Outback', front_psi: 35, rear_psi: 33 },
-  { make: 'Subaru', model: 'Forester', front_psi: 32, rear_psi: 30 },
-  { make: 'Subaru', model: 'Crosstrek', front_psi: 33, rear_psi: 32 },
-  { make: 'Subaru', model: 'Impreza', front_psi: 33, rear_psi: 32 },
-  { make: 'Subaru', model: 'Ascent', front_psi: 35, rear_psi: 35 },
-  { make: 'Mazda', model: 'CX-5', front_psi: 34, rear_psi: 34 },
-  { make: 'Mazda', model: 'Mazda3', front_psi: 36, rear_psi: 35 },
-  { make: 'Mazda', model: 'CX-9', front_psi: 35, rear_psi: 35 },
-  { make: 'Mazda', model: 'CX-30', front_psi: 34, rear_psi: 34 },
-  { make: 'Volkswagen', model: 'Jetta', front_psi: 36, rear_psi: 36 },
-  { make: 'Volkswagen', model: 'Tiguan', front_psi: 33, rear_psi: 36 },
-  { make: 'Volkswagen', model: 'Atlas', front_psi: 38, rear_psi: 41 },
-  { make: 'Tesla', model: 'Model 3', front_psi: 42, rear_psi: 42 },
-  { make: 'Tesla', model: 'Model Y', front_psi: 42, rear_psi: 42 },
-  { make: 'Tesla', model: 'Model S', front_psi: 42, rear_psi: 42 },
-  { make: 'Tesla', model: 'Model X', front_psi: 40, rear_psi: 40 },
-  { make: 'Lexus', model: 'RX', front_psi: 33, rear_psi: 33 },
-  { make: 'Lexus', model: 'ES', front_psi: 35, rear_psi: 35 },
-  { make: 'Lexus', model: 'NX', front_psi: 33, rear_psi: 33 },
-];
+// Door-jamb PSI defaults live in the shared vehicle-psi.js table (single source
+// of truth for admin + worker). Loaded via <script src="vehicle-psi.js"> before
+// this file.
+const fallbackPsiGuides = (typeof window !== 'undefined' && window.SF && window.SF.FALLBACK_PSI_GUIDES) || [];
 
 function normalizeVehicleText(value) {
   return String(value || '').trim().toLowerCase();

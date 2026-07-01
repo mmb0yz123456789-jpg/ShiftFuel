@@ -301,28 +301,11 @@ let workerProfilePhotoZoom = 1;
 let workerProfilePhotoPosition = { x: 0, y: 0 };
 let workerPhotoDisplayDrag = null;
 
-const BOOKING_STATUSES = [
-  'new',
-  'assigned',
-  'en_route',
-  'in_service',
-  'returning',
-  'completed',
-  'cancelled',
-];
-
-function canonicalBookingStatus(status) {
-  const value = String(status || 'new').toLowerCase();
-  if (BOOKING_STATUSES.includes(value)) return value;
-  if (['pending', 'request_received', 'pending_customer_info'].includes(value)) return 'new';
-  if (['accepted', 'key_received'].includes(value)) return 'assigned';
-  if (['vehicle_picked_up', 'pickup_vehicle_photo_uploaded', 'pickup_odometer_photo_uploaded', 'pickup_fuel_gauge_photo_uploaded'].includes(value)) return 'en_route';
-  if (['in_progress', 'service_in_progress', 'fueling_in_progress', 'car_wash_in_progress', 'partial_service_complete', 'fueling_complete', 'car_wash_complete', 'fuel_receipt_uploaded', 'wash_receipt_uploaded', 'service_complete', 'receipts_recorded', 'inspection_needed', 'inspection_recorded', 'payment_issue', 'authorization_too_low', 'pending_customer_payment'].includes(value)) return 'in_service';
-  if (['returned_location_pending', 'return_location_recorded', 'return_photos_needed', 'vehicle_returned', 'final_payment_processed', 'awaiting_key_return', 'return_requested', 'customer_return_requested'].includes(value)) return 'returning';
-  if (['complete', 'keys_returned', 'finalized'].includes(value)) return 'completed';
-  if (['denied', 'customer_canceled', 'canceled', 'cancelled_pending_key_return', 'unable_to_complete', 'auto_reversed', 'closed_no_charge', 'canceled_return_completed'].includes(value)) return 'cancelled';
-  return 'new';
-}
+// Booking-status logic lives in shared-status.js (loaded before this file). The
+// shared map is comprehensive: key_received → en_route, and combo statuses like
+// fuel_and_wash_complete now correctly map to in_service (previously fell to new).
+const BOOKING_STATUSES = window.SF.BOOKING_STATUSES;
+const canonicalBookingStatus = window.SF.canonicalBookingStatus;
 
 // Unified active/open status list. The RPC filters server-side too, but the
 // client keeps this guard so stale SQL cannot show closed requests.
@@ -501,101 +484,10 @@ function money(value) {
   return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(Number(value || 0));
 }
 
-// Common door-jamb PSI by make/model — a STARTING suggestion only (matched on
-// make+model, not year/trim). The worker confirms the real number off the door-jamb
-// sticker in the inspection panel, so these just pre-fill a sensible default.
-const fallbackPsiGuides = [
-  // Toyota
-  { make: 'Toyota', model: 'Camry', front_psi: 35, rear_psi: 35 },
-  { make: 'Toyota', model: 'Corolla', front_psi: 32, rear_psi: 32 },
-  { make: 'Toyota', model: 'RAV4', front_psi: 35, rear_psi: 35 },
-  { make: 'Toyota', model: 'Highlander', front_psi: 35, rear_psi: 35 },
-  { make: 'Toyota', model: 'Tacoma', front_psi: 30, rear_psi: 35 },
-  { make: 'Toyota', model: 'Tundra', front_psi: 35, rear_psi: 35 },
-  { make: 'Toyota', model: '4Runner', front_psi: 32, rear_psi: 32 },
-  { make: 'Toyota', model: 'Prius', front_psi: 35, rear_psi: 33 },
-  { make: 'Toyota', model: 'Sienna', front_psi: 36, rear_psi: 36 },
-  // Honda
-  { make: 'Honda', model: 'Civic', front_psi: 32, rear_psi: 32 },
-  { make: 'Honda', model: 'Accord', front_psi: 32, rear_psi: 32 },
-  { make: 'Honda', model: 'CR-V', front_psi: 32, rear_psi: 32 },
-  { make: 'Honda', model: 'Pilot', front_psi: 35, rear_psi: 35 },
-  { make: 'Honda', model: 'Odyssey', front_psi: 35, rear_psi: 35 },
-  { make: 'Honda', model: 'HR-V', front_psi: 33, rear_psi: 33 },
-  { make: 'Honda', model: 'Passport', front_psi: 35, rear_psi: 35 },
-  // Nissan
-  { make: 'Nissan', model: 'Altima', front_psi: 32, rear_psi: 32 },
-  { make: 'Nissan', model: 'Rogue', front_psi: 33, rear_psi: 33 },
-  { make: 'Nissan', model: 'Sentra', front_psi: 33, rear_psi: 33 },
-  { make: 'Nissan', model: 'Murano', front_psi: 35, rear_psi: 35 },
-  { make: 'Nissan', model: 'Pathfinder', front_psi: 35, rear_psi: 35 },
-  { make: 'Nissan', model: 'Frontier', front_psi: 32, rear_psi: 32 },
-  { make: 'Nissan', model: 'Kicks', front_psi: 33, rear_psi: 33 },
-  // Hyundai / Kia
-  { make: 'Hyundai', model: 'Elantra', front_psi: 33, rear_psi: 33 },
-  { make: 'Hyundai', model: 'Sonata', front_psi: 34, rear_psi: 34 },
-  { make: 'Hyundai', model: 'Tucson', front_psi: 35, rear_psi: 33 },
-  { make: 'Hyundai', model: 'Santa Fe', front_psi: 35, rear_psi: 35 },
-  { make: 'Hyundai', model: 'Kona', front_psi: 33, rear_psi: 33 },
-  { make: 'Hyundai', model: 'Palisade', front_psi: 35, rear_psi: 35 },
-  { make: 'Kia', model: 'Forte', front_psi: 33, rear_psi: 33 },
-  { make: 'Kia', model: 'K5', front_psi: 35, rear_psi: 35 },
-  { make: 'Kia', model: 'Sportage', front_psi: 35, rear_psi: 33 },
-  { make: 'Kia', model: 'Sorento', front_psi: 35, rear_psi: 35 },
-  { make: 'Kia', model: 'Soul', front_psi: 33, rear_psi: 33 },
-  { make: 'Kia', model: 'Telluride', front_psi: 35, rear_psi: 35 },
-  // Ford
-  { make: 'Ford', model: 'F-150', front_psi: 35, rear_psi: 35 },
-  { make: 'Ford', model: 'Escape', front_psi: 35, rear_psi: 35 },
-  { make: 'Ford', model: 'Explorer', front_psi: 35, rear_psi: 35 },
-  { make: 'Ford', model: 'Edge', front_psi: 34, rear_psi: 34 },
-  { make: 'Ford', model: 'Mustang', front_psi: 32, rear_psi: 30 },
-  { make: 'Ford', model: 'Ranger', front_psi: 35, rear_psi: 35 },
-  { make: 'Ford', model: 'Bronco', front_psi: 38, rear_psi: 38 },
-  // Chevrolet / GMC
-  { make: 'Chevrolet', model: 'Silverado', front_psi: 35, rear_psi: 35 },
-  { make: 'Chevrolet', model: 'Equinox', front_psi: 35, rear_psi: 35 },
-  { make: 'Chevrolet', model: 'Malibu', front_psi: 35, rear_psi: 35 },
-  { make: 'Chevrolet', model: 'Traverse', front_psi: 35, rear_psi: 35 },
-  { make: 'Chevrolet', model: 'Tahoe', front_psi: 35, rear_psi: 35 },
-  { make: 'Chevrolet', model: 'Trailblazer', front_psi: 33, rear_psi: 33 },
-  { make: 'GMC', model: 'Sierra', front_psi: 35, rear_psi: 35 },
-  { make: 'GMC', model: 'Terrain', front_psi: 35, rear_psi: 35 },
-  { make: 'GMC', model: 'Acadia', front_psi: 35, rear_psi: 35 },
-  { make: 'GMC', model: 'Yukon', front_psi: 35, rear_psi: 35 },
-  // Jeep / Ram / Dodge / Chrysler
-  { make: 'Jeep', model: 'Wrangler', front_psi: 37, rear_psi: 37 },
-  { make: 'Jeep', model: 'Grand Cherokee', front_psi: 36, rear_psi: 36 },
-  { make: 'Jeep', model: 'Cherokee', front_psi: 34, rear_psi: 34 },
-  { make: 'Jeep', model: 'Compass', front_psi: 33, rear_psi: 33 },
-  { make: 'Jeep', model: 'Gladiator', front_psi: 37, rear_psi: 37 },
-  { make: 'Ram', model: '1500', front_psi: 35, rear_psi: 35 },
-  { make: 'Dodge', model: 'Charger', front_psi: 35, rear_psi: 32 },
-  { make: 'Dodge', model: 'Durango', front_psi: 36, rear_psi: 36 },
-  { make: 'Chrysler', model: 'Pacifica', front_psi: 36, rear_psi: 36 },
-  // Subaru
-  { make: 'Subaru', model: 'Outback', front_psi: 35, rear_psi: 33 },
-  { make: 'Subaru', model: 'Forester', front_psi: 32, rear_psi: 30 },
-  { make: 'Subaru', model: 'Crosstrek', front_psi: 33, rear_psi: 32 },
-  { make: 'Subaru', model: 'Impreza', front_psi: 33, rear_psi: 32 },
-  { make: 'Subaru', model: 'Ascent', front_psi: 35, rear_psi: 35 },
-  // Mazda / VW
-  { make: 'Mazda', model: 'CX-5', front_psi: 34, rear_psi: 34 },
-  { make: 'Mazda', model: 'Mazda3', front_psi: 36, rear_psi: 35 },
-  { make: 'Mazda', model: 'CX-9', front_psi: 35, rear_psi: 35 },
-  { make: 'Mazda', model: 'CX-30', front_psi: 34, rear_psi: 34 },
-  { make: 'Volkswagen', model: 'Jetta', front_psi: 36, rear_psi: 36 },
-  { make: 'Volkswagen', model: 'Tiguan', front_psi: 33, rear_psi: 36 },
-  { make: 'Volkswagen', model: 'Atlas', front_psi: 38, rear_psi: 41 },
-  // Tesla / Lexus
-  { make: 'Tesla', model: 'Model 3', front_psi: 42, rear_psi: 42 },
-  { make: 'Tesla', model: 'Model Y', front_psi: 42, rear_psi: 42 },
-  { make: 'Tesla', model: 'Model S', front_psi: 42, rear_psi: 42 },
-  { make: 'Tesla', model: 'Model X', front_psi: 40, rear_psi: 40 },
-  { make: 'Lexus', model: 'RX', front_psi: 33, rear_psi: 33 },
-  { make: 'Lexus', model: 'ES', front_psi: 35, rear_psi: 35 },
-  { make: 'Lexus', model: 'NX', front_psi: 33, rear_psi: 33 },
-];
+// Door-jamb PSI defaults live in the shared vehicle-psi.js table (single source
+// of truth for admin + worker). Loaded via <script src="vehicle-psi.js"> before
+// this file.
+const fallbackPsiGuides = (typeof window !== 'undefined' && window.SF && window.SF.FALLBACK_PSI_GUIDES) || [];
 
 function normalizeVehicleText(value) {
   return String(value || '').trim().toLowerCase();

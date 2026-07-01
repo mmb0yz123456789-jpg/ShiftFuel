@@ -22,10 +22,12 @@
     <link rel="stylesheet" href="styles.css">
     <link rel="stylesheet" href="layout-width-polish.css">
     <link rel="stylesheet" href="mobile-polish.css">
+    <link rel="stylesheet" href="pwa-app.css" data-pwa-app="1">
+    <script defer src="pwa-app.js" data-pwa-app="1"></script>
   </head>
   <body class="landing-page customer-account-page">
     <header class="site-header landing-header">
-      <a class="logo" href="index.html" aria-label="ShiftFuel Concierge home">
+      <a class="logo" href="/account" aria-label="ShiftFuel Concierge app home">
         <span class="logo-mark"><img src="icon-main.svg" alt="" aria-hidden="true"></span>
         <span>ShiftFuel Concierge</span>
       </a>
@@ -109,7 +111,7 @@
                     Email address
                     <input name="email" type="email" autocomplete="email" placeholder="you@example.com" required>
                   </label>
-                  <button class="button primary" type="submit">Open My Account</button>
+                  <button class="button primary" type="submit">Sign In</button>
                   <p class="form-status" data-customer-account-status></p>
                 </form>
               </div>
@@ -138,9 +140,29 @@
                   <p class="form-status" data-customer-create-status></p>
                 </form>
               </div>
+
+              <div class="customer-pwa-guest-actions" aria-label="Guest access">
+                <div class="customer-pwa-divider" aria-hidden="true"><span>or</span></div>
+                <a class="customer-pwa-guest-primary" href="/book#booking-flow">Continue as Guest</a>
+                <a class="customer-pwa-guest-secondary" href="/track#track-form">Track Without Logging In</a>
+              </div>
             </section>
           </aside>
         </div>
+
+        <aside class="customer-pwa-security-note" aria-label="Account security">
+          <span class="customer-pwa-security-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+              <rect x="5" y="10" width="14" height="10" rx="2"/>
+              <path d="M8 10V7a4 4 0 0 1 8 0v3"/>
+              <path d="M12 14v2"/>
+            </svg>
+          </span>
+          <span>
+            <strong>Secure account access</strong>
+            <span>Your information is encrypted and always protected.</span>
+          </span>
+        </aside>
       </section>
 
       <section class="customer-dashboard" data-customer-dashboard hidden aria-label="My Account dashboard">
@@ -151,7 +173,7 @@
             <p class="customer-dashboard-subtitle">Book a saved vehicle, track active services, or review your recent requests.</p>
           </div>
           <div class="customer-dashboard-actions">
-            <a class="button primary" href="returning.html#booking-flow">Book saved vehicle</a>
+            <a class="button primary" href="/book#booking-flow">Book saved vehicle</a>
             <a class="button secondary" href="#account-active-services">Track current service</a>
             <a class="button secondary" href="/account/settings#vehicles">Manage vehicles &amp; addresses</a>
             <a class="button secondary" href="/account/settings">Account settings</a>

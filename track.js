@@ -91,23 +91,12 @@ function formatPhoneForTracking(value) {
 
 // Unified terminal/closed status list — keep in sync with admin.js, worker.js,
 // and the SQL terminal-status list in supabase-production-rls-lockdown.sql.
-const BOOKING_STATUSES = ["new", "assigned", "en_route", "in_service", "returning", "completed", "cancelled"];
+// Booking-status logic lives in shared-status.js (loaded before this file).
+const BOOKING_STATUSES = window.SF.BOOKING_STATUSES;
+const canonicalBookingStatus = window.SF.canonicalBookingStatus;
 
-function canonicalBookingStatus(status) {
-  const value = String(status || "new").toLowerCase();
-  if (BOOKING_STATUSES.includes(value)) return value;
-  if (["pending", "request_received", "pending_customer_info"].includes(value)) return "new";
-  if (["accepted", "key_received"].includes(value)) return "assigned";
-  if (["vehicle_picked_up", "pickup_vehicle_photo_uploaded", "pickup_odometer_photo_uploaded", "pickup_fuel_gauge_photo_uploaded"].includes(value)) return "en_route";
-  if (["in_progress", "service_in_progress", "fueling_in_progress", "car_wash_in_progress", "partial_service_complete", "fueling_complete", "car_wash_complete", "fuel_receipt_uploaded", "wash_receipt_uploaded", "service_complete", "receipts_recorded", "inspection_needed", "inspection_recorded", "payment_issue", "authorization_too_low", "pending_customer_payment"].includes(value)) return "in_service";
-  if (["returned_location_pending", "return_location_recorded", "return_photos_needed", "vehicle_returned", "final_payment_processed", "awaiting_key_return", "return_requested", "customer_return_requested"].includes(value)) return "returning";
-  if (["complete", "keys_returned", "finalized"].includes(value)) return "completed";
-  if (["denied", "customer_canceled", "canceled", "cancelled_pending_key_return", "unable_to_complete", "auto_reversed", "closed_no_charge", "canceled_return_completed"].includes(value)) return "cancelled";
-  return "new";
-}
-
-const terminalStatuses = ["completed", "cancelled"];
-const closedStatuses = ["cancelled"];
+const terminalStatuses = window.SF.TERMINAL_STATUSES;
+const closedStatuses = window.SF.CLOSED_STATUSES;
 // cancelled_pending_key_return is deliberately NOT terminal/closed — the
 // request stays in the in-progress section until the worker confirms the
 // key/vehicle has been returned (status then flips to "cancelled").
@@ -1693,7 +1682,7 @@ const FUEL_ESTIMATE_RANGES = [
   { value: '30', label: '25+ gallons',         gallons: 30 },
 ];
 
-// ── Vehicle data (mirrors script.js for completion form dropdowns) ────────────
+// ── Vehicle data for completion form dropdowns ────────────────────────────────
 const CB_POPULAR_MAKES = ['Chevrolet','Ford','Honda','Hyundai','Jeep','Kia','Nissan','Subaru','Tesla','Toyota'];
 const CB_OTHER_MAKES   = ['Acura','Alfa Romeo','Audi','BMW','Buick','Cadillac','Chrysler','Dodge','Fiat','Genesis','GMC','Infiniti','Jaguar','Land Rover','Lexus','Lincoln','Mazda','Mercedes-Benz','Mini','Mitsubishi','Porsche','Ram','Volkswagen','Volvo'];
 const CB_FALLBACK_MODELS = {

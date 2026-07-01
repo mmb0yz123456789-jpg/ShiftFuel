@@ -19,6 +19,8 @@ const historyMount = document.querySelector("[data-service-history]");
 const promosMount = document.querySelector("[data-customer-promos]");
 const accountSummary = document.querySelector("[data-customer-account-summary]");
 const greeting = document.querySelector("[data-customer-greeting]");
+const accountIntroTitle = document.querySelector("#customer-account-title");
+const accountIntroCopy = document.querySelector(".customer-account-intro p:not(.customer-dashboard-kicker)");
 let activeAccountSession = null;
 let activeAccountData = { requests: [], addresses: [], vehicles: [] };
 
@@ -149,16 +151,20 @@ function switchAccountMode(mode = "login") {
 
 // The login/create form is collapsed by default so first-time customers see the
 // guest actions first. Reveal it only when they tap "Log In or Create Account".
-function openAccountForm(mode) {
+function openAccountForm(mode, options = {}) {
+  const shouldFocus = options.focus !== false;
+  const shouldScroll = options.scroll !== false;
   if (accountFormPanel) accountFormPanel.hidden = false;
   if (accountBenefitsCard) accountBenefitsCard.hidden = true;
   accountOpenButtons.forEach((button) => button.setAttribute("aria-expanded", "true"));
   if (mode) switchAccountMode(mode);
-  accountFormPanel?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  if (shouldScroll) accountFormPanel?.scrollIntoView({ behavior: "smooth", block: "nearest" });
   const firstInput = accountFormPanel?.querySelector(".customer-account-mode-panel.is-active input");
-  window.setTimeout(() => {
-    try { firstInput?.focus({ preventScroll: true }); } catch (_) { /* focus is best-effort */ }
-  }, 80);
+  if (shouldFocus) {
+    window.setTimeout(() => {
+      try { firstInput?.focus({ preventScroll: true }); } catch (_) { /* focus is best-effort */ }
+    }, 80);
+  }
 }
 
 function closeAccountForm() {
@@ -252,7 +258,7 @@ function requestCard(request, type = "active") {
   const vehicle = [request.vehicle_year, request.vehicle_make, request.vehicle_model].filter(Boolean).join(" ");
   const service = request.service_label || request.service_type || "ShiftFuel service";
   const trackHref = `/track?request=${encodeURIComponent(publicNumber(request.id))}`;
-  const repeatHref = `returning.html?repeat=${encodeURIComponent(publicNumber(request.id))}#booking-flow`;
+  const repeatHref = `/book?repeat=${encodeURIComponent(publicNumber(request.id))}#booking-flow`;
   return `
     <article class="customer-request-card customer-request-card-${type}">
       <div>
@@ -279,7 +285,7 @@ function vehicleCard(vehicle) {
       <span>${vehicle.license_plate ? `Plate: ${escapeHtml(vehicle.license_plate)}` : "Plate not saved"}</span>
       ${vehicle.fuel_type ? `<span>Fuel: ${escapeHtml(vehicle.fuel_type)}</span>` : ""}
       <div class="customer-card-actions">
-        <a class="button secondary" href="returning.html#booking-flow">Book this vehicle</a>
+        <a class="button secondary" href="/book#booking-flow">Book this vehicle</a>
         <button class="button secondary" type="button" data-edit-vehicle="${escapeHtml(vehicle.id)}">Edit</button>
         <button class="button secondary" type="button" data-delete-vehicle="${escapeHtml(vehicle.id)}">Delete</button>
       </div>
@@ -297,7 +303,7 @@ function addressCard(address) {
       ${address.parking_location ? `<span>Parking: ${escapeHtml(address.parking_location)}</span>` : ""}
       ${address.key_handoff_details ? `<span>Keys: ${escapeHtml(address.key_handoff_details)}</span>` : ""}
       <div class="customer-card-actions">
-        <a class="button secondary" href="returning.html#booking-flow">Use this address</a>
+        <a class="button secondary" href="/book#booking-flow">Use this address</a>
         <button class="button secondary" type="button" data-edit-address="${escapeHtml(address.id)}">Edit</button>
         <button class="button secondary" type="button" data-delete-address="${escapeHtml(address.id)}">Delete</button>
       </div>
@@ -318,7 +324,7 @@ function promoCard(promo) {
       <strong>${escapeHtml(promo.name || code)}</strong>
       <span>${escapeHtml(promo.description || promoDiscountLabel(promo))}</span>
       <span class="customer-promo-code">${escapeHtml(code)} - ${escapeHtml(promoDiscountLabel(promo))}</span>
-      <a class="button secondary" href="returning.html?promo=${encodeURIComponent(code)}#booking-flow">Book with this promo</a>
+      <a class="button secondary" href="/book?promo=${encodeURIComponent(code)}#booking-flow">Book with this promo</a>
     </article>
   `;
 }
@@ -374,7 +380,7 @@ function renderAccount(session, data, promos = []) {
   renderStats(active, history, data.addresses, data.vehicles);
   activeMount.innerHTML = active.length
     ? active.map((request) => requestCard(request, "active")).join("")
-    : emptyCard("No active services right now.", `<a class="button primary" href="returning.html#booking-flow">Book a saved vehicle</a>`);
+    : emptyCard("No active services right now.", `<a class="button primary" href="/book#booking-flow">Book a saved vehicle</a>`);
   vehiclesMount.innerHTML = data.vehicles.length
     ? data.vehicles.map(vehicleCard).join("")
     : emptyCard("No saved vehicles yet. Your next completed booking will save one for faster future booking.");
@@ -390,7 +396,7 @@ function renderAccount(session, data, promos = []) {
       <article class="customer-data-card">
         <strong>${requests.length ? "Book again with saved details" : "Ready to book"}</strong>
         <span>${requests.length ? "Use your returning customer account to reuse saved vehicles and addresses on the next booking." : "Start a new booking and enter any promo code during checkout."}</span>
-        <a class="button secondary" href="${requests.length ? "returning.html#booking-flow" : "/book#booking-flow"}">${requests.length ? "Book again" : "Book service"}</a>
+        <a class="button secondary" href="/book#booking-flow">${requests.length ? "Book again" : "Book service"}</a>
       </article>
       <article class="customer-data-card">
         <strong>Promos</strong>
@@ -555,7 +561,7 @@ loginForm?.addEventListener("submit", async (event) => {
   } finally {
     if (button) {
       button.disabled = false;
-      button.textContent = "Open My Account";
+      button.textContent = "Sign In";
     }
   }
 });
@@ -618,6 +624,17 @@ document.querySelector("[data-customer-sign-out]")?.addEventListener("click", ()
   createForm?.reset();
   switchAccountMode("login");
   closeAccountForm();
+  const standalone = window.SF_MODE?.standalone
+    || (window.matchMedia && window.matchMedia("(display-mode: standalone)").matches)
+    || window.navigator.standalone === true;
+  const compact = window.SF_MODE?.compact
+    || !window.matchMedia
+    || window.matchMedia("(max-width: 760px)").matches;
+  if (standalone && compact) {
+    if (accountIntroTitle) accountIntroTitle.textContent = "Welcome back";
+    if (accountIntroCopy) accountIntroCopy.textContent = "Sign in to access your saved vehicles, addresses, and bookings.";
+    openAccountForm("login", { focus: false, scroll: false });
+  }
   setStatus("warning", "Signed out on this device.");
 });
 
@@ -680,6 +697,18 @@ dashboard?.addEventListener("click", async (event) => {
   openFormFromHash(window.location.hash);
   if (window.location.hash !== "#create") switchAccountMode("login");
   window.addEventListener("hashchange", () => openFormFromHash(window.location.hash));
+
+  const standalone = window.SF_MODE?.standalone
+    || (window.matchMedia && window.matchMedia("(display-mode: standalone)").matches)
+    || window.navigator.standalone === true;
+  const compact = window.SF_MODE?.compact
+    || !window.matchMedia
+    || window.matchMedia("(max-width: 760px)").matches;
+  if (standalone && compact && !readSession()) {
+    if (accountIntroTitle) accountIntroTitle.textContent = "Welcome back";
+    if (accountIntroCopy) accountIntroCopy.textContent = "Sign in to access your saved vehicles, addresses, and bookings.";
+    openAccountForm("login", { focus: false, scroll: false });
+  }
 
   const session = readSession();
   if (!session || !loginForm) return;

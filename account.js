@@ -621,7 +621,7 @@
       signOutButton.addEventListener('click', () => {
         if (confirm('Are you sure you want to sign out?')) {
           clearCustomerAccountSession();
-          window.location.href = 'index.html';
+          window.location.href = '/account';
         }
       });
     }
