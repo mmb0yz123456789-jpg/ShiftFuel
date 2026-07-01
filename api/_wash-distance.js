@@ -31,7 +31,7 @@ const MAPBOX_TOKEN =
   process.env.MAPBOX_TOKEN ||
   process.env.MAPBOX_ACCESS_TOKEN ||
   process.env.SHIFTFUEL_MAPBOX_TOKEN ||
-  'pk.eyJ1IjoibW1iMHl6MTIiLCJhIjoiY21xcXZiaGU4MGxubjJvcHpidnhidG55cyJ9.Ciss2gT76eC3Zt92_qhtGA';
+  '';
 const MAPBOX_REFERER = process.env.MAPBOX_REFERER || 'https://shift-fuel.vercel.app/';
 const MAPBOX_FETCH_HEADERS = { Referer: MAPBOX_REFERER };
 

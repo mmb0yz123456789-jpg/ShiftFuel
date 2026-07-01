@@ -47,7 +47,7 @@ const MAPBOX_TOKEN =
   process.env.MAPBOX_TOKEN ||
   process.env.MAPBOX_ACCESS_TOKEN ||
   process.env.SHIFTFUEL_MAPBOX_TOKEN ||
-  'pk.eyJ1IjoibW1iMHl6MTIiLCJhIjoiY21xcXZiaGU4MGxubjJvcHpidnhidG55cyJ9.Ciss2gT76eC3Zt92_qhtGA';
+  '';
 
 // The public token is URL-restricted to our domain; server calls send no browser
 // Referer, so set it explicitly (same approach as api/address.js).

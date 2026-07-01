@@ -5,7 +5,7 @@
 // Mapbox GL + Draw are loaded lazily the first time the editor is opened.
 
 (function () {
-  const SA_TOKEN = 'pk.eyJ1IjoibW1iMHl6MTIiLCJhIjoiY21xcXZiaGU4MGxubjJvcHpidnhidG55cyJ9.Ciss2gT76eC3Zt92_qhtGA';
+  const SA_TOKEN = window.SHIFTFUEL_CONFIG?.mapboxPublicToken || window.SHIFTFUEL_MAPBOX_TOKEN || '';
   const DEFAULT_ANCHOR = { lat: 39.6789, lon: -75.6653 };
 
   const supa = () => window.ShiftFuelSupabase;
