@@ -6070,39 +6070,19 @@ requestList.addEventListener('input', (event) => {
 });
 
 showAll?.addEventListener('click', () => {
-  setActiveStatCard(null);
-  adminState.currentView = 'all';
-  adminState.showAllTime = false;
-  switchAdminTab('requests');
-  renderRequests();
+  openAdminRequestQueueView('all');
 });
 showOpen?.addEventListener('click', () => {
-  setActiveStatCard(null);
-  adminState.currentView = 'open';
-  adminState.showAllTime = false;
-  switchAdminTab('requests');
-  renderRequests();
+  openAdminRequestQueueView('open');
 });
 showInProgress?.addEventListener('click', () => {
-  setActiveStatCard(null);
-  adminState.currentView = 'in_progress';
-  adminState.showAllTime = false;
-  switchAdminTab('requests');
-  renderRequests();
+  openAdminRequestQueueView('in_progress');
 });
 showComplete?.addEventListener('click', () => {
-  setActiveStatCard(null);
-  adminState.currentView = 'completed_today';
-  adminState.showAllTime = false;
-  switchAdminTab('requests');
-  renderRequests();
+  openAdminRequestQueueView('completed_today');
 });
 showDenied?.addEventListener('click', () => {
-  setActiveStatCard(null);
-  adminState.currentView = 'cancelled';
-  adminState.showAllTime = false;
-  switchAdminTab('requests');
-  renderRequests();
+  openAdminRequestQueueView('cancelled');
 });
 showReviews?.addEventListener('click', () => switchAdminTab('reviews'));
 showApplicants?.addEventListener('click', () => switchAdminTab('applicants'));
@@ -6763,11 +6743,7 @@ function openAdminMobileDestination(page, view) {
   const destination = page || 'dashboard';
   switchPageTab(destination);
   if (destination === 'requests' && view) {
-    adminState.currentView = normalizeRequestFilter(view);
-    adminState.showAllTime = false;
-    setActiveStatCard(null);
-    switchAdminTab('requests');
-    renderRequests();
+    openAdminRequestQueueView(view, { cardId: null, scroll: true });
   }
   syncAdminMobileNav(destination, adminState.currentView);
 }
@@ -6881,6 +6857,21 @@ adminSupportRefreshBtn?.addEventListener('click', () => refreshAdminView(adminSu
 
 let activeStatCard = null;
 
+function scrollAdminQueueIntoView() {
+  const queueCard = document.querySelector('.admin-queue-section .admin-queue-card');
+  (queueCard || requestList)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function openAdminRequestQueueView(view, options = {}) {
+  const { cardId = null, scroll = false } = options;
+  adminState.currentView = normalizeRequestFilter(view);
+  adminState.showAllTime = false;
+  setActiveStatCard(cardId);
+  switchAdminTab('requests');
+  renderRequests();
+  if (scroll) scrollAdminQueueIntoView();
+}
+
 function setActiveStatCard(cardId) {
   document.querySelectorAll('.admin-stat-card--clickable').forEach((c) => c.classList.remove('stat-card--active'));
   if (cardId) document.getElementById(`stat-card-${cardId}`)?.classList.add('stat-card--active');
@@ -6899,11 +6890,7 @@ function setActiveStatCard(cardId) {
 }
 
 function statCardNav(view, cardId) {
-  setActiveStatCard(cardId);
-  adminState.currentView = normalizeRequestFilter(view);
-  if (adminState.currentView === 'completed_today') adminState.showAllTime = false;
-  renderRequests();
-  requestList?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  openAdminRequestQueueView(view, { cardId, scroll: true });
 }
 
 function openWorkersPanel() {

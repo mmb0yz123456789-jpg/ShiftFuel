@@ -114,6 +114,23 @@
   box-shadow: 0 2px 4px rgba(11, 35, 33, 0.05), 0 16px 38px rgba(11, 35, 33, 0.1);
 }
 
+.admin-stat-card--clickable.stat-card--active {
+  border-color: #075f3f;
+  background: linear-gradient(135deg, #075f3f 0%, #0b7a4f 100%);
+  color: #fff;
+  box-shadow: 0 14px 34px rgba(7, 95, 63, 0.24);
+}
+
+.admin-stat-card--clickable.stat-card--active .admin-stat-label,
+.admin-stat-card--clickable.stat-card--active .admin-stat-value {
+  color: #fff;
+}
+
+.admin-stat-card--clickable.stat-card--active .admin-stat-icon {
+  background: rgba(255, 255, 255, 0.16);
+  color: #fff;
+}
+
 /* ---- Sidebar cards: shared surface polish --------------- */
 .admin-side-card {
   border-radius: 16px;

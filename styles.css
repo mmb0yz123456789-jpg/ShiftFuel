@@ -11812,3 +11812,36 @@ display: block;
     margin-top: 18px;
   }
 }
+
+/* ── Customer dashboard: top-right identity avatar + account menu (Phase 1) ── */
+.customer-dashboard-header { flex-direction: row; align-items: flex-start; }
+.customer-dashboard-heading { flex: 1 1 auto; min-width: 0; }
+.customer-identity { position: relative; flex: 0 0 auto; }
+.customer-avatar-btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 4px 8px 4px 4px; border: 0; border-radius: 999px;
+  background: transparent; color: inherit; cursor: pointer;
+}
+.customer-avatar-btn:hover { background: rgba(125,125,125,.12); }
+.customer-avatar {
+  display: grid; place-items: center; width: 44px; height: 44px;
+  border-radius: 50%; background: linear-gradient(135deg, #14904c, #0b6b3d);
+  color: #fff; font-weight: 800; font-size: 1rem; letter-spacing: .02em;
+  box-shadow: 0 2px 8px rgba(10,116,63,.3);
+}
+.customer-avatar-chevron { width: 18px; height: 18px; opacity: .75; }
+.customer-account-menu {
+  position: absolute; top: calc(100% + 8px); right: 0; z-index: 60;
+  min-width: 224px; padding: 8px; display: grid; gap: 2px;
+  background: #fff; color: #0f2a28; border-radius: 14px;
+  border: 1px solid rgba(4,26,24,.08); box-shadow: 0 16px 40px rgba(4,26,24,.28);
+}
+.customer-account-menu[hidden] { display: none; }
+.customer-account-menu-item {
+  display: block; width: 100%; text-align: left; box-sizing: border-box;
+  padding: 12px; border: 0; border-radius: 9px; background: transparent;
+  color: #0f2a28; font: inherit; font-weight: 700; text-decoration: none; cursor: pointer;
+}
+.customer-account-menu-item:hover { background: #eef4f2; }
+.customer-account-menu-signout { color: #b42318; }
+.customer-dashboard-quickactions { display: flex; flex-wrap: wrap; gap: 10px; margin: 14px 0 4px; }

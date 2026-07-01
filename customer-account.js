@@ -19,10 +19,19 @@ const historyMount = document.querySelector("[data-service-history]");
 const promosMount = document.querySelector("[data-customer-promos]");
 const accountSummary = document.querySelector("[data-customer-account-summary]");
 const greeting = document.querySelector("[data-customer-greeting]");
+const customerInitialsEl = document.querySelector("[data-customer-initials]");
 const accountIntroTitle = document.querySelector("#customer-account-title");
 const accountIntroCopy = document.querySelector(".customer-account-intro p:not(.customer-dashboard-kicker)");
 let activeAccountSession = null;
 let activeAccountData = { requests: [], addresses: [], vehicles: [] };
+
+// Initials for the signed-in avatar (top-right account menu), mirroring the admin pattern.
+function customerInitials(fullName) {
+  const parts = String(fullName || "").trim().split(/\s+/).filter(Boolean);
+  if (!parts.length) return "·";
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+}
 
 const terminalStatuses = new Set([
   "completed",
@@ -355,6 +364,7 @@ function renderAccount(session, data, promos = []) {
     : "Your account is linked to saved details. Enter promo codes during booking to see if you qualify.";
 
   if (greeting) greeting.textContent = name ? `Welcome back, ${name.split(/\s+/)[0]}` : "Welcome back";
+  if (customerInitialsEl) customerInitialsEl.textContent = customerInitials(name);
   if (accountSummary) {
     accountSummary.innerHTML = `
       <article class="customer-data-card customer-account-card">
@@ -685,6 +695,28 @@ dashboard?.addEventListener("click", async (event) => {
     button.addEventListener("click", () => closeAccountForm());
   });
   bindEmailLowercase();
+
+  // Signed-in account menu — the top-right avatar dropdown.
+  const accountMenuToggle = document.querySelector("[data-customer-menu-toggle]");
+  const accountMenu = document.querySelector("[data-customer-menu]");
+  if (accountMenuToggle && accountMenu) {
+    const closeAccountMenu = () => {
+      accountMenu.hidden = true;
+      accountMenuToggle.setAttribute("aria-expanded", "false");
+    };
+    accountMenuToggle.addEventListener("click", (event) => {
+      event.stopPropagation();
+      const willOpen = accountMenu.hidden;
+      accountMenu.hidden = !willOpen;
+      accountMenuToggle.setAttribute("aria-expanded", String(willOpen));
+    });
+    accountMenu.addEventListener("click", (event) => {
+      if (event.target.closest("[role='menuitem']")) closeAccountMenu();
+    });
+    document.addEventListener("click", (event) => {
+      if (!accountMenu.hidden && !event.target.closest("[data-customer-identity]")) closeAccountMenu();
+    });
+  }
 
   function scrollAccountHashIntoView() {
     const hash = window.location.hash;

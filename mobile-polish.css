@@ -1865,9 +1865,17 @@
   }
 
   body.admin-portal-page .admin-request-tabs .summary-button.active {
-    border-color: var(--admin-green, #1f9d57);
-    background: var(--admin-mint, #eaf4ef);
-    color: var(--admin-green, #1f9d57);
+    border-color: #075f3f;
+    background: #075f3f;
+    color: #fff;
+    box-shadow: 0 8px 18px rgba(7, 95, 63, 0.22);
+  }
+
+  body.admin-portal-page .app-tabbar .app-tab.active,
+  body.admin-portal-page .app-tabbar .app-tab.is-active {
+    background: #075f3f;
+    color: #fff;
+    box-shadow: 0 8px 18px rgba(7, 95, 63, 0.22);
   }
 
   body.admin-portal-page .admin-date-range-wrap,

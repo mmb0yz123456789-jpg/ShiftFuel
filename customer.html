@@ -167,18 +167,26 @@
 
       <section class="customer-dashboard" data-customer-dashboard hidden aria-label="My Account dashboard">
         <div class="customer-dashboard-header">
-          <div>
+          <div class="customer-dashboard-heading">
             <p class="customer-dashboard-kicker">My Account</p>
             <h2 data-customer-greeting>Your dashboard</h2>
-            <p class="customer-dashboard-subtitle">Book a saved vehicle, track active services, or review your recent requests.</p>
+            <p class="customer-dashboard-subtitle">Here's what's happening with your services.</p>
           </div>
-          <div class="customer-dashboard-actions">
-            <a class="button primary" href="/book#booking-flow">Book saved vehicle</a>
-            <a class="button secondary" href="#account-active-services">Track current service</a>
-            <a class="button secondary" href="/account#account-saved-details">Manage vehicles &amp; addresses</a>
-            <a class="button secondary" href="/account#account-saved-details">Account settings</a>
-            <button class="button secondary" type="button" data-customer-sign-out>Sign out</button>
+          <div class="customer-identity" data-customer-identity>
+            <button class="customer-avatar-btn" type="button" data-customer-menu-toggle aria-haspopup="true" aria-expanded="false" aria-label="Account menu">
+              <span class="customer-avatar"><span data-customer-initials>&middot;</span></span>
+              <svg class="customer-avatar-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
+            </button>
+            <div class="customer-account-menu" data-customer-menu hidden role="menu" aria-label="Account menu">
+              <a class="customer-account-menu-item" href="/account#account-saved-details" role="menuitem">Manage vehicles &amp; addresses</a>
+              <a class="customer-account-menu-item" href="/account/settings" role="menuitem">Account settings</a>
+              <button class="customer-account-menu-item customer-account-menu-signout" type="button" data-customer-sign-out role="menuitem">Sign out</button>
+            </div>
           </div>
+        </div>
+        <div class="customer-dashboard-quickactions">
+          <a class="button primary" href="/book#booking-flow">Book a Service</a>
+          <a class="button secondary" href="#account-active-services">Track current service</a>
         </div>
         <div class="customer-dashboard-summary" data-customer-account-summary></div>
         <div class="customer-dashboard-stats" data-customer-stats></div>
@@ -221,7 +229,7 @@
           </section>
           <section class="customer-dashboard-section" id="account-history">
             <div class="customer-section-heading">
-              <h3>Service history</h3>
+              <h3>Recent activity</h3>
               <span data-history-count>0</span>
             </div>
             <div class="customer-card-list" data-service-history></div>
