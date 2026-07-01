@@ -36,7 +36,40 @@
       });
     }
 
+    function syncCustomerTabbarActive() {
+      if (!isCustomerSurface()) return;
+      const tabs = Array.from(document.querySelectorAll('.customer-tabbar .app-tab'));
+      if (!tabs.length) return;
+      const currentPath = window.location.pathname.replace(/\/$/, '') || '/';
+      const currentHash = window.location.hash || '';
+      let activeTab = null;
+
+      if (currentPath === '/account' && currentHash === '#account-saved-details') {
+        activeTab = tabs.find((tab) => (tab.getAttribute('href') || '') === '/account#account-saved-details');
+      }
+      if (!activeTab) {
+        activeTab = tabs.find((tab) => {
+          const href = tab.getAttribute('href') || '';
+          const url = new URL(href, window.location.origin);
+          const tabPath = url.pathname.replace(/\/$/, '') || '/';
+          if (currentPath !== tabPath) return false;
+          if (currentPath === '/account') return !url.hash || url.hash === currentHash;
+          return true;
+        });
+      }
+
+      tabs.forEach((tab) => {
+        const isActive = tab === activeTab;
+        tab.classList.toggle('is-active', isActive);
+        if (isActive) tab.setAttribute('aria-current', 'page');
+        else tab.removeAttribute('aria-current');
+      });
+    }
+
     keepCustomerLinksInApp();
+    syncCustomerTabbarActive();
+    window.addEventListener('hashchange', syncCustomerTabbarActive);
+    window.addEventListener('popstate', syncCustomerTabbarActive);
 
     const launcher = document.querySelector('[data-sf-applauncher]');
     if (!launcher) return; // page has no app-home → nothing to do
@@ -85,9 +118,13 @@
     });
 
     // A Home affordance in the app header re-opens the launcher (standalone only).
-    // Injected so we don't have to touch three different header markups.
+    // Injected so we don't have to touch three different header markups. Staff
+    // portals (worker/admin) opt out — they open straight to their dashboard with
+    // no header home button.
+    const isStaffPortal = body.classList.contains('worker-portal-page')
+      || body.classList.contains('admin-portal-page');
     const header = document.querySelector('header.portal-header, header.site-header');
-    if (header && !header.querySelector('.sf-apphome-btn')) {
+    if (header && !isStaffPortal && !header.querySelector('.sf-apphome-btn')) {
       const btn = document.createElement('button');
       btn.type = 'button';
       btn.className = 'sf-apphome-btn';

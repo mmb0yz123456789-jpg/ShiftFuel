@@ -153,9 +153,7 @@
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="https://js.stripe.com/v3/"></script>
   <script>window.SHIFTFUEL_STRIPE_PUBLISHABLE_KEY = window.SHIFTFUEL_CONFIG?.stripePublishableKey || window.SHIFTFUEL_STRIPE_PUBLISHABLE_KEY || '';</script>
-  <!-- Mapbox public token for the live-tracking map. Leave empty to fall back to
-       free OpenStreetMap tiles. Get a token at https://account.mapbox.com/access-tokens/
-       and restrict it to your domain (URL allowlist) before launch. -->
+  <!-- Mapbox public token for the live-tracking map, injected from runtime-config (MAPBOX_PUBLIC_TOKEN); falls back to free OpenStreetMap tiles if unset, and is URL-restricted to our domains in the Mapbox dashboard. -->
   <script>window.SHIFTFUEL_MAPBOX_TOKEN = window.SHIFTFUEL_CONFIG?.mapboxPublicToken || window.SHIFTFUEL_MAPBOX_TOKEN || '';</script>
   <script src="supabase-client.js"></script>
   <script src="photo-utils.js"></script>
@@ -180,5 +178,6 @@
   </script>
   <script defer src="/_vercel/insights/script.js"></script>
   <script defer src="/_vercel/speed-insights/script.js"></script>
+  <script src="pwa-register.js"></script>
 </body>
 </html>

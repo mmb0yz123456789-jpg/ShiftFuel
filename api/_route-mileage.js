@@ -14,8 +14,8 @@
  * driven_matched_at), so it's one Mapbox call per completed job.
  */
 
-// Public Mapbox token — same env-first fallback as api/address.js. Map Matching
-// works with a public pk.* token.
+// Public Mapbox token — same env-first chain as api/address.js (from env, no
+// hardcoded fallback). Map Matching works with a public pk.* token.
 const MAPBOX_TOKEN =
   process.env.MAPBOX_TOKEN ||
   process.env.MAPBOX_ACCESS_TOKEN ||

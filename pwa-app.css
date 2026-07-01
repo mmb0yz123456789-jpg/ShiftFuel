@@ -436,7 +436,7 @@ html.sf-standalone.sf-compact body.customer-account-page .customer-account-reass
 .customer-pwa-guest-actions,
 .customer-pwa-security-note { display: none; }
 
-html.sf-standalone.sf-compact body.customer-account-page:not(.customer-account-loaded) {
+html.sf-compact body.customer-account-page:not(.customer-account-loaded) {
   position: relative;
   display: flex;
   flex-direction: column;
@@ -449,7 +449,7 @@ html.sf-standalone.sf-compact body.customer-account-page:not(.customer-account-l
   padding-bottom: env(safe-area-inset-bottom);
 }
 
-html.sf-standalone.sf-compact body.customer-account-page:not(.customer-account-loaded)::before {
+html.sf-compact body.customer-account-page:not(.customer-account-loaded)::before {
   content: "";
   position: fixed;
   inset: 0;
@@ -460,13 +460,13 @@ html.sf-standalone.sf-compact body.customer-account-page:not(.customer-account-l
   opacity: .46;
 }
 
-html.sf-standalone.sf-compact body.customer-account-page:not(.customer-account-loaded) .site-header {
+html.sf-compact body.customer-account-page:not(.customer-account-loaded) .site-header {
   position: relative;
   z-index: 1;
   padding: calc(env(safe-area-inset-top) + 34px) clamp(28px, 8vw, 48px) 18px !important;
 }
 
-html.sf-standalone.sf-compact body.customer-account-page:not(.customer-account-loaded) .site-header .logo {
+html.sf-compact body.customer-account-page:not(.customer-account-loaded) .site-header .logo {
   align-items: center;
   gap: 14px;
   font-size: 1.58rem;
@@ -475,7 +475,7 @@ html.sf-standalone.sf-compact body.customer-account-page:not(.customer-account-l
   letter-spacing: 0;
 }
 
-html.sf-standalone.sf-compact body.customer-account-page:not(.customer-account-loaded) .site-header .logo-mark {
+html.sf-compact body.customer-account-page:not(.customer-account-loaded) .site-header .logo-mark {
   width: 54px;
   height: 54px;
   border-radius: 14px;
@@ -483,16 +483,16 @@ html.sf-standalone.sf-compact body.customer-account-page:not(.customer-account-l
   box-shadow: inset 0 0 0 1px rgba(255,255,255,.24);
 }
 
-html.sf-standalone.sf-compact body.customer-account-page:not(.customer-account-loaded) .sf-apphome-btn,
-html.sf-standalone.sf-compact body.customer-account-page:not(.customer-account-loaded) .customer-account-actions-card,
-html.sf-standalone.sf-compact body.customer-account-page:not(.customer-account-loaded) .customer-account-benefits-card,
-html.sf-standalone.sf-compact body.customer-account-page:not(.customer-account-loaded) .customer-account-panel-copy,
-html.sf-standalone.sf-compact body.customer-account-page:not(.customer-account-loaded) .customer-account-close,
-html.sf-standalone.sf-compact body.customer-account-page:not(.customer-account-loaded) .customer-tabbar {
+html.sf-compact body.customer-account-page:not(.customer-account-loaded) .sf-apphome-btn,
+html.sf-compact body.customer-account-page:not(.customer-account-loaded) .customer-account-actions-card,
+html.sf-compact body.customer-account-page:not(.customer-account-loaded) .customer-account-benefits-card,
+html.sf-compact body.customer-account-page:not(.customer-account-loaded) .customer-account-panel-copy,
+html.sf-compact body.customer-account-page:not(.customer-account-loaded) .customer-account-close,
+html.sf-compact body.customer-account-page:not(.customer-account-loaded) .customer-tabbar {
   display: none !important;
 }
 
-html.sf-standalone.sf-compact body.customer-account-page:not(.customer-account-loaded) .customer-account-shell {
+html.sf-compact body.customer-account-page:not(.customer-account-loaded) .customer-account-shell {
   position: relative;
   z-index: 1;
   flex: 1 0 auto;
@@ -500,20 +500,20 @@ html.sf-standalone.sf-compact body.customer-account-page:not(.customer-account-l
   padding: 34px clamp(24px, 8vw, 48px) 30px;
 }
 
-html.sf-standalone.sf-compact body.customer-account-page:not(.customer-account-loaded) .customer-account-access {
+html.sf-compact body.customer-account-page:not(.customer-account-loaded) .customer-account-access {
   display: flex;
   flex-direction: column;
   gap: 30px;
   min-height: 0;
 }
 
-html.sf-standalone.sf-compact body.customer-account-page:not(.customer-account-loaded) .customer-account-intro {
+html.sf-compact body.customer-account-page:not(.customer-account-loaded) .customer-account-intro {
   max-width: 620px;
   margin: 0;
   text-align: left;
 }
 
-html.sf-standalone.sf-compact body.customer-account-page:not(.customer-account-loaded) .customer-account-intro h1 {
+html.sf-compact body.customer-account-page:not(.customer-account-loaded) .customer-account-intro h1 {
   margin: 0;
   color: #fff;
   font-size: 0;
@@ -521,34 +521,34 @@ html.sf-standalone.sf-compact body.customer-account-page:not(.customer-account-l
   font-weight: 900;
 }
 
-html.sf-standalone.sf-compact body.customer-account-page:not(.customer-account-loaded) .customer-account-intro h1::before {
+html.sf-compact body.customer-account-page:not(.customer-account-loaded) .customer-account-intro h1::before {
   content: attr(data-pwa-title);
   display: block;
   font-size: clamp(3rem, 13vw, 4.8rem);
   line-height: .98;
 }
 
-html.sf-standalone.sf-compact body.customer-account-page:not(.customer-account-loaded) .customer-account-intro p:not(.customer-dashboard-kicker) {
+html.sf-compact body.customer-account-page:not(.customer-account-loaded) .customer-account-intro p:not(.customer-dashboard-kicker) {
   margin: 18px 0 0;
   color: rgba(255,255,255,.76);
   font-size: 0;
   line-height: 1.55;
 }
 
-html.sf-standalone.sf-compact body.customer-account-page:not(.customer-account-loaded) .customer-account-intro p:not(.customer-dashboard-kicker)::before {
+html.sf-compact body.customer-account-page:not(.customer-account-loaded) .customer-account-intro p:not(.customer-dashboard-kicker)::before {
   content: attr(data-pwa-copy);
   display: block;
   font-size: clamp(1.12rem, 5.1vw, 1.8rem);
   line-height: 1.45;
 }
 
-html.sf-standalone.sf-compact body.customer-account-page:not(.customer-account-loaded) .customer-account-access-grid,
-html.sf-standalone.sf-compact body.customer-account-page:not(.customer-account-loaded) .customer-account-side {
+html.sf-compact body.customer-account-page:not(.customer-account-loaded) .customer-account-access-grid,
+html.sf-compact body.customer-account-page:not(.customer-account-loaded) .customer-account-side {
   display: block;
   width: 100%;
 }
 
-html.sf-standalone.sf-compact body.customer-account-page:not(.customer-account-loaded) .customer-account-panel {
+html.sf-compact body.customer-account-page:not(.customer-account-loaded) .customer-account-panel {
   display: flex;
   flex-direction: column;
   gap: 22px;
@@ -563,7 +563,7 @@ html.sf-standalone.sf-compact body.customer-account-page:not(.customer-account-l
   box-shadow: 0 18px 46px rgba(2, 26, 24, .3);
 }
 
-html.sf-standalone.sf-compact body.customer-account-page:not(.customer-account-loaded) .customer-account-tabs {
+html.sf-compact body.customer-account-page:not(.customer-account-loaded) .customer-account-tabs {
   order: 2;
   display: block;
   width: 100%;
@@ -573,11 +573,11 @@ html.sf-standalone.sf-compact body.customer-account-page:not(.customer-account-l
   border: 0;
 }
 
-html.sf-standalone.sf-compact body.customer-account-page:not(.customer-account-loaded) .customer-account-tab[data-account-mode="login"] {
+html.sf-compact body.customer-account-page:not(.customer-account-loaded) .customer-account-tab[data-account-mode="login"] {
   display: none;
 }
 
-html.sf-standalone.sf-compact body.customer-account-page:not(.customer-account-loaded) .customer-account-tab[data-account-mode="create"] {
+html.sf-compact body.customer-account-page:not(.customer-account-loaded) .customer-account-tab[data-account-mode="create"] {
   display: flex;
   align-items: center;
   justify-content: center;
@@ -593,17 +593,17 @@ html.sf-standalone.sf-compact body.customer-account-page:not(.customer-account-l
   font-weight: 900;
 }
 
-html.sf-standalone.sf-compact body.customer-account-page:not(.customer-account-loaded) .customer-account-mode-panel {
+html.sf-compact body.customer-account-page:not(.customer-account-loaded) .customer-account-mode-panel {
   order: 1;
 }
 
-html.sf-standalone.sf-compact body.customer-account-page:not(.customer-account-loaded) .customer-account-form {
+html.sf-compact body.customer-account-page:not(.customer-account-loaded) .customer-account-form {
   display: grid;
   gap: 22px;
   margin: 0;
 }
 
-html.sf-standalone.sf-compact body.customer-account-page:not(.customer-account-loaded) .customer-account-form label {
+html.sf-compact body.customer-account-page:not(.customer-account-loaded) .customer-account-form label {
   display: grid;
   gap: 10px;
   color: #073331;
@@ -611,7 +611,7 @@ html.sf-standalone.sf-compact body.customer-account-page:not(.customer-account-l
   font-weight: 900;
 }
 
-html.sf-standalone.sf-compact body.customer-account-page:not(.customer-account-loaded) .customer-account-form input {
+html.sf-compact body.customer-account-page:not(.customer-account-loaded) .customer-account-form input {
   min-height: 62px;
   border: 1.5px solid #c4cfcd;
   border-radius: 14px;
@@ -623,12 +623,12 @@ html.sf-standalone.sf-compact body.customer-account-page:not(.customer-account-l
   box-shadow: inset 0 1px 1px rgba(5, 35, 34, .04);
 }
 
-html.sf-standalone.sf-compact body.customer-account-page:not(.customer-account-loaded) .customer-account-form input::placeholder {
+html.sf-compact body.customer-account-page:not(.customer-account-loaded) .customer-account-form input::placeholder {
   color: #a4adb2;
   font-weight: 800;
 }
 
-html.sf-standalone.sf-compact body.customer-account-page:not(.customer-account-loaded) .customer-account-form .button.primary {
+html.sf-compact body.customer-account-page:not(.customer-account-loaded) .customer-account-form .button.primary {
   width: 100%;
   min-height: 64px;
   margin-top: 12px;
@@ -641,15 +641,15 @@ html.sf-standalone.sf-compact body.customer-account-page:not(.customer-account-l
   font-weight: 900;
 }
 
-html.sf-standalone.sf-compact body.customer-account-page:not(.customer-account-loaded) .form-status:empty {
+html.sf-compact body.customer-account-page:not(.customer-account-loaded) .form-status:empty {
   display: none;
 }
 
-html.sf-standalone.sf-compact body.customer-account-page:not(.customer-account-loaded) .form-status[data-status="warning"] {
+html.sf-compact body.customer-account-page:not(.customer-account-loaded) .form-status[data-status="warning"] {
   display: none;
 }
 
-html.sf-standalone.sf-compact body.customer-account-page:not(.customer-account-loaded) .customer-pwa-guest-actions {
+html.sf-compact body.customer-account-page:not(.customer-account-loaded) .customer-pwa-guest-actions {
   order: 3;
   display: grid;
   width: 100%;
@@ -657,38 +657,38 @@ html.sf-standalone.sf-compact body.customer-account-page:not(.customer-account-l
   text-align: center;
 }
 
-html.sf-standalone.sf-compact body.customer-account-page:not(.customer-account-loaded) .customer-pwa-divider {
+html.sf-compact body.customer-account-page:not(.customer-account-loaded) .customer-pwa-divider {
   display: flex;
   align-items: center;
   gap: 18px;
   color: #718182;
 }
 
-html.sf-standalone.sf-compact body.customer-account-page:not(.customer-account-loaded) .customer-pwa-divider::before,
-html.sf-standalone.sf-compact body.customer-account-page:not(.customer-account-loaded) .customer-pwa-divider::after {
+html.sf-compact body.customer-account-page:not(.customer-account-loaded) .customer-pwa-divider::before,
+html.sf-compact body.customer-account-page:not(.customer-account-loaded) .customer-pwa-divider::after {
   content: "";
   flex: 1;
   height: 1px;
   background: #d3dddd;
 }
 
-html.sf-standalone.sf-compact body.customer-account-page:not(.customer-account-loaded) .customer-pwa-guest-actions a {
+html.sf-compact body.customer-account-page:not(.customer-account-loaded) .customer-pwa-guest-actions a {
   text-decoration: none;
   font-weight: 900;
 }
 
-html.sf-standalone.sf-compact body.customer-account-page:not(.customer-account-loaded) .customer-pwa-guest-primary {
+html.sf-compact body.customer-account-page:not(.customer-account-loaded) .customer-pwa-guest-primary {
   color: #0b723b;
   font-size: 1.05rem;
 }
 
-html.sf-standalone.sf-compact body.customer-account-page:not(.customer-account-loaded) .customer-pwa-guest-secondary {
+html.sf-compact body.customer-account-page:not(.customer-account-loaded) .customer-pwa-guest-secondary {
   color: #738486;
   font-size: .98rem;
   font-weight: 700 !important;
 }
 
-html.sf-standalone.sf-compact body.customer-account-page:not(.customer-account-loaded) .customer-pwa-security-note {
+html.sf-compact body.customer-account-page:not(.customer-account-loaded) .customer-pwa-security-note {
   display: flex;
   align-items: center;
   gap: 18px;
@@ -697,7 +697,7 @@ html.sf-standalone.sf-compact body.customer-account-page:not(.customer-account-l
   color: rgba(255,255,255,.78);
 }
 
-html.sf-standalone.sf-compact body.customer-account-page:not(.customer-account-loaded) .customer-pwa-security-icon {
+html.sf-compact body.customer-account-page:not(.customer-account-loaded) .customer-pwa-security-icon {
   flex: 0 0 auto;
   display: grid;
   place-items: center;
@@ -708,23 +708,23 @@ html.sf-standalone.sf-compact body.customer-account-page:not(.customer-account-l
   color: #fff;
 }
 
-html.sf-standalone.sf-compact body.customer-account-page:not(.customer-account-loaded) .customer-pwa-security-icon svg {
+html.sf-compact body.customer-account-page:not(.customer-account-loaded) .customer-pwa-security-icon svg {
   width: 28px;
   height: 28px;
 }
 
-html.sf-standalone.sf-compact body.customer-account-page:not(.customer-account-loaded) .customer-pwa-security-note strong,
-html.sf-standalone.sf-compact body.customer-account-page:not(.customer-account-loaded) .customer-pwa-security-note span span {
+html.sf-compact body.customer-account-page:not(.customer-account-loaded) .customer-pwa-security-note strong,
+html.sf-compact body.customer-account-page:not(.customer-account-loaded) .customer-pwa-security-note span span {
   display: block;
 }
 
-html.sf-standalone.sf-compact body.customer-account-page:not(.customer-account-loaded) .customer-pwa-security-note strong {
+html.sf-compact body.customer-account-page:not(.customer-account-loaded) .customer-pwa-security-note strong {
   color: #fff;
   font-size: 1.1rem;
   font-weight: 900;
 }
 
-html.sf-standalone.sf-compact body.customer-account-page:not(.customer-account-loaded) .site-footer {
+html.sf-compact body.customer-account-page:not(.customer-account-loaded) .site-footer {
   position: relative;
   z-index: 1;
   display: block !important;
@@ -736,60 +736,60 @@ html.sf-standalone.sf-compact body.customer-account-page:not(.customer-account-l
   border-radius: 18px 18px 0 0;
 }
 
-html.sf-standalone.sf-compact body.customer-account-page:not(.customer-account-loaded) .site-footer .footer-main {
+html.sf-compact body.customer-account-page:not(.customer-account-loaded) .site-footer .footer-main {
   display: block;
   text-align: center;
 }
 
-html.sf-standalone.sf-compact body.customer-account-page:not(.customer-account-loaded) .site-footer .footer-links {
+html.sf-compact body.customer-account-page:not(.customer-account-loaded) .site-footer .footer-links {
   display: none;
 }
 
 @media (max-width: 380px), (max-height: 760px) {
-  html.sf-standalone.sf-compact body.customer-account-page:not(.customer-account-loaded) .site-header {
+  html.sf-compact body.customer-account-page:not(.customer-account-loaded) .site-header {
     padding: calc(env(safe-area-inset-top) + 22px) 24px 10px !important;
   }
-  html.sf-standalone.sf-compact body.customer-account-page:not(.customer-account-loaded) .site-header .logo {
+  html.sf-compact body.customer-account-page:not(.customer-account-loaded) .site-header .logo {
     font-size: 1.34rem;
   }
-  html.sf-standalone.sf-compact body.customer-account-page:not(.customer-account-loaded) .site-header .logo-mark {
+  html.sf-compact body.customer-account-page:not(.customer-account-loaded) .site-header .logo-mark {
     width: 46px;
     height: 46px;
   }
-  html.sf-standalone.sf-compact body.customer-account-page:not(.customer-account-loaded) .customer-account-shell {
+  html.sf-compact body.customer-account-page:not(.customer-account-loaded) .customer-account-shell {
     padding: 18px 18px 22px;
   }
-  html.sf-standalone.sf-compact body.customer-account-page:not(.customer-account-loaded) .customer-account-access {
+  html.sf-compact body.customer-account-page:not(.customer-account-loaded) .customer-account-access {
     gap: 20px;
   }
-  html.sf-standalone.sf-compact body.customer-account-page:not(.customer-account-loaded) .customer-account-intro h1 {
+  html.sf-compact body.customer-account-page:not(.customer-account-loaded) .customer-account-intro h1 {
     font-size: 0;
   }
-  html.sf-standalone.sf-compact body.customer-account-page:not(.customer-account-loaded) .customer-account-intro h1::before {
+  html.sf-compact body.customer-account-page:not(.customer-account-loaded) .customer-account-intro h1::before {
     font-size: 2.35rem;
   }
-  html.sf-standalone.sf-compact body.customer-account-page:not(.customer-account-loaded) .customer-account-intro p:not(.customer-dashboard-kicker) {
+  html.sf-compact body.customer-account-page:not(.customer-account-loaded) .customer-account-intro p:not(.customer-dashboard-kicker) {
     margin-top: 12px;
     font-size: 0;
   }
-  html.sf-standalone.sf-compact body.customer-account-page:not(.customer-account-loaded) .customer-account-intro p:not(.customer-dashboard-kicker)::before {
+  html.sf-compact body.customer-account-page:not(.customer-account-loaded) .customer-account-intro p:not(.customer-dashboard-kicker)::before {
     font-size: 1rem;
   }
-  html.sf-standalone.sf-compact body.customer-account-page:not(.customer-account-loaded) .customer-account-panel {
+  html.sf-compact body.customer-account-page:not(.customer-account-loaded) .customer-account-panel {
     gap: 16px;
     padding: 22px 18px 24px;
   }
-  html.sf-standalone.sf-compact body.customer-account-page:not(.customer-account-loaded) .customer-account-form {
+  html.sf-compact body.customer-account-page:not(.customer-account-loaded) .customer-account-form {
     gap: 14px;
   }
-  html.sf-standalone.sf-compact body.customer-account-page:not(.customer-account-loaded) .customer-account-form input,
-  html.sf-standalone.sf-compact body.customer-account-page:not(.customer-account-loaded) .customer-account-form .button.primary {
+  html.sf-compact body.customer-account-page:not(.customer-account-loaded) .customer-account-form input,
+  html.sf-compact body.customer-account-page:not(.customer-account-loaded) .customer-account-form .button.primary {
     min-height: 54px;
   }
-  html.sf-standalone.sf-compact body.customer-account-page:not(.customer-account-loaded) .customer-account-tab[data-account-mode="create"] {
+  html.sf-compact body.customer-account-page:not(.customer-account-loaded) .customer-account-tab[data-account-mode="create"] {
     min-height: 52px !important;
   }
-  html.sf-standalone.sf-compact body.customer-account-page:not(.customer-account-loaded) .customer-pwa-security-note {
+  html.sf-compact body.customer-account-page:not(.customer-account-loaded) .customer-pwa-security-note {
     margin-top: 10px;
   }
 }
@@ -929,8 +929,8 @@ html.sf-standalone.sf-compact body.track-page .review-panel {
 
 html.sf-standalone.sf-compact body.track-page .app-tab[href*="/track"],
 html.sf-standalone.sf-compact body.booking-page .app-tab[href*="/book"],
-html.sf-standalone.sf-compact body.customer-account-page .app-tab[href*="/account"],
-html.sf-standalone.sf-compact body.account-page .app-tab[href*="/account"] {
+html.sf-standalone.sf-compact body.customer-account-page .app-tab.is-active,
+html.sf-standalone.sf-compact body.account-page .app-tab.is-active {
   color: #1e7d52;
   background: rgba(30,125,82,.12);
 }
@@ -950,4 +950,74 @@ html.sf-standalone.sf-compact body.booking-page .button,
 html.sf-standalone.sf-compact body.track-page .button,
 html.sf-standalone.sf-compact body.account-page .button {
   min-height: 46px;
+}
+
+/* ── One-screen phone sign-in polish (installed PWA + phone-width browser) ────
+   Tightens the logged-out customer sign-in so it fits one phone screen without
+   scrolling: single heading source (kills the ::before duplicate; the visible
+   text is the JS-set textContent), smaller hero, compact card, and no website
+   footer or security block. Scoped to sf-compact + logged-out, so desktop and
+   the signed-in dashboard are untouched. */
+html.sf-compact body.customer-account-page:not(.customer-account-loaded) .site-header {
+  padding: calc(env(safe-area-inset-top) + 12px) clamp(18px, 6vw, 32px) 8px !important;
+}
+html.sf-compact body.customer-account-page:not(.customer-account-loaded) .site-header .logo {
+  font-size: 1.2rem;
+  gap: 10px;
+}
+html.sf-compact body.customer-account-page:not(.customer-account-loaded) .site-header .logo-mark {
+  width: 40px;
+  height: 40px;
+}
+html.sf-compact body.customer-account-page:not(.customer-account-loaded) .customer-account-shell {
+  padding: 12px clamp(18px, 6vw, 32px) 16px;
+}
+html.sf-compact body.customer-account-page:not(.customer-account-loaded) .customer-account-access {
+  gap: 14px;
+}
+html.sf-compact body.customer-account-page:not(.customer-account-loaded) .customer-account-intro .customer-dashboard-kicker {
+  display: none;
+}
+/* Single heading/copy source — no ::before duplicate. */
+html.sf-compact body.customer-account-page:not(.customer-account-loaded) .customer-account-intro h1 {
+  font-size: clamp(1.5rem, 6.5vw, 2rem);
+  line-height: 1.06;
+}
+html.sf-compact body.customer-account-page:not(.customer-account-loaded) .customer-account-intro h1::before {
+  content: none;
+}
+html.sf-compact body.customer-account-page:not(.customer-account-loaded) .customer-account-intro p:not(.customer-dashboard-kicker) {
+  margin: 6px 0 0;
+  font-size: clamp(.98rem, 3.6vw, 1.08rem);
+  line-height: 1.4;
+}
+html.sf-compact body.customer-account-page:not(.customer-account-loaded) .customer-account-intro p:not(.customer-dashboard-kicker)::before {
+  content: none;
+}
+/* Tighter login card. */
+html.sf-compact body.customer-account-page:not(.customer-account-loaded) .customer-account-panel {
+  gap: 14px;
+  padding: 18px 18px 20px;
+}
+html.sf-compact body.customer-account-page:not(.customer-account-loaded) .customer-account-form {
+  gap: 13px;
+}
+html.sf-compact body.customer-account-page:not(.customer-account-loaded) .customer-account-form input {
+  min-height: 54px;
+}
+html.sf-compact body.customer-account-page:not(.customer-account-loaded) .customer-account-form .button.primary {
+  min-height: 54px;
+  margin-top: 6px;
+}
+html.sf-compact body.customer-account-page:not(.customer-account-loaded) .customer-account-tab[data-account-mode="create"] {
+  min-height: 50px !important;
+}
+html.sf-compact body.customer-account-page:not(.customer-account-loaded) .customer-pwa-guest-actions {
+  gap: 10px;
+  margin-top: 2px;
+}
+/* No large website footer or security block on the phone sign-in screen. */
+html.sf-compact body.customer-account-page:not(.customer-account-loaded) .site-footer,
+html.sf-compact body.customer-account-page:not(.customer-account-loaded) .customer-pwa-security-note {
+  display: none !important;
 }
