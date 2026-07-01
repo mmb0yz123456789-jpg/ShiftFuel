@@ -103,8 +103,22 @@
       button.addEventListener('click', () => {
         const tabName = button.dataset.accountTab;
         switchToTab(tabName);
+        // Keep the URL hash in sync so the tab survives a refresh / is shareable.
+        if (history.replaceState) history.replaceState(null, '', '#' + tabName);
       });
     });
+
+    // Deep-link: open the tab named in the URL hash (e.g. /account/settings#vehicles,
+    // used by the dashboard's "Manage vehicles & addresses" link). Only honour tabs
+    // whose nav button exists and isn't hidden (so a hidden Billing can't be opened).
+    const applyHash = () => {
+      const name = (location.hash || '').replace('#', '').trim();
+      if (!name) return;
+      const btn = document.querySelector(`[data-account-tab="${name}"]`);
+      if (btn && !btn.hidden) switchToTab(name);
+    };
+    applyHash();
+    window.addEventListener('hashchange', applyHash);
   }
 
   function switchToTab(tabName) {

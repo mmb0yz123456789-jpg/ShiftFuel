@@ -21,6 +21,8 @@
     { "source": "/track", "destination": "/track.html" },
     { "source": "/account", "destination": "/customer.html" },
     { "source": "/my-account", "destination": "/customer.html" },
+    { "source": "/account/settings", "destination": "/account.html" },
+    { "source": "/settings", "destination": "/account.html" },
     { "source": "/create-account", "destination": "/customer-create-account.html" },
     { "source": "/account/create", "destination": "/customer-create-account.html" },
     { "source": "/worker/login", "destination": "/worker-login.html" },
