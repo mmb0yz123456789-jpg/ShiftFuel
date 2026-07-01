@@ -704,7 +704,8 @@ dashboard?.addEventListener("click", async (event) => {
   const compact = window.SF_MODE?.compact
     || !window.matchMedia
     || window.matchMedia("(max-width: 760px)").matches;
-  if (standalone && compact && !readSession()) {
+
+  if (standalone && compact) {
     if (accountIntroTitle) accountIntroTitle.textContent = "Welcome back";
     if (accountIntroCopy) accountIntroCopy.textContent = "Sign in to access your saved vehicles, addresses, and bookings.";
     openAccountForm("login", { focus: false, scroll: false });
@@ -717,6 +718,13 @@ dashboard?.addEventListener("click", async (event) => {
   openAccount(session).catch((error) => {
     console.warn("[customer-account] saved session could not be loaded:", error);
     clearSession();
-    setStatus("warning", "Please enter your phone and email to open My Account.");
+    if (standalone && compact) {
+      setStatus("", "");
+      if (accountIntroTitle) accountIntroTitle.textContent = "Welcome back";
+      if (accountIntroCopy) accountIntroCopy.textContent = "Sign in to access your saved vehicles, addresses, and bookings.";
+      openAccountForm("login", { focus: false, scroll: false });
+    } else {
+      setStatus("warning", "Please enter your phone and email to open My Account.");
+    }
   });
 })();

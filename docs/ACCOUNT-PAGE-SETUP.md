@@ -163,7 +163,7 @@ $$;
 ## Future Enhancements
 
 ### Ready to Add
-1. **Profile photo upload** - Use `src/shared/photo-utils.js` for validation/compression
+1. **Profile photo upload** - Use the root `photo-utils.js` helpers for validation/compression
 2. **Stripe customer portal** - Link to Stripe-hosted billing page
 3. **Email/SMS preferences** - Connect to notification service (SendGrid, Twilio)
 4. **Two-factor authentication** - Add TOTP or SMS 2FA

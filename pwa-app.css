@@ -551,6 +551,7 @@ html.sf-standalone.sf-compact body.customer-account-page:not(.customer-account-l
 html.sf-standalone.sf-compact body.customer-account-page:not(.customer-account-loaded) .customer-account-tabs {
   order: 2;
   display: block;
+  width: 100%;
   margin: 0;
   padding: 0;
   background: transparent;
@@ -566,6 +567,7 @@ html.sf-standalone.sf-compact body.customer-account-page:not(.customer-account-l
   align-items: center;
   justify-content: center;
   width: 100%;
+  box-sizing: border-box;
   min-height: 58px !important;
   padding: 0 18px;
   border: 1.5px solid #c9d4d2;
@@ -610,6 +612,7 @@ html.sf-standalone.sf-compact body.customer-account-page:not(.customer-account-l
 }
 
 html.sf-standalone.sf-compact body.customer-account-page:not(.customer-account-loaded) .customer-account-form .button.primary {
+  width: 100%;
   min-height: 64px;
   margin-top: 12px;
   border: 0;
@@ -625,9 +628,14 @@ html.sf-standalone.sf-compact body.customer-account-page:not(.customer-account-l
   display: none;
 }
 
+html.sf-standalone.sf-compact body.customer-account-page:not(.customer-account-loaded) .form-status[data-status="warning"] {
+  display: none;
+}
+
 html.sf-standalone.sf-compact body.customer-account-page:not(.customer-account-loaded) .customer-pwa-guest-actions {
   order: 3;
   display: grid;
+  width: 100%;
   gap: 18px;
   text-align: center;
 }

@@ -362,21 +362,9 @@ function recordTrackFailedAttempt() {
   trackMessage.textContent = `No request found. ${8 - attempts} lookup attempt${8 - attempts === 1 ? "" : "s"} left before a temporary lock.`;
 }
 
-function escapeHtml(value) {
-  return String(value || "")
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#039;");
-}
-
-function formatCurrency(value) {
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD",
-  }).format(Number(value || 0));
-}
+// Display formatters live in shared-format.js (loaded before this file).
+const escapeHtml = window.SF.escapeHtml;
+const formatCurrency = window.SF.formatCurrency;
 
 function hoursSince(value) {
   const time = new Date(value || Date.now()).getTime();
@@ -642,23 +630,11 @@ function savedFeeOrDefault(value, fallback) {
   return Number.isFinite(amount) && amount > 0 ? amount : fallback;
 }
 
-function requestNeedsFuel(request) {
-  return String(request.service_type || "").includes("fuel");
-}
-
-function requestNeedsWash(request) {
-  return String(request.service_type || "").includes("wash");
-}
-
-function receiptTotalsFromNotes(request) {
-  const matches = Array.from(String(request.notes || "").matchAll(/\[receipt_totals fuel=([0-9.]+) wash=([0-9.]+)\]/g));
-  const latest = matches.at(-1);
-
-  return {
-    fuel: latest ? Number(latest[1]) || 0 : 0,
-    wash: latest ? Number(latest[2]) || 0 : 0,
-  };
-}
+// Service-type checks and receipt-total parsing live in shared-payments.js
+// (loaded before this file).
+const requestNeedsFuel = window.SF.requestNeedsFuel;
+const requestNeedsWash = window.SF.requestNeedsWash;
+const receiptTotalsFromNotes = window.SF.receiptTotalsFromNotes;
 
 const PAYMENT_RECOVERY_RATE = 0.029;
 const PAYMENT_RECOVERY_FIXED = 0.30;

@@ -592,18 +592,9 @@ function updateHeroStats() {
   if (adminCompletedCount) adminCompletedCount.textContent = completeCount;
 }
 
-function escapeHtml(value) {
-  return String(value ?? '')
-    .replaceAll('&', '&amp;')
-    .replaceAll('<', '&lt;')
-    .replaceAll('>', '&gt;')
-    .replaceAll('"', '&quot;')
-    .replaceAll("'", '&#039;');
-}
-
-function money(value) {
-  return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(Number(value || 0));
-}
+// Display formatters live in shared-format.js (loaded before this file).
+const escapeHtml = window.SF.escapeHtml;
+const money = window.SF.formatCurrency;
 
 const PAYMENT_STATUS_LABELS = {
   not_started:            'Not started',
@@ -834,13 +825,9 @@ function dashboardRangeLabel(range) {
   return { today: 'Today', week: 'This Week', month: 'This Month', all: 'All Time' }[range] || 'Today';
 }
 
-function serviceNeedsFuel(request) {
-  return String(request.service_type || '').includes('fuel');
-}
-
-function serviceNeedsWash(request) {
-  return String(request.service_type || '').includes('wash');
-}
+// Service-type checks live in shared-payments.js (loaded before this file).
+const serviceNeedsFuel = window.SF.requestNeedsFuel;
+const serviceNeedsWash = window.SF.requestNeedsWash;
 
 const POST_SERVICE_STATUSES = new Set([
   'service_complete', 'receipts_recorded', 'returned_location_pending',
@@ -854,15 +841,8 @@ function serviceWorkComplete(request) {
   return POST_SERVICE_STATUSES.has(request.status);
 }
 
-function receiptTotalsFromNotes(request) {
-  const matches = Array.from(String(request.notes || '').matchAll(/\[receipt_totals fuel=([0-9.]+) wash=([0-9.]+)\]/g));
-  const latest = matches.at(-1);
-
-  return {
-    fuel: latest ? Number(latest[1]) || 0 : 0,
-    wash: latest ? Number(latest[2]) || 0 : 0,
-  };
-}
+// Receipt-total parsing lives in shared-payments.js (loaded before this file).
+const receiptTotalsFromNotes = window.SF.receiptTotalsFromNotes;
 
 const RETURN_CANCELLATION_FEE = 15;
 const RETURN_RECOVERY_RATE = 0.029;

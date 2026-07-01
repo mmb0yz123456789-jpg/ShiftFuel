@@ -4,7 +4,7 @@
 
 ShiftFuel is a static frontend with Vercel serverless APIs, Supabase migrations, and Stripe/Supabase integrations. Runtime pages and assets currently live at the repository root, including `index.html`, `book.html`, `track.html`, `worker.html`, `admin.html`, companion `.js` files, and shared CSS such as `styles.css`, `mobile-polish.css`, and `worker-app.css`. Keep these paths stable unless HTML references, service worker paths, and Vercel rewrites are updated together.
 
-Serverless functions are in `api/`. Shared browser utilities are in `src/shared/`. Supabase migrations belong in `supabase/migrations/`; `archive/sql/` and `supabase/shared/legacy-patches/` are historical references. The `app/` directory contains planning READMEs, not active runtime files.
+Serverless functions are in `api/`. Shared code lives in UMD-style files at the repo root (`shared-status.js`, `shared-format.js`, `shared-payments.js`, `vehicle-psi.js`) that work as both a browser global (`window.SF.*`, loaded via `<script src>` before the page's main file) and a CommonJS `require` for `api/`; `api/_utils.js` holds server-only helpers. Supabase migrations belong in `supabase/migrations/`; `archive/sql/` and `supabase/shared/legacy-patches/` are historical references. The `app/` directory contains planning READMEs, not active runtime files.
 
 ## Build, Test, and Development Commands
 
