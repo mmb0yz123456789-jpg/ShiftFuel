@@ -45,13 +45,22 @@ Client files bind the shared functions to their existing local names
 - **`statusLabels` were intentionally NOT shared** — user-facing copy legitimately
   differs per surface.
 
-## Still per-surface (deliberate, follow-up candidates)
+## Done (previously deferred)
 
-- `customer-account.js` keeps its own hybrid `canonicalBookingStatus` (returns the
-  raw status when it has a label for it); unifying it would change customer copy.
+- `customer-account.js` now uses shared `canonicalBookingStatus`; its granular
+  labels are preserved because `statusLabel()` prefers the raw-status label
+  (`statusLabels[raw] || statusLabels[canonical]`). `canonicalBookingStatus` has
+  one definition app-wide.
+- **Cancellation SSOT:** `cancellationOutcomeForStatus` (status→cancelable/tier/
+  message) and `returnRequestCharge` (base fee + receipts, grossed up for the card
+  fee) live in `shared-payments.js`, shared by `api/payments.js` (charge/decision),
+  `track.js` (can-cancel + confirmation copy) and `admin.js` (charge display).
+
+## Still per-surface (deliberate)
+
+- `cancellationChargeForTier` stays in `api/payments.js` — it is server-only (no
+  client copy, so no drift risk).
 - `roundMoneyValue` (admin/worker/track) and booking-flow's `formatMoney` /
   `serviceNeedsFuel/Wash` (bookingState-based) are left as-is.
-- The **cancellation-charge math** (`cancellationOutcomeForStatus`,
-  `cancellationChargeForTier`, `transactionPricingSummary`) is duplicated between
-  the client (preview) and `api/payments.js` (the real charge). Unifying it is
-  worthwhile but higher-risk and deserves its own dedicated verification pass.
+- Per-surface cancellation **copy** (blocked messages, modal text) stays local,
+  like `statusLabels` — only the categorization/charge math is shared.

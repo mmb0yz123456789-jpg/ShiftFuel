@@ -463,7 +463,7 @@ html.sf-standalone.sf-compact body.customer-account-page:not(.customer-account-l
 html.sf-standalone.sf-compact body.customer-account-page:not(.customer-account-loaded) .site-header {
   position: relative;
   z-index: 1;
-  padding: calc(env(safe-area-inset-top) + 34px) 28px 18px !important;
+  padding: calc(env(safe-area-inset-top) + 34px) clamp(28px, 8vw, 48px) 18px !important;
 }
 
 html.sf-standalone.sf-compact body.customer-account-page:not(.customer-account-loaded) .site-header .logo {
@@ -497,18 +497,18 @@ html.sf-standalone.sf-compact body.customer-account-page:not(.customer-account-l
   z-index: 1;
   flex: 1 0 auto;
   width: 100%;
-  padding: 34px 24px 28px;
+  padding: 34px clamp(24px, 8vw, 48px) 30px;
 }
 
 html.sf-standalone.sf-compact body.customer-account-page:not(.customer-account-loaded) .customer-account-access {
   display: flex;
   flex-direction: column;
-  gap: 28px;
+  gap: 30px;
   min-height: 0;
 }
 
 html.sf-standalone.sf-compact body.customer-account-page:not(.customer-account-loaded) .customer-account-intro {
-  max-width: 320px;
+  max-width: 620px;
   margin: 0;
   text-align: left;
 }
@@ -516,16 +516,30 @@ html.sf-standalone.sf-compact body.customer-account-page:not(.customer-account-l
 html.sf-standalone.sf-compact body.customer-account-page:not(.customer-account-loaded) .customer-account-intro h1 {
   margin: 0;
   color: #fff;
-  font-size: clamp(2.65rem, 12vw, 4rem);
+  font-size: 0;
   line-height: .96;
   font-weight: 900;
+}
+
+html.sf-standalone.sf-compact body.customer-account-page:not(.customer-account-loaded) .customer-account-intro h1::before {
+  content: attr(data-pwa-title);
+  display: block;
+  font-size: clamp(3rem, 13vw, 4.8rem);
+  line-height: .98;
 }
 
 html.sf-standalone.sf-compact body.customer-account-page:not(.customer-account-loaded) .customer-account-intro p:not(.customer-dashboard-kicker) {
   margin: 18px 0 0;
   color: rgba(255,255,255,.76);
-  font-size: 1.18rem;
+  font-size: 0;
   line-height: 1.55;
+}
+
+html.sf-standalone.sf-compact body.customer-account-page:not(.customer-account-loaded) .customer-account-intro p:not(.customer-dashboard-kicker)::before {
+  content: attr(data-pwa-copy);
+  display: block;
+  font-size: clamp(1.12rem, 5.1vw, 1.8rem);
+  line-height: 1.45;
 }
 
 html.sf-standalone.sf-compact body.customer-account-page:not(.customer-account-loaded) .customer-account-access-grid,
@@ -539,8 +553,9 @@ html.sf-standalone.sf-compact body.customer-account-page:not(.customer-account-l
   flex-direction: column;
   gap: 22px;
   width: 100%;
+  max-width: 680px;
   margin: 0;
-  padding: 28px 22px 30px;
+  padding: clamp(28px, 6.2vw, 42px);
   border-radius: 22px;
   background: rgba(255,255,255,.97);
   color: #092f2d;
@@ -584,7 +599,7 @@ html.sf-standalone.sf-compact body.customer-account-page:not(.customer-account-l
 
 html.sf-standalone.sf-compact body.customer-account-page:not(.customer-account-loaded) .customer-account-form {
   display: grid;
-  gap: 20px;
+  gap: 22px;
   margin: 0;
 }
 
@@ -602,13 +617,15 @@ html.sf-standalone.sf-compact body.customer-account-page:not(.customer-account-l
   border-radius: 14px;
   background: #fff;
   color: #092f2d;
-  font-size: 1.04rem;
-  padding: 0 18px;
+  font-size: 1.08rem;
+  font-weight: 800;
+  padding: 0 20px;
   box-shadow: inset 0 1px 1px rgba(5, 35, 34, .04);
 }
 
 html.sf-standalone.sf-compact body.customer-account-page:not(.customer-account-loaded) .customer-account-form input::placeholder {
-  color: #6f7f82;
+  color: #a4adb2;
+  font-weight: 800;
 }
 
 html.sf-standalone.sf-compact body.customer-account-page:not(.customer-account-loaded) .customer-account-form .button.primary {
@@ -662,10 +679,12 @@ html.sf-standalone.sf-compact body.customer-account-page:not(.customer-account-l
 
 html.sf-standalone.sf-compact body.customer-account-page:not(.customer-account-loaded) .customer-pwa-guest-primary {
   color: #0b723b;
+  font-size: 1.05rem;
 }
 
 html.sf-standalone.sf-compact body.customer-account-page:not(.customer-account-loaded) .customer-pwa-guest-secondary {
   color: #738486;
+  font-size: .98rem;
   font-weight: 700 !important;
 }
 
@@ -673,8 +692,8 @@ html.sf-standalone.sf-compact body.customer-account-page:not(.customer-account-l
   display: flex;
   align-items: center;
   gap: 18px;
-  width: min(100%, 330px);
-  margin: 22px auto 0;
+  width: min(100%, 520px);
+  margin: 24px 0 0;
   color: rgba(255,255,255,.78);
 }
 
@@ -701,7 +720,7 @@ html.sf-standalone.sf-compact body.customer-account-page:not(.customer-account-l
 
 html.sf-standalone.sf-compact body.customer-account-page:not(.customer-account-loaded) .customer-pwa-security-note strong {
   color: #fff;
-  font-size: 1.02rem;
+  font-size: 1.1rem;
   font-weight: 900;
 }
 
@@ -714,6 +733,7 @@ html.sf-standalone.sf-compact body.customer-account-page:not(.customer-account-l
   color: rgba(255,255,255,.68);
   background: rgba(3, 25, 24, .22);
   border-top: 1px solid rgba(255,255,255,.12);
+  border-radius: 18px 18px 0 0;
 }
 
 html.sf-standalone.sf-compact body.customer-account-page:not(.customer-account-loaded) .site-footer .footer-main {
@@ -743,10 +763,16 @@ html.sf-standalone.sf-compact body.customer-account-page:not(.customer-account-l
     gap: 20px;
   }
   html.sf-standalone.sf-compact body.customer-account-page:not(.customer-account-loaded) .customer-account-intro h1 {
+    font-size: 0;
+  }
+  html.sf-standalone.sf-compact body.customer-account-page:not(.customer-account-loaded) .customer-account-intro h1::before {
     font-size: 2.35rem;
   }
   html.sf-standalone.sf-compact body.customer-account-page:not(.customer-account-loaded) .customer-account-intro p:not(.customer-dashboard-kicker) {
     margin-top: 12px;
+    font-size: 0;
+  }
+  html.sf-standalone.sf-compact body.customer-account-page:not(.customer-account-loaded) .customer-account-intro p:not(.customer-dashboard-kicker)::before {
     font-size: 1rem;
   }
   html.sf-standalone.sf-compact body.customer-account-page:not(.customer-account-loaded) .customer-account-panel {
@@ -766,4 +792,162 @@ html.sf-standalone.sf-compact body.customer-account-page:not(.customer-account-l
   html.sf-standalone.sf-compact body.customer-account-page:not(.customer-account-loaded) .customer-pwa-security-note {
     margin-top: 10px;
   }
+}
+
+/* Batch 1: installed customer app shell consistency. */
+html.sf-standalone.sf-compact body.customer-account-page,
+html.sf-standalone.sf-compact body.booking-page,
+html.sf-standalone.sf-compact body.track-page,
+html.sf-standalone.sf-compact body.account-page {
+  --sf-pwa-card-radius: 20px;
+  --sf-pwa-card-pad: 18px;
+  --sf-pwa-tabbar-clearance: calc(88px + env(safe-area-inset-bottom, 0px));
+  padding-bottom: var(--sf-pwa-tabbar-clearance);
+}
+
+html.sf-standalone.sf-compact body.customer-account-page .customer-tabbar,
+html.sf-standalone.sf-compact body.booking-page .customer-tabbar,
+html.sf-standalone.sf-compact body.track-page .customer-tabbar,
+html.sf-standalone.sf-compact body.account-page .customer-tabbar {
+  min-height: var(--sf-pwa-tabbar-clearance);
+}
+
+html.sf-standalone.sf-compact body.customer-account-page.customer-account-loaded .customer-account-shell,
+html.sf-standalone.sf-compact body.booking-page .booking-flow-shell,
+html.sf-standalone.sf-compact body.track-page .track-shell {
+  padding-left: 16px;
+  padding-right: 16px;
+}
+
+/* Batch 4: installed customer app loop polish.
+   Keep app routes feeling native and reduce public-site clutter only when the
+   app is installed/standalone. */
+html.sf-standalone.sf-compact body.customer-account-page.customer-account-loaded,
+html.sf-standalone.sf-compact body.booking-page,
+html.sf-standalone.sf-compact body.track-page,
+html.sf-standalone.sf-compact body.account-page {
+  --sf-customer-app-gutter: clamp(14px, 4vw, 18px);
+}
+
+html.sf-standalone.sf-compact body.customer-account-page.customer-account-loaded .customer-account-shell,
+html.sf-standalone.sf-compact body.booking-page .booking-flow-shell,
+html.sf-standalone.sf-compact body.track-page .track-shell {
+  padding-left: var(--sf-customer-app-gutter);
+  padding-right: var(--sf-customer-app-gutter);
+}
+
+html.sf-standalone.sf-compact body.customer-account-page.customer-account-loaded .customer-dashboard,
+html.sf-standalone.sf-compact body.booking-page .booking-flow,
+html.sf-standalone.sf-compact body.track-page .track-search-card,
+html.sf-standalone.sf-compact body.track-page .track-request-card {
+  border-radius: 22px;
+  box-shadow: 0 14px 34px rgba(4, 26, 24, 0.2);
+}
+
+html.sf-standalone.sf-compact body.customer-account-page.customer-account-loaded .customer-dashboard-layout {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 14px;
+}
+
+html.sf-standalone.sf-compact body.customer-account-page.customer-account-loaded .customer-dashboard-section {
+  min-width: 0;
+}
+
+html.sf-standalone.sf-compact body.customer-account-page.customer-account-loaded .customer-request-card,
+html.sf-standalone.sf-compact body.customer-account-page.customer-account-loaded .customer-data-card,
+html.sf-standalone.sf-compact body.customer-account-page.customer-account-loaded .customer-empty-card {
+  padding: 16px;
+  border-radius: 18px;
+}
+
+html.sf-standalone.sf-compact body.customer-account-page.customer-account-loaded .customer-card-actions {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
+}
+
+html.sf-standalone.sf-compact body.customer-account-page.customer-account-loaded .customer-card-actions .button {
+  width: 100%;
+  min-height: 48px;
+  border-radius: 14px;
+}
+
+html.sf-standalone.sf-compact body.booking-page .booking-step-header,
+html.sf-standalone.sf-compact body.track-page .track-request-summary {
+  min-height: 58px;
+}
+
+html.sf-standalone.sf-compact body.booking-page .booking-step-panel,
+html.sf-standalone.sf-compact body.booking-page .booking-panel,
+html.sf-standalone.sf-compact body.booking-page .booking-step-content {
+  padding-left: 0 !important;
+  padding-right: 0 !important;
+}
+
+html.sf-standalone.sf-compact body.booking-page .booking-accordion-card,
+html.sf-standalone.sf-compact body.booking-page .returning-option-card,
+html.sf-standalone.sf-compact body.track-page .tk-sub-acc,
+html.sf-standalone.sf-compact body.track-page .tk-card,
+html.sf-standalone.sf-compact body.track-page .estimated-total-card {
+  border-radius: 18px;
+}
+
+html.sf-standalone.sf-compact body.booking-page .booking-step-actions,
+html.sf-standalone.sf-compact body.track-page .track-search-actions {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 10px;
+}
+
+html.sf-standalone.sf-compact body.booking-page .button,
+html.sf-standalone.sf-compact body.track-page .button,
+html.sf-standalone.sf-compact body.account-page .button {
+  min-height: 50px;
+  border-radius: 14px;
+}
+
+html.sf-standalone.sf-compact body.track-page .tk-hero {
+  margin-top: 0;
+}
+
+html.sf-standalone.sf-compact body.track-page .track-request-body {
+  gap: 10px;
+}
+
+html.sf-standalone.sf-compact body.track-page .tk-detail-grid {
+  gap: 10px;
+}
+
+html.sf-standalone.sf-compact body.track-page .tk-sub-acc-history {
+  margin-top: 0;
+}
+
+html.sf-standalone.sf-compact body.track-page .review-panel {
+  border-radius: 18px;
+}
+
+html.sf-standalone.sf-compact body.track-page .app-tab[href*="/track"],
+html.sf-standalone.sf-compact body.booking-page .app-tab[href*="/book"],
+html.sf-standalone.sf-compact body.customer-account-page .app-tab[href*="/account"],
+html.sf-standalone.sf-compact body.account-page .app-tab[href*="/account"] {
+  color: #1e7d52;
+  background: rgba(30,125,82,.12);
+}
+
+html.sf-standalone.sf-compact body.customer-account-page .customer-request-card,
+html.sf-standalone.sf-compact body.customer-account-page .customer-data-card,
+html.sf-standalone.sf-compact body.customer-account-page .customer-empty-card,
+html.sf-standalone.sf-compact body.booking-page .booking-flow,
+html.sf-standalone.sf-compact body.track-page .track-search-card,
+html.sf-standalone.sf-compact body.account-page .account-layout {
+  border-radius: var(--sf-pwa-card-radius);
+}
+
+html.sf-standalone.sf-compact body.customer-account-page .customer-request-card .button,
+html.sf-standalone.sf-compact body.customer-account-page .customer-data-card .button,
+html.sf-standalone.sf-compact body.booking-page .button,
+html.sf-standalone.sf-compact body.track-page .button,
+html.sf-standalone.sf-compact body.account-page .button {
+  min-height: 46px;
 }

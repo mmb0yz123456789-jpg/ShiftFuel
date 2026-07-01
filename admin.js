@@ -97,37 +97,40 @@ const workerDayOptions = [
   { dayOfWeek: 6, label: 'Saturday' },
   { dayOfWeek: 0, label: 'Sunday' },
 ];
-let selectedWorkerDaysOff = new Set();
-let copiedWorkerDaySchedule = null;
-let allRequests = [];
-let allEmployees = [];
-let allReviews = [];
-let allReviewRequestMap = new Map();
-let allApplicantsList = [];
-let allSupportMessages = [];
-let selectedScheduleEmployeeId = '';
-// Per-employee weekly availability for the inline Workers-tab editor, keyed by
-// employee id. Populated when a worker row is expanded; the admin schedule grid
-// is rendered straight from it (the old #worker-days-grid form lives only in the
-// worker portal, so admin needs its own card-scoped copy).
-let adminCardAvailability = {};
-// Count of pending worker change requests, surfaced in "Needs your attention".
-let pendingChangeRequestCount = 0;
-// Last-loaded admin change requests, so the approve handler can read a request's
-// kind/date for auto-applying a day off.
-let adminChangeRequestsList = [];
-let currentView = 'open';
-let currentAdminTab = 'requests';
-let currentPageTab = 'dashboard';
-let currentReviewFilter = null;
-let showAllTime = false;
-let lastSearchResults = [];
-let vehiclePsiGuides = [];
-let expandedRequestId = null;
-let expandedSummaryId = null;
-let dashboardRange = 'today';
-let customRange = { start: '', end: '' };
-let queueFilters = { search: '', serviceType: '', status: '', worker: '', payment: '', sort: 'newest' };
+// Consolidated admin UI/data state (previously ~two dozen scattered top-level
+// `let`s). Grouped for traceability; each field is still freely reassigned as
+// adminState.X, and top-level functions stay global for inline/cross-file access.
+const adminState = {
+  selectedWorkerDaysOff: new Set(),
+  copiedWorkerDaySchedule: null,
+  allRequests: [],
+  allEmployees: [],
+  allReviews: [],
+  allReviewRequestMap: new Map(),
+  allApplicantsList: [],
+  allSupportMessages: [],
+  selectedScheduleEmployeeId: '',
+  // Per-employee weekly availability for the inline Workers-tab editor, keyed by
+  // employee id. Populated when a worker row is expanded.
+  adminCardAvailability: {},
+  // Count of pending worker change requests, surfaced in "Needs your attention".
+  pendingChangeRequestCount: 0,
+  // Last-loaded admin change requests, so the approve handler can read a request's
+  // kind/date for auto-applying a day off.
+  adminChangeRequestsList: [],
+  currentView: 'open',
+  currentAdminTab: 'requests',
+  currentPageTab: 'dashboard',
+  currentReviewFilter: null,
+  showAllTime: false,
+  lastSearchResults: [],
+  vehiclePsiGuides: [],
+  expandedRequestId: null,
+  expandedSummaryId: null,
+  dashboardRange: 'today',
+  customRange: { start: '', end: '' },
+  queueFilters: { search: '', serviceType: '', status: '', worker: '', payment: '', sort: 'newest' },
+};
 // Booking-status logic is the single source of truth in shared-status.js
 // (loaded via <script src="shared-status.js"> before this file). This map is
 // identical to the admin mapping it replaced — key_received → en_route.
@@ -582,13 +585,13 @@ const supportReasonLabels = {
 };
 
 function updateHeroStats() {
-  if (adminAvgRating && allReviews.length) {
-    const avg = (allReviews.reduce((s, r) => s + Number(r.rating), 0) / allReviews.length).toFixed(1);
+  if (adminAvgRating && adminState.allReviews.length) {
+    const avg = (adminState.allReviews.reduce((s, r) => s + Number(r.rating), 0) / adminState.allReviews.length).toFixed(1);
     adminAvgRating.textContent = `★ ${avg}`;
   } else if (adminAvgRating) {
     adminAvgRating.textContent = '—';
   }
-  const completeCount = allRequests.filter((r) => canonicalBookingStatus(r.status) === 'completed').length;
+  const completeCount = adminState.allRequests.filter((r) => canonicalBookingStatus(r.status) === 'completed').length;
   if (adminCompletedCount) adminCompletedCount.textContent = completeCount;
 }
 
@@ -640,7 +643,7 @@ function normalizeVehicleText(value) {
 }
 
 function psiGuideForRequest(request) {
-  const guides = vehiclePsiGuides.length ? vehiclePsiGuides : fallbackPsiGuides;
+  const guides = adminState.vehiclePsiGuides.length ? adminState.vehiclePsiGuides : fallbackPsiGuides;
   const make = normalizeVehicleText(request.vehicle_make);
   const model = normalizeVehicleText(request.vehicle_model);
 
@@ -673,11 +676,11 @@ async function loadVehiclePsiGuides() {
 
   if (error) {
     console.warn('Using built-in PSI guide until vehicle_psi_guides is added:', error);
-    vehiclePsiGuides = fallbackPsiGuides;
+    adminState.vehiclePsiGuides = fallbackPsiGuides;
     return;
   }
 
-  vehiclePsiGuides = data?.length ? data : fallbackPsiGuides;
+  adminState.vehiclePsiGuides = data?.length ? data : fallbackPsiGuides;
 }
 
 // Password reset modal helpers
@@ -754,8 +757,8 @@ function dashboardRangeBounds(range) {
     };
   }
   if (range === 'custom') {
-    const start = customRange.start ? new Date(customRange.start + 'T00:00:00') : null;
-    const end = customRange.end ? new Date(customRange.end + 'T23:59:59') : null;
+    const start = adminState.customRange.start ? new Date(adminState.customRange.start + 'T00:00:00') : null;
+    const end = adminState.customRange.end ? new Date(adminState.customRange.end + 'T23:59:59') : null;
     return { start, end };
   }
   return { start: null, end: null }; // 'all'
@@ -817,9 +820,9 @@ function formatShortDate(value) {
 
 function dashboardRangeLabel(range) {
   if (range === 'custom') {
-    if (customRange.start && customRange.end) return `${formatShortDate(customRange.start)} – ${formatShortDate(customRange.end)}`;
-    if (customRange.start) return `From ${formatShortDate(customRange.start)}`;
-    if (customRange.end) return `Until ${formatShortDate(customRange.end)}`;
+    if (adminState.customRange.start && adminState.customRange.end) return `${formatShortDate(adminState.customRange.start)} – ${formatShortDate(adminState.customRange.end)}`;
+    if (adminState.customRange.start) return `From ${formatShortDate(adminState.customRange.start)}`;
+    if (adminState.customRange.end) return `Until ${formatShortDate(adminState.customRange.end)}`;
     return 'Custom range';
   }
   return { today: 'Today', week: 'This Week', month: 'This Month', all: 'All Time' }[range] || 'Today';
@@ -959,7 +962,7 @@ function adminServiceMinutes(r) {
 // The assigned worker's per-minute rate, capped at the company rate (defaults to it).
 function adminWorkerTimeRate(request) {
   const company = ADMIN_TIME_COMP.companyRatePerMin;
-  const emp = (allEmployees || []).find((e) => String(e.id) === String(request.assigned_employee_id));
+  const emp = (adminState.allEmployees || []).find((e) => String(e.id) === String(request.assigned_employee_id));
   const rate = Number(emp?.time_rate_per_min);
   return Number.isFinite(rate) && rate > 0 ? Math.min(rate, company) : company;
 }
@@ -990,7 +993,7 @@ function frozenWorkerPayout(request) {
 
 // Payroll + the Company-Net tile call this several times per request (earning
 // filter, per-worker loop, companyNetBreakdown). It parses the notes each time, so
-// memoize per request object. Safe because allRequests is REPLACED on every load
+// memoize per request object. Safe because adminState.allRequests is REPLACED on every load
 // (fresh objects ⇒ the cache auto-invalidates); a completed job's pay is frozen.
 const _workerPayoutCache = new WeakMap();
 function workerPayoutForRequest(request) {
@@ -1077,23 +1080,10 @@ function estimatePricingSummary({ needsFuel, needsWash, fuelAmount = 0, washAmou
 }
 
 function returnRequestChargeSummary(request) {
-  const receiptTotals = receiptTotalsFromNotes(request);
-  const hasReceipts = receiptTotals.fuel > 0 || receiptTotals.wash > 0;
-  const subtotal = roundMoneyValue(receiptTotals.fuel + receiptTotals.wash + RETURN_CANCELLATION_FEE);
-  const total = hasReceipts
-    ? Math.ceil((subtotal + RETURN_RECOVERY_FIXED) / (1 - RETURN_RECOVERY_RATE))
-    : RETURN_CANCELLATION_FEE;
-  const recovery = roundMoneyValue(total - subtotal);
-
-  return {
-    fuel: roundMoneyValue(receiptTotals.fuel),
-    wash: roundMoneyValue(receiptTotals.wash),
-    cancellationFee: RETURN_CANCELLATION_FEE,
-    recovery,
-    subtotal,
-    total,
-    hasReceipts,
-  };
+  // Charge math lives in shared-payments.js — the exact numbers the server charges.
+  return window.SF.returnRequestCharge(receiptTotalsFromNotes(request), {
+    fee: RETURN_CANCELLATION_FEE, recoveryFixed: RETURN_RECOVERY_FIXED, recoveryRate: RETURN_RECOVERY_RATE,
+  });
 }
 
 function transactionPricingSummary(request, receiptTotals = { fuel: 0, wash: 0 }) {
@@ -1486,7 +1476,7 @@ function renderWorkerAssignment(request) {
   const assignedName = request.assigned_worker_name || '';
   const assignedPhone = request.assigned_worker_phone || '';
   const selectedId = request.assigned_employee_id || '';
-  const assignedEmployee = allEmployees.find((e) => e.id === selectedId);
+  const assignedEmployee = adminState.allEmployees.find((e) => e.id === selectedId);
   // Use live employee photo (current after profile updates); fall back to snapshot on request row.
   const croppedUrl  = assignedEmployee?.cropped_photo_url  || assignedEmployee?.photo_url || request.assigned_worker_photo_url || '';
   const originalUrl = assignedEmployee?.original_photo_url || assignedEmployee?.photo_url || request.assigned_worker_original_photo_url || '';
@@ -1513,7 +1503,7 @@ function renderWorkerAssignment(request) {
         Worker
         <select class="assign-worker-select" data-id="${escapeHtml(request.id)}">
           <option value="">Select worker</option>
-          ${allEmployees.filter((e) => e.active).map((employee) => `
+          ${adminState.allEmployees.filter((e) => e.active).map((employee) => `
             <option value="${escapeHtml(employee.id)}" ${employee.id === selectedId ? 'selected' : ''}>${escapeHtml(employee.full_name)} (${escapeHtml(employee.employee_code)})</option>
           `).join('')}
         </select>
@@ -2223,15 +2213,15 @@ function renderEditPanel(request) {
 }
 
 function updateDashboardStatCards() {
-  const openCount = getFilteredRequests(allRequests, 'open').length;
-  const inProgressCount = getFilteredRequests(allRequests, 'in_progress').length;
-  const completedCount = getFilteredRequests(allRequests, 'completed_today').length;
-  const activeWorkerCount = allEmployees.filter((e) => e.active).length;
+  const openCount = getFilteredRequests(adminState.allRequests, 'open').length;
+  const inProgressCount = getFilteredRequests(adminState.allRequests, 'in_progress').length;
+  const completedCount = getFilteredRequests(adminState.allRequests, 'completed_today').length;
+  const activeWorkerCount = adminState.allEmployees.filter((e) => e.active).length;
   // Company NET for the active range — the same formula as the Payroll tab so the
   // tile and Payroll agree (service fees + cancellation fees − worker payouts).
-  const { companyNet } = companyNetBreakdown((r) => isInDashboardRange(r, dashboardRange));
+  const { companyNet } = companyNetBreakdown((r) => isInDashboardRange(r, adminState.dashboardRange));
 
-  const rangeLabel = dashboardRangeLabel(dashboardRange);
+  const rangeLabel = dashboardRangeLabel(adminState.dashboardRange);
   if (statCompletedLabel) statCompletedLabel.textContent = 'Completed Today';
   if (statRevenueLabel) statRevenueLabel.textContent = `Company Net ${rangeLabel}`;
 
@@ -2246,10 +2236,10 @@ function updateDashboardStatCards() {
   // Offline. Counts are mutually exclusive and sum to the active-worker count.
   const PRESENCE_FRESH_MS = 2 * 60 * 1000;
   const nowMs = Date.now();
-  const activeEmployees = allEmployees.filter((e) => e.active);
+  const activeEmployees = adminState.allEmployees.filter((e) => e.active);
   const isLive = (e) => e.last_seen_at && (nowMs - new Date(e.last_seen_at).getTime()) < PRESENCE_FRESH_MS;
   const busyWorkerKeys = new Set(
-    allRequests
+    adminState.allRequests
       .filter((r) => isOpen(r) && (r.assigned_employee_id || r.assigned_worker_name))
       .flatMap((r) => [r.assigned_employee_id, r.assigned_worker_name].filter(Boolean))
   );
@@ -2269,37 +2259,37 @@ function updateDashboardStatCards() {
 
 function matchesQueueFilters(request) {
   // Service type
-  if (queueFilters.serviceType && request.service_type !== queueFilters.serviceType) return false;
+  if (adminState.queueFilters.serviceType && request.service_type !== adminState.queueFilters.serviceType) return false;
 
   // Specific status
-  if (queueFilters.status && request.status !== queueFilters.status) return false;
+  if (adminState.queueFilters.status && request.status !== adminState.queueFilters.status) return false;
 
   // Worker (specific worker, or unassigned)
-  if (queueFilters.worker) {
+  if (adminState.queueFilters.worker) {
     const assigned = Boolean(request.assigned_employee_id || request.assigned_worker_name);
-    if (queueFilters.worker === '__unassigned') {
+    if (adminState.queueFilters.worker === '__unassigned') {
       if (assigned) return false;
     } else {
-      const emp = allEmployees.find((e) => e.id === queueFilters.worker);
-      const matchById = request.assigned_employee_id === queueFilters.worker;
+      const emp = adminState.allEmployees.find((e) => e.id === adminState.queueFilters.worker);
+      const matchById = request.assigned_employee_id === adminState.queueFilters.worker;
       const matchByName = emp && request.assigned_worker_name === emp.full_name;
       if (!matchById && !matchByName) return false;
     }
   }
 
   // Payment status
-  if (queueFilters.payment) {
+  if (adminState.queueFilters.payment) {
     const ps = request.payment_status || 'not_started';
-    if (queueFilters.payment === 'attention') {
+    if (adminState.queueFilters.payment === 'attention') {
       if (!['payment_release_failed', 'capture_failed'].includes(ps)) return false;
-    } else if (ps !== queueFilters.payment) {
+    } else if (ps !== adminState.queueFilters.payment) {
       return false;
     }
   }
 
   // Free-text search across name / email / phone / plate / vehicle / ticket id
-  if (queueFilters.search) {
-    const q = queueFilters.search.trim().toLowerCase();
+  if (adminState.queueFilters.search) {
+    const q = adminState.queueFilters.search.trim().toLowerCase();
     const digits = q.replace(/[^0-9]/g, '');
     const hay = [
       request.customer_name, request.customer_email, request.license_plate,
@@ -2315,7 +2305,7 @@ function matchesQueueFilters(request) {
 }
 
 function sortFilteredRequests(list) {
-  const by = queueFilters.sort || 'newest';
+  const by = adminState.queueFilters.sort || 'newest';
   return list.slice().sort((a, b) => {
     if (by === 'name') {
       return String(a.customer_name || '').localeCompare(String(b.customer_name || ''));
@@ -2333,30 +2323,30 @@ function sortFilteredRequests(list) {
 }
 
 function renderRequests() {
-  const filtered = allRequests.filter((request) => {
+  const filtered = adminState.allRequests.filter((request) => {
     if (!matchesQueueFilters(request)) return false;
     // The date range is a global filter — it applies to EVERY view (All, Open,
     // In Progress, Completed, Closed). "All time" shows everything.
-    if (!isInDashboardRange(request, dashboardRange)) return false;
+    if (!isInDashboardRange(request, adminState.dashboardRange)) return false;
     // A specific status filter is authoritative — it overrides the bucket tab so
     // e.g. "Complete" still shows even while the Open view is active.
-    if (queueFilters.status) return true;
-    if (currentView === 'all') return true;
-    if (currentView === 'open') return OPEN_REQUEST_STATUSES.includes(canonicalBookingStatus(request.status));
-    if (currentView === 'in_progress') return IN_PROGRESS_REQUEST_STATUSES.includes(canonicalBookingStatus(request.status));
-    if (currentView === 'completed_today') return canonicalBookingStatus(request.status) === 'completed' && isToday(request.completed_at);
-    if (currentView === 'cancelled') return canonicalBookingStatus(request.status) === 'cancelled';
+    if (adminState.queueFilters.status) return true;
+    if (adminState.currentView === 'all') return true;
+    if (adminState.currentView === 'open') return OPEN_REQUEST_STATUSES.includes(canonicalBookingStatus(request.status));
+    if (adminState.currentView === 'in_progress') return IN_PROGRESS_REQUEST_STATUSES.includes(canonicalBookingStatus(request.status));
+    if (adminState.currentView === 'completed_today') return canonicalBookingStatus(request.status) === 'completed' && isToday(request.completed_at);
+    if (adminState.currentView === 'cancelled') return canonicalBookingStatus(request.status) === 'cancelled';
     return true;
   });
 
   const sortedFiltered = sortFilteredRequests(filtered);
 
   // Bucket-tab counts are scoped to the active date range so they match the list.
-  const inRange = allRequests.filter((r) => isInDashboardRange(r, dashboardRange));
+  const inRange = adminState.allRequests.filter((r) => isInDashboardRange(r, adminState.dashboardRange));
   const allCount = inRange.length;
   const openCount = getFilteredRequests(inRange, 'open').length;
   const inProgressCount = getFilteredRequests(inRange, 'in_progress').length;
-  const completeCount = getFilteredRequests(allRequests, 'completed_today').length;
+  const completeCount = getFilteredRequests(adminState.allRequests, 'completed_today').length;
   const closedCount = getFilteredRequests(inRange, 'cancelled').length;
 
   if (allRequestsCountEl) allRequestsCountEl.textContent = allCount;
@@ -2366,14 +2356,14 @@ function renderRequests() {
   if (deniedRequests) deniedRequests.textContent = closedCount;
 
   // Hero "Completed all-time" stays all-time regardless of the date range.
-  if (adminCompletedCount) adminCompletedCount.textContent = allRequests.filter((r) => canonicalBookingStatus(r.status) === 'completed').length;
+  if (adminCompletedCount) adminCompletedCount.textContent = adminState.allRequests.filter((r) => canonicalBookingStatus(r.status) === 'completed').length;
 
   updateDashboardStatCards();
 
   // Update heading and show-all button
   const headings = { all: 'All requests', open: 'Open requests', in_progress: 'In progress requests', completed_today: 'Completed today', cancelled: 'Cancelled requests' };
-  if (requestQueueHeading) requestQueueHeading.textContent = headings[currentView] || 'Requests';
-  if (requestQueueEyebrow) requestQueueEyebrow.textContent = (currentView === 'completed_today' || currentView === 'cancelled') ? 'History' : 'Queue';
+  if (requestQueueHeading) requestQueueHeading.textContent = headings[adminState.currentView] || 'Requests';
+  if (requestQueueEyebrow) requestQueueEyebrow.textContent = (adminState.currentView === 'completed_today' || adminState.currentView === 'cancelled') ? 'History' : 'Queue';
 
   // The date range dropdown ("All time" shows everything) replaces the old
   // standalone "Show all time" button.
@@ -2381,18 +2371,18 @@ function renderRequests() {
 
   // Summary card active state
   [showAll, showOpen, showInProgress, showComplete, showDenied].forEach((btn) => btn?.classList.remove('active'));
-  if (currentView === 'all') showAll?.classList.add('active');
-  if (currentView === 'open') showOpen?.classList.add('active');
-  if (currentView === 'in_progress') showInProgress?.classList.add('active');
-  if (currentView === 'completed_today') showComplete?.classList.add('active');
-  if (currentView === 'cancelled') showDenied?.classList.add('active');
+  if (adminState.currentView === 'all') showAll?.classList.add('active');
+  if (adminState.currentView === 'open') showOpen?.classList.add('active');
+  if (adminState.currentView === 'in_progress') showInProgress?.classList.add('active');
+  if (adminState.currentView === 'completed_today') showComplete?.classList.add('active');
+  if (adminState.currentView === 'cancelled') showDenied?.classList.add('active');
 
   if (sortedFiltered.length === 0) {
-    const hasActiveFilters = Boolean(queueFilters.search || queueFilters.serviceType || queueFilters.worker || queueFilters.payment);
+    const hasActiveFilters = Boolean(adminState.queueFilters.search || adminState.queueFilters.serviceType || adminState.queueFilters.worker || adminState.queueFilters.payment);
     const msg = hasActiveFilters
       ? '<div class="empty-state"><p>No requests match your filters. <button class="button secondary inline-clear-filters" type="button">Clear filters</button></p></div>'
-      : (dashboardRange !== 'all')
-        ? `<div class="empty-state"><p>No requests in <strong>${escapeHtml(dashboardRangeLabel(dashboardRange))}</strong>. <button class="button secondary inline-range-all" type="button">Show all time</button></p></div>`
+      : (adminState.dashboardRange !== 'all')
+        ? `<div class="empty-state"><p>No requests in <strong>${escapeHtml(dashboardRangeLabel(adminState.dashboardRange))}</strong>. <button class="button secondary inline-range-all" type="button">Show all time</button></p></div>`
         : '<div class="empty-state"><p>No requests in this view.</p></div>';
     requestList.innerHTML = msg;
     return;
@@ -2413,8 +2403,8 @@ function renderRequests() {
       <tbody>
         ${sortedFiltered.map((request) => {
           const bucket = queueStatusBucket(request);
-          const isExpanded = expandedRequestId === request.id;
-          const isSummaryExpanded = expandedSummaryId === request.id;
+          const isExpanded = adminState.expandedRequestId === request.id;
+          const isSummaryExpanded = adminState.expandedSummaryId === request.id;
           const isCompleted = bucket.label === 'Completed';
           const actionBtnClass = isCompleted ? 'queue-summary-toggle' : 'queue-row-toggle';
           const rows = [`
@@ -2551,14 +2541,14 @@ async function loadEmployees() {
 
     if (error) throw error;
 
-    allEmployees = (data || []).map(normalizeEmployee);
+    adminState.allEmployees = (data || []).map(normalizeEmployee);
 
-    if (selectedScheduleEmployeeId && !allEmployees.some((e) => e.id === selectedScheduleEmployeeId)) {
-      console.warn(`Worker ID ${selectedScheduleEmployeeId} not found in employees table. Clearing selection.`);
-      selectedScheduleEmployeeId = '';
+    if (adminState.selectedScheduleEmployeeId && !adminState.allEmployees.some((e) => e.id === adminState.selectedScheduleEmployeeId)) {
+      console.warn(`Worker ID ${adminState.selectedScheduleEmployeeId} not found in employees table. Clearing selection.`);
+      adminState.selectedScheduleEmployeeId = '';
     }
 
-    if (workerCountBadge) workerCountBadge.textContent = allEmployees.filter((e) => e.active).length;
+    if (workerCountBadge) workerCountBadge.textContent = adminState.allEmployees.filter((e) => e.active).length;
     renderWorkerSelect();
     renderWorkerProfiles();
     loadAdminChangeRequests();
@@ -2566,7 +2556,7 @@ async function loadEmployees() {
     updateDashboardStatCards();
   } catch (error) {
     console.error('Could not load employees:', error);
-    allEmployees = [];
+    adminState.allEmployees = [];
     renderWorkerSelect();
     renderWorkerProfiles();
     if (workerScheduleStatus) {
@@ -2584,7 +2574,7 @@ let workerPresenceFilter = null; // null = show all
 
 function workerBusyKeys() {
   return new Set(
-    allRequests
+    adminState.allRequests
       .filter((r) => isOpen(r) && (r.assigned_employee_id || r.assigned_worker_name))
       .flatMap((r) => [r.assigned_employee_id, r.assigned_worker_name].filter(Boolean))
   );
@@ -2610,7 +2600,7 @@ async function loadAdminChangeRequests() {
       console.warn('Could not load change requests:', error);
     }
     container.innerHTML = '';
-    pendingChangeRequestCount = 0;
+    adminState.pendingChangeRequestCount = 0;
     if (typeof renderActionNeeded === 'function') renderActionNeeded();
     return;
   }
@@ -2625,10 +2615,10 @@ function adminChangeStatusBadge(status) {
 
 function renderAdminChangeRequests(requests) {
   const container = document.querySelector('#admin-change-requests');
-  adminChangeRequestsList = requests;
+  adminState.adminChangeRequestsList = requests;
   const pending = requests.filter((r) => r.status === 'pending');
   // Keep the dashboard "Needs your attention" badge in sync with the queue.
-  pendingChangeRequestCount = pending.length;
+  adminState.pendingChangeRequestCount = pending.length;
   if (typeof renderActionNeeded === 'function') renderActionNeeded();
   if (!container) return;
   if (!requests.length) { container.innerHTML = ''; return; }
@@ -2697,7 +2687,7 @@ document.querySelector('#admin-change-requests')?.addEventListener('click', asyn
     // Auto-apply: approving a dated time-off request marks that day off for the
     // worker. Fail-soft — if the RPC isn't deployed, the approval still proceeds.
     if (approve) {
-      const req = adminChangeRequestsList.find((x) => x.id === btn.dataset.id);
+      const req = adminState.adminChangeRequestsList.find((x) => x.id === btn.dataset.id);
       const rc = req?.requested_changes || {};
       if (req?.kind === 'schedule' && rc.type === 'time_off' && rc.date) {
         const { error: dayErr } = await db.rpc('admin_add_day_off', {
@@ -2718,16 +2708,16 @@ document.querySelector('#admin-change-requests')?.addEventListener('click', asyn
 function renderWorkerProfiles() {
   if (!workerProfileList) return;
 
-  if (!allEmployees.length) {
+  if (!adminState.allEmployees.length) {
     workerProfileList.innerHTML = '<div class="empty-state"><p>No workers found. Run supabase-operational-upgrades.sql in Supabase.</p></div>';
     return;
   }
 
-  let employees = allEmployees;
+  let employees = adminState.allEmployees;
   let banner = '';
   if (workerPresenceFilter) {
     const busyKeys = workerBusyKeys();
-    employees = allEmployees.filter((e) => e.active && workerPresenceCategory(e, busyKeys) === workerPresenceFilter);
+    employees = adminState.allEmployees.filter((e) => e.active && workerPresenceCategory(e, busyKeys) === workerPresenceFilter);
     banner = `
       <div class="worker-filter-banner">
         <span>Showing <strong>${WORKER_PRESENCE_LABELS[workerPresenceFilter]}</strong> workers (${employees.length})</span>
@@ -2763,7 +2753,7 @@ function collapseWorkerSectionsForMobile() {
 }
 
 function renderWorkerProfileRow(employee) {
-  const isExpanded = selectedScheduleEmployeeId === employee.id;
+  const isExpanded = adminState.selectedScheduleEmployeeId === employee.id;
   const statusLabel = employee.active ? 'Active' : 'Inactive';
   const rowStatusClass = employee.active ? 'status-pill-complete' : 'status-pill-denied';
   const rows = [`
@@ -2950,10 +2940,10 @@ function renderWorkerProfileCard(employee) {
 }
 
 // 7 day rows (Sun–Sat) for the inline admin schedule editor, prefilled from the
-// employee's cached availability (adminCardAvailability). Days with no saved row
+// employee's cached availability (adminState.adminCardAvailability). Days with no saved row
 // render unchecked at the 9–5 default.
 function renderAdminCardScheduleRows(employeeId) {
-  const saved = adminCardAvailability[employeeId];
+  const saved = adminState.adminCardAvailability[employeeId];
   const map = new Map((saved || []).map((day) => [Number(day.dayOfWeek), day]));
   return workerDayOptions
     .map(({ dayOfWeek, label }) => {
@@ -2987,16 +2977,16 @@ async function loadAdminCardAvailability(employeeId) {
       .select('day_of_week,starts_at,ends_at')
       .eq('employee_id', employeeId);
     if (error) throw error;
-    adminCardAvailability[employeeId] = (data || []).map((row) => ({
+    adminState.adminCardAvailability[employeeId] = (data || []).map((row) => ({
       dayOfWeek: Number(row.day_of_week),
       startsAt: String(row.starts_at || '09:00').slice(0, 5),
       endsAt: String(row.ends_at || '17:00').slice(0, 5),
     }));
   } catch (err) {
     console.warn('Could not load worker availability for admin card:', err);
-    adminCardAvailability[employeeId] = adminCardAvailability[employeeId] || [];
+    adminState.adminCardAvailability[employeeId] = adminState.adminCardAvailability[employeeId] || [];
   }
-  if (selectedScheduleEmployeeId === employeeId) renderWorkerProfiles();
+  if (adminState.selectedScheduleEmployeeId === employeeId) renderWorkerProfiles();
 }
 
 // Read the inline schedule grid and persist it via admin_save_availability.
@@ -3027,7 +3017,7 @@ async function saveAdminCardSchedule(button) {
     return;
   }
 
-  const employee = allEmployees.find((e) => e.id === employeeId);
+  const employee = adminState.allEmployees.find((e) => e.id === employeeId);
   const location = employee?.home_location || DEFAULT_WORK_LOCATION;
   const { error } = await db.rpc('admin_save_availability', {
     p_token: adminAuthToken(),
@@ -3041,7 +3031,7 @@ async function saveAdminCardSchedule(button) {
   });
   if (error) throw error;
 
-  adminCardAvailability[employeeId] = workdays;
+  adminState.adminCardAvailability[employeeId] = workdays;
   if (status) status.textContent = `Schedule saved · ${workdays.length} working day${workdays.length === 1 ? '' : 's'}.`;
 }
 
@@ -3113,7 +3103,7 @@ function wireAdminPhotoEditor() {
 
   document.querySelector('#admin-edit-framing')?.addEventListener('click', () => {
     if (actionsPanel) actionsPanel.hidden = true;
-    const employee = allEmployees.find((e) => e.id === selectedScheduleEmployeeId);
+    const employee = adminState.allEmployees.find((e) => e.id === adminState.selectedScheduleEmployeeId);
     const sourceUrl = employee?.original_photo_url || employee?.photo_url;
     if (!sourceUrl) return;
     // Load the original (uncropped) photo for framing. adminCroppedPhotoBlob = null → no re-upload of original.
@@ -3201,8 +3191,8 @@ function wireAdminPhotoEditor() {
 }
 
 function renderWorkerSelect() {
-  const sel = selectedScheduleEmployeeId || workerSelect?.value;
-  const activeEmployees = allEmployees.filter((e) => e.active);
+  const sel = adminState.selectedScheduleEmployeeId || workerSelect?.value;
+  const activeEmployees = adminState.allEmployees.filter((e) => e.active);
 
   const toOption = (e) => `<option value="${escapeHtml(e.id)}" ${e.id === sel ? 'selected' : ''}>${escapeHtml(e.full_name)} (${escapeHtml(e.employee_code)})</option>`;
 
@@ -3211,13 +3201,13 @@ function renderWorkerSelect() {
     workerSelect.innerHTML = `<option value="">Select worker</option>${activeEmployees.map(toOption).join('')}`;
   }
 
-  if (sel && allEmployees.some((e) => e.id === sel)) {
-    selectedScheduleEmployeeId = sel;
+  if (sel && adminState.allEmployees.some((e) => e.id === sel)) {
+    adminState.selectedScheduleEmployeeId = sel;
   } else {
-    selectedScheduleEmployeeId = '';
+    adminState.selectedScheduleEmployeeId = '';
   }
 
-  if (workerSelect) workerSelect.value = selectedScheduleEmployeeId || '';
+  if (workerSelect) workerSelect.value = adminState.selectedScheduleEmployeeId || '';
 }
 
 // (Removed: the old "Select worker" dropdown schedule loader — syncSelectedWorker
@@ -3257,7 +3247,7 @@ async function validateUniqueWorkerPhone(employeeId, phone) {
   if (!phone) return;
   const phoneDigits = normalizePhone(phone);
 
-  const conflict = allEmployees.find((employee) => (
+  const conflict = adminState.allEmployees.find((employee) => (
     employee.id !== employeeId
     && employee.active
     && normalizePhone(employee.phone) === phoneDigits
@@ -3270,7 +3260,7 @@ async function validateUniqueWorkerPhone(employeeId, phone) {
 async function saveAdminWorkerProfile(button) {
   const card = button.closest('.worker-profile-card');
   const employeeId = button.dataset.id;
-  const existingEmployee = allEmployees.find((employee) => employee.id === employeeId);
+  const existingEmployee = adminState.allEmployees.find((employee) => employee.id === employeeId);
   const status = card?.querySelector('.admin-worker-status');
 
   if (status) status.textContent = 'Saving worker profile...';
@@ -3373,8 +3363,8 @@ async function saveAdminWorkerProfile(button) {
   // refreshes from the stale row and snaps back to the company-rate placeholder
   // even though the rate persisted.
   if (!rateErr) savedEmployee.time_rate_per_min = Number.isFinite(timeRate) ? timeRate : null;
-  allEmployees = allEmployees.map((employee) => employee.id === employeeId ? savedEmployee : employee);
-  selectedScheduleEmployeeId = employeeId;
+  adminState.allEmployees = adminState.allEmployees.map((employee) => employee.id === employeeId ? savedEmployee : employee);
+  adminState.selectedScheduleEmployeeId = employeeId;
   renderWorkerSelect();
   renderWorkerProfiles();
   renderRequests();
@@ -3409,7 +3399,7 @@ async function resetAdminWorkerPassword(button) {
 
 async function deactivateAdminWorkerProfile(button) {
   const employeeId = button.dataset.id;
-  const employee = allEmployees.find((item) => item.id === employeeId);
+  const employee = adminState.allEmployees.find((item) => item.id === employeeId);
 
   if (!employee || String(employeeId).startsWith('local-')) return;
 
@@ -3424,8 +3414,8 @@ async function deactivateAdminWorkerProfile(button) {
 
   if (error) throw error;
 
-  // Update in-memory record — keep them in allEmployees so the profile dropdown still shows them.
-  allEmployees = allEmployees.map((e) => e.id === employeeId ? { ...e, active: false } : e);
+  // Update in-memory record — keep them in adminState.allEmployees so the profile dropdown still shows them.
+  adminState.allEmployees = adminState.allEmployees.map((e) => e.id === employeeId ? { ...e, active: false } : e);
 
   renderWorkerSelect();
   renderWorkerProfiles();
@@ -3434,7 +3424,7 @@ async function deactivateAdminWorkerProfile(button) {
 
 async function reactivateAdminWorkerProfile(button) {
   const employeeId = button.dataset.id;
-  const employee = allEmployees.find((item) => item.id === employeeId);
+  const employee = adminState.allEmployees.find((item) => item.id === employeeId);
   const card = button.closest('.worker-profile-card');
   const status = card?.querySelector('.admin-worker-status');
 
@@ -3453,7 +3443,7 @@ async function reactivateAdminWorkerProfile(button) {
 
   if (error) throw error;
 
-  allEmployees = allEmployees.map((e) => e.id === employeeId ? { ...e, active: true } : e);
+  adminState.allEmployees = adminState.allEmployees.map((e) => e.id === employeeId ? { ...e, active: true } : e);
 
   renderWorkerSelect();
   renderWorkerProfiles();
@@ -3464,7 +3454,7 @@ async function reactivateAdminWorkerProfile(button) {
 
 async function permanentlyDeleteInactiveWorker(button) {
   const employeeId = button.dataset.id;
-  const employee = allEmployees.find((item) => item.id === employeeId);
+  const employee = adminState.allEmployees.find((item) => item.id === employeeId);
   const card = button.closest('.worker-profile-card');
   const status = card?.querySelector('.admin-worker-status');
 
@@ -3505,8 +3495,8 @@ async function permanentlyDeleteInactiveWorker(button) {
   }
 
   // Remove from in-memory list and clear selection.
-  allEmployees = allEmployees.filter((e) => e.id !== employeeId);
-  selectedScheduleEmployeeId = '';
+  adminState.allEmployees = adminState.allEmployees.filter((e) => e.id !== employeeId);
+  adminState.selectedScheduleEmployeeId = '';
   if (workerSelect) workerSelect.value = '';
 
   renderWorkerSelect();
@@ -3524,13 +3514,13 @@ async function loadRequests() {
     return;
   }
 
-  allRequests = data || [];
-  lastAdminRequestsSignature = adminRequestsSignature(allRequests);
+  adminState.allRequests = data || [];
+  lastAdminRequestsSignature = adminRequestsSignature(adminState.allRequests);
   updateHeroStats();
   populateFilterStatuses();
   updateCancellationBadge();
   // The Active Workers and Revenue stat cards inject custom tables that aren't
-  // driven by currentView — re-render them so a refresh doesn't revert to the
+  // driven by adminState.currentView — re-render them so a refresh doesn't revert to the
   // default queue.
   if (activeStatCard === 'workers') openWorkersPanel();
   else if (activeStatCard === 'revenue') openRevenuePanel();
@@ -3557,7 +3547,7 @@ function isCancellationAlert(request) {
 function updateCancellationBadge() {
   const badge = document.querySelector('#cancellation-alert-badge');
   if (!badge) return;
-  const count = (allRequests || []).filter(isCancellationAlert).length;
+  const count = (adminState.allRequests || []).filter(isCancellationAlert).length;
   if (!count) {
     badge.hidden = true;
     return;
@@ -3613,7 +3603,7 @@ async function pollAdminRequests() {
     if (error) return;
     const requests = data || [];
     if (adminRequestsSignature(requests) === lastAdminRequestsSignature) return; // nothing changed
-    allRequests = requests;
+    adminState.allRequests = requests;
     lastAdminRequestsSignature = adminRequestsSignature(requests);
     updateHeroStats();
     populateFilterStatuses();
@@ -3631,12 +3621,12 @@ setInterval(pollAdminRequests, 20000);
 // re-rendering) the whole worker-management UI. Recomputing each tick also
 // ages stale heartbeats out to Offline.
 async function pollWorkerPresence() {
-  if (!adminAuthToken() || !allEmployees.length) return;
+  if (!adminAuthToken() || !adminState.allEmployees.length) return;
   try {
     const { data, error } = await db.rpc('admin_list_employees', { p_token: adminAuthToken() });
     if (error || !Array.isArray(data)) return;
     const byId = new Map(data.map((e) => [e.id, e]));
-    allEmployees = allEmployees.map((e) => {
+    adminState.allEmployees = adminState.allEmployees.map((e) => {
       const p = byId.get(e.id);
       return p ? { ...e, last_seen_at: p.last_seen_at || null, presence_status: p.presence_status || 'offline' } : e;
     });
@@ -3650,11 +3640,11 @@ setInterval(pollWorkerPresence, 30000);
 
 document.querySelector('#cancellation-alert-badge')?.addEventListener('click', () => {
   setActiveStatCard(null);
-  currentView = 'in_progress';
-  showAllTime = false;
+  adminState.currentView = 'in_progress';
+  adminState.showAllTime = false;
   // Flagged tickets may be from earlier days; the date range is a global queue
   // filter, so widen it to All time or the badge would hide older open ones.
-  dashboardRange = 'all';
+  adminState.dashboardRange = 'all';
   if (dashboardRangeSelect) dashboardRangeSelect.value = 'all';
   updateDashboardStatCards();
   switchAdminTab('requests');
@@ -3747,11 +3737,11 @@ async function loadReviews() {
     }
   }
 
-  allReviews = reviews;
-  allReviewRequestMap = requestMap;
-  if (totalReviewsEl) totalReviewsEl.textContent = allReviews.length;
+  adminState.allReviews = reviews;
+  adminState.allReviewRequestMap = requestMap;
+  if (totalReviewsEl) totalReviewsEl.textContent = adminState.allReviews.length;
   updateHeroStats();
-  renderReviews(allReviews, allReviewRequestMap, currentReviewFilter);
+  renderReviews(adminState.allReviews, adminState.allReviewRequestMap, adminState.currentReviewFilter);
 }
 
 function renderApplicants(applicants) {
@@ -3841,9 +3831,9 @@ async function loadApplicants() {
     return;
   }
 
-  allApplicantsList = data || [];
-  if (totalApplicantsEl) totalApplicantsEl.textContent = allApplicantsList.length;
-  renderApplicants(allApplicantsList);
+  adminState.allApplicantsList = data || [];
+  if (totalApplicantsEl) totalApplicantsEl.textContent = adminState.allApplicantsList.length;
+  renderApplicants(adminState.allApplicantsList);
   renderActionNeeded();
 }
 
@@ -3908,8 +3898,8 @@ async function loadSupportMessages() {
     return;
   }
 
-  allSupportMessages = data || [];
-  renderSupportMessages(allSupportMessages);
+  adminState.allSupportMessages = data || [];
+  renderSupportMessages(adminState.allSupportMessages);
   renderActionNeeded();
 }
 
@@ -3922,8 +3912,8 @@ async function updateSupportMessage(id, updates) {
   });
   if (error) throw error;
   const updated = data || {};
-  allSupportMessages = allSupportMessages.map((message) => message.id === id ? { ...message, ...updated } : message);
-  renderSupportMessages(allSupportMessages);
+  adminState.allSupportMessages = adminState.allSupportMessages.map((message) => message.id === id ? { ...message, ...updated } : message);
+  renderSupportMessages(adminState.allSupportMessages);
   renderActionNeeded();
 }
 
@@ -3950,7 +3940,7 @@ supportMessageList?.addEventListener('click', async (event) => {
 });
 
 async function hireApplicant(applicantId) {
-  const applicant = allApplicantsList.find((item) => item.id === applicantId);
+  const applicant = adminState.allApplicantsList.find((item) => item.id === applicantId);
   if (!applicant) throw new Error('Applicant not found. Reload the applicants list and try again.');
 
   const phone = applicant.phone || null;
@@ -4044,7 +4034,7 @@ applicantList?.addEventListener('change', async (event) => {
 
   // Declining removes the application entirely — confirm first since it's permanent.
   if (select.value === 'declined') {
-    const applicant = allApplicantsList.find((item) => item.id === select.dataset.id);
+    const applicant = adminState.allApplicantsList.find((item) => item.id === select.dataset.id);
     const who = applicant?.name || 'this applicant';
     if (!confirm(`Decline and permanently delete the application for ${who}? This cannot be undone.`)) {
       loadApplicants(); // revert the dropdown back to its saved status
@@ -4115,8 +4105,8 @@ workerProfileList?.addEventListener('click', async (event) => {
   const toggleButton = event.target.closest('.worker-row-toggle');
   if (toggleButton) {
     const id = toggleButton.dataset.id;
-    const opening = selectedScheduleEmployeeId !== id;
-    selectedScheduleEmployeeId = opening ? id : '';
+    const opening = adminState.selectedScheduleEmployeeId !== id;
+    adminState.selectedScheduleEmployeeId = opening ? id : '';
     renderWorkerProfiles();
     // Pull this worker's saved availability into the inline schedule grid.
     if (opening && !String(id).startsWith('local-')) {
@@ -4155,7 +4145,7 @@ workerProfileList?.addEventListener('click', async (event) => {
       verifyButton.disabled = false;
       return;
     }
-    allEmployees = allEmployees.map((e) => e.id === verifyButton.dataset.id ? { ...e, background_verified: next } : e);
+    adminState.allEmployees = adminState.allEmployees.map((e) => e.id === verifyButton.dataset.id ? { ...e, background_verified: next } : e);
     renderWorkerProfiles();
     return;
   }
@@ -4234,7 +4224,7 @@ workerProfileList?.addEventListener('click', async (event) => {
 });
 
 async function updateRequestStatus(id, status) {
-  const request = allRequests.find(r => r.id === id);
+  const request = adminState.allRequests.find(r => r.id === id);
   const canonicalStatus = canonicalBookingStatus(status);
   const payload = { status: canonicalStatus };
   if (canonicalStatus === 'completed') payload.completed_at = new Date().toISOString();
@@ -4266,8 +4256,8 @@ async function updateRequestStatus(id, status) {
 }
 
 async function updateWorkerAssignment(requestId, employeeId) {
-  const employee = allEmployees.find((item) => item.id === employeeId);
-  const request = allRequests.find(r => r.id === requestId);
+  const employee = adminState.allEmployees.find((item) => item.id === employeeId);
+  const request = adminState.allRequests.find(r => r.id === requestId);
   const updates = employee
     ? {
         assigned_employee_id: employee.id,
@@ -4345,7 +4335,7 @@ function selectedFilesHaveDuplicates(inputs) {
 
 async function saveFinalTotal(button) {
   const id = button.dataset.id;
-  const request = allRequests.find((item) => item.id === id);
+  const request = adminState.allRequests.find((item) => item.id === id);
   const panel = button.closest('.receipt-panel');
   const receiptMode = button.dataset.receiptMode || 'all';
   const savedTotals = receiptTotalsFromNotes(request);
@@ -4408,7 +4398,7 @@ async function saveFinalTotal(button) {
 async function saveServiceUnable(button) {
   const id = button.dataset.id;
   const panel = button.closest('.service-unable-panel');
-  const request = allRequests.find((item) => item.id === id);
+  const request = adminState.allRequests.find((item) => item.id === id);
   const type = panel?.dataset.serviceType;
   const selected = panel?.querySelector('.service-unable-reason')?.value.trim();
   const custom   = panel?.querySelector('.service-unable-other')?.value.trim();
@@ -4471,7 +4461,7 @@ async function voidPaymentHold(request) {
 async function retryReleaseHold(button) {
   const id = button.dataset.id;
   const pi = button.dataset.pi;
-  const request = allRequests.find(r => r.id === id);
+  const request = adminState.allRequests.find(r => r.id === id);
   if (!request) return;
 
   const originalText = button.textContent;
@@ -4530,7 +4520,7 @@ function buildActionNeededItems() {
   const items = [];
   const today = actionTodayStr();
 
-  for (const r of allRequests || []) {
+  for (const r of adminState.allRequests || []) {
     const who = `${r.customer_name || 'Customer'} · ${queueServiceLabel(r)}`;
 
     if (ACTION_PAYMENT_ISSUE_STATUSES.includes(r.status)
@@ -4566,7 +4556,7 @@ function buildActionNeededItems() {
     }
   }
 
-  const pendingApplicants = (allApplicantsList || []).filter((a) => !ACTION_RESOLVED_APPLICANT.has(String(a.status || '').toLowerCase()));
+  const pendingApplicants = (adminState.allApplicantsList || []).filter((a) => !ACTION_RESOLVED_APPLICANT.has(String(a.status || '').toLowerCase()));
   if (pendingApplicants.length) {
     items.push({ kind: 'applicant', action: 'applicants',
       title: 'Applicant waiting for review',
@@ -4574,14 +4564,14 @@ function buildActionNeededItems() {
       detail: 'A worker application is waiting for your review.' });
   }
 
-  if (pendingChangeRequestCount > 0) {
+  if (adminState.pendingChangeRequestCount > 0) {
     items.push({ kind: 'change-request', action: 'change-requests',
       title: 'Worker change request waiting',
-      who: pendingChangeRequestCount === 1 ? '1 request' : `${pendingChangeRequestCount} requests`,
+      who: adminState.pendingChangeRequestCount === 1 ? '1 request' : `${adminState.pendingChangeRequestCount} requests`,
       detail: 'A worker is requesting a schedule or job change. Review it in the Workers tab.' });
   }
 
-  const openSupportMessages = (allSupportMessages || []).filter((m) => m.status === 'open');
+  const openSupportMessages = (adminState.allSupportMessages || []).filter((m) => m.status === 'open');
   if (openSupportMessages.length) {
     items.push({ kind: 'support', action: 'support',
       title: 'Support message waiting',
@@ -4630,9 +4620,9 @@ function renderActionNeeded() {
 
 function openRequestFromAction(id) {
   if (!id) return;
-  currentView = 'all';
-  expandedRequestId = id;
-  expandedSummaryId = null;
+  adminState.currentView = 'all';
+  adminState.expandedRequestId = id;
+  adminState.expandedSummaryId = null;
   switchPageTab('dashboard');
   renderRequests();
   setTimeout(() => {
@@ -4909,7 +4899,7 @@ async function retryScheduledAuth(button) {
 async function saveDenyReason(button) {
   const id = button.dataset.id;
   const panel = button.closest('.deny-reason-panel');
-  const request = allRequests.find((item) => item.id === id);
+  const request = adminState.allRequests.find((item) => item.id === id);
   const selected = panel?.querySelector('.deny-reason-select')?.value.trim();
   const custom   = panel?.querySelector('.deny-reason-other')?.value.trim();
   const reason   = selected === 'Other' ? (custom || '') : selected;
@@ -5043,7 +5033,7 @@ async function saveDenyReason(button) {
 async function saveTotalEdit(button) {
   const id = button.dataset.id;
   const type = button.dataset.editTotal;
-  const request = allRequests.find((item) => item.id === id);
+  const request = adminState.allRequests.find((item) => item.id === id);
   const panel = button.closest('.total-edit-panel');
   const value = numberFromInput(panel.querySelector('.edit-service-total-value')?.value);
 
@@ -5097,7 +5087,7 @@ async function saveReturnLocation(button) {
 
 async function saveInspection(button) {
   const id = button.dataset.id;
-  const request = allRequests.find((item) => item.id === id);
+  const request = adminState.allRequests.find((item) => item.id === id);
   const panel = button.closest('.inspection-panel');
   const code = normalizeTroubleCode(panel.querySelector('.inspection-trouble-code').value);
   const codeDetails = troubleCodeDetails(code);
@@ -5132,7 +5122,7 @@ async function saveInspection(button) {
 
 async function completeRequest(button) {
   const id = button.dataset.id;
-  const request = allRequests.find((item) => item.id === id);
+  const request = adminState.allRequests.find((item) => item.id === id);
   const panel = button.closest('.complete-panel');
   const confirmed = panel.querySelector('.confirm-complete-totals')?.checked;
 
@@ -5171,7 +5161,7 @@ async function completeRequest(button) {
 
 async function captureAndProceed(button) {
   const id = button.dataset.id;
-  const request = allRequests.find(r => r.id === id);
+  const request = adminState.allRequests.find(r => r.id === id);
   if (!request) return;
 
   const panel = button.closest('.complete-panel');
@@ -5221,7 +5211,7 @@ async function captureAndProceed(button) {
 // so this does not require re-checking the confirm-totals checkbox.
 async function retryPaymentCapture(button) {
   const id = button.dataset.id;
-  const request = allRequests.find(r => r.id === id);
+  const request = adminState.allRequests.find(r => r.id === id);
   if (!request) return;
 
   const panel = button.closest('[data-payment-issue-for]');
@@ -5265,7 +5255,7 @@ async function retryPaymentCapture(button) {
 
 async function proceedToKeyReturn(button) {
   const id = button.dataset.id;
-  const request = allRequests.find(r => r.id === id);
+  const request = adminState.allRequests.find(r => r.id === id);
   if (!request) return;
 
   const panel = button.closest('.complete-panel');
@@ -5322,7 +5312,7 @@ async function resolveReturnRequest(button, decision) {
 
 async function submitAdminKeysReturned(button) {
   const id = button.dataset.id;
-  const request = allRequests.find(r => r.id === id);
+  const request = adminState.allRequests.find(r => r.id === id);
   if (!request) return;
 
   const panel = button.closest('.keys-returned-panel');
@@ -5378,7 +5368,7 @@ async function submitAdminKeysReturned(button) {
 // in front of the customer's Confirm-and-Pay card on the tracking page.
 async function sendToCustomerPayment(button) {
   const id = button.dataset.id;
-  const request = allRequests.find((item) => item.id === id);
+  const request = adminState.allRequests.find((item) => item.id === id);
   if (!request) return;
 
   const panel = button.closest('[data-payment-issue-for]');
@@ -5462,7 +5452,7 @@ async function saveEdit(button) {
   // but never raised above what the customer authorized — you can't capture more
   // than the hold, and raising it would also unfairly inflate the worker payout.
   if (updates.final_total != null) {
-    const req = allRequests.find((r) => r.id === id);
+    const req = adminState.allRequests.find((r) => r.id === id);
     const ceiling = Number(req?.authorized_amount ?? req?.estimated_total ?? req?.final_total);
     if (Number.isFinite(ceiling) && Number(updates.final_total) > ceiling + 0.001) {
       if (statusEl) statusEl.textContent = `Final total can't exceed the authorized ${money(ceiling)}. You can only lower it.`;
@@ -5513,7 +5503,7 @@ function nextStatusForPhoto(photoType) {
 
 async function uploadPhoto(button) {
   const id = button.dataset.id;
-  const request = allRequests.find((item) => item.id === id);
+  const request = adminState.allRequests.find((item) => item.id === id);
   const panel = button.closest('.photo-panel');
   const photoType = panel.querySelector('.photo-type').value;
   const fileInput = panel.querySelector('.photo-file');
@@ -5557,7 +5547,7 @@ async function uploadPhoto(button) {
 
 async function uploadPhotoSet(button) {
   const id = button.dataset.id;
-  const request = allRequests.find((item) => item.id === id);
+  const request = adminState.allRequests.find((item) => item.id === id);
   const panel = button.closest('.photo-panel');
   const inputs = Array.from(panel.querySelectorAll('.required-photo'));
   const missing = inputs.filter((input) => !input.files[0]);
@@ -5634,7 +5624,7 @@ function renderEditTotalPanel(request) {
 
 function editTotalChargeOpen(button) {
   const requestId = button.dataset.requestId;
-  const request = allRequests.find(r => r.id === requestId);
+  const request = adminState.allRequests.find(r => r.id === requestId);
   if (!request) return;
   const panel = document.getElementById(`edit-total-panel-${requestId}`);
   if (!panel) return;
@@ -5665,7 +5655,7 @@ function recalcEditTotal(panel, request) {
 
 async function saveEditTotalCharge(button) {
   const requestId = button.dataset.requestId;
-  const request = allRequests.find(r => r.id === requestId);
+  const request = adminState.allRequests.find(r => r.id === requestId);
   if (!request) return;
 
   const panel = document.getElementById(`edit-total-panel-${requestId}`);
@@ -5740,28 +5730,28 @@ requestList.addEventListener('click', async (event) => {
   try {
     if (button.classList.contains('queue-summary-toggle')) {
       const id = button.dataset.id;
-      expandedSummaryId = expandedSummaryId === id ? null : id;
-      expandedRequestId = null;
+      adminState.expandedSummaryId = adminState.expandedSummaryId === id ? null : id;
+      adminState.expandedRequestId = null;
       renderRequests();
       return;
     }
 
     if (button.classList.contains('queue-row-toggle')) {
       const id = button.dataset.id;
-      expandedRequestId = expandedRequestId === id ? null : id;
-      expandedSummaryId = null;
+      adminState.expandedRequestId = adminState.expandedRequestId === id ? null : id;
+      adminState.expandedSummaryId = null;
       renderRequests();
       return;
     }
 
     if (button.classList.contains('inline-show-all')) {
-      showAllTime = true;
+      adminState.showAllTime = true;
       renderRequests();
       return;
     }
 
     if (button.classList.contains('inline-range-all')) {
-      dashboardRange = 'all';
+      adminState.dashboardRange = 'all';
       if (dashboardRangeSelect) dashboardRangeSelect.value = 'all';
       if (customRangeInputs) customRangeInputs.hidden = true;
       applyDashboardRange();
@@ -5938,7 +5928,7 @@ requestList.addEventListener('click', async (event) => {
     }
 
     if (button.classList.contains('show-total-edit')) {
-      const request = allRequests.find((item) => item.id === button.dataset.id);
+      const request = adminState.allRequests.find((item) => item.id === button.dataset.id);
       const panel = requestList.querySelector(`[data-total-edit-for="${button.dataset.id}"]`);
       const checkbox = button.closest('.complete-panel')?.querySelector('.confirm-complete-totals');
 
@@ -6080,36 +6070,36 @@ requestList.addEventListener('input', (event) => {
 
 showAll?.addEventListener('click', () => {
   setActiveStatCard(null);
-  currentView = 'all';
-  showAllTime = false;
+  adminState.currentView = 'all';
+  adminState.showAllTime = false;
   switchAdminTab('requests');
   renderRequests();
 });
 showOpen?.addEventListener('click', () => {
   setActiveStatCard(null);
-  currentView = 'open';
-  showAllTime = false;
+  adminState.currentView = 'open';
+  adminState.showAllTime = false;
   switchAdminTab('requests');
   renderRequests();
 });
 showInProgress?.addEventListener('click', () => {
   setActiveStatCard(null);
-  currentView = 'in_progress';
-  showAllTime = false;
+  adminState.currentView = 'in_progress';
+  adminState.showAllTime = false;
   switchAdminTab('requests');
   renderRequests();
 });
 showComplete?.addEventListener('click', () => {
   setActiveStatCard(null);
-  currentView = 'completed_today';
-  showAllTime = false;
+  adminState.currentView = 'completed_today';
+  adminState.showAllTime = false;
   switchAdminTab('requests');
   renderRequests();
 });
 showDenied?.addEventListener('click', () => {
   setActiveStatCard(null);
-  currentView = 'cancelled';
-  showAllTime = false;
+  adminState.currentView = 'cancelled';
+  adminState.showAllTime = false;
   switchAdminTab('requests');
   renderRequests();
 });
@@ -6117,7 +6107,7 @@ showReviews?.addEventListener('click', () => switchAdminTab('reviews'));
 showApplicants?.addEventListener('click', () => switchAdminTab('applicants'));
 
 showAllTimeBtn?.addEventListener('click', () => {
-  showAllTime = true;
+  adminState.showAllTime = true;
   if (showAllTimeBtn) showAllTimeBtn.style.display = 'none';
   renderRequests();
 });
@@ -6133,8 +6123,8 @@ function applyDashboardRange() {
 }
 
 dashboardRangeSelect?.addEventListener('change', () => {
-  dashboardRange = dashboardRangeSelect.value;
-  if (customRangeInputs) customRangeInputs.hidden = dashboardRange !== 'custom';
+  adminState.dashboardRange = dashboardRangeSelect.value;
+  if (customRangeInputs) customRangeInputs.hidden = adminState.dashboardRange !== 'custom';
   // For a brand-new custom selection with no dates yet, behave like "all" until
   // the user picks dates (handled by dashboardRangeBounds returning nulls).
   applyDashboardRange();
@@ -6145,9 +6135,9 @@ const customRangeApply = document.querySelector('#custom-range-apply');
 // Custom range only takes effect when the user clicks Apply — this avoids
 // half-finished filtering while they're still picking the start/end dates.
 customRangeApply?.addEventListener('click', () => {
-  customRange.start = customRangeStart?.value || '';
-  customRange.end = customRangeEnd?.value || '';
-  dashboardRange = 'custom';
+  adminState.customRange.start = customRangeStart?.value || '';
+  adminState.customRange.end = customRangeEnd?.value || '';
+  adminState.dashboardRange = 'custom';
   applyDashboardRange();
 });
 
@@ -6172,7 +6162,7 @@ document.addEventListener('click', (event) => {
 });
 
 function activeFilterCount() {
-  return [queueFilters.search, queueFilters.serviceType, queueFilters.status, queueFilters.worker, queueFilters.payment]
+  return [adminState.queueFilters.search, adminState.queueFilters.serviceType, adminState.queueFilters.status, adminState.queueFilters.worker, adminState.queueFilters.payment]
     .filter(Boolean).length;
 }
 
@@ -6199,7 +6189,7 @@ function updateFiltersButtonState() {
 function populateFilterWorkers() {
   if (!filterWorkerSelect) return;
   const current = filterWorkerSelect.value;
-  const active = allEmployees
+  const active = adminState.allEmployees
     .filter((e) => e.active)
     .sort((a, b) => String(a.full_name || '').localeCompare(String(b.full_name || '')));
   filterWorkerSelect.innerHTML =
@@ -6214,7 +6204,7 @@ function populateFilterWorkers() {
 function populateFilterStatuses() {
   if (!filterStatusSelect) return;
   const current = filterStatusSelect.value;
-  const present = [...new Set(allRequests.map((r) => r.status).filter(Boolean))]
+  const present = [...new Set(adminState.allRequests.map((r) => r.status).filter(Boolean))]
     .map((s) => ({ value: s, label: statusLabels[s] || s }))
     .sort((a, b) => a.label.localeCompare(b.label));
   filterStatusSelect.innerHTML =
@@ -6224,42 +6214,42 @@ function populateFilterStatuses() {
 }
 
 filterSearchInput?.addEventListener('input', () => {
-  queueFilters.search = filterSearchInput.value;
+  adminState.queueFilters.search = filterSearchInput.value;
   updateFiltersButtonState();
   renderRequests();
 });
 
 filterServiceTypeSelect?.addEventListener('change', () => {
-  queueFilters.serviceType = filterServiceTypeSelect.value;
+  adminState.queueFilters.serviceType = filterServiceTypeSelect.value;
   updateFiltersButtonState();
   renderRequests();
 });
 
 filterStatusSelect?.addEventListener('change', () => {
-  queueFilters.status = filterStatusSelect.value;
+  adminState.queueFilters.status = filterStatusSelect.value;
   updateFiltersButtonState();
   renderRequests();
 });
 
 filterWorkerSelect?.addEventListener('change', () => {
-  queueFilters.worker = filterWorkerSelect.value;
+  adminState.queueFilters.worker = filterWorkerSelect.value;
   updateFiltersButtonState();
   renderRequests();
 });
 
 filterPaymentSelect?.addEventListener('change', () => {
-  queueFilters.payment = filterPaymentSelect.value;
+  adminState.queueFilters.payment = filterPaymentSelect.value;
   updateFiltersButtonState();
   renderRequests();
 });
 
 filterSortSelect?.addEventListener('change', () => {
-  queueFilters.sort = filterSortSelect.value;
+  adminState.queueFilters.sort = filterSortSelect.value;
   renderRequests();
 });
 
 function clearQueueFilters() {
-  queueFilters = { search: '', serviceType: '', status: '', worker: '', payment: '', sort: queueFilters.sort || 'newest' };
+  adminState.queueFilters = { search: '', serviceType: '', status: '', worker: '', payment: '', sort: adminState.queueFilters.sort || 'newest' };
   if (filterSearchInput) filterSearchInput.value = '';
   if (filterServiceTypeSelect) filterServiceTypeSelect.value = '';
   if (filterStatusSelect) filterStatusSelect.value = '';
@@ -6286,7 +6276,7 @@ function payrollRequestDate(request) {
 // source of truth so the dashboard "Company Net" tile and the Payroll tab always
 // agree: service fees (captured) + cancellation fees collected − worker payouts.
 function companyNetBreakdown(inRange) {
-  const reqs = allRequests || [];
+  const reqs = adminState.allRequests || [];
   const serviceFeeRevenue = reqs
     .filter((r) => r.payment_status === 'captured' && inRange(r))
     .reduce((s, r) => s + Number(r.displayed_fuel_service_fee || 0) + Number(r.displayed_car_wash_service_fee || 0) + Number(r.displayed_inspection_fee || 0), 0);
@@ -6312,15 +6302,15 @@ function renderPayroll() {
   };
 
   // Requests that earned a worker something this period.
-  const earning = (allRequests || []).filter((r) => inRange(r) && workerPayoutForRequest(r) > 0);
+  const earning = (adminState.allRequests || []).filter((r) => inRange(r) && workerPayoutForRequest(r) > 0);
 
   const byWorker = new Map();
   for (const r of earning) {
     const key = r.assigned_employee_id || r.assigned_worker_name;
     if (!key) continue;
     const name = r.assigned_worker_name
-      || (allEmployees || []).find((e) => e.id === r.assigned_employee_id)?.full_name
-      || (allEmployees || []).find((e) => e.id === r.assigned_employee_id)?.name
+      || (adminState.allEmployees || []).find((e) => e.id === r.assigned_employee_id)?.full_name
+      || (adminState.allEmployees || []).find((e) => e.id === r.assigned_employee_id)?.name
       || 'Unknown worker';
     const entry = byWorker.get(key) || { key, employeeId: r.assigned_employee_id || null, name, jobs: 0, mileage: 0, total: 0, drivenMiles: 0 };
     entry.jobs += 1;
@@ -6363,7 +6353,7 @@ function renderPayroll() {
       const ref = paid.reference ? ` · ${escapeHtml(paid.reference)}` : '';
       return `<span class="payout-paid-badge" title="${escapeHtml(payoutMethodLabel(paid.method))}${ref}">Paid · ${escapeHtml(payoutMethodLabel(paid.method))}${when ? ' · ' + escapeHtml(when) : ''}</span> <button type="button" class="payout-undo-link" data-void-payout="${escapeHtml(paid.id)}">Undo</button>`;
     }
-    const emp = e.employeeId ? (allEmployees || []).find((x) => x.id === e.employeeId) : null;
+    const emp = e.employeeId ? (adminState.allEmployees || []).find((x) => x.id === e.employeeId) : null;
     const stripeReady = !!(emp && emp.stripe_connect_ready);
     const stripeBtn = stripeReady
       ? `<button type="button" class="button primary payout-stripe-btn" data-stripe-pay-employee="${escapeHtml(e.employeeId)}" data-name="${escapeHtml(e.name)}" data-amount="${roundMoneyValue(e.total)}">Pay via Stripe</button> `
@@ -6756,7 +6746,7 @@ document.addEventListener('click', async (event) => {
 });
 
 function switchPageTab(page) {
-  currentPageTab = page;
+  adminState.currentPageTab = page;
   // Expose the active page so CSS can hide the dashboard-only sidebar/shortcuts
   // on mobile when viewing a non-dashboard tab (they're the persistent right
   // rail on desktop, but stack onto every tab on phones).
@@ -6783,14 +6773,14 @@ function switchPageTab(page) {
   if (page === 'requests') {
     // Full queue with its All/Open/In-Progress/Completed/Closed sub-tabs — clear any
     // stat-tile selection carried over from the dashboard so the sub-tabs show.
-    currentView = 'all';
+    adminState.currentView = 'all';
     setActiveStatCard(null);
     switchAdminTab('requests');
   }
   if (page === 'dashboard') {
     // The metric tiles drive the operational view here; default to Open Requests
     // selected (setActiveStatCard also switches to the requests panel).
-    currentView = 'open';
+    adminState.currentView = 'open';
     setActiveStatCard('open');
   }
   if (page === 'services') {
@@ -6820,7 +6810,7 @@ function switchPageTab(page) {
 }
 
 function switchAdminTab(tab) {
-  currentAdminTab = tab;
+  adminState.currentAdminTab = tab;
   // Only affect panels in the dashboard page
   document.querySelectorAll('[data-tab-panel]').forEach((panel) => {
     panel.hidden = panel.dataset.tabPanel !== tab;
@@ -6838,7 +6828,7 @@ document.querySelectorAll('[data-page-action]').forEach((btn) => {
   btn.addEventListener('click', () => {
     switchPageTab(btn.dataset.pageAction);
     if (btn.dataset.requestView) {
-      currentView = normalizeRequestFilter(btn.dataset.requestView);
+      adminState.currentView = normalizeRequestFilter(btn.dataset.requestView);
       renderRequests();
     }
   });
@@ -6873,8 +6863,8 @@ function setActiveStatCard(cardId) {
 
 function statCardNav(view, cardId) {
   setActiveStatCard(cardId);
-  currentView = normalizeRequestFilter(view);
-  if (currentView === 'completed_today') showAllTime = false;
+  adminState.currentView = normalizeRequestFilter(view);
+  if (adminState.currentView === 'completed_today') adminState.showAllTime = false;
   renderRequests();
   requestList?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
@@ -6882,9 +6872,9 @@ function statCardNav(view, cardId) {
 function openWorkersPanel() {
   setActiveStatCard('workers');
 
-  const active = allEmployees.filter((e) => e.active);
+  const active = adminState.allEmployees.filter((e) => e.active);
   const busy   = new Set(
-    allRequests
+    adminState.allRequests
       .filter((r) => isOpen(r) && (r.assigned_employee_id || r.assigned_worker_name))
       .map((r) => r.assigned_employee_id || r.assigned_worker_name)
   );
@@ -6937,13 +6927,13 @@ function openRevenuePanel() {
   setActiveStatCard('revenue');
   if (!requestList) return;
 
-  const inRange = (r) => isInDashboardRange(r, dashboardRange);
+  const inRange = (r) => isInDashboardRange(r, adminState.dashboardRange);
   const { serviceFeeRevenue, cancellationRevenue, workerPayouts, companyNet } = companyNetBreakdown(inRange);
-  const rangeLabel = dashboardRangeLabel(dashboardRange);
+  const rangeLabel = dashboardRangeLabel(adminState.dashboardRange);
   const m = (n) => money(roundMoneyValue(n));
 
-  const charged = (allRequests || []).filter((r) => r.payment_status === 'captured' && inRange(r));
-  const refunds = (allRequests || []).filter((r) => ['refunded', 'auto_reversed'].includes(r.payment_status) && inRange(r));
+  const charged = (adminState.allRequests || []).filter((r) => r.payment_status === 'captured' && inRange(r));
+  const refunds = (adminState.allRequests || []).filter((r) => ['refunded', 'auto_reversed'].includes(r.payment_status) && inRange(r));
 
   const summary = `
     <div class="revenue-panel-summary">
@@ -7027,7 +7017,7 @@ function openFindTicketsModal() {
   if (findTicketsSearch) { findTicketsSearch.value = ''; findTicketsSearch.focus(); }
   if (findTicketsResults) findTicketsResults.innerHTML = '<p class="find-tickets-empty">Enter a name, phone number, or email to search.</p>';
   if (findTicketsSortBar) findTicketsSortBar.hidden = true;
-  lastSearchResults = [];
+  adminState.lastSearchResults = [];
 }
 
 function closeFindTicketsModal() {
@@ -7069,7 +7059,7 @@ async function refreshAdminView(button = null) {
   }
 
   try {
-    if (currentPageTab === 'workers') {
+    if (adminState.currentPageTab === 'workers') {
       await loadEmployees();
       await loadRequests();
       return;
@@ -7133,8 +7123,8 @@ function runFindTicketsSearch() {
     if (findTicketsSortBar) findTicketsSortBar.hidden = true;
     return;
   }
-  const results = allRequests.filter((r) => ticketMatchesQuery(r, q));
-  lastSearchResults = results;
+  const results = adminState.allRequests.filter((r) => ticketMatchesQuery(r, q));
+  adminState.lastSearchResults = results;
   const sortOrder = findTicketsSortSelect?.value || 'newest';
   renderSearchResults(results, sortOrder);
 }
@@ -7179,14 +7169,14 @@ function renderSearchResults(results, sortOrder = 'newest') {
 findTicketsSearch?.addEventListener('keydown', (e) => { if (e.key === 'Enter') runFindTicketsSearch(); });
 findTicketsGoBtn?.addEventListener('click', runFindTicketsSearch);
 findTicketsSortSelect?.addEventListener('change', () => {
-  renderSearchResults(lastSearchResults, findTicketsSortSelect.value);
+  renderSearchResults(adminState.lastSearchResults, findTicketsSortSelect.value);
 });
 
 findTicketsResults?.addEventListener('click', (e) => {
   const btn = e.target.closest('.find-ticket-result');
   if (!btn) return;
   const requestId = btn.dataset.requestId;
-  const request = allRequests.find((r) => r.id === requestId);
+  const request = adminState.allRequests.find((r) => r.id === requestId);
   if (!request) return;
   closeFindTicketsModal();
   openTicketDetailModal(request);
@@ -7207,8 +7197,8 @@ function runAdminFind() {
   if (!input || !out) return;
   const q = input.value.trim();
   if (!q) { out.hidden = true; out.innerHTML = ''; return; }
-  const workers = (allEmployees || []).filter((w) => workerMatchesFind(w, q)).slice(0, 10);
-  const reqs = (allRequests || []).filter((r) => ticketMatchesQuery(r, q)).slice(0, 30);
+  const workers = (adminState.allEmployees || []).filter((w) => workerMatchesFind(w, q)).slice(0, 10);
+  const reqs = (adminState.allRequests || []).filter((r) => ticketMatchesQuery(r, q)).slice(0, 30);
   const workerRows = workers.map((w) => `
     <button class="admin-find-result" data-find-worker="${escapeHtml(w.id)}" type="button">
       <div class="find-ticket-result-header">
@@ -7245,14 +7235,14 @@ document.getElementById('admin-find-results')?.addEventListener('click', (event)
   const wbtn = event.target.closest('[data-find-worker]');
   if (wbtn) {
     const id = wbtn.dataset.findWorker;
-    selectedScheduleEmployeeId = id;
+    adminState.selectedScheduleEmployeeId = id;
     switchPageTab('workers');
     setTimeout(() => document.querySelector(`#admin-worker-profile-list [data-worker-id="${id}"]`)?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 80);
     return;
   }
   const rbtn = event.target.closest('[data-find-request]');
   if (rbtn) {
-    const r = (allRequests || []).find((x) => x.id === rbtn.dataset.findRequest);
+    const r = (adminState.allRequests || []).find((x) => x.id === rbtn.dataset.findRequest);
     if (r) openTicketDetailModal(r);
   }
 });
@@ -7408,7 +7398,7 @@ ticketDetailBody?.addEventListener('click', async (e) => {
       await saveEdit(button);
       // Refresh the detail view with updated request
       const id = button.dataset.id;
-      const updated = allRequests.find((r) => r.id === id);
+      const updated = adminState.allRequests.find((r) => r.id === id);
       if (updated) await openTicketDetailModal(updated);
     } catch (err) {
       console.error('Edit save failed:', err);
@@ -7424,7 +7414,7 @@ ticketDetailBody?.addEventListener('click', async (e) => {
     button.disabled = true;
     try {
       await updateRequestStatus(button.dataset.id, button.dataset.status);
-      const updated = allRequests.find((r) => r.id === button.dataset.id);
+      const updated = adminState.allRequests.find((r) => r.id === button.dataset.id);
       if (updated) await openTicketDetailModal(updated);
     } catch (err) {
       console.error('Status update failed:', err);
@@ -7440,8 +7430,8 @@ starFilterButtons?.addEventListener('click', (e) => {
   const btn = e.target.closest('.star-filter-btn');
   if (!btn) return;
   const starsValue = btn.dataset.stars;
-  currentReviewFilter = (!starsValue || starsValue === 'all') ? null : Number(starsValue);
-  renderReviews(allReviews, allReviewRequestMap, currentReviewFilter);
+  adminState.currentReviewFilter = (!starsValue || starsValue === 'all') ? null : Number(starsValue);
+  renderReviews(adminState.allReviews, adminState.allReviewRequestMap, adminState.currentReviewFilter);
 });
 
 function daysOffFromText(value) {
@@ -7490,7 +7480,7 @@ function renderWorkerDaysGrid(workdays = []) {
           </label>
           <div class="worker-day-copy-actions">
             <button class="button worker-copy-day" type="button" data-day-of-week="${dayOfWeek}">Copy</button>
-            <button class="button worker-paste-day" type="button" data-day-of-week="${dayOfWeek}" ${copiedWorkerDaySchedule ? '' : 'disabled'}>Paste</button>
+            <button class="button worker-paste-day" type="button" data-day-of-week="${dayOfWeek}" ${adminState.copiedWorkerDaySchedule ? '' : 'disabled'}>Paste</button>
           </div>
         </div>
       `;
@@ -7500,7 +7490,7 @@ function renderWorkerDaysGrid(workdays = []) {
 
 function refreshWorkerPasteButtons() {
   workerDaysGrid?.querySelectorAll('.worker-paste-day').forEach((button) => {
-    button.disabled = !copiedWorkerDaySchedule;
+    button.disabled = !adminState.copiedWorkerDaySchedule;
   });
 }
 
@@ -7558,7 +7548,7 @@ function selectedDaysOffFromSchedule(savedSchedule) {
 function updateWorkerDaysOffSummary() {
   if (!workerDaysOffSummary) return;
 
-  const daysOff = Array.from(selectedWorkerDaysOff).sort();
+  const daysOff = Array.from(adminState.selectedWorkerDaysOff).sort();
   workerDaysOffSummary.textContent = daysOff.length
     ? `Days marked unbookable: ${daysOff.join(', ')}`
     : 'No days off selected.';
@@ -7587,7 +7577,7 @@ function renderWorkerDaysOffCalendar() {
       const value = localDateValue(dayDate);
       const isPast = dayDate < today;
       const isOutsideWindow = dayDate > lastBookableDate;
-      const isDayOff = selectedWorkerDaysOff.has(value);
+      const isDayOff = adminState.selectedWorkerDaysOff.has(value);
       const classes = ['calendar-day'];
 
       if (isDayOff) classes.push('day-off');
@@ -7629,10 +7619,10 @@ workerDaysOffCalendar?.addEventListener('click', (event) => {
 
   const dayOff = button.dataset.dayOff;
 
-  if (selectedWorkerDaysOff.has(dayOff)) {
-    selectedWorkerDaysOff.delete(dayOff);
+  if (adminState.selectedWorkerDaysOff.has(dayOff)) {
+    adminState.selectedWorkerDaysOff.delete(dayOff);
   } else {
-    selectedWorkerDaysOff.add(dayOff);
+    adminState.selectedWorkerDaysOff.add(dayOff);
   }
 
   renderWorkerDaysOffCalendar();
@@ -7653,7 +7643,7 @@ workerDaysGrid?.addEventListener('click', (event) => {
   const endInput = row.querySelector('.worker-day-end');
 
   if (copyButton) {
-    copiedWorkerDaySchedule = {
+    adminState.copiedWorkerDaySchedule = {
       startsAt: startInput?.value || '09:00',
       endsAt: endInput?.value || '17:00',
       enabled: Boolean(checkbox?.checked),
@@ -7663,17 +7653,17 @@ workerDaysGrid?.addEventListener('click', (event) => {
     setWorkerCopyMode('paste');
 
     if (workerScheduleStatus) {
-      workerScheduleStatus.textContent = `Copied ${copiedWorkerDaySchedule.startsAt} to ${copiedWorkerDaySchedule.endsAt}.`;
+      workerScheduleStatus.textContent = `Copied ${adminState.copiedWorkerDaySchedule.startsAt} to ${adminState.copiedWorkerDaySchedule.endsAt}.`;
     }
     return;
   }
 
-  if (pasteButton && copiedWorkerDaySchedule) {
-    if (startInput) startInput.value = copiedWorkerDaySchedule.startsAt;
-    if (endInput) endInput.value = copiedWorkerDaySchedule.endsAt;
-    if (checkbox) checkbox.checked = copiedWorkerDaySchedule.enabled;
-    const pastedSchedule = copiedWorkerDaySchedule;
-    copiedWorkerDaySchedule = null;
+  if (pasteButton && adminState.copiedWorkerDaySchedule) {
+    if (startInput) startInput.value = adminState.copiedWorkerDaySchedule.startsAt;
+    if (endInput) endInput.value = adminState.copiedWorkerDaySchedule.endsAt;
+    if (checkbox) checkbox.checked = adminState.copiedWorkerDaySchedule.enabled;
+    const pastedSchedule = adminState.copiedWorkerDaySchedule;
+    adminState.copiedWorkerDaySchedule = null;
     refreshWorkerPasteButtons();
     setWorkerCopyMode('copy');
 
@@ -7689,14 +7679,14 @@ function setWorkerPanel(panel, isOpen) {
 }
 
 function baseWorkerSchedule() {
-  const employee = allEmployees.find((item) => item.id === selectedScheduleEmployeeId);
+  const employee = adminState.allEmployees.find((item) => item.id === adminState.selectedScheduleEmployeeId);
 
   return {
-    employeeId: selectedScheduleEmployeeId,
+    employeeId: adminState.selectedScheduleEmployeeId,
     workerName: employee?.full_name || DEFAULT_WORKER_NAME,
     workerLocation: employee?.home_location || DEFAULT_WORK_LOCATION,
     workdays: selectedWorkdaysFromForm(),
-    daysOff: Array.from(selectedWorkerDaysOff).sort(),
+    daysOff: Array.from(adminState.selectedWorkerDaysOff).sort(),
     savedAt: new Date().toISOString(),
   };
 }
@@ -7732,7 +7722,7 @@ function validateWorkerBase(schedule) {
 }
 
 async function upsertWorker(schedule) {
-  const existing = allEmployees.filter((employee) => employee.full_name === schedule.workerName);
+  const existing = adminState.allEmployees.filter((employee) => employee.full_name === schedule.workerName);
 
   if (existing?.length) {
     const employeeId = existing[0].id;
@@ -7774,7 +7764,7 @@ async function saveWorkerAvailabilityToSupabase(schedule) {
   });
   if (error) throw error;
 
-  allEmployees = allEmployees.map((e) => e.id === employeeId
+  adminState.allEmployees = adminState.allEmployees.map((e) => e.id === employeeId
     ? { ...e, home_location: schedule.workerLocation }
     : e);
   renderWorkerSelect();
@@ -7845,7 +7835,7 @@ saveWorkdaysButton?.addEventListener('click', async () => {
 
 saveDaysOffButton?.addEventListener('click', async () => {
   const schedule = buildWorkerSchedule({
-    daysOff: Array.from(selectedWorkerDaysOff).sort(),
+    daysOff: Array.from(adminState.selectedWorkerDaysOff).sort(),
   });
 
   if (!validateWorkerBase(schedule)) return;
@@ -7875,6 +7865,7 @@ renderWorkerDaysGrid(workerDayOptions.map(({ dayOfWeek }) => ({
 renderWorkerDaysOffCalendar();
 
 window.ShiftFuelPhoto?.initPhotoModal();
+switchPageTab(adminState.currentPageTab || 'dashboard');
 loadVehiclePsiGuides().finally(() => {
   loadEmployees().then(loadRequests);
 });
@@ -8230,53 +8221,29 @@ function runPricingSimulator() {
   const washDetourRate = simNum('sim-worker-mile', WORKER_MILEAGE_RATE);
   const perMileRate = simNum('sim-per-mile', 0.75);
 
-  // ── Customer side ──
-  const fuelCost = needsFuel ? roundMoneyValue(gallons * pricePerGallon) : 0;
-  const serviceMin = (needsFuel ? fuelBaseMin + fuelPerGalMin * gallons : 0) + (needsWash ? washTimeMin : 0);
-  const timeCharge = roundMoneyValue(serviceMin * companyRate);
-  // Customer distance charges — both at the same surcharge rate (S). Gas: extra
-  // round-trip miles for a farther-than-nearest station. Wash: the wash detour
-  // beyond the first 5 free miles (the company eats the first 5).
-  const stationSurcharge = needsFuel ? roundMoneyValue(stationMiles * perMileRate) : 0;
-  const washSurcharge = needsWash ? roundMoneyValue(Math.max(0, washMiles - washDetourFree) * perMileRate) : 0;
-  const netTarget = roundMoneyValue(fuelCost + washPrice + fuelFee + washFee + inspFee + stationSurcharge + washSurcharge + timeCharge);
-  const customerTotal = netTarget > 0 ? Math.ceil((netTarget + RETURN_RECOVERY_FIXED) / (1 - RETURN_RECOVERY_RATE)) : 0;
-  const cardRecovery = roundMoneyValue(customerTotal - netTarget);
-
-  // ── Worker side ──
-  const workerRate = companyRate > 0 ? Math.min(workerRateRaw, companyRate) : workerRateRaw;
-  // Each service fee can pay the driver an independent share. Card processing is
-  // one per-transaction cost, so apportion it across the fee lines by amount,
-  // then apply that line's own worker share to its net (same split logic as the
-  // customer-side recovery). At 50/50/50 this matches the old single-share math.
-  // A live bundle swaps in the per-leg bundle worker shares for fuel + wash. Keep
-  // the raw (non-bundle) shares too — the mix planner applies the bundle per "both"
-  // row itself, so it can't use a scenario-wide override.
+  // ── Pricing math (pure — see shared-pricing-sim.js) ──
+  // Worker fee shares: a live bundle swaps in the per-leg bundle shares. The raw
+  // (non-bundle) shares are kept for the annual mix planner, which applies the
+  // bundle per "both" row itself.
   const rawFuelSharePct = simNum('sim-fuel-share', 50) / 100;
   const rawWashSharePct = simNum('sim-wash-share', 50) / 100;
   const fuelSharePct = simBundleActive ? simBundleFuelShare : rawFuelSharePct;
   const washSharePct = simBundleActive ? simBundleWashShare : rawWashSharePct;
   const inspSharePct = simNum('sim-insp-share', 50) / 100;
-  const feeGross = fuelFee + washFee + inspFee;
-  const feeStripe = feeGross > 0 ? roundMoneyValue(feeGross * RETURN_RECOVERY_RATE + RETURN_RECOVERY_FIXED) : 0;
-  const netOf = (fee) => (feeGross > 0 ? Math.max(0, fee - feeStripe * (fee / feeGross)) : 0);
-  const fuelFeeShare = roundMoneyValue(netOf(fuelFee) * fuelSharePct);
-  const washFeeShare = roundMoneyValue(netOf(washFee) * washSharePct);
-  const inspFeeShare = roundMoneyValue(netOf(inspFee) * inspSharePct);
-  const feeShare = roundMoneyValue(fuelFeeShare + washFeeShare + inspFeeShare);
-  const mileagePay = needsFuel ? roundMoneyValue(stationMiles * washDetourRate) : 0;
-  const timePay = roundMoneyValue(serviceMin * workerRate);
-  // Worker is paid on EVERY wash detour mile (incl. the customer's free 5) — the
-  // free allowance is a customer discount the company absorbs, not unpaid driving.
-  const washDetourPay = needsWash ? roundMoneyValue(washMiles * washDetourRate) : 0;
-  const workerPay = roundMoneyValue(feeShare + mileagePay + timePay + washDetourPay);
 
-  // ── Company keeps (service revenue minus worker pay; fuel/wash cost is pass-through) ──
-  const companyNet = roundMoneyValue(fuelFee + washFee + inspFee + timeCharge + stationSurcharge + washSurcharge - workerPay);
-
-  // ── Time to complete ── drive legs only count for the services actually in the job.
-  const driveMiles = (needsFuel ? stationMiles : 0) + (needsWash ? washMiles : 0);
-  const minutes = Math.round(10 + 5 + (driveMiles / 30) * 60 + (quick ? 10 : 0));
+  const {
+    fuelCost, serviceMin, timeCharge, stationSurcharge, washSurcharge,
+    customerTotal, cardRecovery, workerRate, feeGross, feeStripe,
+    fuelFeeShare, washFeeShare, inspFeeShare, feeShare,
+    mileagePay, timePay, washDetourPay, workerPay, companyNet, minutes,
+  } = window.SF.simScenario({
+    needsFuel, needsWash, quick,
+    gallons, pricePerGallon, stationMiles, washMiles, workerRateRaw,
+    fuelFee, washFee, inspFee, washPrice, companyRate,
+    fuelBaseMin, fuelPerGalMin, washTimeMin, washDetourFree, washDetourRate, perMileRate,
+    fuelSharePct, washSharePct, inspSharePct,
+    recoveryFixed: RETURN_RECOVERY_FIXED, recoveryRate: RETURN_RECOVERY_RATE,
+  });
 
   // Per-minute rate for THIS job, plus a rough full-time year = that rate held for
   // 40 hrs/wk × 52 wks of back-to-back jobs like this one. (The Annual planner below
@@ -8343,33 +8310,15 @@ function runPricingSimulator() {
   const goalOut = document.getElementById('sim-goal-output');
   if (goalOut) {
     // Per-job company net + worker pay for one service type at a given fee scale.
-    const jobEconomics = (nF, nW, gal, staMi, washMi, scale) => {
-      let fF = (nF ? rawFuelFee : 0) * scale;
-      let wF = (nW ? rawWashFee : 0) * scale;
-      let fShare = rawFuelSharePct;
-      let wShare = rawWashSharePct;
-      // Fuel + Wash combo: bundle leg fees + bundle worker shares (scaled with the
-      // goal-seek so the discount % holds as fees move). Mirrors booking/worker.
-      if (nF && nW) {
-        const bf = simBundleFuelFee * scale;
-        const bw = simBundleWashFee * scale;
-        if ((bf + bw) > 0 && (bf + bw) < (fF + wF)) {
-          fF = bf; wF = bw;
-          fShare = simBundleFuelShare; wShare = simBundleWashShare;
-        }
-      }
-      const sMin = (nF ? fuelBaseMin + fuelPerGalMin * gal : 0) + (nW ? washTimeMin : 0);
-      const tCharge = roundMoneyValue(sMin * companyRate);
-      const staSur = nF ? roundMoneyValue(staMi * perMileRate) : 0;
-      const washSur = nW ? roundMoneyValue(Math.max(0, washMi - washDetourFree) * perMileRate) : 0;
-      const tot = fF + wF;
-      const stripe = tot > 0 ? roundMoneyValue(tot * RETURN_RECOVERY_RATE + RETURN_RECOVERY_FIXED) : 0;
-      const netOf = (fee) => (tot > 0 ? Math.max(0, fee - stripe * (fee / tot)) : 0);
-      const feeShareW = roundMoneyValue(netOf(fF) * fShare + netOf(wF) * wShare);
-      const workerPay = roundMoneyValue(feeShareW + sMin * workerRate + (nF ? staMi * washDetourRate : 0) + (nW ? washMi * washDetourRate : 0));
-      const serviceRev = roundMoneyValue(fF + wF + tCharge + staSur + washSur);
-      return { companyNet: roundMoneyValue(serviceRev - workerPay), workerPay };
-    };
+    // Per-job company-net + worker-pay at a fee `scale` (pure — see shared-pricing-sim.js).
+    const jobEconomics = (nF, nW, gal, staMi, washMi, scale) => window.SF.simJobEconomics({
+      nF, nW, gal, staMi, washMi, scale,
+      rawFuelFee, rawWashFee, rawFuelSharePct, rawWashSharePct,
+      simBundleFuelFee, simBundleWashFee, simBundleFuelShare, simBundleWashShare,
+      fuelBaseMin, fuelPerGalMin, washTimeMin, companyRate, perMileRate, washDetourFree,
+      workerRate, washDetourRate,
+      recoveryRate: RETURN_RECOVERY_RATE, recoveryFixed: RETURN_RECOVERY_FIXED,
+    });
 
     const mix = [
       { nF: true,  nW: false, jobs: simNum('mix-fuel-jobs', 0), gal: simNum('mix-fuel-gal', 0), sta: simNum('mix-fuel-sta', 0), wash: 0 },

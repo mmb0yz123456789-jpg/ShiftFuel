@@ -9,7 +9,7 @@
 
 /* ---- App canvas ---- */
 .worker-portal-page {
-  background: #eef2f0 !important;
+  background: #eef2f0;
 }
 /* The [hidden] attribute must always win over any display rule below
    (e.g. the rating row / Active badge stay hidden until they have data). */
@@ -22,10 +22,10 @@
 
 /* Tame the marketing-scale section padding across every tab. */
 .worker-portal-page .section {
-  width: 100% !important;
-  max-width: none !important;
-  margin: 0 !important;
-  padding: 12px 16px !important;
+  width: 100%;
+  max-width: none;
+  margin: 0;
+  padding: 12px 16px;
 }
 
 /* ---- Sticky app header ---- */
@@ -33,39 +33,38 @@
   position: sticky;
   top: 0;
   z-index: 40;
-  width: 100% !important;
-  max-width: none !important;
-  margin: 0 !important;
-  border: 0 !important;
-  border-radius: 0 !important;
-  padding: 12px 16px !important;
-  box-shadow: 0 2px 12px rgba(6, 39, 39, 0.18) !important;
+  width: 100%;
+  max-width: none;
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  padding: 12px 16px;
+  box-shadow: 0 2px 12px rgba(6, 39, 39, 0.18);
 }
 /* Slim single-row top bar: logo + name on the left, Online on the right. */
 .worker-portal-page .portal-header {
-  flex-direction: row !important;
-  align-items: center !important;
-  justify-content: space-between !important;
-  gap: 12px !important;
-  padding: 9px 16px !important;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 9px 16px;
 }
-.worker-portal-page .portal-header .logo span:last-child { font-size: 0.92rem !important; line-height: 1.05 !important; }
-.worker-portal-page .portal-header .logo span:last-child { font-size: 1rem; }
+.worker-portal-page .portal-header .logo span:last-child { font-size: 0.92rem; line-height: 1.05; }
 /* "Worker Dashboard" label is redundant with the tab bar below. */
 .worker-portal-page .portal-header-label { display: none !important; }
 .worker-portal-page .portal-header-actions {
   display: flex !important;
-  flex-direction: row !important;
-  flex-wrap: nowrap !important;
-  gap: 8px !important;
-  align-items: center !important;
-  justify-content: flex-end !important;
-  margin: 0 !important;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  gap: 8px;
+  align-items: center;
+  justify-content: flex-end;
+  margin: 0;
 }
 .worker-portal-page .portal-signout-btn {
-  padding: 7px 13px !important;
-  font-size: 0.82rem !important;
-  border-radius: 999px !important;
+  padding: 7px 13px;
+  font-size: 0.82rem;
+  border-radius: 999px;
 }
 .worker-portal-page .worker-presence-indicator {
   background: rgba(255, 255, 255, 0.14);
@@ -75,83 +74,83 @@
 
 /* ---- Kill the marketing hero image + huge min-height ---- */
 .worker-portal-page .worker-portal-hero {
-  min-height: 0 !important;
-  padding: 14px 16px !important;
-  background: transparent !important;
-  border-bottom: 0 !important;
+  min-height: 0;
+  padding: 14px 16px;
+  background: transparent;
+  border-bottom: 0;
 }
 .worker-portal-page .worker-hero-content { display: block !important; }
-.worker-portal-page .worker-portal-hero .eyebrow { margin-bottom: 2px !important; }
+.worker-portal-page .worker-portal-hero .eyebrow { margin-bottom: 2px; }
 .worker-portal-page .worker-portal-hero h1 {
-  font-size: 1.6rem !important;
-  line-height: 1.1 !important;
-  margin: 0 0 4px !important;
+  font-size: 1.6rem;
+  line-height: 1.1;
+  margin: 0 0 4px;
 }
-.worker-portal-page #worker-hero-subtitle { margin: 0 0 14px !important; }
+.worker-portal-page #worker-hero-subtitle { margin: 0 0 14px; }
 
 /* ---- Dashboard greeting (just the name, under the header) ---- */
-.worker-portal-page .worker-greeting .eyebrow { margin-bottom: 0 !important; }
+.worker-portal-page .worker-greeting .eyebrow { margin-bottom: 0; }
 .worker-portal-page .worker-greeting h1 {
-  font-size: 1.7rem !important;
-  line-height: 1.05 !important;
-  margin: 2px 0 0 !important;
+  font-size: 1.7rem;
+  line-height: 1.05;
+  margin: 2px 0 0;
 }
 
 /* ---- Today's Jobs: the dashboard work surface ---- */
-.worker-portal-page .worker-today-section { padding-top: 4px !important; }
+.worker-portal-page .worker-today-section { padding-top: 4px; }
 .worker-portal-page .worker-today-heading {
   display: flex !important;
-  align-items: center !important;
-  justify-content: space-between !important;
-  margin-bottom: 12px !important;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
 }
-.worker-portal-page .worker-today-heading h2 { margin: 0 !important; }
+.worker-portal-page .worker-today-heading h2 { margin: 0; }
 .worker-portal-page .worker-refresh-chip {
-  width: auto !important;
-  min-height: 36px !important;
-  padding: 6px 14px !important;
-  font-size: 0.85rem !important;
-  border-radius: 999px !important;
+  width: auto;
+  min-height: 36px;
+  padding: 6px 14px;
+  font-size: 0.85rem;
+  border-radius: 999px;
 }
 .worker-portal-page .worker-today-list { display: grid !important; gap: 14px !important; }
 
 /* The guided baby-step card on the dashboard reads as a clean white card. */
 .worker-portal-page .worker-current-job-card {
-  background: #ffffff !important;
-  border: 1px solid rgba(13, 59, 59, 0.08) !important;
-  border-radius: 18px !important;
-  box-shadow: 0 8px 24px rgba(13, 59, 59, 0.06) !important;
-  padding: 18px !important;
-  margin: 0 !important;
+  background: #ffffff;
+  border: 1px solid rgba(13, 59, 59, 0.08);
+  border-radius: 18px;
+  box-shadow: 0 8px 24px rgba(13, 59, 59, 0.06);
+  padding: 18px;
+  margin: 0;
 }
 .worker-portal-page .worker-today-list .worker-state-card {
-  background: #ffffff !important;
-  border: 1px dashed rgba(13, 59, 59, 0.18) !important;
-  border-radius: 18px !important;
-  padding: 22px 18px !important;
-  text-align: center !important;
-  color: #60716d !important;
+  background: #ffffff;
+  border: 1px dashed rgba(13, 59, 59, 0.18);
+  border-radius: 18px;
+  padding: 22px 18px;
+  text-align: center;
+  color: #60716d;
 }
 .worker-portal-page .worker-state-empty h3 {
-  margin: 0 0 6px !important;
-  color: var(--sf-teal, #0d3b3b) !important;
-  font-size: 1rem !important;
+  margin: 0 0 6px;
+  color: var(--sf-teal, #0d3b3b);
+  font-size: 1rem;
 }
 .worker-portal-page .worker-state-empty p {
-  margin: 0 !important;
+  margin: 0;
 }
 
 /* Dashboard primary actions: full-width, app-sized taps. */
 .worker-portal-page .worker-portal-hero .actions {
   display: grid !important;
-  gap: 10px !important;
-  margin-top: 0 !important;
+  gap: 10px;
+  margin-top: 0;
 }
 .worker-portal-page .worker-portal-hero .actions .button {
-  width: 100% !important;
-  min-height: 50px !important;
-  font-size: 1rem !important;
-  border-radius: 14px !important;
+  width: 100%;
+  min-height: 50px;
+  font-size: 1rem;
+  border-radius: 14px;
 }
 
 /* ---- Unified white cards across all tabs ---- */
@@ -161,103 +160,103 @@
 .worker-portal-page .worker-schedule-form-inline,
 .worker-portal-page .worker-state-card,
 .worker-portal-page .worker-profile-snapshot {
-  background: #ffffff !important;
-  border: 1px solid rgba(13, 59, 59, 0.08) !important;
-  border-radius: 18px !important;
-  box-shadow: 0 8px 24px rgba(13, 59, 59, 0.06) !important;
-  padding: 18px !important;
-  margin: 0 0 14px !important;
+  background: #ffffff;
+  border: 1px solid rgba(13, 59, 59, 0.08);
+  border-radius: 18px;
+  box-shadow: 0 8px 24px rgba(13, 59, 59, 0.06);
+  padding: 18px;
+  margin: 0 0 14px;
 }
 .worker-portal-page .worker-card-heading h2,
 .worker-portal-page .section-heading h2 {
-  font-size: 1.15rem !important;
-  margin: 0 0 12px !important;
-  letter-spacing: -0.01em !important;
+  font-size: 1.15rem;
+  margin: 0 0 12px;
+  letter-spacing: -0.01em;
 }
 
 /* Status card: clean key/value rows. */
-.worker-portal-page .worker-current-status-card dl { margin: 0 !important; }
+.worker-portal-page .worker-current-status-card dl { margin: 0; }
 .worker-portal-page .worker-current-status-card dl > div {
   display: flex !important;
-  justify-content: space-between !important;
-  gap: 12px !important;
-  padding: 11px 0 !important;
-  border-bottom: 1px solid rgba(13, 59, 59, 0.07) !important;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 11px 0;
+  border-bottom: 1px solid rgba(13, 59, 59, 0.07);
 }
-.worker-portal-page .worker-current-status-card dl > div:last-child { border-bottom: 0 !important; }
-.worker-portal-page .worker-current-status-card dt { color: #60716d !important; }
-.worker-portal-page .worker-current-status-card dd { font-weight: 700 !important; text-align: right !important; margin: 0 !important; }
+.worker-portal-page .worker-current-status-card dl > div:last-child { border-bottom: 0; }
+.worker-portal-page .worker-current-status-card dt { color: #60716d; }
+.worker-portal-page .worker-current-status-card dd { font-weight: 700; text-align: right; margin: 0; }
 
 /* Progress stepper row: compact + tidy. */
 .worker-portal-page .worker-progress-line {
   display: grid !important;
-  grid-template-columns: repeat(3, 1fr) !important;
-  gap: 14px 8px !important;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 14px 8px;
 }
 
 /* Stat grid: even, app-like tiles. */
 .worker-portal-page .worker-stat-grid {
   display: grid !important;
-  grid-template-columns: repeat(3, 1fr) !important;
-  gap: 10px !important;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
 }
 .worker-portal-page .worker-stat-card {
-  background: var(--sf-sage-light, #eaf2ea) !important;
-  border-radius: 14px !important;
-  padding: 14px 8px !important;
-  text-align: center !important;
+  background: var(--sf-sage-light, #eaf2ea);
+  border-radius: 14px;
+  padding: 14px 8px;
+  text-align: center;
 }
 
 /* ---- Fixed bottom tab bar ---- */
 .worker-portal-page .app-tabbar {
-  position: fixed !important;
+  position: fixed;
   left: 0; right: 0; bottom: 0;
   z-index: 50;
   display: flex !important;
-  gap: 0 !important;
-  background: #ffffff !important;
-  border-top: 1px solid rgba(13, 59, 59, 0.1) !important;
-  box-shadow: 0 -4px 18px rgba(6, 39, 39, 0.07) !important;
-  padding: 6px 4px calc(6px + env(safe-area-inset-bottom)) !important;
+  gap: 0;
+  background: #ffffff;
+  border-top: 1px solid rgba(13, 59, 59, 0.1);
+  box-shadow: 0 -4px 18px rgba(6, 39, 39, 0.07);
+  padding: 6px 4px calc(6px + env(safe-area-inset-bottom));
 }
 .worker-portal-page .app-tab {
-  flex: 1 !important;
+  flex: 1;
   display: flex !important;
-  flex-direction: column !important;
-  align-items: center !important;
-  gap: 3px !important;
-  padding: 6px 2px !important;
-  background: transparent !important;
-  border: 0 !important;
-  color: #6b7d78 !important;
-  font-size: 0.68rem !important;
-  font-weight: 700 !important;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  padding: 6px 2px;
+  background: transparent;
+  border: 0;
+  color: #6b7d78;
+  font-size: 0.68rem;
+  font-weight: 700;
 }
-.worker-portal-page .app-tab svg { width: 22px !important; height: 22px !important; }
-.worker-portal-page .app-tab.active { color: var(--sf-teal, #0d3b3b) !important; }
+.worker-portal-page .app-tab svg { width: 22px; height: 22px; }
+.worker-portal-page .app-tab.active { color: var(--sf-teal, #0d3b3b); }
 
 /* Profile actions: full-width stacked buttons (incl. the relocated
    Enable alerts / Take a break / Sign out controls). */
 .worker-portal-page .worker-profile-actions {
   display: grid !important;
-  gap: 10px !important;
-  margin-top: 14px !important;
+  gap: 10px;
+  margin-top: 14px;
 }
 .worker-portal-page .worker-profile-actions .button {
-  width: 100% !important;
-  min-height: 48px !important;
-  border-radius: 12px !important;
-  font-weight: 700 !important;
+  width: 100%;
+  min-height: 48px;
+  border-radius: 12px;
+  font-weight: 700;
 }
 
 /* ---- Job card: avatar header + iconographic detail rows (mockup style) ---- */
 .worker-portal-page .worker-job-head {
   display: grid !important;
-  grid-template-columns: auto 1fr auto !important;
-  align-items: start !important;
-  gap: 12px !important;
-  padding-bottom: 14px !important;
-  border-bottom: 1px solid rgba(13, 59, 59, 0.08) !important;
+  grid-template-columns: auto 1fr auto;
+  align-items: start;
+  gap: 12px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid rgba(13, 59, 59, 0.08);
 }
 .worker-portal-page .worker-avatar {
   width: 44px; height: 44px;
@@ -269,13 +268,13 @@
 }
 .worker-portal-page .worker-job-head-main { min-width: 0; }
 .worker-portal-page .worker-job-head-main .worker-current-job-name {
-  margin: 2px 0 2px !important;
-  font-size: 1.2rem !important;
+  margin: 2px 0 2px;
+  font-size: 1.2rem;
 }
 .worker-portal-page .worker-job-head-main .worker-card-vehicle {
-  margin: 0 !important;
-  color: #60716d !important;
-  font-size: 0.9rem !important;
+  margin: 0;
+  color: #60716d;
+  font-size: 0.9rem;
 }
 .worker-portal-page .worker-job-head-meta {
   display: grid; justify-items: end; gap: 6px; text-align: right;
@@ -311,8 +310,8 @@
 
 /* Available-job card: tighter head, prominent est fee, full-width Accept. */
 .worker-portal-page .worker-available-card .worker-job-head {
-  border-bottom: 0 !important;
-  padding-bottom: 6px !important;
+  border-bottom: 0;
+  padding-bottom: 6px;
 }
 .worker-portal-page .worker-est-fee {
   font-weight: 800;
@@ -348,11 +347,11 @@
   color: #b45309;
 }
 .worker-portal-page .worker-available-card .worker-card-action {
-  width: 100% !important;
-  min-height: 50px !important;
-  margin-top: 8px !important;
-  border-radius: 14px !important;
-  font-weight: 800 !important;
+  width: 100%;
+  min-height: 50px;
+  margin-top: 8px;
+  border-radius: 14px;
+  font-weight: 800;
 }
 
 /* ---- Upcoming list on the dashboard (claimed jobs outside the active Today card) ---- */
@@ -407,17 +406,17 @@
 }
 .worker-portal-page .worker-upcoming-row {
   display: grid !important;
-  grid-template-columns: 36px 1fr auto !important;
-  align-items: center !important;
-  gap: 12px !important;
-  background: #fff !important;
-  border: 1px solid rgba(13, 59, 59, 0.08) !important;
-  border-radius: 14px !important;
-  padding: 12px 14px !important;
-  margin-bottom: 10px !important;
+  grid-template-columns: 36px 1fr auto;
+  align-items: center;
+  gap: 12px;
+  background: #fff;
+  border: 1px solid rgba(13, 59, 59, 0.08);
+  border-radius: 14px;
+  padding: 12px 14px;
+  margin-bottom: 10px;
 }
-.worker-portal-page .worker-upcoming-list .worker-upcoming-row:last-child { margin-bottom: 0 !important; }
-.worker-portal-page .worker-upcoming-row { align-items: start !important; }
+.worker-portal-page .worker-upcoming-list .worker-upcoming-row:last-child { margin-bottom: 0; }
+.worker-portal-page .worker-upcoming-row { align-items: start; }
 .worker-portal-page .worker-upcoming-main { display: grid; gap: 3px; min-width: 0; }
 .worker-portal-page .worker-upcoming-main .worker-card-sub { color: #60716d; font-size: 0.85rem; }
 .worker-portal-page .worker-upcoming-addr {
@@ -470,38 +469,38 @@
    small Copy/Paste. Times get the space so they're actually legible. ---- */
 .worker-portal-page .worker-day-row {
   display: grid !important;
-  grid-template-columns: 78px minmax(0, 1fr) auto !important;
-  grid-template-areas: "day times copy" !important;   /* one tidy line per day */
-  align-items: center !important;
-  column-gap: 12px !important;
-  row-gap: 8px !important;
-  padding: 8px 2px !important;
-  background: transparent !important;
-  border: 0 !important;
-  border-bottom: 1px solid rgba(13, 59, 59, 0.08) !important;
-  border-radius: 0 !important;
-  box-shadow: none !important;
-  margin: 0 !important;
+  grid-template-columns: 78px minmax(0, 1fr) auto;
+  grid-template-areas: "day times copy";   /* one tidy line per day */
+  align-items: center;
+  column-gap: 12px;
+  row-gap: 8px;
+  padding: 8px 2px;
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid rgba(13, 59, 59, 0.08);
+  border-radius: 0;
+  box-shadow: none;
+  margin: 0;
 }
-.worker-portal-page .worker-day-row:last-child { border-bottom: 0 !important; }
+.worker-portal-page .worker-day-row:last-child { border-bottom: 0; }
 .worker-portal-page .worker-day-handle { display: none !important; } /* decorative only — hidden to free space */
 .worker-portal-page .worker-day-toggle {
   grid-area: day;
   display: inline-flex !important; align-items: center !important; gap: 8px !important;
-  margin: 0 !important; padding: 0 !important; background: transparent !important; border: 0 !important;
+  margin: 0; padding: 0; background: transparent; border: 0;
 }
 .worker-portal-page .worker-day-name { font-weight: 700; color: var(--sf-teal, #0d3b3b); }
 .worker-portal-page .worker-day-copy-actions { grid-area: copy; display: flex !important; gap: 6px !important; }
 .worker-portal-page .worker-day-copy-actions .button {
-  min-height: 32px !important; padding: 3px 12px !important; font-size: 0.76rem !important;
-  background: transparent !important; border: 1px solid rgba(13, 59, 59, 0.18) !important;
+  min-height: 32px; padding: 3px 12px; font-size: 0.76rem;
+  background: transparent; border: 1px solid rgba(13, 59, 59, 0.18);
 }
 .worker-portal-page .worker-day-times {
   grid-area: times;
   display: flex !important; align-items: center !important; gap: 8px !important;
 }
 .worker-portal-page .worker-day-times input[type="time"] {
-  flex: 1 1 0 !important; min-width: 0 !important; min-height: 38px !important; padding: 5px 10px !important;
+  flex: 1 1 0; min-width: 0; min-height: 38px; padding: 5px 10px;
 }
 .worker-portal-page .worker-day-dash { color: #8a9893; flex: 0 0 auto; }
 
@@ -509,13 +508,13 @@
    day + Copy/Paste row (the old two-row layout, just for small screens). */
 @media (max-width: 560px) {
   .worker-portal-page .worker-day-row {
-    grid-template-columns: auto 1fr auto !important;
+    grid-template-columns: auto 1fr auto;
     grid-template-areas:
       "day day copy"
-      "times times times" !important;
-    padding: 12px 2px !important;
+      "times times times";
+    padding: 12px 2px;
   }
-  .worker-portal-page .worker-day-times input[type="time"] { min-height: 44px !important; }
+  .worker-portal-page .worker-day-times input[type="time"] { min-height: 44px; }
 }
 
 /* ---- Aside "View X" heading link ---- */
@@ -559,11 +558,11 @@
 .worker-portal-page .worker-earnings-summary {
   display: grid;
   gap: 2px;
-  background: var(--sf-teal, #0d3b3b) !important;
-  color: #fff !important;
-  border-radius: 18px !important;
-  padding: 20px !important;
-  box-shadow: 0 8px 24px rgba(13, 59, 59, 0.16) !important;
+  background: var(--sf-teal, #0d3b3b);
+  color: #fff;
+  border-radius: 18px;
+  padding: 20px;
+  box-shadow: 0 8px 24px rgba(13, 59, 59, 0.16);
 }
 .worker-portal-page .worker-earnings-total-label {
   font-size: 0.8rem; letter-spacing: 0.04em; text-transform: uppercase;
@@ -573,13 +572,13 @@
 .worker-portal-page .worker-earnings-sub { font-size: 0.82rem; color: rgba(255, 255, 255, 0.72); }
 .worker-portal-page .worker-earnings-row {
   display: flex !important;
-  align-items: center !important;
-  justify-content: space-between !important;
-  gap: 12px !important;
-  background: #fff !important;
-  border: 1px solid rgba(13, 59, 59, 0.08) !important;
-  border-radius: 14px !important;
-  padding: 14px 16px !important;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  background: #fff;
+  border: 1px solid rgba(13, 59, 59, 0.08);
+  border-radius: 14px;
+  padding: 14px 16px;
 }
 .worker-portal-page .worker-earnings-row .worker-card-summary-main { display: grid; gap: 2px; }
 .worker-portal-page .worker-earnings-row .worker-card-sub { color: #60716d; font-size: 0.85rem; }
@@ -588,11 +587,11 @@
 /* ---- Profile ---- */
 .worker-portal-page .worker-profile-snapshot .worker-profile-mini {
   display: flex !important;
-  align-items: center !important;
-  gap: 16px !important;
+  align-items: center;
+  gap: 16px;
 }
 .worker-portal-page .worker-profile-id { display: grid; gap: 6px; }
-.worker-portal-page .worker-profile-id h2 { margin: 0 !important; font-size: 1.4rem !important; }
+.worker-portal-page .worker-profile-id h2 { margin: 0; font-size: 1.4rem; }
 .worker-portal-page .worker-profile-rating {
   display: inline-flex; align-items: center; gap: 6px; font-size: 0.95rem;
 }
@@ -621,16 +620,16 @@
   display: grid !important; gap: 10px !important; margin-top: 16px !important;
 }
 .worker-portal-page .worker-profile-actions .button {
-  width: 100% !important; min-height: 48px !important;
-  border-radius: 12px !important; font-weight: 700 !important;
+  width: 100%; min-height: 48px;
+  border-radius: 12px; font-weight: 700;
 }
 .worker-portal-page .worker-contact-row {
   display: grid !important; grid-template-columns: 40px 1fr !important;
-  align-items: center !important; gap: 12px !important;
-  padding: 12px 0 !important;
-  border-bottom: 1px solid rgba(13, 59, 59, 0.07) !important;
+  align-items: center; gap: 12px;
+  padding: 12px 0;
+  border-bottom: 1px solid rgba(13, 59, 59, 0.07);
 }
-.worker-portal-page .worker-contact-row:last-child { border-bottom: 0 !important; }
+.worker-portal-page .worker-contact-row:last-child { border-bottom: 0; }
 .worker-portal-page .worker-contact-row .worker-fact-icon {
   width: 40px; height: 40px; border-radius: 12px;
   background: var(--sf-sage-light, #eaf2ea);
@@ -648,12 +647,12 @@
   padding: 14px 0; border-bottom: 1px solid rgba(13, 59, 59, 0.07);
 }
 .worker-portal-page .worker-review-item:last-child { border-bottom: 0; }
-.worker-portal-page .worker-avatar-sm { width: 36px !important; height: 36px !important; font-size: 0.9rem !important; }
+.worker-portal-page .worker-avatar-sm { width: 36px; height: 36px; font-size: 0.9rem; }
 .worker-portal-page .worker-review-body { display: grid; gap: 3px; min-width: 0; }
 .worker-portal-page .worker-review-top { display: flex; align-items: center; gap: 10px; }
 .worker-portal-page .worker-review-stars { color: var(--sf-green, #1f7a45); letter-spacing: 1px; font-size: 0.85rem; }
 .worker-portal-page .worker-review-time { color: #8a9893; font-size: 0.78rem; }
-.worker-portal-page .worker-review-comment { margin: 2px 0 0 !important; color: #1c2b28; font-size: 0.9rem; line-height: 1.45; }
+.worker-portal-page .worker-review-comment { margin: 2px 0 0; color: #1c2b28; font-size: 0.9rem; line-height: 1.45; }
 
 /* ---- Legal links tucked into the Profile tab (app shell footer) ---- */
 .worker-app-legal {
@@ -680,12 +679,12 @@
 /* Legal document content rendered inside the worker-styled modal. */
 .worker-legal-content { color: #1c2b28; }
 .worker-legal-content h1 {
-  font-size: 1.4rem !important; line-height: 1.2;
+  font-size: 1.4rem; line-height: 1.2;
   color: var(--sf-teal, #0d3b3b); margin: 0 0 6px;
 }
 .worker-legal-content h2,
 .worker-legal-content h3 {
-  font-size: 1.05rem !important; color: var(--sf-teal, #0d3b3b); margin: 18px 0 6px;
+  font-size: 1.05rem; color: var(--sf-teal, #0d3b3b); margin: 18px 0 6px;
 }
 .worker-legal-content p,
 .worker-legal-content li { line-height: 1.55; color: #1c2b28; }
@@ -769,66 +768,66 @@
 @media (min-width: 761px) {
   .worker-portal-page {
     display: grid !important;
-    grid-template-columns: 1fr !important;
-    grid-template-rows: auto 1fr auto !important;
+    grid-template-columns: 1fr;
+    grid-template-rows: auto 1fr auto;
     grid-template-areas:
       "header"
       "main"
-      "footer" !important;
+      "footer";
     min-height: 100vh;
   }
   .worker-portal-page .site-footer { grid-area: footer; }
   /* Contained, rounded header bar (logo | nav | account) — website, not app. */
   .worker-portal-page .portal-header {
     grid-area: header;
-    position: static !important;
+    position: static;
     display: flex !important;
-    flex-direction: row !important;
-    align-items: center !important;
-    gap: 24px !important;
+    flex-direction: row;
+    align-items: center;
+    gap: 24px;
     /* Match the customer pages' header container exactly. */
-    width: min(var(--sf-page-width, 1600px), calc(100% - 40px)) !important;
-    max-width: none !important;
-    margin: 18px auto 0 !important;
-    border-radius: var(--sf-radius-sm, 14px) !important;
-    padding: 12px 22px !important;
+    width: min(var(--sf-page-width, 1600px), calc(100% - 40px));
+    max-width: none;
+    margin: 18px auto 0;
+    border-radius: var(--sf-radius-sm, 14px);
+    padding: 12px 22px;
   }
   /* Nav sits INSIDE the teal header bar (light pills on teal). */
   .worker-portal-page .app-tabbar {
-    position: static !important;
-    flex: 1 1 auto !important;
-    flex-direction: row !important;
-    justify-content: center !important;
-    align-items: center !important;
-    gap: 4px !important;
-    width: auto !important;
-    border: 0 !important;
-    background: transparent !important;
-    box-shadow: none !important;
-    padding: 0 !important;
+    position: static;
+    flex: 1 1 auto;
+    flex-direction: row;
+    justify-content: center;
+    align-items: center;
+    gap: 4px;
+    width: auto;
+    border: 0;
+    background: transparent;
+    box-shadow: none;
+    padding: 0;
   }
   .worker-portal-page .app-tab {
-    flex: 0 0 auto !important;
-    flex-direction: row !important;
-    gap: 8px !important;
-    padding: 8px 14px !important;
-    border-radius: 999px !important;
-    font-size: 0.9rem !important;
-    font-weight: 600 !important;
-    color: rgba(255, 255, 255, 0.82) !important;
+    flex: 0 0 auto;
+    flex-direction: row;
+    gap: 8px;
+    padding: 8px 14px;
+    border-radius: 999px;
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: rgba(255, 255, 255, 0.82);
   }
-  .worker-portal-page .app-tab svg { width: 18px !important; height: 18px !important; }
+  .worker-portal-page .app-tab svg { width: 18px; height: 18px; }
   .worker-portal-page .app-tab.active {
-    background: rgba(255, 255, 255, 0.16) !important;
-    color: #ffffff !important;
+    background: rgba(255, 255, 255, 0.16);
+    color: #ffffff;
   }
   .worker-portal-page .worker-account-chip { display: flex !important; align-items: center; gap: 9px; }
   /* Content area */
   .worker-portal-page main {
     grid-area: main;
-    width: auto !important;
-    margin: 0 !important;
-    padding: 0 0 48px !important;
+    width: auto;
+    margin: 0;
+    padding: 0 0 48px;
   }
   .worker-portal-page .worker-desktop-only { display: block; }
   .worker-portal-page .worker-mobile-only { display: none !important; }
@@ -965,20 +964,20 @@
   .worker-portal-page .worker-dash-grid .worker-dashboard-card,
   .worker-portal-page .worker-dash-grid .worker-current-status-card,
   .worker-portal-page .worker-dash-grid .worker-state-card {
-    padding: 14px !important;
-    margin-bottom: 0 !important;
+    padding: 14px;
+    margin-bottom: 0;
   }
   .worker-portal-page .worker-dash-grid .worker-card-heading h2 {
-    margin-bottom: 10px !important;
+    margin-bottom: 10px;
   }
   .worker-portal-page .worker-dash-grid .worker-today-heading {
-    margin-bottom: 10px !important;
+    margin-bottom: 10px;
   }
   .worker-portal-page .worker-stat-grid-compact {
-    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
   .worker-portal-page .worker-dashboard-card-compact {
-    padding-bottom: 12px !important;
+    padding-bottom: 12px;
   }
   /* Job card top → 2 columns (identity | details) with a divider, like the render. */
   .worker-portal-page .worker-job-grid {
@@ -998,18 +997,18 @@
   }
   /* Sections inside the dashboard grid drop the page-section spacing. */
   .worker-portal-page .worker-dash-grid .section {
-    max-width: none !important;
-    margin: 0 !important;
-    padding: 0 !important;
+    max-width: none;
+    margin: 0;
+    padding: 0;
   }
   /* Other tabs: fill the window like the dashboard (same page container). */
   .worker-portal-page #wtab-jobs .section,
   .worker-portal-page #wtab-schedule .section,
   .worker-portal-page #wtab-earnings .section,
   .worker-portal-page #wtab-profile .section {
-    width: min(var(--sf-page-width, 1600px), calc(100% - 40px)) !important;
-    max-width: none !important;
-    margin: 18px auto 0 !important;
+    width: min(var(--sf-page-width, 1600px), calc(100% - 40px));
+    max-width: none;
+    margin: 18px auto 0;
   }
 }
 
@@ -1020,281 +1019,592 @@
    "what to do right now." The status/action engine is reused unchanged; this is
    purely the presentation layer.
    ────────────────────────────────────────────────────────────────────────── */
-.worker-portal-page .worker-wizard-card { padding: 16px !important; }
+.worker-portal-page .worker-wizard-card { padding: 16px; }
 
 /* Compact header: who + what, status pill trailing. */
 .worker-portal-page .worker-wizard-head {
   display: flex !important;
-  align-items: center !important;
-  gap: 12px !important;
-  margin-bottom: 14px !important;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 14px;
 }
 .worker-portal-page .worker-wizard-head-main { flex: 1 1 auto; min-width: 0; }
 .worker-portal-page .worker-wizard-head .worker-current-job-name {
-  font-size: 1.15rem !important;
-  margin: 0 !important;
+  font-size: 1.15rem;
+  margin: 0;
 }
 .worker-portal-page .worker-wizard-head .worker-card-vehicle {
-  margin: 2px 0 0 !important;
-  color: #4e5f5b !important;
-  font-size: 0.9rem !important;
+  margin: 2px 0 0;
+  color: #4e5f5b;
+  font-size: 0.9rem;
 }
 .worker-portal-page .worker-wizard-head .status-pill { flex-shrink: 0; }
 
 /* Pinned progress rail: "Step N of 6" + a 6-dot horizontal tracker. */
 .worker-portal-page .worker-wizard-progress {
-  background: var(--sf-sage-light, #eaf2ea) !important;
-  border-radius: 14px !important;
-  padding: 12px 14px 14px !important;
-  margin-bottom: 16px !important;
+  background: var(--sf-sage-light, #eaf2ea);
+  border-radius: 14px;
+  padding: 12px 14px 14px;
+  margin-bottom: 16px;
 }
 .worker-portal-page .worker-wizard-progress-head {
   display: flex !important;
-  align-items: baseline !important;
-  justify-content: space-between !important;
-  gap: 10px !important;
-  margin-bottom: 14px !important;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 14px;
 }
 .worker-portal-page .worker-wizard-step-count {
-  font-size: 0.7rem !important;
-  font-weight: 800 !important;
-  letter-spacing: 0.05em !important;
-  text-transform: uppercase !important;
-  color: #60716d !important;
+  font-size: 0.7rem;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: #60716d;
 }
 .worker-portal-page .worker-wizard-step-phase {
-  font-size: 0.98rem !important;
-  font-weight: 800 !important;
-  color: var(--sf-teal, #0d3b3b) !important;
-  text-align: right !important;
+  font-size: 0.98rem;
+  font-weight: 800;
+  color: var(--sf-teal, #0d3b3b);
+  text-align: right;
 }
 .worker-portal-page .worker-hstepper {
-  list-style: none !important;
-  margin: 0 !important;
-  padding: 0 !important;
+  list-style: none;
+  margin: 0;
+  padding: 0;
   display: grid !important;
-  grid-template-columns: repeat(6, 1fr) !important;
+  grid-template-columns: repeat(6, 1fr);
 }
 .worker-portal-page .worker-hstep {
-  position: relative !important;
+  position: relative;
   display: flex !important;
-  flex-direction: column !important;
-  align-items: center !important;
-  gap: 5px !important;
-  text-align: center !important;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  text-align: center;
 }
 .worker-portal-page .worker-hstep::before {
-  content: "" !important;
-  position: absolute !important;
-  top: 13px !important;
-  left: -50% !important;
-  width: 100% !important;
-  height: 2px !important;
-  background: rgba(13, 59, 59, 0.16) !important;
-  z-index: 0 !important;
+  content: "";
+  position: absolute;
+  top: 13px;
+  left: -50%;
+  width: 100%;
+  height: 2px;
+  background: rgba(13, 59, 59, 0.16);
+  z-index: 0;
 }
 .worker-portal-page .worker-hstep:first-child::before { display: none !important; }
 .worker-portal-page .worker-hstep.is-done::before,
-.worker-portal-page .worker-hstep.is-active::before { background: var(--sf-teal, #0d3b3b) !important; }
+.worker-portal-page .worker-hstep.is-active::before { background: var(--sf-teal, #0d3b3b); }
 .worker-portal-page .worker-hstep-dot {
-  position: relative !important;
-  z-index: 1 !important;
+  position: relative;
+  z-index: 1;
   display: grid !important;
-  place-items: center !important;
-  width: 26px !important;
-  height: 26px !important;
-  border-radius: 50% !important;
-  background: #fff !important;
-  border: 2px solid rgba(13, 59, 59, 0.18) !important;
-  color: #7c8b87 !important;
-  font-size: 0.74rem !important;
-  font-weight: 800 !important;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: #fff;
+  border: 2px solid rgba(13, 59, 59, 0.18);
+  color: #7c8b87;
+  font-size: 0.74rem;
+  font-weight: 800;
 }
 .worker-portal-page .worker-hstep-label {
-  font-size: 0.62rem !important;
-  font-weight: 700 !important;
-  color: #7c8b87 !important;
+  font-size: 0.62rem;
+  font-weight: 700;
+  color: #7c8b87;
 }
 .worker-portal-page .worker-hstep.is-done .worker-hstep-dot {
-  background: var(--sf-teal, #0d3b3b) !important;
-  border-color: var(--sf-teal, #0d3b3b) !important;
-  color: #fff !important;
+  background: var(--sf-teal, #0d3b3b);
+  border-color: var(--sf-teal, #0d3b3b);
+  color: #fff;
 }
 .worker-portal-page .worker-hstep.is-active .worker-hstep-dot {
-  border-color: var(--sf-teal, #0d3b3b) !important;
-  color: var(--sf-teal, #0d3b3b) !important;
-  box-shadow: 0 0 0 4px rgba(13, 59, 59, 0.12) !important;
+  border-color: var(--sf-teal, #0d3b3b);
+  color: var(--sf-teal, #0d3b3b);
+  box-shadow: 0 0 0 4px rgba(13, 59, 59, 0.12);
 }
 .worker-portal-page .worker-hstep.is-done .worker-hstep-label,
-.worker-portal-page .worker-hstep.is-active .worker-hstep-label { color: var(--sf-teal, #0d3b3b) !important; }
+.worker-portal-page .worker-hstep.is-active .worker-hstep-label { color: var(--sf-teal, #0d3b3b); }
 
 /* The focal step: one clear instruction + big, obvious tap targets. */
 .worker-portal-page .worker-wizard-step .guided-step {
-  background: transparent !important;
-  border: 0 !important;
-  padding: 0 !important;
-  margin: 0 !important;
+  background: transparent;
+  border: 0;
+  padding: 0;
+  margin: 0;
 }
 .worker-portal-page .worker-wizard-step .guided-step .eyebrow {
-  font-size: 0.68rem !important;
-  letter-spacing: 0.06em !important;
-  text-transform: uppercase !important;
-  color: #60716d !important;
+  font-size: 0.68rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #60716d;
 }
 .worker-portal-page .worker-wizard-step .guided-step h4 {
-  font-size: 1.28rem !important;
-  margin: 2px 0 12px !important;
-  color: var(--sf-teal, #0d3b3b) !important;
-  letter-spacing: -0.01em !important;
+  font-size: 1.28rem;
+  margin: 2px 0 12px;
+  color: var(--sf-teal, #0d3b3b);
+  letter-spacing: -0.01em;
 }
 .worker-portal-page .worker-wizard-step .next-action-label {
-  font-size: 1rem !important;
-  line-height: 1.5 !important;
-  color: #2f413d !important;
-  background: var(--sf-sage-light, #eaf2ea) !important;
-  border-radius: 12px !important;
-  padding: 12px 14px !important;
-  margin: 0 0 16px !important;
+  font-size: 1rem;
+  line-height: 1.5;
+  color: #2f413d;
+  background: var(--sf-sage-light, #eaf2ea);
+  border-radius: 12px;
+  padding: 12px 14px;
+  margin: 0 0 16px;
 }
-.worker-portal-page .worker-wizard-step .next-action-label strong { color: var(--sf-teal, #0d3b3b) !important; }
+.worker-portal-page .worker-wizard-step .next-action-label strong { color: var(--sf-teal, #0d3b3b); }
 
 /* Big stacked tap targets — both the action buttons and any in-step panel. */
 .worker-portal-page .worker-wizard-step .admin-button-row {
   display: grid !important;
-  gap: 10px !important;
+  gap: 10px;
 }
 .worker-portal-page .worker-wizard-step .button.primary {
-  width: 100% !important;
-  min-height: 54px !important;
-  font-size: 1.02rem !important;
-  border-radius: 14px !important;
+  width: 100%;
+  min-height: 54px;
+  font-size: 1.02rem;
+  border-radius: 14px;
 }
 .worker-portal-page .worker-wizard-step .admin-button-row .button {
-  width: 100% !important;
-  min-height: 50px !important;
-  border-radius: 14px !important;
+  width: 100%;
+  min-height: 50px;
+  border-radius: 14px;
 }
 
 /* Clean single-line job details on the active-job card. */
 .worker-portal-page .worker-job-plain {
   display: grid !important;
-  gap: 9px !important;
-  margin: 0 0 16px !important;
+  gap: 9px;
+  margin: 0 0 16px;
 }
 .worker-portal-page .wjp-row { display: grid !important; gap: 1px !important; }
 .worker-portal-page .wjp-label {
-  font-size: 0.62rem !important;
-  font-weight: 800 !important;
-  letter-spacing: 0.06em !important;
-  text-transform: uppercase !important;
-  color: #7c8b87 !important;
+  font-size: 0.62rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #7c8b87;
 }
 .worker-portal-page .wjp-value {
-  font-size: 0.95rem !important;
-  font-weight: 600 !important;
-  color: #1f2d2a !important;
-  line-height: 1.35 !important;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: #1f2d2a;
+  line-height: 1.35;
 }
 /* Customer name leads, a touch larger and in brand teal. */
 .worker-portal-page .worker-job-plain .wjp-row:first-child .wjp-value {
-  font-size: 1.08rem !important;
-  font-weight: 800 !important;
-  color: var(--sf-teal, #0d3b3b) !important;
+  font-size: 1.08rem;
+  font-weight: 800;
+  color: var(--sf-teal, #0d3b3b);
 }
 
 /* Desktop: keep the single step a calm, centered column instead of stretching
    it across the whole dashboard main area. */
 @media (min-width: 761px) {
-  .worker-portal-page .worker-wizard-card { padding: 26px !important; }
+  .worker-portal-page .worker-wizard-card { padding: 26px; }
   .worker-portal-page .worker-job-plain,
   .worker-portal-page .worker-wizard-step,
   .worker-portal-page .worker-wizard-card .worker-secondary-actions {
-    max-width: 620px !important;
-    margin-left: auto !important;
-    margin-right: auto !important;
+    max-width: 620px;
+    margin-left: auto;
+    margin-right: auto;
   }
 }
 
 /* ── Available-job estimate row (earnings + time) ── */
 .worker-portal-page .worker-job-estrow {
   display: grid !important;
-  grid-template-columns: 1fr 1fr !important;
-  gap: 10px !important;
-  margin: 10px 0 4px !important;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin: 10px 0 4px;
 }
 .worker-portal-page .worker-est-stat {
   display: grid !important;
-  gap: 2px !important;
-  padding: 10px 12px !important;
-  background: var(--sf-sage-light, #eaf2ea) !important;
-  border-radius: 12px !important;
+  gap: 2px;
+  padding: 10px 12px;
+  background: var(--sf-sage-light, #eaf2ea);
+  border-radius: 12px;
 }
 .worker-portal-page .worker-est-stat-label {
-  font-size: 0.62rem !important;
-  font-weight: 800 !important;
-  letter-spacing: 0.05em !important;
-  text-transform: uppercase !important;
-  color: #60716d !important;
+  font-size: 0.62rem;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: #60716d;
 }
 .worker-portal-page .worker-est-stat-value {
-  font-size: 1.15rem !important;
-  font-weight: 800 !important;
-  color: var(--sf-teal, #0d3b3b) !important;
+  font-size: 1.15rem;
+  font-weight: 800;
+  color: var(--sf-teal, #0d3b3b);
 }
 
 /* ── Pickup / return photo wizard: one tile at a time ── */
 .worker-portal-page .photo-wizard-progress {
-  font-weight: 800 !important;
-  color: var(--sf-teal, #0d3b3b) !important;
-  font-size: 0.95rem !important;
-  margin: 4px 0 14px !important;
+  font-weight: 800;
+  color: var(--sf-teal, #0d3b3b);
+  font-size: 0.95rem;
+  margin: 4px 0 14px;
 }
 .worker-portal-page .photo-wizard-step { display: none !important; }
 .worker-portal-page .photo-wizard-step.is-current { display: block !important; }
 .worker-portal-page .photo-wizard-step.is-done {
   display: flex !important;
-  align-items: center !important;
-  justify-content: space-between !important;
-  gap: 10px !important;
-  padding: 10px 12px !important;
-  margin-bottom: 8px !important;
-  border: 1px solid rgba(13, 59, 59, 0.1) !important;
-  border-radius: 12px !important;
-  background: #f6faf8 !important;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 12px;
+  margin-bottom: 8px;
+  border: 1px solid rgba(13, 59, 59, 0.1);
+  border-radius: 12px;
+  background: #f6faf8;
 }
 .worker-portal-page .photo-wizard-step-label {
   display: flex !important;
-  align-items: center !important;
-  font-weight: 700 !important;
-  margin: 0 0 10px !important;
+  align-items: center;
+  font-weight: 700;
+  margin: 0 0 10px;
 }
-.worker-portal-page .photo-wizard-step.is-done .photo-wizard-step-label { margin: 0 !important; }
+.worker-portal-page .photo-wizard-step.is-done .photo-wizard-step-label { margin: 0; }
 .worker-portal-page .photo-wizard-step.is-done .file-button-control { display: none !important; }
 .worker-portal-page .photo-wizard-done-tag { display: none !important; }
 .worker-portal-page .photo-wizard-step.is-done .photo-wizard-done-tag {
   display: inline-flex !important;
-  align-items: center !important;
-  gap: 8px !important;
-  color: var(--sf-green, #1f7a45) !important;
-  font-weight: 800 !important;
-  font-size: 0.85rem !important;
-  white-space: nowrap !important;
+  align-items: center;
+  gap: 8px;
+  color: var(--sf-green, #1f7a45);
+  font-weight: 800;
+  font-size: 0.85rem;
+  white-space: nowrap;
 }
 .worker-portal-page .photo-wizard-retake {
-  background: none !important;
-  border: 0 !important;
-  color: var(--sf-teal, #0d3b3b) !important;
-  font-weight: 800 !important;
-  font-size: 0.85rem !important;
-  text-decoration: underline !important;
-  cursor: pointer !important;
-  padding: 0 !important;
+  background: none;
+  border: 0;
+  color: var(--sf-teal, #0d3b3b);
+  font-weight: 800;
+  font-size: 0.85rem;
+  text-decoration: underline;
+  cursor: pointer;
+  padding: 0;
+}
+
+/* Batch 3: worker mobile task flow polish. Keeps the operational flow intact
+   while making the active job, current panel, and next action easier to scan. */
+@media (max-width: 760px) {
+  body.worker-portal-page .worker-today-section,
+  body.worker-portal-page .worker-card-list {
+    gap: 12px;
+  }
+
+  body.worker-portal-page .worker-current-job-card.worker-wizard-card,
+  body.worker-portal-page .worker-job-card,
+  body.worker-portal-page .worker-schedule-card,
+  body.worker-portal-page .worker-available-card {
+    border-radius: 18px;
+    box-shadow: 0 12px 28px rgba(6, 39, 39, 0.12);
+  }
+
+  body.worker-portal-page .worker-current-job-card.worker-wizard-card {
+    border: 1px solid rgba(31, 122, 69, 0.24);
+    border-top: 4px solid var(--sf-green, #1f7a45);
+    padding: 14px;
+  }
+
+  body.worker-portal-page .worker-job-plain {
+    gap: 8px;
+    padding: 12px;
+    margin-bottom: 12px;
+    border: 1px solid rgba(13, 59, 59, 0.08);
+    border-radius: 14px;
+    background: #f7fbf8;
+  }
+
+  body.worker-portal-page .wjp-row {
+    padding-bottom: 8px;
+    border-bottom: 1px solid rgba(13, 59, 59, 0.07);
+  }
+
+  body.worker-portal-page .wjp-row:last-child {
+    padding-bottom: 0;
+    border-bottom: 0;
+  }
+
+  body.worker-portal-page .wjp-label {
+    margin-bottom: 2px;
+  }
+
+  body.worker-portal-page .wjp-value {
+    overflow-wrap: anywhere;
+  }
+
+  body.worker-portal-page .worker-job-actions-area {
+    display: grid;
+    gap: 12px;
+  }
+
+  body.worker-portal-page .worker-wizard-step {
+    margin-top: 0;
+  }
+
+  body.worker-portal-page .worker-wizard-step .guided-step {
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+
+  body.worker-portal-page .worker-wizard-step .admin-button-row {
+    padding: 12px;
+    border: 1px solid rgba(31, 122, 69, 0.22);
+    border-radius: 16px;
+    background: linear-gradient(180deg, rgba(231, 245, 236, 0.95), rgba(247, 251, 248, 0.95));
+  }
+
+  body.worker-portal-page .worker-wizard-step .admin-button-row::before {
+    content: "Next action";
+    display: block;
+    color: var(--sf-teal, #0d3b3b);
+    font-size: 0.72rem;
+    font-weight: 900;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+  }
+
+  body.worker-portal-page .worker-wizard-step .button,
+  body.worker-portal-page .photo-panel .button,
+  body.worker-portal-page .receipt-panel .button,
+  body.worker-portal-page .inspection-panel .button,
+  body.worker-portal-page .return-location-panel .button,
+  body.worker-portal-page .service-unable-panel .button,
+  body.worker-portal-page .complete-panel .button,
+  body.worker-portal-page .keys-returned-panel .button,
+  body.worker-portal-page .pickup-bypass-panel .button {
+    width: 100%;
+    min-height: 52px;
+    border-radius: 14px;
+    font-size: 0.98rem;
+    justify-content: center;
+  }
+
+  body.worker-portal-page .worker-wizard-step .button.primary,
+  body.worker-portal-page .photo-panel .button.primary,
+  body.worker-portal-page .receipt-panel .button.primary,
+  body.worker-portal-page .inspection-panel .button.primary,
+  body.worker-portal-page .return-location-panel .button.primary,
+  body.worker-portal-page .complete-panel .button.primary,
+  body.worker-portal-page .keys-returned-panel .button.primary {
+    box-shadow: 0 10px 22px rgba(31, 122, 69, 0.22);
+  }
+
+  body.worker-portal-page .worker-secondary-actions {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 8px;
+    margin-top: 12px;
+  }
+
+  body.worker-portal-page .worker-secondary-btn {
+    min-height: 46px;
+    border-radius: 13px;
+  }
+
+  body.worker-portal-page .photo-panel,
+  body.worker-portal-page .receipt-panel,
+  body.worker-portal-page .inspection-panel,
+  body.worker-portal-page .return-location-panel,
+  body.worker-portal-page .service-unable-panel,
+  body.worker-portal-page .complete-panel,
+  body.worker-portal-page .keys-returned-panel,
+  body.worker-portal-page .pickup-bypass-panel,
+  body.worker-portal-page .gps-tracking-panel {
+    padding: 14px !important;
+    margin: 0 !important;
+    border: 1px solid rgba(13, 59, 59, 0.12);
+    border-radius: 16px;
+    background: #fff;
+    box-shadow: 0 8px 20px rgba(6, 39, 39, 0.08);
+  }
+
+  body.worker-portal-page .photo-panel,
+  body.worker-portal-page .receipt-panel,
+  body.worker-portal-page .inspection-panel,
+  body.worker-portal-page .return-location-panel,
+  body.worker-portal-page .complete-panel,
+  body.worker-portal-page .keys-returned-panel {
+    border-left: 4px solid var(--sf-green, #1f7a45);
+  }
+
+  body.worker-portal-page .service-unable-panel,
+  body.worker-portal-page .pickup-bypass-panel {
+    border-left: 4px solid #b45309;
+    background: #fffaf2;
+  }
+
+  body.worker-portal-page .photo-panel h4,
+  body.worker-portal-page .receipt-panel h4,
+  body.worker-portal-page .inspection-panel h4,
+  body.worker-portal-page .return-location-panel h4,
+  body.worker-portal-page .service-unable-panel h4,
+  body.worker-portal-page .complete-panel h4,
+  body.worker-portal-page .keys-returned-panel h4,
+  body.worker-portal-page .gps-tracking-panel h4 {
+    margin: 0 0 6px;
+    color: var(--sf-teal, #0d3b3b);
+    font-size: 1.08rem;
+    line-height: 1.2;
+  }
+
+  body.worker-portal-page .photo-panel h4::before,
+  body.worker-portal-page .receipt-panel h4::before,
+  body.worker-portal-page .inspection-panel h4::before,
+  body.worker-portal-page .return-location-panel h4::before,
+  body.worker-portal-page .complete-panel h4::before,
+  body.worker-portal-page .keys-returned-panel h4::before {
+    content: "Current step";
+    display: block;
+    margin-bottom: 3px;
+    color: var(--sf-green, #1f7a45);
+    font-size: 0.68rem;
+    font-weight: 900;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+
+  body.worker-portal-page .field-help {
+    font-size: 0.9rem;
+    line-height: 1.45;
+  }
+
+  body.worker-portal-page .photo-panel label,
+  body.worker-portal-page .receipt-panel label,
+  body.worker-portal-page .inspection-panel label,
+  body.worker-portal-page .return-location-panel label,
+  body.worker-portal-page .service-unable-panel label,
+  body.worker-portal-page .complete-panel label,
+  body.worker-portal-page .keys-returned-panel label {
+    display: grid;
+    gap: 7px;
+    font-weight: 800;
+  }
+
+  body.worker-portal-page .photo-panel input,
+  body.worker-portal-page .receipt-panel input,
+  body.worker-portal-page .inspection-panel input,
+  body.worker-portal-page .return-location-panel input,
+  body.worker-portal-page .service-unable-panel input,
+  body.worker-portal-page .service-unable-panel select,
+  body.worker-portal-page .service-unable-panel textarea,
+  body.worker-portal-page .complete-panel input,
+  body.worker-portal-page .complete-panel select,
+  body.worker-portal-page .keys-returned-panel input,
+  body.worker-portal-page .keys-returned-panel select {
+    min-height: 48px;
+    border-radius: 12px;
+    font-size: 1rem;
+  }
+
+  body.worker-portal-page .admin-money-grid,
+  body.worker-portal-page .field-grid {
+    display: grid !important;
+    grid-template-columns: 1fr !important;
+    gap: 12px !important;
+  }
+
+  body.worker-portal-page .file-button-control {
+    padding: 12px;
+    border: 1px dashed rgba(13, 59, 59, 0.22);
+    border-radius: 14px;
+    background: #f8fbf9;
+  }
+
+  body.worker-portal-page .file-button-control .file-button-text {
+    min-height: 50px;
+    border-radius: 13px;
+  }
+
+  body.worker-portal-page .selected-file-name {
+    min-width: 0;
+    overflow-wrap: anywhere;
+    color: #60716d;
+    font-size: 0.86rem;
+  }
+
+  body.worker-portal-page .photo-wizard-progress {
+    padding: 9px 11px;
+    border-radius: 999px;
+    background: #e7f5ec;
+    font-size: 0.88rem;
+    line-height: 1.25;
+  }
+
+  body.worker-portal-page .photo-wizard-step.is-current {
+    padding: 12px;
+    border: 1px solid rgba(31, 122, 69, 0.2);
+    border-radius: 14px;
+    background: #fbfefd;
+  }
+
+  body.worker-portal-page .photo-wizard-step.is-done {
+    min-height: 48px;
+  }
+
+  body.worker-portal-page .photo-wizard-step.is-done .photo-wizard-done-tag {
+    white-space: normal;
+    text-align: right;
+  }
+
+  body.worker-portal-page .inspection-step {
+    padding: 12px;
+    border: 1px solid rgba(13, 59, 59, 0.1);
+    border-radius: 14px;
+    background: #f8fbf9;
+  }
+
+  body.worker-portal-page .inspection-step[hidden] {
+    display: none !important;
+  }
+
+  body.worker-portal-page .inspection-step-count {
+    display: inline-flex;
+    width: fit-content;
+    margin: 0 0 8px;
+    padding: 5px 9px;
+    border-radius: 999px;
+    background: #e7f5ec;
+    color: var(--sf-green, #1f7a45);
+    font-size: 0.76rem;
+    font-weight: 900;
+  }
+
+  body.worker-portal-page .inspection-step-nav,
+  body.worker-portal-page .complete-panel .admin-button-row,
+  body.worker-portal-page .keys-returned-panel .admin-button-row,
+  body.worker-portal-page .service-unable-panel .admin-button-row {
+    display: grid !important;
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+
+  body.worker-portal-page .checkbox-label {
+    display: flex !important;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 10px;
+    border-radius: 12px;
+    background: #f8fbf9;
+  }
+
+  body.worker-portal-page .checkbox-label input[type="checkbox"] {
+    min-height: 20px;
+    width: 20px;
+    margin-top: 2px;
+  }
 }
 
 /* Earnings calculator (Earnings tab) */
 .worker-pay-calc-inputs { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin: 10px 0; }
 .worker-pay-calc-inputs label { display: flex; flex-direction: column; gap: 4px; font-size: .82rem; font-weight: 700; }
-.worker-pay-calc-check { flex-direction: row !important; align-items: center; gap: 8px; }
+.worker-pay-calc-check { flex-direction: row; align-items: center; gap: 8px; }
 .worker-pay-calc-check input { width: auto; }
 .worker-pay-calc-output { margin-top: 8px; }
 .wcalc-row { display: flex; justify-content: space-between; gap: 12px; padding: 4px 0; font-size: .92rem; }

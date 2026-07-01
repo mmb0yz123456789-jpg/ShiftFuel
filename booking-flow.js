@@ -38,7 +38,21 @@ const cardElement = stripeElements ? stripeElements.create("card", {
     invalid: { color: "#b42318" },
   },
 }) : null;
-let cardMounted = false;
+
+// Consolidated booking-flow session/UI state (scattered top-level `let`s;
+// separate from the main `bookingState`). Each field is still freely reassigned
+// as flowState.X. Pricing constants (PRICE_PER_GALLON, *_SERVICE_FEE, BUNDLE_*,
+// WASH_PACKAGES) stay as named module constants.
+const flowState = {
+  cardMounted: false,
+  summaryMobileOpen: false,
+  lastAddressSuggestions: [],
+  addressSuggestTimer: null,
+  addressSuggestSeq: 0,
+  addressPickInProgress: false,
+  carWashFacilityCoords: null,
+  washEstimate: { fetchedFor: "", oneWayMiles: 0 },
+};
 
 if (year) year.textContent = new Date().getFullYear();
 
@@ -706,7 +720,7 @@ const EST_FIND_CAR_MIN = 5;
 const EST_QUICK_CARE_MIN = 10;
 function estimateBookingMinutes() {
   const stationRT = serviceNeedsFuel() ? (Number(bookingState.station.oneWayMiles) || 0) * 2 : 0;
-  const washRT = serviceNeedsWash() ? (Number(washEstimate.oneWayMiles) || 0) * 2 : 0;
+  const washRT = serviceNeedsWash() ? (Number(flowState.washEstimate.oneWayMiles) || 0) * 2 : 0;
   const driveLegs = ((stationRT + washRT) / 30) * 60; // legs at ~30 mph
   const quickCare = bookingState.values.quickCare ? EST_QUICK_CARE_MIN : 0;
   return Math.round(EST_TO_DESTINATION_MIN + EST_FIND_CAR_MIN + driveLegs + quickCare);
@@ -842,9 +856,9 @@ function mountCardIfNeeded() {
     if (display) display.textContent = "Card entry could not load. Please refresh the page, disable any ad/script blockers, or try a different browser.";
     return;
   }
-  if (cardMounted) return;
+  if (flowState.cardMounted) return;
   cardElement.mount("#booking-card-element");
-  cardMounted = true;
+  flowState.cardMounted = true;
   cardElement.on("change", (event) => {
     const display = document.querySelector("#booking-card-errors");
     if (display) display.textContent = event.error ? event.error.message : "";
@@ -859,9 +873,9 @@ function mountCardIfNeeded() {
 function closePaymentModal() {
   const modal = document.querySelector("#booking-payment-modal");
   if (!modal) return;
-  if (cardElement && cardMounted) {
+  if (cardElement && flowState.cardMounted) {
     cardElement.unmount();
-    cardMounted = false;
+    flowState.cardMounted = false;
   }
   modal.remove();
   document.body.classList.remove("payment-modal-open");
@@ -1154,7 +1168,6 @@ function summaryRow({ label, stepName, content, unlockedIndex, steps }) {
 
 // Mobile only: the Booking Summary collapses into a tappable accordion at the
 // top. Persisted across re-renders so toggling doesn't reset on every step change.
-let summaryMobileOpen = false;
 
 // Promo-code control inside the Booking Summary. Shows an input + Apply, or an
 // "applied" chip with Remove once a valid code is in bookingState.promo.
@@ -1212,8 +1225,8 @@ function renderSummarySidebar(steps, flowName, unlockedIndex) {
   ].join("");
 
   return `
-    <aside class="booking-summary-sidebar${summaryMobileOpen ? " is-open" : ""}">
-      <button type="button" class="booking-summary-toggle" data-summary-toggle aria-expanded="${summaryMobileOpen ? "true" : "false"}">
+    <aside class="booking-summary-sidebar${flowState.summaryMobileOpen ? " is-open" : ""}">
+      <button type="button" class="booking-summary-toggle" data-summary-toggle aria-expanded="${flowState.summaryMobileOpen ? "true" : "false"}">
         <span class="booking-summary-toggle-label">Booking Summary</span>
         <span class="booking-summary-toggle-total">${formatMoney(totals.estimatedTotal)}</span>
         <span class="booking-summary-chevron" aria-hidden="true">▾</span>
@@ -1361,12 +1374,8 @@ async function validateAddress(panel) {
 // suggestion, so picking one needs no second call — no Search Box "sessions".
 // ---------------------------------------------------------------------------
 
-let lastAddressSuggestions = [];
-let addressSuggestTimer = null;
-let addressSuggestSeq = 0;
 // Set on suggestion mousedown (fires before the input's blur) so the blur-driven
 // fallback validation doesn't race the validate of a pick.
-let addressPickInProgress = false;
 
 function closeAddressSuggest(listEl) {
   if (!listEl) return;
@@ -1375,7 +1384,7 @@ function closeAddressSuggest(listEl) {
 }
 
 async function fetchAddressSuggestions(query, listEl) {
-  const seq = ++addressSuggestSeq;
+  const seq = ++flowState.addressSuggestSeq;
   try {
     const res = await fetch("/api/address", {
       method: "POST",
@@ -1383,9 +1392,9 @@ async function fetchAddressSuggestions(query, listEl) {
       body: JSON.stringify({ action: "address_suggest", q: query }),
     });
     const data = await res.json().catch(() => ({}));
-    if (seq !== addressSuggestSeq) return; // a newer keystroke superseded this one
-    lastAddressSuggestions = Array.isArray(data.suggestions) ? data.suggestions : [];
-    renderAddressSuggestions(listEl, lastAddressSuggestions);
+    if (seq !== flowState.addressSuggestSeq) return; // a newer keystroke superseded this one
+    flowState.lastAddressSuggestions = Array.isArray(data.suggestions) ? data.suggestions : [];
+    renderAddressSuggestions(listEl, flowState.lastAddressSuggestions);
   } catch (error) {
     closeAddressSuggest(listEl);
   }
@@ -1417,7 +1426,7 @@ async function selectAddressSuggestion(panel, suggestId) {
   try {
     // The suggestion already carries the structured fields + coordinates from the
     // Geocoding response, so there's no second lookup — just apply them.
-    const a = lastAddressSuggestions.find((s) => String(s.id) === String(suggestId));
+    const a = flowState.lastAddressSuggestions.find((s) => String(s.id) === String(suggestId));
     if (!a) return;
 
     const setField = (name, value) => {
@@ -1439,7 +1448,7 @@ async function selectAddressSuggestion(panel, suggestId) {
   } catch (error) {
     console.error("Address selection failed:", error);
   } finally {
-    addressPickInProgress = false;
+    flowState.addressPickInProgress = false;
   }
 }
 
@@ -1449,7 +1458,7 @@ async function selectAddressSuggestion(panel, suggestId) {
 // Returns the validation promise (or null) so callers can refresh the UI after.
 function maybeAutoValidateAddress(panel) {
   if (panel.dataset.currentStep !== "Address") return null;
-  if (addressPickInProgress) return null;
+  if (flowState.addressPickInProgress) return null;
   if (bookingState.address.validated) return null;
   if (!requiredInputsComplete(panel)) return null;
   return validateAddress(panel);
@@ -2148,8 +2157,6 @@ async function applyPreferredStation(panel) {
 // cached; straight-line distance ×1.3 road factor — display-only, so no routing
 // call. Stored one-way (the worker doubles it), in `[wash_miles]`.
 const CAR_WASH_FACILITY_ADDRESS = "602 Main St, Wilmington, DE 19804";
-let carWashFacilityCoords = null;
-let washEstimate = { fetchedFor: "", oneWayMiles: 0 };
 
 function bookingHaversineMiles(a, b) {
   if (!a || !b) return 0;
@@ -2164,9 +2171,9 @@ async function ensureWashEstimate() {
   const lon = Number(bookingState.values.address_lon);
   if (!Number.isFinite(lat) || !Number.isFinite(lon) || (lat === 0 && lon === 0)) return;
   const key = `${lat},${lon}`;
-  if (washEstimate.fetchedFor === key && washEstimate.oneWayMiles > 0) return;
+  if (flowState.washEstimate.fetchedFor === key && flowState.washEstimate.oneWayMiles > 0) return;
   try {
-    if (!carWashFacilityCoords) {
+    if (!flowState.carWashFacilityCoords) {
       const res = await fetch("/api/address", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -2174,12 +2181,12 @@ async function ensureWashEstimate() {
       });
       const data = await res.json().catch(() => ({}));
       if (data && data.ok && Number.isFinite(Number(data.lat)) && Number.isFinite(Number(data.lon))) {
-        carWashFacilityCoords = { lat: Number(data.lat), lon: Number(data.lon) };
+        flowState.carWashFacilityCoords = { lat: Number(data.lat), lon: Number(data.lon) };
       }
     }
-    if (!carWashFacilityCoords) return;
-    const oneWay = bookingHaversineMiles({ lat, lon }, carWashFacilityCoords) * 1.3;
-    washEstimate = { fetchedFor: key, oneWayMiles: Math.round(oneWay * 10) / 10 };
+    if (!flowState.carWashFacilityCoords) return;
+    const oneWay = bookingHaversineMiles({ lat, lon }, flowState.carWashFacilityCoords) * 1.3;
+    flowState.washEstimate = { fetchedFor: key, oneWayMiles: Math.round(oneWay * 10) / 10 };
   } catch (_) {
     // Non-fatal — the wash drive just won't be included in the estimate.
   }
@@ -2536,7 +2543,7 @@ async function confirmPaymentAuthorization(panel, button) {
     if (modalError && type === "error") modalError.textContent = message;
   };
 
-  if (!stripe || !cardElement || !cardMounted) {
+  if (!stripe || !cardElement || !flowState.cardMounted) {
     setStatus("error", "Payment authorization is not available right now.");
     return;
   }
@@ -2891,8 +2898,8 @@ function buildBookingPayload() {
     serviceNeedsFuel() && Number(bookingState.station.oneWayMiles) > 0
       ? `[station_miles ${Number(bookingState.station.oneWayMiles).toFixed(1)}]` : "",
     // One-way miles to the fixed car-wash facility, same purpose for the wash leg.
-    serviceNeedsWash() && Number(washEstimate.oneWayMiles) > 0
-      ? `[wash_miles ${Number(washEstimate.oneWayMiles).toFixed(1)}]` : "",
+    serviceNeedsWash() && Number(flowState.washEstimate.oneWayMiles) > 0
+      ? `[wash_miles ${Number(flowState.washEstimate.oneWayMiles).toFixed(1)}]` : "",
   ].filter(Boolean).join(" ");
 
   return {
@@ -3189,7 +3196,7 @@ function renderFlow(root) {
   // mousedown fires before the street input's blur, so we can flag a pick in
   // progress and stop the blur fallback from running a redundant validation.
   root.addEventListener("mousedown", (event) => {
-    if (event.target.closest("[data-suggest-id]")) addressPickInProgress = true;
+    if (event.target.closest("[data-suggest-id]")) flowState.addressPickInProgress = true;
   });
 
   root.addEventListener("input", (event) => {
@@ -3218,11 +3225,11 @@ function renderFlow(root) {
     if (event.target.matches("[data-address-autocomplete]")) {
       const listEl = panel.querySelector("[data-address-suggest]");
       const query = event.target.value.trim();
-      window.clearTimeout(addressSuggestTimer);
+      window.clearTimeout(flowState.addressSuggestTimer);
       if (query.length < 3) {
         closeAddressSuggest(listEl);
       } else {
-        addressSuggestTimer = window.setTimeout(() => fetchAddressSuggestions(query, listEl), 250);
+        flowState.addressSuggestTimer = window.setTimeout(() => fetchAddressSuggestions(query, listEl), 250);
       }
     }
 
@@ -3364,10 +3371,10 @@ function renderFlow(root) {
   root.addEventListener("click", async (event) => {
     const summaryToggle = event.target.closest("[data-summary-toggle]");
     if (summaryToggle) {
-      summaryMobileOpen = !summaryMobileOpen;
+      flowState.summaryMobileOpen = !flowState.summaryMobileOpen;
       const aside = summaryToggle.closest(".booking-summary-sidebar");
-      if (aside) aside.classList.toggle("is-open", summaryMobileOpen);
-      summaryToggle.setAttribute("aria-expanded", summaryMobileOpen ? "true" : "false");
+      if (aside) aside.classList.toggle("is-open", flowState.summaryMobileOpen);
+      summaryToggle.setAttribute("aria-expanded", flowState.summaryMobileOpen ? "true" : "false");
       return;
     }
 

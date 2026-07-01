@@ -17,7 +17,24 @@ const FUEL_AUTHORIZATION_BUFFER_GALLONS = {
   25: 30,
   30: 40,
 };
-let verifiedTrackingContact = { phone: "", email: "" };
+
+// Consolidated track-page session/UI state (previously a dozen scattered
+// top-level `let`s). Grouped for traceability; each field is still freely
+// reassigned as trackState.X.
+const trackState = {
+  verifiedTrackingContact: { phone: "", email: "" },
+  _lightboxItems: [],
+  _lightboxIndex: 0,
+  trackingPollTimer: null,
+  trackingPollInFlight: false,
+  stripeInstance: null,
+  _cbModal: null,
+  _cbModalCard: null,        // { elements, cardElement }
+  _cbModalRpcFn: null,       // async (paymentIntentId) → error | null
+  _cbModalMeta: null,        // { authAmountCents, serviceLabel, customerName, customerEmail }
+  _cbModalFormStatusEl: null,
+  _cbModalSubmitBtn: null,
+};
 
 function scrollTrackFormIntoView(options = {}) {
   const target = document.querySelector("#track-form");
@@ -132,8 +149,6 @@ function authorizationAmountForEstimate({ needsFuel, fuelRange, pricePerGallon, 
   }).total;
 }
 
-let _lightboxItems = [];
-let _lightboxIndex = 0;
 
 function initPhotoLightbox() {
   if (document.getElementById('photo-lightbox')) return;
@@ -160,27 +175,27 @@ function initPhotoLightbox() {
 
 function showLightboxAt(index) {
   const el = document.getElementById('photo-lightbox');
-  if (!el || !_lightboxItems.length) return;
-  _lightboxIndex = (index + _lightboxItems.length) % _lightboxItems.length;
-  const item = _lightboxItems[_lightboxIndex];
+  if (!el || !trackState._lightboxItems.length) return;
+  trackState._lightboxIndex = (index + trackState._lightboxItems.length) % trackState._lightboxItems.length;
+  const item = trackState._lightboxItems[trackState._lightboxIndex];
   const img = el.querySelector('.photo-lightbox-img');
   img.src = item.src;
   img.alt = item.label;
   el.querySelector('.photo-lightbox-caption').textContent = item.label;
-  const multi = _lightboxItems.length > 1;
-  el.querySelector('.photo-lightbox-counter').textContent = multi ? `${_lightboxIndex + 1} of ${_lightboxItems.length}` : '';
+  const multi = trackState._lightboxItems.length > 1;
+  el.querySelector('.photo-lightbox-counter').textContent = multi ? `${trackState._lightboxIndex + 1} of ${trackState._lightboxItems.length}` : '';
   el.querySelectorAll('.photo-lightbox-nav').forEach((b) => { b.hidden = !multi; });
   el.hidden = false;
   document.body.style.overflow = 'hidden';
 }
 
 function stepLightbox(delta) {
-  if (_lightboxItems.length) showLightboxAt(_lightboxIndex + delta);
+  if (trackState._lightboxItems.length) showLightboxAt(trackState._lightboxIndex + delta);
 }
 
 // Back-compat: open a single photo with no paging.
 function openPhotoLightbox(src, label) {
-  _lightboxItems = [{ src, label: label || '' }];
+  trackState._lightboxItems = [{ src, label: label || '' }];
   showLightboxAt(0);
 }
 
@@ -192,7 +207,7 @@ function openLightboxFromCard(card) {
     || document;
   const thumbs = Array.from(scope.querySelectorAll('[data-lightbox-src]'))
     .filter((t) => t === card || t.offsetParent !== null);
-  _lightboxItems = thumbs.map((t) => ({ src: t.dataset.lightboxSrc, label: t.dataset.lightboxLabel || '' }));
+  trackState._lightboxItems = thumbs.map((t) => ({ src: t.dataset.lightboxSrc, label: t.dataset.lightboxLabel || '' }));
   showLightboxAt(Math.max(0, thumbs.indexOf(card)));
 }
 
@@ -371,22 +386,11 @@ function hoursSince(value) {
   return (Date.now() - time) / (1000 * 60 * 60);
 }
 
-// Cancellation tiers — keep this in sync with cancellationOutcomeForStatus()
-// in api/payments.js. The customer must see the exact fee story they'll be
-// charged before confirming.
-const CANCELLATION_MODAL_COPY = {
-  request_received: "Are you sure you want to cancel this request? No cancellation fee will be charged.",
-  pending: "Are you sure you want to cancel this request? No cancellation fee will be charged.",
-  accepted: "Are you sure you want to cancel this request? No cancellation fee will be charged.",
-  key_received: "Are you sure you want to cancel this request? A $15 cancellation fee applies because your key has already been received.",
-};
+// Cancellation confirmation copy. The status categorization (which statuses are
+// cancelable / blocked / their tier) is the SHARED cancellationOutcomeForStatus()
+// in shared-payments.js — the same one the server charges from — so this copy can
+// never drift from the fee actually charged.
 const CANCELLATION_MODAL_COPY_SERVICE_STARTED = "Are you sure you want to cancel? Your specialist already has your vehicle and is on the way to the service. You'll be charged a $15 cancellation fee plus the distance already driven and time already spent on your vehicle, so the amount depends on how far along the trip is. (Once the service itself begins, it can no longer be cancelled.)";
-// Worker has the vehicle and is en route to the service but HASN'T started it yet
-// — still cancelable (fee + costs).
-const CANCELLATION_SERVICE_STARTED_STATUSES = new Set([
-  'vehicle_picked_up', 'pickup_vehicle_photo_uploaded', 'pickup_odometer_photo_uploaded',
-  'pickup_fuel_gauge_photo_uploaded',
-]);
 // Once the service is actually underway (or done) it can't be cancelled — the
 // specialist finishes it and the customer is charged for the completed service.
 const CANCELLATION_SERVICE_STARTED_BLOCKED_MSG = "Your specialist has already started the service, so it can't be cancelled now. They'll finish it and you'll be charged for the completed service.";
@@ -415,17 +419,15 @@ const CANCELLATION_BLOCKED_MESSAGES = {
 };
 
 function cancellationModalTextForStatus(status) {
-  if (CANCELLATION_MODAL_COPY[status]) return CANCELLATION_MODAL_COPY[status];
-  if (CANCELLATION_SERVICE_STARTED_STATUSES.has(status)) return CANCELLATION_MODAL_COPY_SERVICE_STARTED;
+  const tier = (window.SF.cancellationOutcomeForStatus(status) || {}).tier;
+  if (tier === 'none') return "Are you sure you want to cancel this request? No cancellation fee will be charged.";
+  if (tier === 'flat_fee') return "Are you sure you want to cancel this request? A $15 cancellation fee applies because your key has already been received.";
+  if (tier === 'fee_plus_costs') return CANCELLATION_MODAL_COPY_SERVICE_STARTED;
   return "Are you sure you want to cancel this request? A cancellation fee may apply.";
 }
 
 function canCustomerCancel(request) {
-  return !CANCELLATION_BLOCKED_MESSAGES[request.status]
-    && request.status !== 'return_requested'
-    && request.status !== 'customer_return_requested'
-    && (Object.prototype.hasOwnProperty.call(CANCELLATION_MODAL_COPY, request.status)
-      || CANCELLATION_SERVICE_STARTED_STATUSES.has(request.status));
+  return Boolean(window.SF.cancellationOutcomeForStatus(request.status).cancelable);
 }
 
 // Same backend validation used by the main Book Now page — keeps the
@@ -462,8 +464,8 @@ async function submitCustomerReturnRequest(requestId, button = null) {
       body: JSON.stringify({
         action: 'customer_request_return',
         request_id: requestId,
-        phone: verifiedTrackingContact.phone,
-        email: verifiedTrackingContact.email,
+        phone: trackState.verifiedTrackingContact.phone,
+        email: trackState.verifiedTrackingContact.email,
       }),
     });
     const result = await res.json().catch(() => ({}));
@@ -499,8 +501,8 @@ async function submitCustomerReturnRequest(requestId, button = null) {
 async function fetchTrackedRequests(requestId = null) {
   const { data, error } = await shiftFuelDb.rpc("public_track_request", {
     p_request_id: requestId,
-    p_phone: verifiedTrackingContact.phone,
-    p_email: verifiedTrackingContact.email,
+    p_phone: trackState.verifiedTrackingContact.phone,
+    p_email: trackState.verifiedTrackingContact.email,
   });
 
   if (error) throw error;
@@ -511,7 +513,7 @@ async function refreshTrackedRequestsAfterAction(requestId = null) {
   const refreshed = await fetchTrackedRequests(requestId);
   if (!requestId) {
     window._trackingRequests = refreshed;
-    await renderAllRequests(refreshed, verifiedTrackingContact.phone, verifiedTrackingContact.email);
+    await renderAllRequests(refreshed, trackState.verifiedTrackingContact.phone, trackState.verifiedTrackingContact.email);
     return refreshed;
   }
 
@@ -520,7 +522,7 @@ async function refreshTrackedRequestsAfterAction(requestId = null) {
   refreshed.forEach((request) => byId.set(request.id, request));
   const merged = Array.from(byId.values());
   window._trackingRequests = sortTrackedRequests(merged);
-  await renderAllRequests(window._trackingRequests, verifiedTrackingContact.phone, verifiedTrackingContact.email);
+  await renderAllRequests(window._trackingRequests, trackState.verifiedTrackingContact.phone, trackState.verifiedTrackingContact.email);
   return refreshed;
 }
 
@@ -531,8 +533,8 @@ async function cancelCustomerRequestFromTrack({ requestId, reason }) {
     body: JSON.stringify({
       action: 'customer_cancel',
       request_id: requestId,
-      phone: verifiedTrackingContact.phone,
-      email: verifiedTrackingContact.email,
+      phone: trackState.verifiedTrackingContact.phone,
+      email: trackState.verifiedTrackingContact.email,
       reason,
     }),
   });
@@ -732,39 +734,14 @@ function formatReturnTime(t) {
   return `${h12}:${String(m).padStart(2,'0')} ${ampm}`;
 }
 
-// Set of assigned_employee_ids whose background check is verified — loaded by
-// loadVerifiedWorkers() before each render. The "Verified" badge only shows for
-// these workers, so it reflects real verification rather than being hardcoded.
-let verifiedWorkerIds = new Set();
-
-async function loadVerifiedWorkers(requests) {
-  const ids = [...new Set((requests || []).map((r) => r.assigned_employee_id).filter(Boolean))];
-  if (!ids.length) {
-    verifiedWorkerIds = new Set();
-    return;
-  }
-  try {
-    const { data, error } = await shiftFuelDb
-      .from('employees_public')
-      .select('id,background_verified,photo_url,cropped_photo_url,original_photo_url')
-      .in('id', ids);
-    if (error || !Array.isArray(data)) return; // pre-migration: leave badge off
-    verifiedWorkerIds = new Set(data.filter((e) => e.background_verified).map((e) => e.id));
-    // Attach the worker's CURRENT photo to each request so the customer view shows
-    // it even if it was uploaded/changed after the job was accepted (the value
-    // denormalized onto the request at accept time can be stale or empty).
-    const byId = new Map(data.map((e) => [e.id, e]));
-    (requests || []).forEach((r) => {
-      const emp = r.assigned_employee_id ? byId.get(r.assigned_employee_id) : null;
-      if (!emp) return;
-      const photo = emp.cropped_photo_url || emp.photo_url || '';
-      if (photo) r.assigned_worker_photo_url = photo;
-      if (emp.original_photo_url) r.assigned_worker_original_photo_url = emp.original_photo_url;
-    });
-  } catch (_) {
-    // Network hiccup — keep the previous set rather than flashing badges off.
-  }
-}
+// The Verified badge + the worker's CURRENT photo now arrive embedded in each
+// request from the public_track_request RPC (assigned_worker_verified /
+// assigned_worker_photo_url / assigned_worker_original_photo_url). The old
+// client-side join to the anon-readable employees_public view was removed when
+// that view's anon grant was revoked — see migration
+// 20260709_gate_employees_public_view.sql. On the RPC-unavailable fallback paths
+// (direct service_requests reads) the badge simply stays off and the photo falls
+// back to the request's denormalized column, so this always fails safe.
 
 // A real coordinate (not null/empty, which Number() turns into a "finite" 0).
 function isRealCoord(v) {
@@ -853,7 +830,7 @@ function refreshEnRouteEta(requests) {
 function renderAssignedWorker(request) {
   if (!request.assigned_worker_name) return '';
 
-  const isVerified = Boolean(request.assigned_employee_id) && verifiedWorkerIds.has(request.assigned_employee_id);
+  const isVerified = Boolean(request.assigned_worker_verified);
 
   const photoFrame = window.ShiftFuelPhoto
     ? window.ShiftFuelPhoto.renderPhotoFrame(
@@ -1488,7 +1465,7 @@ function serviceTimingFromNotes(request) {
   `;
 }
 
-async function loadRequestPhotos(requestId, phone = verifiedTrackingContact.phone, email = verifiedTrackingContact.email) {
+async function loadRequestPhotos(requestId, phone = trackState.verifiedTrackingContact.phone, email = trackState.verifiedTrackingContact.email) {
   const { data: rpcPhotos, error: rpcError } = await shiftFuelDb
     .rpc("public_request_photos", {
       p_request_id: requestId,
@@ -1521,7 +1498,7 @@ async function loadRequestPhotos(requestId, phone = verifiedTrackingContact.phon
   return data || [];
 }
 
-async function loadRequestReview(requestId, phone = verifiedTrackingContact.phone, email = verifiedTrackingContact.email) {
+async function loadRequestReview(requestId, phone = trackState.verifiedTrackingContact.phone, email = trackState.verifiedTrackingContact.email) {
   const { data: rpcReview, error: rpcError } = await shiftFuelDb
     .rpc("public_review_for_request", {
       p_request_id: requestId,
@@ -2084,44 +2061,11 @@ function cbUpdateServiceControls(form) {
   });
 }
 
-function renderPendingCompletionCard(request) {
-  const needsFuel = request.service_type === 'fuel' || request.service_type === 'car-wash-fuel';
-  const needsWash = request.service_type === 'car-wash' || request.service_type === 'car-wash-fuel';
-
-  const serviceOpts = SERVICE_OPTIONS.map((o) =>
-    `<option value="${escapeHtml(o.value)}"${request.service_type === o.value ? ' selected' : ''}>${escapeHtml(o.label)}</option>`
-  ).join('');
-
-  const fuelTypeOpts = ['Regular', 'Mid-grade', 'Premium', 'Diesel'].map((t) =>
-    `<option value="${escapeHtml(t)}"${request.fuel_type === t ? ' selected' : ''}>${escapeHtml(t)}</option>`
-  ).join('');
-
-  const fuelEstimateOpts = FUEL_ESTIMATE_RANGES.map((r) =>
-    `<option value="${escapeHtml(r.value)}"${String(request.estimated_gallons || '') === r.value ? ' selected' : ''}>${escapeHtml(r.label)}</option>`
-  ).join('');
-
-  const washPkgOpts = WASH_PACKAGES.map((p) =>
-    `<option value="${escapeHtml(p.value)}"${request.wash_package === p.value ? ' selected' : ''}>${escapeHtml(p.label)} — $${p.price}</option>`
-  ).join('');
-
-  // Year/make/model dropdowns are populated by cbInitForm after DOM insertion.
-  // Return time dropdown is also populated by cbInitForm.
-
-  const rid = escapeHtml(request.id);
-
+// The booking-completion form, split into one helper per <fieldset> so the
+// assembler below reads as an outline. Each helper returns the exact same markup
+// that was previously inline — presentation only.
+function pcContactFieldset(request) {
   return `
-    <article class="track-request-card pending-completion-card" data-request-id="${rid}">
-      <details class="track-request-details">
-        ${requestSummaryHtml(request, { statusLabel: "Action required" })}
-        <div class="track-request-body">
-          <div class="pending-action-banner">
-            <span class="pending-action-icon">&#9888;</span>
-            Action required — Complete your booking to enter the service queue
-          </div>
-
-      <form class="booking-form complete-booking-form" data-request-id="${rid}">
-        <p class="form-note"><span class="required-mark">Required</span> fields must be completed before submitting. Optional fields can be skipped.</p>
-
         <fieldset>
           <legend>Contact information</legend>
           <div class="field-grid">
@@ -2133,16 +2077,19 @@ function renderPendingCompletionCard(request) {
             <label>
               <span>Phone number <span class="required-mark">Required</span></span>
               <input class="cb-customer-phone" type="tel"
-                value="${escapeHtml(formatPhone(verifiedTrackingContact.phone || request.customer_phone || ''))}" readonly>
+                value="${escapeHtml(formatPhone(trackState.verifiedTrackingContact.phone || request.customer_phone || ''))}" readonly>
             </label>
             <label>
               <span>Email <span class="required-mark">Required</span></span>
               <input class="cb-customer-email" type="email"
-                value="${escapeHtml(verifiedTrackingContact.email || request.customer_email || '')}" readonly>
+                value="${escapeHtml(trackState.verifiedTrackingContact.email || request.customer_email || '')}" readonly>
             </label>
           </div>
-        </fieldset>
+        </fieldset>`;
+}
 
+function pcAddressFieldset(request) {
+  return `
         <fieldset>
           <legend>Service address</legend>
           <div class="address-fields">
@@ -2174,8 +2121,11 @@ function renderPendingCompletionCard(request) {
               </label>
             </div>
           </div>
-        </fieldset>
+        </fieldset>`;
+}
 
+function pcVehicleFieldset(request) {
+  return `
         <fieldset>
           <legend>Vehicle</legend>
           <div class="field-grid">
@@ -2209,8 +2159,11 @@ function renderPendingCompletionCard(request) {
                 value="${escapeHtml(request.license_plate || '')}" required>
             </label>
           </div>
-        </fieldset>
+        </fieldset>`;
+}
 
+function pcParkingFieldset(request) {
+  return `
         <fieldset>
           <legend>Parking and key handoff</legend>
           <div class="field-grid">
@@ -2236,8 +2189,30 @@ function renderPendingCompletionCard(request) {
               <span class="field-help">Optional. Helps the worker find your vehicle faster.</span>
             </label>
           </div>
-        </fieldset>
+        </fieldset>`;
+}
 
+function pcServiceFieldset(request) {
+  const needsFuel = request.service_type === 'fuel' || request.service_type === 'car-wash-fuel';
+  const needsWash = request.service_type === 'car-wash' || request.service_type === 'car-wash-fuel';
+  const rid = escapeHtml(request.id);
+
+  const serviceOpts = SERVICE_OPTIONS.map((o) =>
+    `<option value="${escapeHtml(o.value)}"${request.service_type === o.value ? ' selected' : ''}>${escapeHtml(o.label)}</option>`
+  ).join('');
+  const fuelTypeOpts = ['Regular', 'Mid-grade', 'Premium', 'Diesel'].map((t) =>
+    `<option value="${escapeHtml(t)}"${request.fuel_type === t ? ' selected' : ''}>${escapeHtml(t)}</option>`
+  ).join('');
+  const fuelEstimateOpts = FUEL_ESTIMATE_RANGES.map((r) =>
+    `<option value="${escapeHtml(r.value)}"${String(request.estimated_gallons || '') === r.value ? ' selected' : ''}>${escapeHtml(r.label)}</option>`
+  ).join('');
+  const washPkgOpts = WASH_PACKAGES.map((p) =>
+    `<option value="${escapeHtml(p.value)}"${request.wash_package === p.value ? ' selected' : ''}>${escapeHtml(p.label)} — $${p.price}</option>`
+  ).join('');
+
+  // Year/make/model dropdowns are populated by cbInitForm after DOM insertion.
+  // Return time dropdown is also populated by cbInitForm.
+  return `
         <fieldset>
           <legend>Service request</legend>
           <div class="service-choice-grid">
@@ -2312,8 +2287,11 @@ function renderPendingCompletionCard(request) {
             <span>Notes <span class="optional-mark">Optional</span></span>
             <textarea class="cb-notes" rows="4" placeholder="Anything we should know?"></textarea>
           </label>
-        </fieldset>
+        </fieldset>`;
+}
 
+function pcPaymentFieldset() {
+  return `
         <fieldset>
           <legend>Payment authorization</legend>
           <div class="payment-box">
@@ -2349,8 +2327,11 @@ function renderPendingCompletionCard(request) {
               </div>
             </dl>
           </div>
-        </fieldset>
+        </fieldset>`;
+}
 
+function pcAgreementFieldset() {
+  return `
         <fieldset>
           <legend>Agreement</legend>
           <label class="checkbox-label">
@@ -2360,8 +2341,31 @@ function renderPendingCompletionCard(request) {
           <p class="field-help">By booking, you agree to provide accurate vehicle, key, parking, fuel, and service instructions. ShiftFuel documents pickup and return condition with photos and will contact you if a requested service cannot be completed.</p>
           <p class="field-help">You may cancel before your specialist begins the service (a $15 fee applies once your key has been received). Once the service itself has started, it can no longer be cancelled and you will be charged for the completed service.</p>
           <p class="field-help">The amount shown before payment is an authorization hold only. ShiftFuel captures the final amount after service is completed based on actual receipts and selected services, and any unused hold is released by your card issuer. Online card authorizations are typically valid for about 7 days; after final capture or release, your bank or credit card company may take a few business days to show the final amount or released hold on your account.</p>
-        </fieldset>
+        </fieldset>`;
+}
 
+function renderPendingCompletionCard(request) {
+  const rid = escapeHtml(request.id);
+
+  return `
+    <article class="track-request-card pending-completion-card" data-request-id="${rid}">
+      <details class="track-request-details">
+        ${requestSummaryHtml(request, { statusLabel: "Action required" })}
+        <div class="track-request-body">
+          <div class="pending-action-banner">
+            <span class="pending-action-icon">&#9888;</span>
+            Action required — Complete your booking to enter the service queue
+          </div>
+
+      <form class="booking-form complete-booking-form" data-request-id="${rid}">
+        <p class="form-note"><span class="required-mark">Required</span> fields must be completed before submitting. Optional fields can be skipped.</p>
+        ${pcContactFieldset(request)}
+        ${pcAddressFieldset(request)}
+        ${pcVehicleFieldset(request)}
+        ${pcParkingFieldset(request)}
+        ${pcServiceFieldset(request)}
+        ${pcPaymentFieldset()}
+        ${pcAgreementFieldset()}
         <div class="pending-form-actions">
           <button class="button primary cb-submit-btn cb-pay-confirm-btn" type="submit">Authorize Payment &amp; Confirm Booking</button>
           <button class="button danger cb-cancel-btn" type="button">Cancel this request</button>
@@ -2655,7 +2659,7 @@ function renderTrackHero(request) {
   const worker = request.assigned_worker_name;
   const quick = [];
   if (worker) {
-    const isVerified = Boolean(request.assigned_employee_id) && verifiedWorkerIds.has(request.assigned_employee_id);
+    const isVerified = Boolean(request.assigned_worker_verified);
     const avatar = request.assigned_worker_photo_url
       ? `<img class="tk-hero-avatar tk-hero-avatar-photo" src="${escapeHtml(request.assigned_worker_photo_url)}" alt="${escapeHtml(worker)}">`
       : `<span class="tk-hero-avatar" aria-hidden="true">${escapeHtml(worker.charAt(0).toUpperCase())}</span>`;
@@ -2740,7 +2744,7 @@ function renderGpsTracking(request) {
 function renderPartnerCard(request) {
   if (!request.assigned_worker_name) return '';
   const name = request.assigned_worker_name;
-  const isVerified = Boolean(request.assigned_employee_id) && verifiedWorkerIds.has(request.assigned_employee_id);
+  const isVerified = Boolean(request.assigned_worker_verified);
   const photo = request.assigned_worker_photo_url
     ? `<img class="tk-partner-photo" src="${escapeHtml(request.assigned_worker_photo_url)}" alt="${escapeHtml(name)}">`
     : `<span class="tk-partner-photo tk-partner-initial">${escapeHtml(name.charAt(0).toUpperCase())}</span>`;
@@ -2988,7 +2992,7 @@ function canceledPaymentNote(request) {
 function renderReturnPartnerCard(request) {
   if (!request.assigned_worker_name) return '';
   const name = request.assigned_worker_name;
-  const isVerified = Boolean(request.assigned_employee_id) && verifiedWorkerIds.has(request.assigned_employee_id);
+  const isVerified = Boolean(request.assigned_worker_verified);
   const photo = request.assigned_worker_photo_url
     ? `<img class="tk-partner-photo" src="${escapeHtml(request.assigned_worker_photo_url)}" alt="${escapeHtml(name)}">`
     : `<span class="tk-partner-photo tk-partner-initial">${escapeHtml(name.charAt(0).toUpperCase())}</span>`;
@@ -3249,41 +3253,41 @@ function renderRequestCard(request, photos = [], review = null, { expanded = fal
         ${requestSummaryHtml(request, { statusLabel, statusClass: canonicalBookingStatus(request.status) === 'completed' ? 'status-pill-complete' : '' })}
 
         <div class="track-request-body">
-          ${renderEstimatedTotalCard(request)}
+          ${renderTrackHero(request)}
           ${renderServiceIssueBanner(request)}
           ${renderReturnCompletedNotice(request)}
           ${request.status === 'auto_reversed' ? `<p class="track-auto-reversed-note">Your service was not completed on the scheduled date, so your payment has been reversed.</p>` : ''}
 
-          ${renderTrackHero(request)}
-
           <div class="tk-detail-grid">
           <div class="tk-detail-col">
-            ${tkSubAcc('Vehicle & Service Details', `
+            ${tkSubAcc('Vehicle Information', `
               <section class="tk-card tk-vehicle">${renderVehicleCard(request)}</section>
-            `, { open: detailsOpen })}
+            `, { open: true })}
 
-            ${tkSubAcc('Photos', `
-              <div class="tk-photos-lazy"><p class="tk-empty">Loading photos…</p></div>
-            `, { open: detailsOpen })}
           </div>
 
           <div class="tk-detail-col">
-            ${tkSubAcc('Live Updates', `
+            ${tkSubAcc('Progress', `
               <section class="tk-card tk-updates"><p class="tk-eyebrow">Live GPS tracking</p>${renderGpsTracking(request)}</section>
-            `, { open: detailsOpen })}
+              <section class="tk-card tk-updates tk-timeline-card"><p class="tk-eyebrow">Status timeline</p>${renderLiveUpdatesFeed(request)}</section>
+            `, { open: true })}
 
-            ${tkSubAcc('Service Details', [
+            ${tkSubAcc('Important Details', [
+              renderEstimatedTotalCard(request),
               isReturned ? renderReturnDetails(request) : '',
               serviceTimingFromNotes(request),
               inspectionSummaryFromNotes(request),
               canonicalBookingStatus(request.status) === 'completed' ? serviceSummaryFromRequest(request) : '',
             ].filter(Boolean).join(''), { open: detailsOpen })}
+          </div>
+          </div>
 
-            ${tkSubAcc('Help', `<section class="tk-card tk-help">${renderHelpCard()}</section>`, { open: detailsOpen })}
-          </div>
-          </div>
+          ${tkSubAcc('Photos & History', `
+            <div class="tk-photos-lazy"><p class="tk-empty">Loading photos...</p></div>
+          `, { open: detailsOpen, className: 'tk-sub-acc--full tk-sub-acc-history' })}
 
           ${renderReviewPrompt(request, review)}
+          ${tkSubAcc('Help', `<section class="tk-card tk-help">${renderHelpCard()}</section>`, { open: detailsOpen })}
           ${canCustomerCancel(request) ? `
             <div class="tracking-actions">
               <button class="button danger show-cancel-request" type="button">Cancel request</button>
@@ -3312,7 +3316,6 @@ const cancelledStatuses = new Set(['customer_canceled', 'canceled', 'cancelled',
 const deniedOnlyStatuses = new Set(['denied', 'unable_to_complete', 'auto_reversed', 'closed_no_charge']);
 
 async function renderAllRequests(requests, phone, email) {
-  await loadVerifiedWorkers(requests);
   // A request that was canceled but still has the key/vehicle out
   // (cancelled_pending_key_return) is NOT closed — the ticket stays open until
   // the worker returns it. So it lists under "Requests in progress" (shown with
@@ -3616,8 +3619,8 @@ trackForm.addEventListener("submit", async (event) => {
     }
 
     clearTrackAttempts();
-    verifiedTrackingContact = { phone, email };
-    window._trackingContact = verifiedTrackingContact;
+    trackState.verifiedTrackingContact = { phone, email };
+    window._trackingContact = trackState.verifiedTrackingContact;
     trackMessage.textContent = "";
     if (refreshStatusBtn) refreshStatusBtn.hidden = false;
     window._trackingRequests = matchedRequests;
@@ -3632,7 +3635,7 @@ trackForm.addEventListener("submit", async (event) => {
 });
 
 refreshStatusBtn?.addEventListener("click", () => {
-  if (!verifiedTrackingContact.phone && !verifiedTrackingContact.email && !trackingId.value.trim()) {
+  if (!trackState.verifiedTrackingContact.phone && !trackState.verifiedTrackingContact.email && !trackingId.value.trim()) {
     return;
   }
   trackMessage.textContent = "Refreshing status...";
@@ -3654,8 +3657,6 @@ trackingResult.addEventListener("click", (event) => {
 // completion) appear without the customer hitting "Refresh Status". To avoid
 // disrupting an open accordion or a half-filled payment/cancel form, it only
 // re-renders when a status actually changed since the last poll.
-let trackingPollTimer = null;
-let trackingPollInFlight = false;
 
 function trackedStatusSignature(list) {
   return (list || [])
@@ -3665,12 +3666,12 @@ function trackedStatusSignature(list) {
 }
 
 async function pollTrackingStatus() {
-  if (trackingPollInFlight || document.hidden) return;
-  const contact = verifiedTrackingContact || {};
+  if (trackState.trackingPollInFlight || document.hidden) return;
+  const contact = trackState.verifiedTrackingContact || {};
   const id = trackingId?.value.trim() || null;
   if (!contact.phone && !contact.email && !id) return;
 
-  trackingPollInFlight = true;
+  trackState.trackingPollInFlight = true;
   try {
     const { data, error } = await shiftFuelDb.rpc("public_track_request", {
       p_request_id: id,
@@ -3691,18 +3692,18 @@ async function pollTrackingStatus() {
   } catch (err) {
     console.warn("Status auto-refresh failed:", err);
   } finally {
-    trackingPollInFlight = false;
+    trackState.trackingPollInFlight = false;
   }
 }
 
 function startTrackingPoll() {
-  if (trackingPollTimer) return;
-  trackingPollTimer = setInterval(pollTrackingStatus, 20000);
+  if (trackState.trackingPollTimer) return;
+  trackState.trackingPollTimer = setInterval(pollTrackingStatus, 20000);
 }
 
 // Refresh immediately when the customer returns to the tab.
 document.addEventListener("visibilitychange", () => {
-  if (!document.hidden && trackingPollTimer) pollTrackingStatus();
+  if (!document.hidden && trackState.trackingPollTimer) pollTrackingStatus();
 });
 
 // ── Completion-form change delegation ────────────────────────────────────────
@@ -3835,8 +3836,8 @@ trackingResult.addEventListener("click", async (event) => {
     let usedDirectReviewInsert = false;
     let { error } = await shiftFuelDb.rpc("public_submit_service_review", {
       p_request_id: requestId,
-      p_phone: verifiedTrackingContact.phone || submitReviewButton.dataset.customerPhone || "",
-      p_email: verifiedTrackingContact.email || submitReviewButton.dataset.customerEmail || "",
+      p_phone: trackState.verifiedTrackingContact.phone || submitReviewButton.dataset.customerPhone || "",
+      p_email: trackState.verifiedTrackingContact.email || submitReviewButton.dataset.customerEmail || "",
       p_rating: Number(rating),
       p_comments: comments,
     });
@@ -3958,14 +3959,13 @@ trackingResult.addEventListener("click", async (event) => {
 
 // ── Confirm and Pay (pending_customer_payment) ────────────────────────────────
 
-let stripeInstance = null;
 
 function getStripe() {
-  if (!stripeInstance && window.Stripe) {
+  if (!trackState.stripeInstance && window.Stripe) {
     const pk = window.SHIFTFUEL_STRIPE_PUBLISHABLE_KEY;
-    if (pk) stripeInstance = window.Stripe(pk);
+    if (pk) trackState.stripeInstance = window.Stripe(pk);
   }
-  return stripeInstance;
+  return trackState.stripeInstance;
 }
 
 // Mounted card elements for new-card payment (case B), keyed by request id.
@@ -3999,7 +3999,7 @@ async function handleConfirmAndPay(button) {
   button.textContent = 'Processing…';
   setError('');
 
-  const { phone, email } = verifiedTrackingContact;
+  const { phone, email } = trackState.verifiedTrackingContact;
   const amountCents = request.final_total != null ? Math.round(request.final_total * 100) : null;
 
   try {
@@ -4112,15 +4112,9 @@ async function handleConfirmAndPay(button) {
 
 // ── Payment modal ─────────────────────────────────────────────────────────────
 
-let _cbModal = null;
-let _cbModalCard = null;       // { elements, cardElement }
-let _cbModalRpcFn = null;      // async (paymentIntentId) → error | null
-let _cbModalMeta  = null;      // { authAmountCents, serviceLabel, customerName, customerEmail }
-let _cbModalFormStatusEl = null;
-let _cbModalSubmitBtn    = null;
 
 function initCbPaymentModal() {
-  if (_cbModal) return;
+  if (trackState._cbModal) return;
   const el = document.createElement('div');
   el.className = 'cb-payment-modal-backdrop';
   el.hidden = true;
@@ -4147,27 +4141,27 @@ function initCbPaymentModal() {
     </div>
   `;
   document.body.appendChild(el);
-  _cbModal = el;
+  trackState._cbModal = el;
 
   el.addEventListener('click', (e) => { if (e.target === el) _closeCbModal(false); });
   el.querySelector('.cb-payment-modal-close').addEventListener('click', () => _closeCbModal(false));
   el.querySelector('.cb-payment-modal-authorize').addEventListener('click', _handleCbModalAuthorize);
   document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape' && _cbModal && !_cbModal.hidden) _closeCbModal(false);
+    if (e.key === 'Escape' && trackState._cbModal && !trackState._cbModal.hidden) _closeCbModal(false);
   });
 }
 
 function _openCbModal(meta, rpcFn, formStatusEl, submitBtn) {
   initCbPaymentModal();
-  _cbModalMeta         = meta;
-  _cbModalRpcFn        = rpcFn;
-  _cbModalFormStatusEl = formStatusEl;
-  _cbModalSubmitBtn    = submitBtn;
+  trackState._cbModalMeta         = meta;
+  trackState._cbModalRpcFn        = rpcFn;
+  trackState._cbModalFormStatusEl = formStatusEl;
+  trackState._cbModalSubmitBtn    = submitBtn;
 
   // Reset modal state
-  _cbModal.querySelector('.cb-payment-modal-error').textContent  = '';
-  _cbModal.querySelector('.cb-payment-modal-status').textContent = '';
-  const authorizeBtn = _cbModal.querySelector('.cb-payment-modal-authorize');
+  trackState._cbModal.querySelector('.cb-payment-modal-error').textContent  = '';
+  trackState._cbModal.querySelector('.cb-payment-modal-status').textContent = '';
+  const authorizeBtn = trackState._cbModal.querySelector('.cb-payment-modal-authorize');
   authorizeBtn.disabled    = false;
   authorizeBtn.textContent = 'Authorize Payment & Confirm Booking';
 
@@ -4182,45 +4176,45 @@ function _openCbModal(meta, rpcFn, formStatusEl, submitBtn) {
     mountEl.innerHTML = '';
     cardEl.mount(mountEl);
     cardEl.on('change', (ev) => {
-      _cbModal.querySelector('.cb-payment-modal-error').textContent = ev.error?.message || '';
+      trackState._cbModal.querySelector('.cb-payment-modal-error').textContent = ev.error?.message || '';
     });
-    _cbModalCard = { elements, cardElement: cardEl };
+    trackState._cbModalCard = { elements, cardElement: cardEl };
   } else {
-    _cbModalCard = null;
+    trackState._cbModalCard = null;
   }
 
-  _cbModal.hidden = false;
+  trackState._cbModal.hidden = false;
   document.body.style.overflow = 'hidden';
-  _cbModal.querySelector('.cb-payment-modal-authorize').focus();
+  trackState._cbModal.querySelector('.cb-payment-modal-authorize').focus();
 }
 
 function _closeCbModal(succeeded) {
-  if (!_cbModal) return;
-  _cbModal.hidden = true;
+  if (!trackState._cbModal) return;
+  trackState._cbModal.hidden = true;
   document.body.style.overflow = '';
 
-  if (_cbModalCard?.cardElement) {
-    _cbModalCard.cardElement.unmount();
-    _cbModalCard = null;
+  if (trackState._cbModalCard?.cardElement) {
+    trackState._cbModalCard.cardElement.unmount();
+    trackState._cbModalCard = null;
   }
 
-  if (!succeeded && _cbModalFormStatusEl) {
-    _cbModalFormStatusEl.textContent = 'Payment authorization was not completed. Please try again.';
+  if (!succeeded && trackState._cbModalFormStatusEl) {
+    trackState._cbModalFormStatusEl.textContent = 'Payment authorization was not completed. Please try again.';
   }
-  if (_cbModalSubmitBtn) {
-    _cbModalSubmitBtn.disabled = false;
+  if (trackState._cbModalSubmitBtn) {
+    trackState._cbModalSubmitBtn.disabled = false;
   }
 
-  _cbModalRpcFn  = null;
-  _cbModalMeta   = null;
-  _cbModalFormStatusEl = null;
-  _cbModalSubmitBtn    = null;
+  trackState._cbModalRpcFn  = null;
+  trackState._cbModalMeta   = null;
+  trackState._cbModalFormStatusEl = null;
+  trackState._cbModalSubmitBtn    = null;
 }
 
 async function _handleCbModalAuthorize() {
-  const errorEl   = _cbModal.querySelector('.cb-payment-modal-error');
-  const statusEl  = _cbModal.querySelector('.cb-payment-modal-status');
-  const authorizeBtn = _cbModal.querySelector('.cb-payment-modal-authorize');
+  const errorEl   = trackState._cbModal.querySelector('.cb-payment-modal-error');
+  const statusEl  = trackState._cbModal.querySelector('.cb-payment-modal-status');
+  const authorizeBtn = trackState._cbModal.querySelector('.cb-payment-modal-authorize');
 
   errorEl.textContent  = '';
   statusEl.textContent = 'Authorizing…';
@@ -4230,8 +4224,8 @@ async function _handleCbModalAuthorize() {
     const stripe = getStripe();
     let paymentIntentId = null;
 
-    if (stripe && _cbModalCard?.cardElement) {
-      const { authAmountCents, serviceLabel, customerName, customerEmail } = _cbModalMeta;
+    if (stripe && trackState._cbModalCard?.cardElement) {
+      const { authAmountCents, serviceLabel, customerName, customerEmail } = trackState._cbModalMeta;
       const piRes = await fetch('/api/payments', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -4241,7 +4235,7 @@ async function _handleCbModalAuthorize() {
       if (!piRes.ok) throw new Error(piData.error || 'Could not create payment authorization.');
 
       const { error: confirmError, paymentIntent } = await stripe.confirmCardPayment(piData.client_secret, {
-        payment_method: { card: _cbModalCard.cardElement },
+        payment_method: { card: trackState._cbModalCard.cardElement },
       });
 
       if (confirmError) {
@@ -4255,7 +4249,7 @@ async function _handleCbModalAuthorize() {
     }
 
     // Save booking details + move to worker queue
-    const rpcError = await _cbModalRpcFn(paymentIntentId);
+    const rpcError = await trackState._cbModalRpcFn(paymentIntentId);
     if (rpcError) throw rpcError;
 
     statusEl.textContent = 'Your booking has been confirmed.';
@@ -4264,8 +4258,8 @@ async function _handleCbModalAuthorize() {
     setTimeout(() => {
       _closeCbModal(true);
       // Re-run the tracking lookup to replace the completion form with the confirmed status card
-      const phone = verifiedTrackingContact?.phone || '';
-      const email = verifiedTrackingContact?.email || '';
+      const phone = trackState.verifiedTrackingContact?.phone || '';
+      const email = trackState.verifiedTrackingContact?.email || '';
       if (phone || email) {
         shiftFuelDb.rpc('public_track_request', { p_request_id: null, p_phone: phone, p_email: email })
           .then(({ data }) => {
@@ -4395,8 +4389,8 @@ trackingResult.addEventListener('submit', async (event) => {
   const rpcFn = async (paymentIntentId) => {
     const { error } = await shiftFuelDb.rpc('customer_complete_booking', {
       p_request_id:           requestId,
-      p_phone:                verifiedTrackingContact.phone || '',
-      p_email:                verifiedTrackingContact.email || '',
+      p_phone:                trackState.verifiedTrackingContact.phone || '',
+      p_email:                trackState.verifiedTrackingContact.email || '',
       p_service_type:         serviceType,
       p_service_label:        serviceLabelFromType(serviceType),
       p_service_date:         serviceDate   || null,
@@ -4472,8 +4466,8 @@ trackingResult?.addEventListener('click', async (event) => {
       body: JSON.stringify({
         action: 'customer_reauthorize_scheduled',
         request_id: requestId,
-        phone: verifiedTrackingContact?.phone || '',
-        email: verifiedTrackingContact?.email || '',
+        phone: trackState.verifiedTrackingContact?.phone || '',
+        email: trackState.verifiedTrackingContact?.email || '',
         new_payment_intent_id: paymentIntentId,
       }),
     });
@@ -4635,7 +4629,7 @@ _svcControlsObserver.observe(trackingResult, { childList: true, subtree: true })
         return true;
       }
 
-      if (typeof verifiedTrackingContact !== 'undefined') verifiedTrackingContact = { phone, email };
+      if (typeof trackState.verifiedTrackingContact !== 'undefined') trackState.verifiedTrackingContact = { phone, email };
       if (trackMessage) trackMessage.textContent = '';
       if (refreshStatusBtn) refreshStatusBtn.hidden = false;
       window._trackingRequests = typeof sortTrackedRequests === 'function' ? sortTrackedRequests(data) : data;

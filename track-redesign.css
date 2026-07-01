@@ -1859,4 +1859,145 @@
   font-size: 0.92rem;
   text-align: center;
 }
+
+/* Batch 4: customer Track hierarchy polish.
+   Current status leads, vehicle/service follows, progress comes before deeper
+   details, and photos/history stay below the main status information. */
+.track-page .track-request-body {
+  display: grid;
+  gap: 14px;
+}
+
+.track-page .track-dashboard-card .tk-hero {
+  order: 1;
+}
+
+.track-page .track-dashboard-card .service-issue-banner,
+.track-page .track-dashboard-card .track-return-completed-notice,
+.track-page .track-dashboard-card .track-auto-reversed-note {
+  order: 2;
+}
+
+.track-page .track-dashboard-card .tk-detail-grid {
+  order: 3;
+}
+
+.track-page .track-dashboard-card .tk-sub-acc-history {
+  order: 4;
+}
+
+.track-page .track-dashboard-card .review-panel {
+  order: 5;
+}
+
+.track-page .track-dashboard-card .tracking-actions,
+.track-page .track-dashboard-card .cancel-panel {
+  order: 7;
+}
+
+.track-page .track-dashboard-card .track-request-body > .tk-sub-acc:not(.tk-sub-acc-history) {
+  order: 6;
+}
+
+.track-page .tk-timeline-card {
+  margin-top: 10px;
+}
+
+@media (max-width: 640px) {
+  .track-page .track-request-summary {
+    align-items: center;
+  }
+
+  .track-page .track-request-summary-main {
+    min-width: 0;
+  }
+
+  .track-page .track-request-vehicle,
+  .track-page .track-request-meta {
+    overflow-wrap: anywhere;
+  }
+
+  .track-page .track-request-body {
+    gap: 10px;
+    padding: 12px !important;
+  }
+
+  .track-page .tk-hero {
+    border-radius: 18px;
+    box-shadow: 0 10px 24px rgba(6, 39, 39, 0.08);
+  }
+
+  .track-page .tk-sub-acc {
+    border: 1px solid rgba(13, 59, 59, 0.1);
+    border-radius: 16px;
+    overflow: hidden;
+  }
+
+  .track-page .tk-sub-acc[open] {
+    box-shadow: 0 8px 20px rgba(6, 39, 39, 0.06);
+  }
+
+  .track-page .tk-sub-acc-head {
+    min-height: 50px;
+    padding: 13px 14px;
+    font-size: 0.96rem;
+  }
+
+  .track-page .tk-sub-acc-head span {
+    overflow-wrap: anywhere;
+  }
+
+  .track-page .tk-card,
+  .track-page .estimated-total-card {
+    border-radius: 14px;
+  }
+
+  .track-page .tk-vehicle-meta {
+    grid-template-columns: 1fr !important;
+  }
+
+  .track-page .tk-vehicle-meta div {
+    padding-bottom: 9px;
+    border-bottom: 1px solid rgba(13, 59, 59, 0.07);
+  }
+
+  .track-page .tk-vehicle-meta div:last-child {
+    padding-bottom: 0;
+    border-bottom: 0;
+  }
+
+  .track-page .tk-vehicle-meta dt {
+    font-size: 0.68rem;
+  }
+
+  .track-page .tk-vehicle-meta dd {
+    overflow-wrap: anywhere;
+  }
+
+  .track-page .tk-photo-grid {
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+
+  .track-page .tk-photo-tile {
+    min-height: 44px;
+    border-radius: 13px;
+  }
+
+  .track-page .tracking-actions,
+  .track-page .cancel-panel .admin-button-row {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+
+  .track-page .tracking-actions .button,
+  .track-page .cancel-panel .button,
+  .track-page .review-panel .button,
+  .track-page .track-search-actions .button {
+    width: 100%;
+    min-height: 50px;
+    border-radius: 14px;
+  }
+}
 .worker-eta-banner strong { color: #0d3b3b; }

@@ -1685,3 +1685,418 @@
     min-width: 0;
   }
 }
+
+/* Batch 1: shared mobile shell consistency.
+   Keep this presentation-only layer narrow: gutters, card rhythm, tap targets,
+   and tabbar clearance across the role apps. */
+@media (max-width: 760px) {
+  :root {
+    --sf-mobile-shell-gutter: clamp(14px, 4vw, 18px);
+    --sf-mobile-card-radius: 18px;
+    --sf-mobile-card-pad: 16px;
+    --sf-mobile-card-shadow: 0 8px 24px rgba(6, 39, 39, 0.08);
+    --sf-mobile-tabbar-clearance: calc(76px + env(safe-area-inset-bottom, 0px));
+  }
+
+  body.admin-portal-page,
+  body.worker-portal-page,
+  body.customer-account-page,
+  body.booking-page,
+  body.track-page,
+  body.account-page {
+    min-width: 0;
+    max-width: 100%;
+    overflow-x: hidden;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  body.admin-portal-page,
+  body.worker-portal-page,
+  body.track-page {
+    padding-bottom: var(--sf-mobile-tabbar-clearance) !important;
+  }
+
+  body.admin-portal-page .admin-main,
+  body.worker-portal-page main,
+  body.customer-account-page .customer-account-shell,
+  body.booking-page .booking-flow-shell,
+  body.track-page .track-shell,
+  body.account-page .account-layout {
+    box-sizing: border-box;
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+
+  body.admin-portal-page .admin-main,
+  body.worker-portal-page main {
+    padding-left: var(--sf-mobile-shell-gutter);
+    padding-right: var(--sf-mobile-shell-gutter);
+  }
+
+  body.admin-portal-page .section,
+  body.worker-portal-page .section,
+  body.customer-account-page .customer-account-shell,
+  body.booking-page .booking-flow-shell,
+  body.track-page .track-shell {
+    margin-left: auto !important;
+    margin-right: auto !important;
+  }
+
+  body.admin-portal-page .unified-portal-header.admin-top-nav,
+  body.worker-portal-page .unified-portal-header.worker-top-nav,
+  body.customer-account-page .site-header,
+  body.booking-page .site-header,
+  body.track-page .site-header,
+  body.account-page .account-header {
+    box-sizing: border-box;
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+
+  body.admin-portal-page .admin-queue-card,
+  body.admin-portal-page .admin-side-card,
+  body.admin-portal-page .admin-stat-card,
+  body.admin-portal-page .booking-card,
+  body.worker-portal-page .worker-dashboard-card,
+  body.worker-portal-page .worker-current-status-card,
+  body.worker-portal-page .worker-current-job-card,
+  body.worker-portal-page .worker-state-card,
+  body.customer-account-page .customer-account-panel,
+  body.customer-account-page .customer-account-option-card,
+  body.customer-account-page .customer-dashboard,
+  body.customer-account-page .customer-request-card,
+  body.customer-account-page .customer-data-card,
+  body.customer-account-page .customer-empty-card,
+  body.booking-page .booking-flow,
+  body.booking-page .booking-accordion-card,
+  body.track-page .track-search-card,
+  body.account-page .account-tab-body {
+    border-radius: var(--sf-mobile-card-radius) !important;
+    box-shadow: var(--sf-mobile-card-shadow);
+  }
+
+  body.admin-portal-page .admin-queue-card,
+  body.admin-portal-page .admin-side-card,
+  body.worker-portal-page .worker-dashboard-card,
+  body.worker-portal-page .worker-current-status-card,
+  body.worker-portal-page .worker-current-job-card,
+  body.customer-account-page .customer-dashboard,
+  body.booking-page .booking-flow,
+  body.track-page .track-search-card,
+  body.account-page .account-tab-body {
+    padding: var(--sf-mobile-card-pad) !important;
+  }
+
+  body.admin-portal-page .button,
+  body.admin-portal-page button.summary-button,
+  body.admin-portal-page .admin-page-tab,
+  body.worker-portal-page .button,
+  body.worker-portal-page .worker-aside-link,
+  body.customer-account-page .button,
+  body.customer-account-page .customer-account-action,
+  body.booking-page .button,
+  body.track-page .button,
+  body.account-page .button,
+  body.account-page .account-nav-item {
+    min-height: 44px;
+    touch-action: manipulation;
+  }
+
+  .app-tabbar {
+    min-height: var(--sf-mobile-tabbar-clearance);
+  }
+
+  .app-tabbar .app-tab {
+    min-height: 54px;
+  }
+}
+
+/* Batch 2: Admin mobile declutter.
+   Admin-only polish: keep dashboard metrics driving the inline queue, reduce
+   search clutter, and make filters/request cards easier to use on phones. */
+@media (max-width: 760px) {
+  body.admin-portal-page[data-admin-page="dashboard"] .admin-find-section,
+  body.admin-portal-page[data-admin-page="dashboard"] .admin-viewall-link,
+  body.admin-portal-page[data-admin-page="dashboard"] .admin-queue-section .admin-find-tickets-btn {
+    display: none !important;
+  }
+
+  body.admin-portal-page[data-admin-page="dashboard"] .admin-queue-section {
+    display: block;
+  }
+
+  body.admin-portal-page[data-admin-page="dashboard"] .admin-queue-section .admin-queue-card {
+    margin-top: 0;
+  }
+
+  body.admin-portal-page[data-admin-page="dashboard"] .admin-queue-section .admin-toolbar {
+    gap: 12px;
+  }
+
+  body.admin-portal-page[data-admin-page="dashboard"] .admin-queue-section .admin-toolbar .eyebrow {
+    margin-bottom: 2px;
+  }
+
+  body.admin-portal-page[data-admin-page="dashboard"] .admin-queue-section .admin-toolbar h2 {
+    margin-bottom: 0;
+  }
+
+  body.admin-portal-page .admin-request-tabs {
+    gap: 8px;
+    margin: 12px -2px 14px;
+    padding: 2px 2px 6px;
+    border-bottom: 0;
+    scrollbar-width: none;
+  }
+
+  body.admin-portal-page .admin-request-tabs::-webkit-scrollbar {
+    display: none;
+  }
+
+  body.admin-portal-page .admin-request-tabs .summary-button {
+    min-height: 38px;
+    padding: 8px 12px;
+    border: 1px solid rgba(13, 59, 59, 0.12);
+    border-radius: 999px;
+    background: #fff;
+    box-shadow: 0 2px 8px rgba(6, 39, 39, 0.05);
+    font-size: 0.78rem;
+    white-space: nowrap;
+  }
+
+  body.admin-portal-page .admin-request-tabs .summary-button.active {
+    border-color: var(--admin-green, #1f9d57);
+    background: var(--admin-mint, #eaf4ef);
+    color: var(--admin-green, #1f9d57);
+  }
+
+  body.admin-portal-page .admin-date-range-wrap,
+  body.admin-portal-page .admin-filters-wrap {
+    width: 100%;
+  }
+
+  body.admin-portal-page .admin-date-range select,
+  body.admin-portal-page .admin-filters-btn,
+  body.admin-portal-page #admin-refresh-btn,
+  body.admin-portal-page #show-all-time-btn {
+    min-height: 44px;
+    border-radius: 14px;
+  }
+
+  body.admin-portal-page .admin-filters-panel {
+    position: fixed;
+    left: var(--sf-mobile-shell-gutter, 14px);
+    right: var(--sf-mobile-shell-gutter, 14px);
+    top: auto;
+    bottom: calc(82px + env(safe-area-inset-bottom, 0px));
+    z-index: 1300;
+    width: auto;
+    max-height: min(72vh, 560px);
+    overflow: auto;
+    gap: 12px;
+    padding: 16px;
+    border-radius: 20px;
+    box-shadow: 0 24px 70px rgba(6, 39, 39, 0.35);
+  }
+
+  body.admin-portal-page .admin-filters-panel::before {
+    content: "Filters";
+    display: block;
+    margin-bottom: 2px;
+    color: var(--admin-ink, #0b2321);
+    font-size: 1rem;
+    font-weight: 900;
+  }
+
+  body.admin-portal-page .admin-filters-panel label {
+    gap: 7px;
+  }
+
+  body.admin-portal-page .admin-filters-panel select,
+  body.admin-portal-page .admin-filters-panel input[type="search"] {
+    min-height: 44px;
+    border-radius: 12px;
+    font-size: 0.95rem;
+  }
+
+  body.admin-portal-page .admin-filters-panel #filter-clear-btn {
+    width: 100%;
+    margin-top: 4px;
+  }
+
+  body.admin-portal-page .admin-requests-table tr.queue-row {
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 8px 14px;
+    padding: 14px;
+    border-radius: 18px;
+    box-shadow: 0 7px 20px rgba(6, 39, 39, 0.07);
+  }
+
+  body.admin-portal-page .admin-requests-table tr.queue-row:active {
+    transform: scale(0.99);
+  }
+
+  body.admin-portal-page .admin-requests-table tr.queue-row td {
+    gap: 3px;
+  }
+
+  body.admin-portal-page .admin-requests-table tr.queue-row td::before {
+    font-size: 0.64rem;
+  }
+
+  body.admin-portal-page .admin-requests-table tr.queue-row td[data-label="Customer"] {
+    grid-column: 1 / -1;
+    padding-bottom: 10px;
+  }
+
+  body.admin-portal-page .admin-requests-table tr.queue-row td[data-label="Status"] {
+    align-items: flex-end;
+    text-align: right;
+  }
+
+  body.admin-portal-page .admin-requests-table tr.queue-row td[data-label="Status"] .status-pill {
+    white-space: normal;
+    text-align: right;
+  }
+
+  body.admin-portal-page .admin-requests-table tr.queue-row td[data-label="Service"],
+  body.admin-portal-page .admin-requests-table tr.queue-row td[data-label="Worker"],
+  body.admin-portal-page .admin-requests-table tr.queue-row td[data-label="Date"],
+  body.admin-portal-page .admin-requests-table tr.queue-row td[data-label="Time"] {
+    min-width: 0;
+  }
+
+  body.admin-portal-page .admin-requests-table tr.queue-row td[data-label="Action"] {
+    grid-column: 1 / -1;
+    padding-top: 10px;
+  }
+
+  body.admin-portal-page .admin-requests-table tr.queue-row td[data-label="Action"] .queue-next-action-cell {
+    align-items: stretch;
+  }
+
+body.admin-portal-page .admin-requests-table tr.queue-row td[data-label="Action"] .queue-next-action-cell .button {
+    border-radius: 14px;
+    font-size: 0.9rem;
+  }
+}
+
+/* Batch 4: customer mobile/PWA polish.
+   Customer-only density and tap-target improvements for booking, tracking, and
+   account screens. Admin and worker selectors are intentionally excluded. */
+@media (max-width: 760px) {
+  body.customer-account-page .customer-dashboard-header,
+  body.customer-account-page .customer-dashboard-layout,
+  body.customer-account-page .customer-card-list,
+  body.booking-page .booking-flow,
+  body.track-page #tracking-result {
+    gap: 12px;
+  }
+
+  body.customer-account-page .customer-dashboard-subtitle,
+  body.customer-account-page .customer-account-action-sub,
+  body.booking-page .booking-step-intro,
+  body.booking-page .booking-step-heading p,
+  body.track-page .tk-status-desc,
+  body.track-page .tk-hero-desc {
+    line-height: 1.45;
+  }
+
+  body.customer-account-page .customer-card-actions,
+  body.customer-account-page .customer-dashboard-actions {
+    display: grid !important;
+    grid-template-columns: 1fr;
+    gap: 9px;
+  }
+
+  body.customer-account-page .customer-card-actions .button,
+  body.customer-account-page .customer-dashboard-actions .button,
+  body.customer-account-page .customer-dashboard-actions button,
+  body.customer-account-page .customer-account-action,
+  body.booking-page .booking-step-actions .button,
+  body.booking-page .booking-actions .button,
+  body.booking-page .returning-customer-actions .button,
+  body.booking-page .returning-customer-actions button,
+  body.track-page .track-search-actions .button {
+    width: 100%;
+    min-height: 50px;
+    border-radius: 14px;
+  }
+
+  body.customer-account-page .customer-card-actions [data-delete-vehicle],
+  body.customer-account-page .customer-card-actions [data-delete-address],
+  body.booking-page [data-delete-returning-vehicle],
+  body.booking-page [data-delete-returning-address] {
+    border-color: rgba(185, 28, 28, 0.18);
+    color: #9f1d1d;
+    background: #fff7f7;
+  }
+
+  body.customer-account-page .customer-data-card,
+  body.customer-account-page .customer-request-card,
+  body.customer-account-page .customer-empty-card,
+  body.booking-page .booking-accordion-card,
+  body.booking-page .returning-option-card,
+  body.track-page .track-request-card {
+    border-radius: 18px !important;
+  }
+
+  body.customer-account-page .customer-data-card strong,
+  body.customer-account-page .customer-request-card strong {
+    overflow-wrap: anywhere;
+  }
+
+  body.customer-account-page .customer-data-card span,
+  body.customer-account-page .customer-request-card dd,
+  body.booking-page .review-summary-list dd,
+  body.track-page .track-request-meta {
+    overflow-wrap: anywhere;
+  }
+
+  body.booking-page .booking-step-header {
+    align-items: center;
+  }
+
+  body.booking-page .booking-step-icon {
+    width: 40px !important;
+    height: 40px !important;
+    flex-basis: 40px;
+  }
+
+  body.booking-page .booking-step-heading h3,
+  body.booking-page .booking-step-heading strong {
+    font-size: 1rem !important;
+  }
+
+  body.booking-page .booking-step-actions,
+  body.booking-page .booking-actions {
+    position: sticky;
+    bottom: calc(78px + env(safe-area-inset-bottom, 0px));
+    z-index: 5;
+    margin: 12px -2px -2px;
+    padding: 10px 2px 2px;
+    background: linear-gradient(180deg, rgba(255,255,255,0), #fff 22%);
+  }
+
+  body.booking-page .choice-card,
+  body.booking-page .returning-option-card,
+  body.booking-page .service-details-panel,
+  body.booking-page .payment-placeholder,
+  body.booking-page .review-summary-list > div {
+    box-shadow: 0 7px 18px rgba(6, 39, 39, 0.06);
+  }
+
+  body.booking-page .choice-card {
+    min-height: 54px;
+  }
+
+  body.booking-page .address-suggest {
+    max-height: min(42vh, 320px);
+    overflow: auto;
+    border-radius: 14px;
+  }
+
+  body.booking-page .address-suggest-item {
+    min-height: 50px;
+  }
+}
