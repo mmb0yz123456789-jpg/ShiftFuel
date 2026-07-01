@@ -10,10 +10,42 @@
   "theme_color": "#0b3d5c",
   "icons": [
     {
+      "src": "pwa-icon-worker-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "pwa-icon-worker-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
       "src": "icon-worker.svg",
       "sizes": "any",
       "type": "image/svg+xml",
       "purpose": "any maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "My Jobs",
+      "short_name": "Jobs",
+      "url": "/worker/dashboard?tab=jobs",
+      "icons": [{ "src": "pwa-icon-worker-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Availability",
+      "short_name": "Availability",
+      "url": "/worker/dashboard?tab=schedule",
+      "icons": [{ "src": "pwa-icon-worker-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Earnings",
+      "short_name": "Earnings",
+      "url": "/worker/dashboard?tab=earnings",
+      "icons": [{ "src": "pwa-icon-worker-192.png", "sizes": "192x192" }]
     }
   ]
 }

@@ -7,13 +7,14 @@
   <title>Admin Login | ShiftFuel Concierge</title>
   <link rel="icon" href="icon-main.svg" type="image/svg+xml">
   <link rel="icon" href="icon-main.svg" sizes="any">
-  <link rel="apple-touch-icon" href="icon-main.svg">
+  <link rel="apple-touch-icon" href="apple-touch-icon-admin.png">
   <link rel="manifest" href="manifest-admin.webmanifest">
+  <meta name="theme-color" content="#1a1f3d">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="SF Admin">
-  <link rel="apple-touch-icon" href="icon-main.svg">
+  <link rel="apple-touch-icon" href="apple-touch-icon-admin.png">
   <link rel="stylesheet" href="styles.css">
   <link rel="stylesheet" href="mobile-polish.css">
   <style>
@@ -34,10 +35,11 @@
        Runs before the header paints, so the links never flash in. -->
   <script>
     (function () {
-      var standalone = window.matchMedia && window.matchMedia("(display-mode: standalone)").matches;
-      if (standalone || window.navigator.standalone === true) {
-        document.documentElement.classList.add("is-pwa");
-      }
+      var d = document.documentElement, m = window.matchMedia;
+      var standalone = (m && m("(display-mode: standalone)").matches) || window.navigator.standalone === true;
+      var compact = !m || m("(max-width: 760px)").matches;
+      if (standalone) d.classList.add("is-pwa");
+      d.classList.add(standalone ? "sf-standalone" : "sf-browser", compact ? "sf-compact" : "sf-wide");
     })();
   </script>
 
@@ -154,8 +156,6 @@
     const usernameInput = document.getElementById("admin-username");
     const passwordInput = document.getElementById("admin-password");
     const message = document.getElementById("login-message");
-    const LOCK_KEY = "shiftfuel_admin_locked_until";
-    const ATTEMPT_KEY = "shiftfuel_admin_failed_attempts";
 
     async function sha256Hex(value) {
       const bytes = new TextEncoder().encode(value);
@@ -163,19 +163,8 @@
       return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
     }
 
-    function lockedUntil() {
-      return Number(localStorage.getItem(LOCK_KEY) || 0);
-    }
-
     form.addEventListener("submit", async (event) => {
       event.preventDefault();
-
-      const lockTime = lockedUntil();
-      if (lockTime > Date.now()) {
-        const minutes = Math.ceil((lockTime - Date.now()) / 60000);
-        message.textContent = `Too many attempts. Try again in ${minutes} minute${minutes === 1 ? "" : "s"}.`;
-        return;
-      }
 
       const password = passwordInput.value;
       const username = usernameInput.value.trim().toLowerCase();
@@ -197,8 +186,6 @@
         const result = await resp.json().catch(() => ({}));
 
         if (resp.ok && result.token) {
-          localStorage.removeItem(ATTEMPT_KEY);
-          localStorage.removeItem(LOCK_KEY);
           sessionStorage.setItem("shiftfuel_admin", "true");
           sessionStorage.setItem("shiftfuel_admin_token", result.token);
           sessionStorage.setItem("shiftfuel_admin_expires", String(Date.now() + 8 * 60 * 60 * 1000));
@@ -218,18 +205,10 @@
         }
         throw new Error(result.error || "INVALID_CREDENTIALS");
       } catch (err) {
-        message.textContent = "";
-        const attempts = Number(localStorage.getItem(ATTEMPT_KEY) || 0) + 1;
-        localStorage.setItem(ATTEMPT_KEY, String(attempts));
-
-        if (attempts >= 3) {
-          localStorage.setItem(LOCK_KEY, String(Date.now() + 15 * 60 * 1000));
-          localStorage.setItem(ATTEMPT_KEY, "0");
-          message.textContent = "Too many attempts. Admin login is locked for 15 minutes.";
-          return;
-        }
-
-        message.textContent = `Incorrect username or password. ${3 - attempts} attempt${3 - attempts === 1 ? "" : "s"} left before a temporary lock.`;
+        // Brute-force protection is enforced server-side (per-IP throttle in
+        // api/payments admin_login). No browser-local lock — it could only strand
+        // the admin's own browser, and there is no one above the admin to clear it.
+        message.textContent = "Incorrect username or password.";
       }
     });
   </script>

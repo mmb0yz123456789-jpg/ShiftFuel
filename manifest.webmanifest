@@ -27,5 +27,25 @@
       "type": "image/svg+xml",
       "purpose": "any maskable"
     }
+  ],
+  "shortcuts": [
+    {
+      "name": "Book Service",
+      "short_name": "Book",
+      "url": "/book#booking-flow",
+      "icons": [{ "src": "/pwa-icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Track My Vehicle",
+      "short_name": "Track",
+      "url": "/track#track-form",
+      "icons": [{ "src": "/pwa-icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "My Vehicles",
+      "short_name": "Vehicles",
+      "url": "/account/settings#vehicles",
+      "icons": [{ "src": "/pwa-icon-192.png", "sizes": "192x192" }]
+    }
   ]
 }

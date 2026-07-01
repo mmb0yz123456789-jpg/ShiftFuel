@@ -13,10 +13,6 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="ShiftFuel">
-    <meta http-equiv="refresh" content="0; url=/account">
-    <script>
-      window.location.replace("/account");
-    </script>
     <link rel="stylesheet" href="styles.css">
     <link rel="stylesheet" href="account.css">
   </head>
@@ -27,6 +23,7 @@
         <span>ShiftFuel Concierge</span>
       </a>
       <nav class="account-header-nav" aria-label="Account navigation">
+        <a href="/account">&larr; My Account</a>
         <a href="index.html">Back to site</a>
       </nav>
     </header>
@@ -53,7 +50,8 @@
             </svg>
             <span>Security</span>
           </button>
-          <button class="account-nav-item" data-account-tab="billing" type="button">
+          <!-- Billing tab hidden until it shows the real saved card + invoice history (currently placeholder). -->
+          <button class="account-nav-item" data-account-tab="billing" type="button" hidden>
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <rect x="1" y="4" width="22" height="16" rx="2" ry="2"></rect>
               <line x1="1" y1="10" x2="23" y2="10"></line>
@@ -280,7 +278,8 @@
             <div class="account-vehicles-list" data-saved-vehicles-list>
               <p class="form-help">Loading your saved vehicles...</p>
             </div>
-            <button class="button secondary" type="button" data-add-vehicle-btn>+ Add new vehicle</button>
+            <!-- Hidden until wired: handler is a "coming soon" stub. Vehicles are saved automatically after a booking. -->
+            <button class="button secondary" type="button" data-add-vehicle-btn hidden>+ Add new vehicle</button>
           </div>
         </section>
 
@@ -294,7 +293,8 @@
             <div class="account-addresses-list" data-saved-addresses-list>
               <p class="form-help">Loading your saved addresses...</p>
             </div>
-            <button class="button secondary" type="button" data-add-address-btn>+ Add new address</button>
+            <!-- Hidden until wired: handler is a "coming soon" stub. Addresses are saved during booking. -->
+            <button class="button secondary" type="button" data-add-address-btn hidden>+ Add new address</button>
           </div>
         </section>
       </div>

@@ -553,11 +553,6 @@
 }
 .worker-portal-page .worker-account-text { display: grid; line-height: 1.15; }
 .worker-portal-page .worker-account-name { color: #fff; font-size: 0.85rem; font-weight: 700; }
-.worker-portal-page .worker-account-signout {
-  background: none; border: 0; padding: 0; cursor: pointer; text-align: left;
-  color: rgba(255, 255, 255, 0.72); font-size: 0.72rem;
-}
-.worker-portal-page .worker-account-signout:hover { text-decoration: underline; }
 
 /* ---- Earnings tab ---- */
 .worker-portal-page .worker-earnings { display: grid; gap: 14px; }

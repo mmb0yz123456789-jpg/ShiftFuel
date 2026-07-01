@@ -10,10 +10,42 @@
   "theme_color": "#1a1f3d",
   "icons": [
     {
+      "src": "pwa-icon-admin-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "pwa-icon-admin-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
       "src": "icon-admin.svg",
       "sizes": "any",
       "type": "image/svg+xml",
       "purpose": "any maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Open Requests",
+      "short_name": "Requests",
+      "url": "/admin/dashboard?page=requests",
+      "icons": [{ "src": "pwa-icon-admin-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Workers",
+      "short_name": "Workers",
+      "url": "/admin/dashboard?page=workers",
+      "icons": [{ "src": "pwa-icon-admin-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Reports",
+      "short_name": "Reports",
+      "url": "/admin/dashboard?page=payroll",
+      "icons": [{ "src": "pwa-icon-admin-192.png", "sizes": "192x192" }]
     }
   ]
 }

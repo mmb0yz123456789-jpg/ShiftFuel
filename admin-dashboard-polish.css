@@ -580,6 +580,13 @@
 }
 
 /* ---- Find page: unified search (requests + people) ------- */
+/* The search card belongs to the Find/Requests tab only — never the dashboard
+   home, which is for quick operations (metrics, "Needs your attention", the open
+   queue, worker status). It shares data-tab-panel="requests", and switchAdminTab
+   ('requests') runs on the dashboard too, so without this it leaks onto the home
+   screen. Hiding it (vs. just un-showing) also collapses its space so the open-
+   requests queue sits right under "Needs your attention". */
+body[data-admin-page="dashboard"] .admin-find-section { display: none !important; }
 .admin-find-card { padding: 14px 16px; }
 .admin-find-bar {
   display: flex; align-items: center; gap: 10px;
@@ -614,6 +621,22 @@
 @media (max-width: 760px) {
   body[data-admin-page="requests"] .admin-queue-section { display: none; }
 }
+/* ---- "Company Net Today" tile → Today's Revenue / Payments panel ---- */
+.revenue-panel { display: grid; gap: 14px; }
+.revenue-panel-summary {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px;
+}
+.revenue-panel-cell {
+  display: grid; gap: 4px; padding: 12px 14px;
+  border: 1px solid var(--admin-line, #e5e7eb); border-radius: 12px; background: #fff;
+}
+.revenue-panel-cell--net { border-color: var(--admin-green, #1f9d57); background: var(--admin-mint, #eaf4ef); }
+.revenue-panel-label { font-size: 0.72rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.04em; color: #5b6f6b; }
+.revenue-panel-value { font-size: 1.1rem; font-weight: 800; color: var(--admin-ink, #0b2321); }
+.revenue-panel-value--neg { color: #b91c1c; }
+.revenue-panel-cell--net .revenue-panel-value { color: var(--admin-green, #1f9d57); }
+.revenue-panel-subhead { margin: 4px 0 0; font-size: 0.82rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.04em; color: #5b6f6b; }
+
 .tbp-group {
   border: 1px solid var(--admin-line, #e5e7eb); border-radius: 12px;
   padding: 14px 16px; margin-bottom: 14px; border-left-width: 4px;

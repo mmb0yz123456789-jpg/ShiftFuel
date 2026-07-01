@@ -403,7 +403,7 @@ const CANCELLATION_MODAL_COPY = {
   accepted: "Are you sure you want to cancel this request? No cancellation fee will be charged.",
   key_received: "Are you sure you want to cancel this request? A $15 cancellation fee applies because your key has already been received.",
 };
-const CANCELLATION_MODAL_COPY_SERVICE_STARTED = "Are you sure you want to cancel? Your specialist has your vehicle and is heading to the service. A $15 cancellation fee plus any costs already incurred may apply. (Once the service itself begins, it can no longer be cancelled.)";
+const CANCELLATION_MODAL_COPY_SERVICE_STARTED = "Are you sure you want to cancel? Your specialist already has your vehicle and is on the way to the service. You'll be charged a $15 cancellation fee plus the distance already driven and time already spent on your vehicle, so the amount depends on how far along the trip is. (Once the service itself begins, it can no longer be cancelled.)";
 // Worker has the vehicle and is en route to the service but HASN'T started it yet
 // — still cancelable (fee + costs).
 const CANCELLATION_SERVICE_STARTED_STATUSES = new Set([

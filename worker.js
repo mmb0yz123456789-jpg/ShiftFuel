@@ -99,6 +99,20 @@ function renderPresenceControls() {
     workerBreakToggle.hidden = false;
     workerBreakToggle.textContent = onBreak ? 'End break' : 'Take a break';
   }
+  updateWorkerStatusBadge();
+}
+
+// Status pill in the account modal header: Active / On Break / Offline.
+function updateWorkerStatusBadge() {
+  const badge = document.getElementById('worker-account-status-badge');
+  if (!badge) return;
+  const inactive = currentEmployee && currentEmployee.active === false;
+  const onBreak = workerPresenceStatus === 'on_break';
+  badge.classList.remove('is-on-break', 'is-offline');
+  let label = 'Active';
+  if (inactive) { badge.classList.add('is-offline'); label = 'Offline'; }
+  else if (onBreak) { badge.classList.add('is-on-break'); label = 'On Break'; }
+  badge.innerHTML = '<span class="worker-active-dot"></span>' + label;
 }
 
 function startWorkerHeartbeat() {
@@ -184,11 +198,11 @@ document.querySelector('#worker-dash-reviews-all')?.addEventListener('click', ()
 document.querySelector('#worker-snapshot-schedule')?.addEventListener('click', () => {
   document.querySelector('[data-tab-view="schedule"]')?.click();
 });
-document.querySelector('#worker-header-signout')?.addEventListener('click', () => {
-  document.querySelector('#worker-signout-btn')?.click();
-});
-
-// Profile panel (mobile avatar button)
+// ── Account modal ────────────────────────────────────────────────────────────
+// Opened from the header avatar/name chip (desktop), the avatar button (mobile),
+// and the "Manage account" button on the Profile tab. The action buttons inside
+// it (Edit profile, Change password, Enable alerts, Take a break, Sign out) are
+// the real controls — their click handlers are wired elsewhere by their own IDs.
 const workerProfilePanel = document.getElementById('worker-profile-panel');
 const workerProfilePanelOverlay = document.getElementById('worker-profile-panel-overlay');
 
@@ -209,32 +223,14 @@ document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape' && workerProfilePanel && !workerProfilePanel.hasAttribute('hidden')) closeWorkerProfilePanel();
 });
 document.querySelector('#worker-mobile-avatar-btn')?.addEventListener('click', openWorkerProfilePanel);
+document.querySelector('#worker-desktop-account-btn')?.addEventListener('click', openWorkerProfilePanel);
+document.querySelector('#worker-manage-account-btn')?.addEventListener('click', openWorkerProfilePanel);
 document.querySelector('#close-worker-profile-panel')?.addEventListener('click', closeWorkerProfilePanel);
 workerProfilePanelOverlay?.addEventListener('click', closeWorkerProfilePanel);
-document.querySelector('#panel-view-profile')?.addEventListener('click', () => {
-  closeWorkerProfilePanel();
-  switchWorkerTab('profile');
-});
-document.querySelector('#panel-signout')?.addEventListener('click', () => {
-  closeWorkerProfilePanel();
-  document.querySelector('#worker-signout-btn')?.click();
-});
-document.querySelector('#panel-change-password')?.addEventListener('click', () => {
-  closeWorkerProfilePanel();
-  document.querySelector('#open-change-password-btn')?.click();
-});
-document.querySelector('#panel-edit-profile')?.addEventListener('click', () => {
-  closeWorkerProfilePanel();
-  document.querySelector('#open-edit-profile-btn')?.click();
-});
-document.querySelector('#panel-enable-alerts')?.addEventListener('click', () => {
-  closeWorkerProfilePanel();
-  document.querySelector('#worker-enable-alerts')?.click();
-});
-document.querySelector('#panel-break-toggle')?.addEventListener('click', () => {
-  closeWorkerProfilePanel();
-  document.querySelector('#worker-break-toggle')?.click();
-});
+// Edit profile / Change password open their own modals — close the account modal
+// first so they don't stack on top of it. (These buttons keep their own handlers.)
+document.querySelector('#open-edit-profile-btn')?.addEventListener('click', closeWorkerProfilePanel);
+document.querySelector('#open-change-password-btn')?.addEventListener('click', closeWorkerProfilePanel);
 
 document.querySelector('#worker-progress-job-label')?.addEventListener('click', async () => {
   const jobLabel = document.querySelector('#worker-progress-job-label');
@@ -866,12 +862,21 @@ function workerWashDetourPay(request) {
   return roundMoneyValue(workerWashDetourMiles(request) * TIME_COMP.washDetourRate);
 }
 
-// Did the customer cancel after the worker already had the keys? Those workers
-// are owed half the cancellation fee actually collected (no mileage — they never
-// drove to a station).
+// Did the customer cancel after the worker already had the keys? Those workers are
+// owed half the base cancellation fee actually collected, plus — for post-pickup
+// cancels where the driver had already set off — the aborted-trip mileage + time
+// from the [cancel_costs] note (see workerNetPayout).
 function isCanceledAfterKeys(request) {
   const canceled = !!request.canceled_at || /cancel/i.test(String(request.status || ''));
   return canceled && !!request.key_received_at;
+}
+// [cancel_costs mileage=X time=Y miles=M mins=N src=…] — stamped by the server on a
+// post-pickup cancellation so the driver is paid for the trip they actually made.
+// Absent on pre-drive (key-only) cancels ⇒ null.
+function cancelCostsFromNotes(request) {
+  const m = String(request?.notes || '').match(/\[cancel_costs mileage=(-?\d+(?:\.\d+)?) time=(-?\d+(?:\.\d+)?) miles=(-?\d+(?:\.\d+)?) mins=(-?\d+(?:\.\d+)?)/);
+  if (!m) return null;
+  return { mileageCost: Number(m[1]) || 0, timeCost: Number(m[2]) || 0, miles: Number(m[3]) || 0, mins: Number(m[4]) || 0 };
 }
 
 // Worker's estimated take-home for a job: 50% of the service fees (fuel + wash +
@@ -923,11 +928,17 @@ function workerNetPayout(request) {
     payout += workerMileagePay(request) + workerTimePay(request) + workerWashDetourPay(request);
     payout += workerFeeShareSplit(fees.fuel, fees.wash, fees.inspection, frozenTimeCharge(request), effectiveFeeShares(request));
   } else if (isCanceledAfterKeys(request) && request.payment_status === 'cancellation_fee_paid') {
-    // Cancellation-after-keys: 50% of the cancellation fee collected (no per-type split).
+    // Cancellation-after-keys: 50% of the base cancellation fee collected (no split).
     const cancelGross = Number(request.cancellation_fee ?? request.cancellation_fee_amount ?? 0);
     if (cancelGross > 0) {
       const stripe = roundMoneyValue(cancelGross * PAYMENT_RECOVERY_RATE + PAYMENT_RECOVERY_FIXED);
       payout += Math.max(0, cancelGross - stripe) * WORKER_SERVICE_FEE_SHARE;
+    }
+    // Post-pickup cancels: pay the aborted trip through — mileage at the rate the
+    // customer was charged (100%), time at your per-minute rate — like a real job.
+    const cc = cancelCostsFromNotes(request);
+    if (cc) {
+      payout += Math.max(0, cc.mileageCost) + roundMoneyValue(Math.max(0, cc.mins) * workerTimeRate());
     }
   }
   return roundMoneyValue(Math.max(0, payout));
@@ -1792,6 +1803,7 @@ async function loadWorkerProfile() {
     applyAvatarPhoto(document.querySelector('#worker-mobile-avatar-btn'), avatarPhoto);
     const panelName = document.getElementById('worker-panel-name');
     if (panelName) panelName.textContent = workerName;
+    updateWorkerStatusBadge();
     const panelPhone = document.getElementById('worker-panel-phone');
     if (panelPhone) panelPhone.textContent = currentEmployee.phone ? formatPhone(currentEmployee.phone) : 'Not provided';
     if (workerProfileName) workerProfileName.value = workerName;
