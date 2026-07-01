@@ -151,6 +151,12 @@
     min-height: 190px !important;
   }
 
+  body.customer-account-page .customer-account-hero .booking-flow-hero-image,
+  body.customer-account-page .customer-account-hero .landing-hero-image,
+  body.customer-account-page .customer-account-hero img {
+    display: none !important;
+  }
+
   .booking-flow-hero-image img,
   .landing-hero-image img,
   .returning-flow-hero-image img {
@@ -164,6 +170,10 @@
     height: 190px !important;
   }
 
+  body.landing-page .landing-hero {
+    margin-bottom: 12px !important;
+  }
+
   h1 {
     font-size: clamp(2rem, 10vw, 2.65rem) !important;
     line-height: 1.05;
@@ -174,11 +184,13 @@
   }
 
   .hero-trust-row {
-    gap: 10px;
+    gap: 7px 10px;
   }
 
   .hero-trust-row span {
     width: 100%;
+    font-size: 0.86rem;
+    line-height: 1.25;
   }
 
   .landing-actions,
@@ -192,6 +204,104 @@
   .landing-actions {
     gap: 10px !important;
     margin-top: 18px !important;
+  }
+
+  body.customer-account-page .customer-account-hero .landing-actions {
+    grid-auto-flow: row;
+    gap: 10px !important;
+    margin-top: 18px !important;
+  }
+
+  body.customer-account-page .customer-account-hero .landing-actions .button {
+    width: 100%;
+    min-height: 48px;
+    padding: 12px 16px;
+    border-radius: 12px;
+    font-weight: 800;
+    justify-content: center;
+    text-align: center;
+  }
+
+  body.customer-account-page .customer-account-shell {
+    width: min(100% - 24px, 620px) !important;
+    gap: 12px !important;
+    margin-top: 10px !important;
+    margin-bottom: 18px !important;
+  }
+
+  body.customer-account-page .customer-account-panel {
+    gap: 12px !important;
+    padding: 16px !important;
+    border-radius: 14px !important;
+  }
+
+  body.customer-account-page .customer-account-tabs {
+    gap: 5px !important;
+    padding: 5px !important;
+  }
+
+  body.customer-account-page .customer-account-tab {
+    min-height: 46px !important;
+    padding: 10px 12px !important;
+  }
+
+  body.customer-account-page .customer-account-access {
+    gap: 12px !important;
+  }
+
+  body.customer-account-page .customer-account-intro {
+    gap: 6px !important;
+    text-align: left;
+    justify-items: start;
+  }
+
+  body.customer-account-page .customer-account-intro h1 {
+    font-size: clamp(1.9rem, 8vw, 2.35rem) !important;
+    line-height: 1.02 !important;
+  }
+
+  body.customer-account-page .customer-account-intro p:not(.customer-dashboard-kicker) {
+    font-size: 0.94rem !important;
+    line-height: 1.4 !important;
+  }
+
+  body.customer-account-page .customer-account-access-grid {
+    grid-template-columns: 1fr !important;
+    gap: 10px !important;
+  }
+
+  body.customer-account-page .customer-account-form-row {
+    grid-template-columns: 1fr !important;
+    gap: 12px !important;
+  }
+
+  body.customer-account-page .customer-account-options {
+    gap: 10px !important;
+  }
+
+  body.customer-account-page .customer-account-option-card {
+    gap: 10px !important;
+    padding: 16px !important;
+    border-radius: 14px !important;
+  }
+
+  body.customer-account-page .customer-account-panel-copy h2,
+  body.customer-account-page .customer-account-option-card h2 {
+    font-size: 1.18rem !important;
+    line-height: 1.15 !important;
+  }
+
+  body.customer-account-page .customer-account-panel-copy p,
+  body.customer-account-page .customer-account-option-card p {
+    font-size: 0.92rem !important;
+    line-height: 1.4 !important;
+  }
+
+  body.customer-account-page .customer-account-option-card .button,
+  body.customer-account-page .customer-account-form .button {
+    width: 100%;
+    min-height: 48px;
+    justify-content: center;
   }
 
   /* Desktop three-box variant hides on mobile; single Staff Access button shows */
@@ -213,17 +323,83 @@
   .pricing-card-grid,
   .safety-row {
     grid-template-columns: 1fr !important;
-    gap: 18px !important;
+    gap: 12px !important;
   }
 
   .safety-row > div {
-    padding: 20px !important;
+    padding: 14px !important;
   }
 
   .landing-section,
   .section {
-    padding: 44px 18px !important;
+    padding: 32px 16px !important;
     border-radius: 18px;
+  }
+
+  body.landing-page .landing-section + .landing-section {
+    margin-top: 14px !important;
+  }
+
+  body.landing-page .section-heading {
+    margin-bottom: 16px !important;
+  }
+
+  body.landing-page .section-heading h2 {
+    margin-bottom: 6px;
+  }
+
+  body.landing-page .section-heading p {
+    margin-top: 6px;
+    line-height: 1.45;
+  }
+
+  body.landing-page .how-it-works-grid {
+    margin-top: 20px !important;
+    gap: 10px !important;
+  }
+
+  body.landing-page .how-it-works-grid li {
+    grid-template-columns: 32px 1fr;
+    align-items: center;
+    justify-items: start;
+    gap: 3px 10px;
+    min-height: 0;
+    padding: 12px 0 !important;
+    text-align: left;
+    border-bottom: 1px solid rgba(13, 59, 59, 0.08);
+  }
+
+  body.landing-page .how-it-works-grid li:last-child {
+    border-bottom: 0;
+  }
+
+  body.landing-page .step-number {
+    grid-row: 1 / 3;
+    width: 28px;
+    height: 28px;
+    margin: 0;
+    align-self: center;
+  }
+
+  body.landing-page .step-icon {
+    display: none !important;
+  }
+
+  body.landing-page .how-it-works-grid strong {
+    grid-column: 2;
+    font-size: 1rem !important;
+    line-height: 1.15;
+  }
+
+  body.landing-page .how-it-works-grid p {
+    grid-column: 2;
+    max-width: none;
+    font-size: 0.9rem !important;
+    line-height: 1.35;
+  }
+
+  body.landing-page .pricing-card-grid {
+    margin-top: 18px !important;
   }
 
   .pricing-card,
@@ -231,6 +407,73 @@
   .wash-summary-item {
     padding: 18px !important;
     border-radius: 16px !important;
+  }
+
+  body.landing-page .pricing-card {
+    gap: 9px;
+    padding: 16px !important;
+  }
+
+  body.landing-page .pricing-icon {
+    width: 44px;
+    height: 44px;
+    margin-bottom: 2px;
+  }
+
+  body.landing-page .pricing-icon svg {
+    width: 20px;
+    height: 20px;
+  }
+
+  body.landing-page .pricing-includes {
+    gap: 4px;
+  }
+
+  body.landing-page .pricing-disclaimer {
+    margin-top: 16px;
+    line-height: 1.4;
+  }
+
+  body.landing-page .safety-row {
+    margin-top: 18px !important;
+    padding: 14px !important;
+    gap: 10px !important;
+  }
+
+  body.landing-page .safety-row > div {
+    grid-template-columns: 36px 1fr;
+    gap: 3px 10px;
+    padding: 0 0 10px !important;
+    border-right: 0 !important;
+    border-bottom: 1px solid rgba(13, 59, 59, 0.08);
+  }
+
+  body.landing-page .safety-row > div:last-child {
+    padding-bottom: 0 !important;
+    border-bottom: 0 !important;
+  }
+
+  body.landing-page .safety-icon {
+    width: 34px;
+    height: 34px;
+    border-radius: 10px;
+  }
+
+  body.landing-page .safety-icon svg {
+    width: 17px;
+    height: 17px;
+  }
+
+  body.landing-page .safety-row strong {
+    align-self: center;
+    font-size: 0.95rem !important;
+    line-height: 1.15;
+  }
+
+  body.landing-page .safety-row p {
+    grid-column: 2;
+    font-size: 0.88rem !important;
+    line-height: 1.35;
   }
 
   /* Readable body text on phones — keep descriptions at 15–16px minimum so the
@@ -461,8 +704,20 @@
 
   .site-footer {
     margin-top: 26px;
-    padding: 24px 18px;
+    padding: 20px 16px;
     border-radius: 16px;
+  }
+
+  body.landing-page .site-footer {
+    margin-top: 18px;
+  }
+
+  body.landing-page .footer-main {
+    gap: 12px;
+  }
+
+  body.landing-page .footer-links {
+    gap: 10px 14px;
   }
 
   .portal-closing-banner {

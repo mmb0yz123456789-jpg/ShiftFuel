@@ -127,16 +127,17 @@ const stepCopy = {
     fields: `
       <div class="customer-account-prompt">
         <div>
-          <strong>Have an account?</strong>
-          <span>Open My Account to autofill saved vehicles, saved addresses, and recent booking details. You can also continue as a guest.</span>
+          <strong>Returning customer?</strong>
+          <span>Sign in to autofill saved vehicles, saved service addresses, and recent booking details. New customers can continue below as guests.</span>
+          <small>No account required to book.</small>
         </div>
-        <a class="button secondary" href="customer.html">Open My Account</a>
+        <a class="button secondary" href="/account">Sign In / Open My Account</a>
       </div>
       <div class="booking-field-grid">
-        <label><span>First name <span class="required-mark">Required</span></span><input data-required name="firstName" type="text" autocomplete="given-name" placeholder="Jordan"></label>
-        <label><span>Last name <span class="required-mark">Required</span></span><input data-required name="lastName" type="text" autocomplete="family-name" placeholder="Smith"></label>
-        <label><span>Phone number <span class="required-mark">Required</span></span><input data-required data-phone name="customerPhone" type="tel" autocomplete="tel" placeholder="(302) 555-0100"></label>
-        <label><span>Email address <span class="required-mark">Required</span></span><input data-required data-email name="customerEmail" type="email" autocomplete="email" placeholder="jordan@example.com"></label>
+        <label><span>First name <span class="required-mark">Required</span></span><input data-required name="firstName" type="text" autocomplete="given-name" placeholder="First name"></label>
+        <label><span>Last name <span class="required-mark">Required</span></span><input data-required name="lastName" type="text" autocomplete="family-name" placeholder="Last name"></label>
+        <label><span>Phone number <span class="required-mark">Required</span></span><input data-required data-phone name="customerPhone" type="tel" autocomplete="tel" placeholder="Phone number"></label>
+        <label><span>Email address <span class="required-mark">Required</span></span><input data-required data-email name="customerEmail" type="email" autocomplete="email" placeholder="you@example.com"></label>
       </div>
     `,
   },
@@ -162,8 +163,8 @@ const stepCopy = {
     intro: "Enter your phone number, email, ticket number, or any combination of these so we can find your previous booking information.",
     fields: `
       <div class="booking-field-grid">
-        <label><span>Phone number</span><input name="verifyPhone" type="tel" placeholder="(302) 555-0100" data-any-required="verify" data-phone></label>
-        <label><span>Email address</span><input name="verifyEmail" type="email" placeholder="email@example.com" data-any-required="verify" data-email-optional></label>
+        <label><span>Phone number</span><input name="verifyPhone" type="tel" placeholder="Phone number" data-any-required="verify" data-phone></label>
+        <label><span>Email address</span><input name="verifyEmail" type="email" placeholder="you@example.com" data-any-required="verify" data-email-optional></label>
         <label><span>Ticket/request number</span><input name="verifyTicket" type="text" placeholder="Request number" data-any-required="verify"></label>
       </div>
       <div class="address-validation-panel">
@@ -217,6 +218,7 @@ const stepCopy = {
               <li>Washer fluid refill</li>
               <li>Quick exterior look-over</li>
             </ul>
+            <p class="pricing-warning">Convenience add-ons only. No repairs, diagnostics, mechanical inspection, towing, or emergency service.</p>
           </details>
         </span>
       </label>
@@ -331,14 +333,11 @@ function bindBookingFlowAnchorScroll() {
 }
 
 function normalizePhone(value) {
-  return String(value || "").replace(/\D/g, "");
+  return window.ShiftFuelPhone?.digits(value) || String(value || "").replace(/\D/g, "").slice(0, 10);
 }
 
 function formatPhone(value) {
-  const digits = normalizePhone(value).slice(0, 10);
-  if (digits.length <= 3) return digits;
-  if (digits.length <= 6) return `(${digits.slice(0, 3)}) ${digits.slice(3)}`;
-  return `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`;
+  return window.ShiftFuelPhone?.format(value) || value || "";
 }
 
 function isValidEmail(value) {
@@ -1066,7 +1065,7 @@ function friendlyFieldMessage(input) {
   if (input.dataset.phone !== undefined) {
     const digits = normalizePhone(value);
     if ((isRequired && digits.length !== 10) || (digits.length > 0 && digits.length !== 10)) {
-      return "Please enter a valid phone number.";
+      return window.ShiftFuelPhone?.validationMessage || "Enter a valid 10-digit phone number.";
     }
   }
   if (input.dataset.email !== undefined && value && !isValidEmail(value)) {
@@ -1076,7 +1075,7 @@ function friendlyFieldMessage(input) {
     const copy = {
       firstName: "Please enter your first name.",
       lastName: "Please enter your last name.",
-      customerPhone: "Please enter a valid phone number.",
+      customerPhone: window.ShiftFuelPhone?.validationMessage || "Enter a valid 10-digit phone number.",
       customerEmail: "Please enter a valid email address.",
       street: "Please enter your street address.",
       city: "Please enter your city.",
@@ -1825,7 +1824,7 @@ function renderReturningVehicles(panel) {
 // Book Now: silently detect a returning customer once the Customer step is done,
 // and load their saved addresses/vehicles so the next steps offer them.
 async function detectReturningCustomer() {
-  const phone = String(bookingState.values.customerPhone || "").replace(/\D/g, "");
+  const phone = normalizePhone(bookingState.values.customerPhone || "");
   const email = String(bookingState.values.customerEmail || "").trim();
   if (!phone || !email || !window.ShiftFuelSupabase) return false;
   try {
@@ -2572,7 +2571,7 @@ async function confirmPaymentAuthorization(panel, button) {
           action: "create_setup_intent",
           customer_name: customerName(),
           customer_email: bookingState.values.customerEmail,
-          customer_phone: bookingState.values.customerPhone,
+          customer_phone: normalizePhone(bookingState.values.customerPhone),
           service_label: serviceLabel(),
         }),
       });
@@ -2911,7 +2910,7 @@ function buildBookingPayload() {
     amount_cents: bookingState.payment.authorizedAmountCents || Math.round(totals.estimatedTotal * 100),
     customer_name: customerName(),
     customer_id: bookingState.returning.requests[0]?.customer_id || null,
-    customer_phone: formatPhone(bookingState.values.customerPhone || ""),
+    customer_phone: normalizePhone(bookingState.values.customerPhone || ""),
     customer_email: bookingState.values.customerEmail || "",
     vehicle_year: bookingState.values.vehicleYear || "",
     vehicle_id: resolveSelectedVehicleId(),
@@ -2990,6 +2989,21 @@ function publicRequestNumber(id) {
   return `SF-${String(id || "").slice(0, 8).toUpperCase()}`;
 }
 
+function postBookingAccountPromptHtml() {
+  return `
+    <div class="post-booking-account-prompt" data-post-booking-account-prompt>
+      <div>
+        <h4>Want faster booking next time?</h4>
+        <p>Create an account to save your vehicle, service address, and booking history.</p>
+      </div>
+      <div class="admin-button-row">
+        <a class="button primary" href="/create-account">Create My Account</a>
+        <button class="button secondary" type="button" data-dismiss-account-prompt>No thanks</button>
+      </div>
+    </div>
+  `;
+}
+
 async function submitBooking(panel) {
   if (bookingState.submitting || bookingState.submitted) return;
   savePanelValues(panel);
@@ -3038,8 +3052,9 @@ async function submitBooking(panel) {
           <p>Use Track My Vehicle to follow your request.</p>
           <div class="admin-button-row">
             <button class="button primary" type="button" data-new-booking>Submit a new request</button>
-            <a class="button secondary" href="track.html">Track My Vehicle</a>
+            <a class="button secondary" href="/track">Track My Vehicle</a>
           </div>
+          ${postBookingAccountPromptHtml()}
         </div>
       `;
     }
@@ -3470,6 +3485,12 @@ function renderFlow(root) {
       return;
     }
 
+    const dismissAccountPrompt = event.target.closest("[data-dismiss-account-prompt]");
+    if (dismissAccountPrompt) {
+      dismissAccountPrompt.closest("[data-post-booking-account-prompt]")?.remove();
+      return;
+    }
+
     if (event.target.closest("[data-verify-returning]")) {
       await verifyReturningCustomer(panel);
       savePanelValues(panel);
@@ -3616,7 +3637,7 @@ function renderFlow(root) {
 }
 
 // Preselect a service when the customer arrives from a "Book This Service" card
-// on the landing page (e.g. book.html?service=fuel). Vehicle Add-Ons are an
+// on the landing page (e.g. /book?service=fuel). Vehicle Add-Ons are an
 // add-on, so it pre-checks the add-on and explains it must attach to a service.
 function applyPreselectedService() {
   let requested = "";
@@ -3757,7 +3778,7 @@ initBookingFlow();
     bookingState.submittedRequestNumber = number;
     const fields = panel.querySelector('.booking-step-fields');
     if (fields) {
-      fields.innerHTML = `<div class="submission-success"><h3>Request received.</h3><p>Your request number is: <strong>${escapeHtml(number)}</strong></p><p>Use Track My Vehicle to follow your request.</p><div class="admin-button-row"><button class="button primary" type="button" data-new-booking>Submit a new request</button><a class="button secondary" href="track.html">Track My Vehicle</a></div></div>`;
+      fields.innerHTML = `<div class="submission-success"><h3>Request received.</h3><p>Your request number is: <strong>${escapeHtml(number)}</strong></p><p>Use Track My Vehicle to follow your request.</p><div class="admin-button-row"><button class="button primary" type="button" data-new-booking>Submit a new request</button><a class="button secondary" href="/track">Track My Vehicle</a></div>${postBookingAccountPromptHtml()}</div>`;
     }
     setStatus(panel, 'success', `Request received. Your request number is ${number}.`);
     const actions = panel.querySelector('.booking-step-actions');

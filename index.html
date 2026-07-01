@@ -6,13 +6,13 @@
     <title>ShiftFuel Concierge</title>
     <link rel="icon" href="icon-main.svg" type="image/svg+xml">
     <link rel="icon" href="icon-main.svg" sizes="any">
-    <link rel="apple-touch-icon" href="icon-main.svg">
+    <link rel="apple-touch-icon" href="apple-touch-icon.png">
     <link rel="manifest" href="manifest.webmanifest">
-    <!-- Customer site opens in the browser (not standalone) so Stripe's card
-         iframe loads reliably on iOS home-screen launches. -->
-    <meta name="apple-mobile-web-app-capable" content="no">
+    <meta name="theme-color" content="#0d3b3b">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="ShiftFuel">
-    <link rel="apple-touch-icon" href="icon-main.svg">
     <link rel="stylesheet" href="styles.css">
     <link rel="stylesheet" href="mobile-polish.css">
   </head>
@@ -30,9 +30,9 @@
         <a href="#how">How It Works</a>
         <a href="#services">Services &amp; Pricing</a>
         <a href="#trust">Safety &amp; Trust</a>
-        <a class="nav-cta" href="book.html#booking-flow">Book Now</a>
-        <a class="nav-returning" href="account.html">My Account</a>
-        <a class="nav-outline" href="track.html#track-form">Track My Vehicle</a>
+        <a class="nav-cta" href="/book#booking-flow">Book Now</a>
+        <a class="nav-returning" href="/account#customer-account-panel">My Account</a>
+        <a class="nav-outline" href="/track#track-form">Track My Vehicle</a>
       </nav>
     </header>
 
@@ -43,11 +43,11 @@
           <h1>Workday vehicle services, handled for you.</h1>
           <p class="hero-copy">Fuel fill-ups, car wash service, and simple vehicle add-ons&mdash;delivered while you focus on your work.</p>
           <div class="landing-actions" aria-label="Primary actions">
-            <a class="button primary" href="book.html#booking-flow">Book Now</a>
-            <a class="button tertiary" href="track.html#track-form">Track My Vehicle</a>
-            <a class="button returning" href="account.html">My Account</a>
+            <a class="button primary" href="/book#booking-flow">Book Now</a>
+            <a class="button tertiary" href="/track#track-form">Track My Vehicle</a>
+            <a class="button returning" href="/account#customer-account-panel">My Account</a>
           </div>
-          <p class="booking-service-area-note">Serving within 5 miles of Christiana area.</p>
+          <p class="booking-service-area-note">Serving approved service addresses within our current Delaware service area.</p>
           <div class="hero-trust-row">
             <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="8" r="3.4"/><path d="M5 20c0-3.3 3.1-6 7-6s7 2.7 7 6"/></svg>Trusted professionals</span>
             <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3l7 3v6c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6l7-3z"/></svg>Premium experience</span>
@@ -96,17 +96,17 @@
           <h2>Services &amp; Pricing</h2>
           <p>Most customers spend $20&ndash;$35 per request. Final cost depends on services selected.</p>
         </div>
-        <a class="bundle-landing-banner" data-bundle-banner href="book.html?service=fuel_wash#booking-flow" hidden></a>
+        <a class="bundle-landing-banner" data-bundle-banner href="/book?service=fuel_wash#booking-flow" hidden></a>
         <div class="pricing-card-grid">
           <article class="pricing-card">
             <span class="pricing-icon pricing-icon-fuel"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="3" width="9" height="18" rx="1.4"/><path d="M4 10h9M7.5 3v0"/><path d="M13 8h2.5a2 2 0 0 1 2 2v6.5a1.5 1.5 0 0 0 3 0V8.5L18 6"/></svg></span>
             <h3>Fuel Concierge</h3>
             <p>We fuel your vehicle with quality fuel&mdash;so you don't have to leave work.</p>
-            <p class="pricing-from"><span>Fuel service starts at </span><span data-price="fuel-service-fee">$15</span><span>. Fuel is charged separately at actual pump price.</span></p>
+            <p class="pricing-from"><span>Fuel service starts at </span><span data-price="fuel-service-fee">$15</span><span>. Fuel is charged separately based on the actual pump receipt.</span></p>
             <ul class="pricing-package-list" id="fuel-price-list" data-fuel-prices>
               <li><span>Loading current prices&hellip;</span></li>
             </ul>
-            <a class="button pricing-button pricing-button-fuel" href="book.html?service=fuel#booking-flow">Book This Service</a>
+            <a class="button pricing-button pricing-button-fuel" href="/book?service=fuel#booking-flow">Book This Service</a>
           </article>
 		<article class="pricing-card">
 		  <span class="pricing-icon pricing-icon-wash">
@@ -161,7 +161,7 @@
 			Exterior wash only&mdash;we do not offer interior cleaning.
 		  </p>
 
-		  <a class="button pricing-button pricing-button-wash" href="book.html?service=wash#booking-flow">Book This Service</a>
+		  <a class="button pricing-button pricing-button-wash" href="/book?service=wash#booking-flow">Book This Service</a>
 		</article>
           <article class="pricing-card">
             <span class="pricing-icon pricing-icon-inspect"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="5" y="4" width="14" height="17" rx="1.6"/><path d="M9 3.5h6v2H9z"/><path d="M9 11l1.8 1.8L15 9"/></svg></span>
@@ -173,11 +173,11 @@
               <li>Washer fluid refill</li>
               <li>Quick exterior look-over</li>
             </ul>
-            <p class="pricing-warning">Convenience add-ons only; no repairs or mechanical diagnostics.</p>
-            <a class="button pricing-button pricing-button-inspect" href="book.html?service=quick-care#booking-flow">Book This Service</a>
+            <p class="pricing-warning">Convenience add-ons only. No repairs, diagnostics, mechanical inspection, towing, or emergency service.</p>
+            <a class="button pricing-button pricing-button-inspect" href="/book?service=quick-care#booking-flow">Book This Service</a>
           </article>
         </div>
-        <p class="pricing-disclaimer">Service prices include payment and operating costs. Final fuel cost is based on the actual receipt. Final totals are rounded up to the nearest dollar.</p>
+        <p class="pricing-disclaimer">Final total includes selected service fees, approved add-ons, and actual fuel or car wash receipt totals. Final totals are rounded up to the nearest dollar.</p>
       </section>
 
       <section id="trust" class="landing-section">
@@ -257,12 +257,55 @@
 			</a>
 		  </div>
 		</section>
+
+      <section id="support" class="landing-section support-section">
+        <div class="support-layout">
+          <div class="section-heading">
+            <h2>Contact support</h2>
+            <p>Need help with a booking, payment, or service question? Send a message and we will follow up by email.</p>
+            <p class="support-direct">Direct email: <a href="mailto:shiftfuel005@gmail.com">shiftfuel005@gmail.com</a></p>
+          </div>
+          <form id="support-form" class="support-form" novalidate>
+            <input type="text" name="website" tabindex="-1" autocomplete="off" class="support-hp" aria-hidden="true">
+            <div class="support-form-grid">
+              <label>Name
+                <input type="text" name="customer_name" autocomplete="name" required>
+              </label>
+              <label>Email
+                <input type="email" name="customer_email" autocomplete="email" required>
+              </label>
+              <label>Phone
+                <input type="tel" name="customer_phone" autocomplete="tel">
+              </label>
+              <label>Topic
+                <select name="reason">
+                  <option value="booking">Booking help</option>
+                  <option value="payment">Payment question</option>
+                  <option value="service">Service issue</option>
+                  <option value="general">General question</option>
+                </select>
+              </label>
+            </div>
+            <label>Booking or ticket number
+              <input type="text" name="booking_ref" placeholder="Optional">
+            </label>
+            <label>Message
+              <textarea name="message" rows="5" required></textarea>
+            </label>
+            <div class="support-actions">
+              <button class="button primary" type="submit">Send Message</button>
+              <p id="support-status" class="form-status" role="status"></p>
+            </div>
+          </form>
+        </div>
+      </section>
     </main>
 
     <footer class="site-footer">
       <div class="footer-main">
         <p class="footer-copy">&copy; <span id="year"></span> ShiftFuel Concierge. All rights reserved.</p>
         <nav class="footer-links" aria-label="Legal links">
+          <a href="#support">Support</a>
           <a href="privacy.html">Privacy Policy</a>
           <a href="terms.html">Terms of Service</a>
           <a href="liability-waiver.html">Liability Waiver</a>
@@ -272,6 +315,7 @@
     <script src="runtime-config.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="supabase-client.js"></script>
+    <script src="phone-utils.js"></script>
     <script src="landing.js"></script>
   </body>
 </html>

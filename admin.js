@@ -76,8 +76,11 @@ const saveDaysOffButton = document.querySelector('#save-days-off');
 const reviewList = document.querySelector('#reviews-list');
 const applicantList = document.querySelector('#applicants-list');
 const workerProfileList = document.querySelector('#admin-worker-profile-list');
+const supportMessageList = document.querySelector('#support-message-list');
+const supportCountBadge = document.querySelector('#support-count-badge');
 const adminRefreshBtn = document.querySelector('#admin-refresh-btn');
 const adminReviewsRefreshBtn = document.querySelector('#admin-reviews-refresh-btn');
+const adminSupportRefreshBtn = document.querySelector('#admin-support-refresh-btn');
 
 const PHOTO_BUCKET = 'service-photos';
 const DEFAULT_WORKER_NAME = 'Mark Urban';
@@ -101,6 +104,7 @@ let allEmployees = [];
 let allReviews = [];
 let allReviewRequestMap = new Map();
 let allApplicantsList = [];
+let allSupportMessages = [];
 let selectedScheduleEmployeeId = '';
 // Per-employee weekly availability for the inline Workers-tab editor, keyed by
 // employee id. Populated when a worker row is expanded; the admin schedule grid
@@ -629,6 +633,13 @@ const applicantStatusLabels = {
   interviewing: 'Interviewing',
   hired: 'Hired',
   declined: 'Declined',
+};
+
+const supportReasonLabels = {
+  booking: 'Booking help',
+  payment: 'Payment question',
+  service: 'Service issue',
+  general: 'General question',
 };
 
 function updateHeroStats() {
@@ -3409,7 +3420,11 @@ async function saveAdminWorkerProfile(button) {
 
   // Validate phone uniqueness BEFORE uploading photo so a conflict never orphans an upload.
   const phoneInputValue = card?.querySelector('.admin-worker-phone')?.value.trim() || null;
-  const phone = phoneInputValue ? formatPhone(phoneInputValue) : null;
+  const phone = phoneInputValue ? normalizePhone(phoneInputValue) : null;
+  if (phoneInputValue && !window.ShiftFuelPhone?.isValid(phoneInputValue)) {
+    if (status) status.textContent = window.ShiftFuelPhone?.validationMessage || 'Enter a valid 10-digit phone number.';
+    return;
+  }
   await validateUniqueWorkerPhone(employeeId, phone);
 
   // Resolve photo URLs: delete → clear both; new upload → upload original + canvas-crop;
@@ -3974,6 +3989,108 @@ async function loadApplicants() {
   renderActionNeeded();
 }
 
+function supportStatusPill(status) {
+  if (status === 'resolved') return '<span class="status-pill status-pill-complete">Resolved</span>';
+  if (status === 'archived') return '<span class="status-pill status-pill-denied">Archived</span>';
+  return '<span class="status-pill status-pill-open">Open</span>';
+}
+
+function renderSupportMessages(messages) {
+  if (!supportMessageList) return;
+  const openCount = (messages || []).filter((m) => m.status === 'open').length;
+  if (supportCountBadge) supportCountBadge.textContent = String(openCount);
+
+  if (!messages.length) {
+    supportMessageList.innerHTML = '<div class="empty-state"><p>No support messages yet.</p></div>';
+    return;
+  }
+
+  supportMessageList.innerHTML = messages.map((message) => {
+    const subject = message.subject || supportReasonLabels[message.reason] || 'Support message';
+    const replySubject = encodeURIComponent(`Re: ${subject}`);
+    const replyBody = encodeURIComponent(`Hi ${message.customer_name || ''},\n\n`);
+    const mailto = `mailto:${message.customer_email}?subject=${replySubject}&body=${replyBody}`;
+    const note = message.admin_note || '';
+    return `
+      <article class="request-card support-message-card" data-support-id="${escapeHtml(message.id)}">
+        <div class="request-card-header">
+          <div>
+            <p class="eyebrow">${escapeHtml(formatDateTime(message.created_at))}</p>
+            <h3>${escapeHtml(subject)}</h3>
+          </div>
+          ${supportStatusPill(message.status)}
+        </div>
+        <div class="request-details">
+          <p><strong>Customer:</strong> ${escapeHtml(message.customer_name)} &middot; ${escapeHtml(message.customer_email)}${message.customer_phone ? ` &middot; ${escapeHtml(formatPhone(message.customer_phone))}` : ''}</p>
+          <p><strong>Topic:</strong> ${escapeHtml(supportReasonLabels[message.reason] || message.reason || 'General question')}${message.booking_ref ? ` &middot; Ref: ${escapeHtml(message.booking_ref)}` : ''}</p>
+          <p><strong>Message:</strong> ${escapeHtml(message.message)}</p>
+          <label>Admin note
+            <textarea class="support-admin-note" rows="2">${escapeHtml(note)}</textarea>
+          </label>
+          <div class="admin-button-row support-message-actions">
+            <a class="button primary" href="${escapeHtml(mailto)}">Reply by Email</a>
+            <button class="button secondary support-save-note" data-id="${escapeHtml(message.id)}" type="button">Save Note</button>
+            ${message.status === 'open'
+              ? `<button class="button secondary support-mark-resolved" data-id="${escapeHtml(message.id)}" type="button">Mark Resolved</button>`
+              : `<button class="button secondary support-reopen" data-id="${escapeHtml(message.id)}" type="button">Reopen</button>`}
+          </div>
+        </div>
+      </article>`;
+  }).join('');
+}
+
+async function loadSupportMessages() {
+  if (!supportMessageList) return;
+  supportMessageList.innerHTML = '<div class="empty-state"><p>Loading support messages...</p></div>';
+
+  const { data, error } = await db.rpc('admin_list_support_messages', { p_token: adminAuthToken() });
+  if (error) {
+    console.warn('Could not load support messages:', error);
+    supportMessageList.innerHTML = '<div class="empty-state"><p>Could not load support messages. Run the support messages migration in Supabase.</p></div>';
+    return;
+  }
+
+  allSupportMessages = data || [];
+  renderSupportMessages(allSupportMessages);
+  renderActionNeeded();
+}
+
+async function updateSupportMessage(id, updates) {
+  const { data, error } = await db.rpc('admin_update_support_message', {
+    p_token: adminAuthToken(),
+    p_message_id: id,
+    p_status: updates.status || null,
+    p_admin_note: updates.admin_note ?? null,
+  });
+  if (error) throw error;
+  const updated = data || {};
+  allSupportMessages = allSupportMessages.map((message) => message.id === id ? { ...message, ...updated } : message);
+  renderSupportMessages(allSupportMessages);
+  renderActionNeeded();
+}
+
+supportMessageList?.addEventListener('click', async (event) => {
+  const button = event.target.closest('button[data-id]');
+  if (!button) return;
+  const card = button.closest('[data-support-id]');
+  const id = button.dataset.id;
+  const note = card?.querySelector('.support-admin-note')?.value || '';
+  button.disabled = true;
+  try {
+    if (button.classList.contains('support-mark-resolved')) {
+      await updateSupportMessage(id, { status: 'resolved', admin_note: note });
+    } else if (button.classList.contains('support-reopen')) {
+      await updateSupportMessage(id, { status: 'open', admin_note: note });
+    } else {
+      await updateSupportMessage(id, { admin_note: note });
+    }
+  } catch (error) {
+    alert(`Could not update support message: ${error.message || error}`);
+  } finally {
+    button.disabled = false;
+  }
+});
+
 async function hireApplicant(applicantId) {
   const applicant = allApplicantsList.find((item) => item.id === applicantId);
   if (!applicant) throw new Error('Applicant not found. Reload the applicants list and try again.');
@@ -4297,7 +4414,7 @@ async function updateWorkerAssignment(requestId, employeeId) {
     ? {
         assigned_employee_id: employee.id,
         assigned_worker_name: employee.full_name,
-        assigned_worker_phone: employee.phone ? formatPhone(employee.phone) : null,
+        assigned_worker_phone: employee.phone ? normalizePhone(employee.phone) : null,
         assigned_worker_photo_url: employee.cropped_photo_url || employee.photo_url || null,
         assigned_worker_original_photo_url: employee.original_photo_url || null,
       }
@@ -4606,6 +4723,14 @@ function buildActionNeededItems() {
       detail: 'A worker is requesting a schedule or job change. Review it in the Workers tab.' });
   }
 
+  const openSupportMessages = (allSupportMessages || []).filter((m) => m.status === 'open');
+  if (openSupportMessages.length) {
+    items.push({ kind: 'support', action: 'support',
+      title: 'Support message waiting',
+      who: openSupportMessages.length === 1 ? (openSupportMessages[0].customer_name || '1 message') : `${openSupportMessages.length} messages`,
+      detail: 'A customer submitted a support message from the website.' });
+  }
+
   return items;
 }
 
@@ -4630,6 +4755,8 @@ function renderActionNeeded() {
       ? '<button class="button secondary action-needed-btn" data-action-applicants="1" type="button">Review applicants</button>'
       : it.action === 'change-requests'
         ? '<button class="button secondary action-needed-btn" data-action-change-requests="1" type="button">Review requests</button>'
+      : it.action === 'support'
+        ? '<button class="button secondary action-needed-btn" data-action-support="1" type="button">Review support</button>'
         : `<button class="button secondary action-needed-btn" data-action-request="${escapeHtml(it.requestId)}" type="button">View request</button>`;
     return `
       <div class="action-needed-card action-needed-${it.kind}">
@@ -4680,6 +4807,11 @@ document.querySelector('#action-needed-list')?.addEventListener('click', (event)
   if (crBtn) {
     switchPageTab('workers');
     setTimeout(() => document.querySelector('#admin-change-requests')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 60);
+  }
+  const supportBtn = event.target.closest('[data-action-support]');
+  if (supportBtn) {
+    switchPageTab('support');
+    setTimeout(() => document.querySelector('#support-message-list')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 60);
   }
 });
 
@@ -6809,6 +6941,9 @@ function switchPageTab(page) {
     workerPresenceFilter = null;
     renderWorkerProfiles();
   }
+  if (page === 'support') {
+    loadSupportMessages();
+  }
   if (page === 'settings') {
     setTimeout(() => window._saOpenEditor?.(), 80);
   }
@@ -6848,6 +6983,7 @@ document.querySelectorAll('[data-page-action]').forEach((btn) => {
 adminRefreshBtn?.addEventListener('click', () => refreshAdminView(adminRefreshBtn));
 adminSideRefreshBtn?.addEventListener('click', () => refreshAdminView(adminSideRefreshBtn));
 adminReviewsRefreshBtn?.addEventListener('click', () => refreshAdminView(adminReviewsRefreshBtn));
+adminSupportRefreshBtn?.addEventListener('click', () => refreshAdminView(adminSupportRefreshBtn));
 
 // ── Dashboard stat card drilldown ────────────────────────────────────────────
 
@@ -6973,38 +7109,17 @@ function closeFindTicketsModal() {
 heroAvgRatingBtn?.addEventListener('click', () => switchAdminTab('reviews'));
 
 function normalizePhone(s) {
-  return String(s || '').replace(/\D/g, '');
+  return window.ShiftFuelPhone?.digits(s) || String(s || '').replace(/\D/g, '').slice(0, 10);
 }
 
 function formatPhone(value) {
-  let digits = normalizePhone(value);
-  if (digits.length === 11 && digits[0] === '1') digits = digits.slice(1);
-  if (digits.length !== 10) return value || '';
-  return `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`;
+  return window.ShiftFuelPhone?.format(value) || value || '';
 }
 
 // Reformats a phone <input> live as the admin types, preserving cursor
 // position by digit count. Safe to call more than once on the same element.
 function attachPhoneInputFormatting(input) {
-  if (!input || input.dataset.phoneFormatBound) return;
-  input.dataset.phoneFormatBound = '1';
-  input.addEventListener('input', () => {
-    const digitsBeforeCursor = normalizePhone(input.value.slice(0, input.selectionStart || 0)).length;
-    const digits = normalizePhone(input.value).slice(0, 10);
-    let formatted = digits;
-    if (digits.length > 6) formatted = `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`;
-    else if (digits.length > 3) formatted = `(${digits.slice(0, 3)}) ${digits.slice(3)}`;
-    else if (digits.length > 0) formatted = `(${digits}`;
-    input.value = formatted;
-
-    let pos = 0;
-    let seen = 0;
-    while (pos < formatted.length && seen < digitsBeforeCursor) {
-      if (/\d/.test(formatted[pos])) seen += 1;
-      pos += 1;
-    }
-    input.setSelectionRange(pos, pos);
-  });
+  window.ShiftFuelPhone?.attachInput(input);
 }
 
 document.addEventListener('focusin', (event) => {
@@ -7035,6 +7150,7 @@ async function refreshAdminView(button = null) {
       loadRequests(),
       loadReviews(),
       loadApplicants(),
+      loadSupportMessages(),
       loadPendingAuthorizations(),
       loadReauthNeeded(),
     ]);
@@ -7834,6 +7950,7 @@ loadVehiclePsiGuides().finally(() => {
 });
 loadReviews();
 loadApplicants();
+loadSupportMessages();
 loadPendingAuthorizations();
 loadReauthNeeded();
 
@@ -7864,7 +7981,7 @@ document.querySelector('#admin-create-request-form')?.addEventListener('submit',
 
   const data = {
     customer_name:       val('cr-customer-name'),
-    customer_phone:      formatPhone(val('cr-customer-phone')),
+    customer_phone:      normalizePhone(val('cr-customer-phone')),
     customer_email:      val('cr-customer-email'),
     address_street:      val('cr-address-street'),
     address_apt:         val('cr-address-unit'),
@@ -7892,6 +8009,11 @@ document.querySelector('#admin-create-request-form')?.addEventListener('submit',
 
   if (!data.customer_name || !data.customer_phone || !data.customer_email) {
     if (statusEl) statusEl.textContent = 'Customer name, phone, and email are required.';
+    return;
+  }
+
+  if (!window.ShiftFuelPhone?.isValid(data.customer_phone)) {
+    if (statusEl) statusEl.textContent = window.ShiftFuelPhone?.validationMessage || 'Enter a valid 10-digit phone number.';
     return;
   }
 
@@ -9013,7 +9135,7 @@ function openPromoForm(promo) {
   [...g('#promo-eligible-services').options].forEach((option) => { option.selected = selectedServices.includes(option.value); });
   g('#promo-inactive-days').value = promo?.inactive_days_threshold || '';
   g('#promo-specific-customer-id').value = promo?.specific_customer_id || '';
-  g('#promo-specific-phone').value = promo?.specific_customer_phone || '';
+  g('#promo-specific-phone').value = promo?.specific_customer_phone ? formatPhone(promo.specific_customer_phone) : '';
   g('#promo-specific-email').value = promo?.specific_customer_email || '';
   g('#promo-min-order').value = promo?.min_order_amount || '';
   g('#promo-per-customer').value = promo?.per_customer_limit ?? 1;
@@ -9042,7 +9164,7 @@ promoForm?.addEventListener('submit', async (e) => {
     eligible_services: [...g('#promo-eligible-services').selectedOptions].map((option) => option.value),
     inactive_days_threshold: g('#promo-inactive-days').value,
     specific_customer_id: g('#promo-specific-customer-id').value,
-    specific_customer_phone: g('#promo-specific-phone').value,
+    specific_customer_phone: normalizePhone(g('#promo-specific-phone').value),
     specific_customer_email: g('#promo-specific-email').value,
     min_order_amount: g('#promo-min-order').value,
     per_customer_limit: g('#promo-per-customer').value,

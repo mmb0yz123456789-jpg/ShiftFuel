@@ -67,7 +67,7 @@ window.ShiftFuelSupabase = supabaseClient;
   addOnce('link[rel="apple-touch-icon"]', () => {
     const l = document.createElement('link');
     l.rel = 'apple-touch-icon';
-    l.href = 'app-icon.svg';
+    l.href = 'apple-touch-icon.png';
     return l;
   });
 

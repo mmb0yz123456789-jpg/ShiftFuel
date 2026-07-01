@@ -4,6 +4,8 @@ const { createClient } = require('@supabase/supabase-js');
 // Add any custom production domain here once one is configured.
 const ALLOWED_ORIGINS = [
   'https://shift-fuel.vercel.app',
+  'https://shift-fuel.com',
+  'https://www.shift-fuel.com',
 ];
 
 function getAllowedOrigin(req) {

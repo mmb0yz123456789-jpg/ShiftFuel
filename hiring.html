@@ -56,9 +56,9 @@
         <a href="index.html#trust">Safety &amp; Trust</a>
       </nav>
       <div class="portal-cta-links">
-        <a class="button primary" href="book.html#booking-flow">Book Now</a>
-        <a class="button returning" href="account.html">My Account</a>
-        <a class="button secondary" href="track.html#track-form">Track My Vehicle</a>
+        <a class="button primary" href="/book#booking-flow">Book Now</a>
+        <a class="button returning" href="/account#customer-account-panel">My Account</a>
+        <a class="button secondary" href="/track#track-form">Track My Vehicle</a>
       </div>
     </header>
 
@@ -126,7 +126,7 @@
               </label>
               <label>
                 Phone
-                <input type="tel" name="applicantPhone" placeholder="(302) 555-0100" required>
+                <input type="tel" name="applicantPhone" placeholder="Phone number" required>
               </label>
               <label>
                 Availability
@@ -238,6 +238,7 @@
     <script src="runtime-config.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="supabase-client.js"></script>
+    <script src="phone-utils.js"></script>
     <script src="hiring.js"></script>
     <script>
       const hiringNavToggle = document.querySelector("[data-nav-toggle]");

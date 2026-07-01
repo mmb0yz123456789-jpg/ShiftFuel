@@ -6,11 +6,17 @@
     <title>My Account | ShiftFuel Concierge</title>
     <link rel="icon" href="icon-main.svg" type="image/svg+xml">
     <link rel="icon" href="icon-main.svg" sizes="any">
-    <link rel="apple-touch-icon" href="icon-main.svg">
+    <link rel="apple-touch-icon" href="apple-touch-icon.png">
     <link rel="manifest" href="manifest.webmanifest">
-    <meta name="apple-mobile-web-app-capable" content="no">
+    <meta name="theme-color" content="#0d3b3b">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="ShiftFuel">
-    <link rel="apple-touch-icon" href="icon-main.svg">
+    <meta http-equiv="refresh" content="0; url=/account">
+    <script>
+      window.location.replace("/account");
+    </script>
     <link rel="stylesheet" href="styles.css">
     <link rel="stylesheet" href="account.css">
   </head>
@@ -97,15 +103,15 @@
                 <div class="form-grid">
                   <label>
                     <span>First name</span>
-                    <input type="text" name="firstName" placeholder="Jordan" required>
+                    <input type="text" name="firstName" placeholder="First name" required>
                   </label>
                   <label>
                     <span>Last name</span>
-                    <input type="text" name="lastName" placeholder="Smith" required>
+                    <input type="text" name="lastName" placeholder="Last name" required>
                   </label>
                   <label>
                     <span>Phone number</span>
-                    <input type="tel" name="phone" inputmode="numeric" placeholder="(302) 555-0100" required>
+                    <input type="tel" name="phone" inputmode="numeric" placeholder="Phone number" required>
                   </label>
                   <label>
                     <span>Email address</span>
@@ -119,7 +125,7 @@
                 <div class="form-grid">
                   <label>
                     <span>City / Area</span>
-                    <input type="text" name="serviceArea" placeholder="Christiana area" value="Christiana area">
+                    <input type="text" name="serviceArea" placeholder="City or area (e.g. Newark, DE)">
                   </label>
                   <label>
                     <span>ZIP code</span>
@@ -308,6 +314,7 @@
     <script src="runtime-config.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="supabase-client.js"></script>
+    <script src="phone-utils.js"></script>
     <script src="account.js"></script>
   </body>
 </html>

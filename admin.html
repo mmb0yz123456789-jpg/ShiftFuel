@@ -122,6 +122,7 @@
 		<button class="admin-page-tab active" data-page="dashboard">Dashboard</button>
 		<button class="admin-page-tab" data-page="requests">Find</button>
 		<button class="admin-page-tab" data-page="workers">Workers <span id="worker-count-badge" class="page-tab-badge">0</span></button>
+		<button class="admin-page-tab" data-page="support">Support <span id="support-count-badge" class="page-tab-badge">0</span></button>
 		<button class="admin-page-tab" data-page="payroll">Payroll</button>
 		<button class="admin-page-tab" data-page="services">Services</button>
 		<button class="admin-page-tab" data-page="settings">Settings</button>
@@ -157,6 +158,7 @@
 		  <a href="#" data-page="dashboard" class="admin-menu-item">Dashboard</a>
 		  <a href="#" data-page="requests" class="admin-menu-item">Find</a>
 		  <a href="#" data-page="workers" class="admin-menu-item">Workers</a>
+		  <a href="#" data-page="support" class="admin-menu-item">Support</a>
 		  <a href="#" data-page="payroll" class="admin-menu-item">Payroll</a>
 		  <a href="#" data-page="services" class="admin-menu-item">Services</a>
 		  <a href="#" data-page="settings" class="admin-menu-item">Settings</a>
@@ -507,7 +509,7 @@
                   <input type="number" id="promo-inactive-days" min="1" step="1" placeholder="30">
                 </label>
                 <label>Specific customer phone
-                  <input type="tel" id="promo-specific-phone" placeholder="(302) 555-0100">
+                  <input type="tel" id="promo-specific-phone" placeholder="Phone number">
                 </label>
                 <label>Specific customer email
                   <input type="email" id="promo-specific-email" placeholder="customer@example.com">
@@ -555,6 +557,18 @@
         </div>
         <div id="admin-change-requests" class="admin-change-requests"></div>
         <div id="admin-worker-profile-list" class="worker-profile-list"></div>
+      </section>
+
+      <section class="section admin-section" data-tab-panel="support" data-page-section="support" hidden>
+        <div class="admin-toolbar">
+          <div>
+            <p class="eyebrow">Customer care</p>
+            <h2>Support Messages</h2>
+            <p class="field-help">Messages submitted from the public site. Reply by email, then mark the message resolved when handled.</p>
+          </div>
+          <button id="admin-support-refresh-btn" class="button secondary" type="button">Refresh</button>
+        </div>
+        <div id="support-message-list" class="request-list"></div>
       </section>
 
       <section class="section admin-section" data-tab-panel="payroll" data-page-section="payroll" hidden>
@@ -985,6 +999,7 @@
 	<script src="password-toggle.js"></script>
 	<script src="photo-utils.js"></script>
 	<script src="date-picker.js"></script>
+	<script src="phone-utils.js"></script>
 	<script src="admin.js"></script>
 	<script src="admin-service-area.js"></script>
   <script defer src="/_vercel/insights/script.js"></script>
