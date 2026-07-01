@@ -4,11 +4,12 @@
  * - action 'validate' (public, rate-limited): preview a code's discount for a
  *   customer at booking time. Authoritative re-validation also runs at booking
  *   (create-authorized-booking.js), so this is just for the live preview.
+ * - action 'submit_support' (public, rate-limited): store a support message.
  * - admin actions (require admin token): list / save / toggle / delete codes.
  */
 
 const { setCorsHeaders, getSupabaseAdmin, verifyAdminToken } = require('./_auth');
-const { enforceRateLimit } = require('./_rate-limit');
+const { enforceRateLimit, getClientIp } = require('./_rate-limit');
 const {
   normalizeCode,
   validatePromoForCustomer,
@@ -17,6 +18,14 @@ const {
   APPLIES_TO,
   TARGET_AUDIENCES,
 } = require('./_promos');
+
+function cleanText(value, max = 1000) {
+  return String(value || '').trim().slice(0, max);
+}
+
+function cleanEmail(value) {
+  return cleanText(value, 254).toLowerCase();
+}
 
 module.exports = async (req, res) => {
   setCorsHeaders(req, res);
@@ -97,6 +106,50 @@ module.exports = async (req, res) => {
   }
 
   // ── Admin actions (require a valid admin token) ───────────────────────────
+  if (action === 'submit_support') {
+    if (await enforceRateLimit(req, res, 'support_message', { limit: 5, windowSeconds: 60 })) return;
+    try {
+      if (cleanText(body.website, 200)) return res.status(200).json({ ok: true });
+
+      const customerName = cleanText(body.customer_name, 120);
+      const customerEmail = cleanEmail(body.customer_email);
+      const customerPhone = cleanText(body.customer_phone, 40);
+      const subject = cleanText(body.subject, 160);
+      const message = cleanText(body.message, 4000);
+      const reason = cleanText(body.reason, 40) || 'general';
+      const bookingRef = cleanText(body.booking_ref, 120) || null;
+
+      if (!customerName || !customerEmail || !message) {
+        return res.status(400).json({ error: 'Name, email, and message are required.' });
+      }
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(customerEmail)) {
+        return res.status(400).json({ error: 'Enter a valid email address.' });
+      }
+
+      const { data, error } = await db
+        .from('support_messages')
+        .insert({
+          customer_name: customerName,
+          customer_email: customerEmail,
+          customer_phone: customerPhone || null,
+          reason,
+          subject: subject || null,
+          message,
+          booking_ref: bookingRef,
+          source_page: cleanText(body.source_page, 300) || null,
+          client_ip: getClientIp(req),
+          user_agent: cleanText(req.headers['user-agent'], 500) || null,
+        })
+        .select('id')
+        .maybeSingle();
+      if (error) throw error;
+      return res.status(200).json({ ok: true, id: data?.id || null });
+    } catch (err) {
+      console.error('[promos/submit_support] error:', err.message);
+      return res.status(500).json({ error: 'Could not send your message. Please email us directly.' });
+    }
+  }
+
   const adminId = await verifyAdminToken(body.admin_token);
   if (!adminId) return res.status(401).json({ error: 'Unauthorized' });
 

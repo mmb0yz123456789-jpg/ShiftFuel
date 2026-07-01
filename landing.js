@@ -109,10 +109,10 @@ supportForm?.addEventListener("submit", async (event) => {
   if (submitButton) submitButton.disabled = true;
 
   try {
-    const response = await fetch("/api/support", {
+    const response = await fetch("/api/promos", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
+      body: JSON.stringify({ action: "submit_support", ...payload }),
     });
     const data = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(data.error || "Could not send your message.");
