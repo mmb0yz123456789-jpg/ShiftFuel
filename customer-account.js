@@ -637,6 +637,7 @@ function renderAccount(session, data, promos = []) {
 
   dashboard.hidden = false;
   document.body.classList.add("customer-account-loaded");
+  document.documentElement.classList.remove("sf-auth-pending");
   loginForm?.classList.add("is-compact");
   scrollAccountHashIntoView();
 }
@@ -1001,6 +1002,10 @@ dashboard?.addEventListener("click", async (event) => {
   loginForm.elements.email.value = session.email;
   openAccount(session).catch((error) => {
     console.warn("[customer-account] saved session could not be loaded:", error);
+    // Release the auth-pending loading gate no matter why the restore failed —
+    // otherwise a signed-in-looking session that turns out invalid (or a
+    // transient network error) would leave the screen stuck on the spinner.
+    document.documentElement.classList.remove("sf-auth-pending");
     // Only sign the user out for a DEFINITIVE "no account for these credentials".
     // A transient RPC/network error must NOT delete the session — otherwise a
     // brief hiccup logs a signed-in customer out and forces them to sign in again.

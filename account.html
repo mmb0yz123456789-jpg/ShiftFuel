@@ -24,16 +24,28 @@
     <link rel="stylesheet" href="/pwa-app.css" data-pwa-app="1">
     <script defer src="/pwa-app.js" data-pwa-app="1"></script>
   </head>
-  <body class="account-page">
+  <body class="account-page customer-account-loaded">
     <header class="site-header account-header">
       <a class="logo" href="/account" aria-label="ShiftFuel Concierge app home">
         <span class="logo-mark"><img src="/icon-main.svg" alt="" aria-hidden="true"></span>
         <span>ShiftFuel Concierge</span>
       </a>
-      <nav class="account-header-nav" aria-label="Account navigation">
-        <a href="/account">&larr; My Account</a>
-        <a href="/book#booking-flow">Book</a>
-      </nav>
+      <div class="customer-header-signed" data-customer-header>
+        <nav class="customer-header-nav" aria-label="Account navigation">
+          <a href="/account">&larr; My Account</a>
+          <a href="/book#booking-flow">Book</a>
+        </nav>
+        <div class="customer-identity" data-customer-identity>
+          <button class="customer-avatar-btn" type="button" data-customer-menu-toggle aria-haspopup="true" aria-expanded="false" aria-label="Account menu">
+            <span class="customer-avatar"><span data-customer-initials>&middot;</span></span>
+            <svg class="customer-avatar-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
+          </button>
+          <div class="customer-account-menu" data-customer-menu hidden role="menu" aria-label="Account menu">
+            <a class="customer-account-menu-item" href="/account" role="menuitem">My Account home</a>
+            <button class="customer-account-menu-item customer-account-menu-signout account-sign-out" type="button" role="menuitem">Sign out</button>
+          </div>
+        </div>
+      </div>
     </header>
 
     <main class="account-layout">

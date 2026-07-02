@@ -3,6 +3,18 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
+    <script>/* Signed-in customers must never land on the public marketing homepage
+      (e.g. the PWA's Home affordance / start_url, a bookmark, or the OS app icon).
+      Bounce them to the customer dashboard before first paint — this script is
+      synchronous and runs before <body> renders, so there is no public-content
+      flash. Guests (no saved session) fall through untouched. */
+      (function () {
+        try {
+          var acct = JSON.parse(localStorage.getItem('shiftfuel_customer_account') || 'null');
+          if (acct && acct.phone && acct.email) window.location.replace('/account');
+        } catch (e) {}
+      })();
+    </script>
     <title>ShiftFuel Concierge</title>
     <link rel="icon" href="icon-main.svg" type="image/svg+xml">
     <link rel="icon" href="icon-main.svg" sizes="any">
@@ -101,8 +113,9 @@
           <article class="pricing-card">
             <span class="pricing-icon pricing-icon-fuel"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="3" width="9" height="18" rx="1.4"/><path d="M4 10h9M7.5 3v0"/><path d="M13 8h2.5a2 2 0 0 1 2 2v6.5a1.5 1.5 0 0 0 3 0V8.5L18 6"/></svg></span>
             <h3>Fuel Concierge</h3>
-            <p>We fuel your vehicle with quality fuel&mdash;so you don't have to leave work.</p>
+            <p>We pick up your vehicle, fuel it at a nearby gas station or a station you choose, and return it while you stay focused at work.</p>
             <p class="pricing-from"><span>Fuel service starts at </span><span data-price="fuel-service-fee">$15</span><span>. Fuel is charged separately based on the actual pump receipt.</span></p>
+            <p class="pricing-note">Estimated fuel prices below are updated monthly for transparency. Your final fuel cost will always match the gas station receipt.</p>
             <ul class="pricing-package-list" id="fuel-price-list" data-fuel-prices>
               <li><span>Loading current prices&hellip;</span></li>
             </ul>

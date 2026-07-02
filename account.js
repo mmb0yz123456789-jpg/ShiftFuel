@@ -12,8 +12,9 @@
   const accountTabButtons = document.querySelectorAll('[data-account-tab]');
   const accountTabContents = document.querySelectorAll('[data-tab-content]');
   const accountGreeting = document.querySelector('[data-account-greeting]');
-  const signOutButton = document.querySelector('.account-sign-out');
-  
+  const signOutButtons = document.querySelectorAll('.account-sign-out');
+  const headerInitialsEl = document.querySelector('[data-customer-initials]');
+
   // Forms
   const profileForm = document.querySelector('[data-account-profile-form]');
   const passwordForm = document.querySelector('[data-account-password-form]');
@@ -62,12 +63,14 @@
     }
 
     currentAccountSession = session;
+    updateHeaderIdentity();
 
     // Setup event listeners
     setupTabNavigation();
     setupForms();
     setupSignOut();
     setupSavedOptionsUI();
+    setupHeaderMenu();
 
     // Load account data
     await loadAccountData();
@@ -437,6 +440,7 @@
       if (accountGreeting) {
         accountGreeting.textContent = `Welcome back, ${firstName}!`;
       }
+      updateHeaderIdentity();
 
       profileSaveStatus.textContent = 'Profile saved successfully!';
       profileSaveStatus.setAttribute('data-status', 'success');
@@ -752,14 +756,51 @@
   // Sign Out
   // ============================================================
   function setupSignOut() {
-    if (signOutButton) {
-      signOutButton.addEventListener('click', () => {
+    signOutButtons.forEach((button) => {
+      button.addEventListener('click', () => {
         if (confirm('Are you sure you want to sign out?')) {
           clearCustomerAccountSession();
           window.location.href = '/account';
         }
       });
-    }
+    });
+  }
+
+  // ============================================================
+  // Header identity (avatar + account menu) — mirrors the Home dashboard
+  // header so the customer app looks consistent across Home/Book/Track/Account.
+  // ============================================================
+  function customerInitials(fullName) {
+    const parts = String(fullName || '').trim().split(/\s+/).filter(Boolean);
+    if (!parts.length) return '·';
+    if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+    return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+  }
+
+  function updateHeaderIdentity() {
+    if (headerInitialsEl) headerInitialsEl.textContent = customerInitials(currentAccountSession?.name);
+  }
+
+  function setupHeaderMenu() {
+    const toggle = document.querySelector('[data-customer-menu-toggle]');
+    const menu = document.querySelector('[data-customer-menu]');
+    if (!toggle || !menu) return;
+    const closeMenu = () => {
+      menu.hidden = true;
+      toggle.setAttribute('aria-expanded', 'false');
+    };
+    toggle.addEventListener('click', (event) => {
+      event.stopPropagation();
+      const willOpen = menu.hidden;
+      menu.hidden = !willOpen;
+      toggle.setAttribute('aria-expanded', String(willOpen));
+    });
+    menu.addEventListener('click', (event) => {
+      if (event.target.closest("[role='menuitem']")) closeMenu();
+    });
+    document.addEventListener('click', (event) => {
+      if (!menu.hidden && !event.target.closest('[data-customer-identity]')) closeMenu();
+    });
   }
 
   // ============================================================

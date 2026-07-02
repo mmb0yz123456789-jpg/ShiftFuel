@@ -2,10 +2,16 @@
    ShiftFuel — Installed PWA app-shell
    ----------------------------------------------------------------------------
    Loaded on every page (injected by supabase-client.js) but INERT unless the
-   site is running as an installed phone app: every rule is gated on
+   site is running as an installed phone app: most rules are gated on
    `html.sf-standalone.sf-compact`. Normal browsers (desktop + mobile web) never
-   match these selectors, so the desktop dashboards and the lightweight mobile
-   web fallback are completely unaffected.
+   match those selectors, so the desktop dashboards and the lightweight mobile
+   web fallback are unaffected.
+
+   Exception: `html.sf-app-shell` (compact AND (standalone OR a signed-in
+   customer session)) drives the Book/Track/Account app shell for signed-in
+   customers even in a plain mobile browser tab — a signed-in customer is "in
+   the app" regardless of whether it's actually installed. Guests never get
+   this class, so the public Book/Track pages are unaffected.
 
    Role tinting keeps the existing brand:
      customer  #0d3b3b (teal)   worker #0b3d5c (blue)   admin #1a1f3d (navy)
@@ -352,10 +358,23 @@ html.sf-compact body.customer-account-page .customer-tabbar .app-tab.is-active {
   color: #1e7d52; background: rgba(30,125,82,.12);
 }
 
+/* Single source of truth for the customer tabbar's active-tab color, independent
+   of standalone/page-specific state. `.customer-tabbar` only exists in this bottom
+   nav (Home/Book/Track/Account), so this is scoped enough to safely outrank the
+   generic teal `.app-tab.is-active` rule (mobile-polish.css) that's meant for the
+   admin/worker tabbars — without it, Book/Track/Account tabs picked up that
+   mismatched color instead of matching Home. */
+@media (max-width: 760px) {
+  .customer-tabbar .app-tab.is-active {
+    color: #1e7d52;
+    background: rgba(30, 125, 82, 0.12);
+  }
+}
+
 /* Customer app shell: keep customer routes inside the app, not the public site. */
-html.sf-standalone.sf-compact body.booking-page,
-html.sf-standalone.sf-compact body.track-page,
-html.sf-standalone.sf-compact body.account-page {
+html.sf-app-shell body.booking-page,
+html.sf-app-shell body.track-page,
+html.sf-app-shell body.account-page {
   background: linear-gradient(175deg, #12514f 0%, #0d3b3b 44%, #06231f 100%) fixed;
   color: #eaf4f2;
   min-height: 100vh;
@@ -364,22 +383,22 @@ html.sf-standalone.sf-compact body.account-page {
   overflow-x: hidden;
 }
 
-html.sf-standalone.sf-compact body.booking-page .customer-tabbar,
-html.sf-standalone.sf-compact body.track-page .customer-tabbar,
-html.sf-standalone.sf-compact body.account-page .customer-tabbar {
+html.sf-app-shell body.booking-page .customer-tabbar,
+html.sf-app-shell body.track-page .customer-tabbar,
+html.sf-app-shell body.account-page .customer-tabbar {
   display: flex !important;
 }
 
-html.sf-standalone.sf-compact body.booking-page .customer-tabbar .app-tab.is-active,
-html.sf-standalone.sf-compact body.track-page .customer-tabbar .app-tab.is-active,
-html.sf-standalone.sf-compact body.account-page .customer-tabbar .app-tab.is-active {
+html.sf-app-shell body.booking-page .customer-tabbar .app-tab.is-active,
+html.sf-app-shell body.track-page .customer-tabbar .app-tab.is-active,
+html.sf-app-shell body.account-page .customer-tabbar .app-tab.is-active {
   color: #1e7d52;
   background: rgba(30,125,82,.12);
 }
 
-html.sf-standalone.sf-compact body.booking-page .site-header,
-html.sf-standalone.sf-compact body.track-page .site-header,
-html.sf-standalone.sf-compact body.account-page .site-header {
+html.sf-app-shell body.booking-page .site-header,
+html.sf-app-shell body.track-page .site-header,
+html.sf-app-shell body.account-page .site-header {
   position: static;
   background: transparent;
   border: 0;
@@ -387,49 +406,40 @@ html.sf-standalone.sf-compact body.account-page .site-header {
   padding: calc(env(safe-area-inset-top) + 10px) 18px 12px !important;
 }
 
-html.sf-standalone.sf-compact body.booking-page .site-header .logo,
-html.sf-standalone.sf-compact body.track-page .site-header .logo,
-html.sf-standalone.sf-compact body.account-page .site-header .logo,
-html.sf-standalone.sf-compact body.booking-page .site-header .logo span,
-html.sf-standalone.sf-compact body.track-page .site-header .logo span,
-html.sf-standalone.sf-compact body.account-page .site-header .logo span {
+html.sf-app-shell body.booking-page .site-header .logo,
+html.sf-app-shell body.track-page .site-header .logo,
+html.sf-app-shell body.account-page .site-header .logo,
+html.sf-app-shell body.booking-page .site-header .logo span,
+html.sf-app-shell body.track-page .site-header .logo span,
+html.sf-app-shell body.account-page .site-header .logo span {
   color: #fff;
 }
 
-html.sf-standalone.sf-compact body.booking-page .site-header .nav,
-html.sf-standalone.sf-compact body.track-page .site-header .nav,
-html.sf-standalone.sf-compact body.booking-page .site-header .mobile-menu-button,
-html.sf-standalone.sf-compact body.track-page .site-header .mobile-menu-button,
-html.sf-standalone.sf-compact body.booking-page .landing-final-cta,
-html.sf-standalone.sf-compact body.booking-page .site-footer,
-html.sf-standalone.sf-compact body.track-page .site-footer,
-html.sf-standalone.sf-compact body.account-page .site-footer {
+html.sf-app-shell body.booking-page .site-header .nav,
+html.sf-app-shell body.track-page .site-header .nav,
+html.sf-app-shell body.booking-page .site-header .mobile-menu-button,
+html.sf-app-shell body.track-page .site-header .mobile-menu-button,
+html.sf-app-shell body.booking-page .landing-final-cta,
+html.sf-app-shell body.booking-page .site-footer,
+html.sf-app-shell body.track-page .site-footer,
+html.sf-app-shell body.account-page .site-footer {
   display: none !important;
 }
 
-html.sf-standalone.sf-compact body.account-page .account-header-nav {
-  display: flex;
-  gap: 10px;
-}
-
-html.sf-standalone.sf-compact body.account-page .account-header-nav a {
-  color: rgba(255,255,255,.82);
-}
-
-html.sf-standalone.sf-compact body.booking-page .booking-flow-hero,
-html.sf-standalone.sf-compact body.track-page .track-hero-redesign {
+html.sf-app-shell body.booking-page .booking-flow-hero,
+html.sf-app-shell body.track-page .track-hero-redesign {
   display: none;
 }
 
-html.sf-standalone.sf-compact body.booking-page .booking-flow-shell,
-html.sf-standalone.sf-compact body.track-page .track-shell {
+html.sf-app-shell body.booking-page .booking-flow-shell,
+html.sf-app-shell body.track-page .track-shell {
   max-width: 100%;
   padding: 8px 16px 22px;
 }
 
-html.sf-standalone.sf-compact body.booking-page .booking-flow,
-html.sf-standalone.sf-compact body.track-page .track-search-card,
-html.sf-standalone.sf-compact body.account-page .account-layout {
+html.sf-app-shell body.booking-page .booking-flow,
+html.sf-app-shell body.track-page .track-search-card,
+html.sf-app-shell body.account-page .account-layout {
   background: #fff;
   color: #0f2a28;
   border: 0;
@@ -437,28 +447,28 @@ html.sf-standalone.sf-compact body.account-page .account-layout {
   box-shadow: 0 12px 30px rgba(4,26,24,.22);
 }
 
-html.sf-standalone.sf-compact body.booking-page .booking-flow {
+html.sf-app-shell body.booking-page .booking-flow {
   padding: 18px;
 }
 
-html.sf-standalone.sf-compact body.track-page .track-search-card {
+html.sf-app-shell body.track-page .track-search-card {
   margin: 0;
   padding: 18px;
 }
 
-html.sf-standalone.sf-compact body.account-page .account-layout {
+html.sf-app-shell body.account-page .account-layout {
   display: block;
   margin: 8px 16px 22px;
   min-height: 0;
   overflow: hidden;
 }
 
-html.sf-standalone.sf-compact body.account-page .account-sidebar {
+html.sf-app-shell body.account-page .account-sidebar {
   border: 0;
   background: #f7fbfa;
 }
 
-html.sf-standalone.sf-compact body.account-page .account-content {
+html.sf-app-shell body.account-page .account-content {
   max-height: none;
 }
 
@@ -487,8 +497,6 @@ html.sf-compact body.account-page .site-header {
 html.sf-compact body.account-page .site-header .logo,
 html.sf-compact body.account-page .site-header .logo span { color: #fff; }
 html.sf-compact body.account-page .site-footer { display: none !important; }
-html.sf-compact body.account-page .account-header-nav { display: flex; gap: 10px; }
-html.sf-compact body.account-page .account-header-nav a { color: rgba(255,255,255,.82); }
 html.sf-compact body.account-page .account-layout {
   background: #fff; color: #0f2a28; border: 0; border-radius: 20px;
   box-shadow: 0 12px 30px rgba(4,26,24,.22);
@@ -912,9 +920,9 @@ html.sf-compact body.customer-account-page:not(.customer-account-loaded) .site-f
 
 /* Batch 1: installed customer app shell consistency. */
 html.sf-compact body.customer-account-page,
-html.sf-standalone.sf-compact body.booking-page,
-html.sf-standalone.sf-compact body.track-page,
-html.sf-standalone.sf-compact body.account-page {
+html.sf-app-shell body.booking-page,
+html.sf-app-shell body.track-page,
+html.sf-app-shell body.account-page {
   --sf-pwa-card-radius: 20px;
   --sf-pwa-card-pad: 18px;
   --sf-pwa-tabbar-clearance: calc(88px + env(safe-area-inset-bottom, 0px));
@@ -922,15 +930,15 @@ html.sf-standalone.sf-compact body.account-page {
 }
 
 html.sf-compact body.customer-account-page .customer-tabbar,
-html.sf-standalone.sf-compact body.booking-page .customer-tabbar,
-html.sf-standalone.sf-compact body.track-page .customer-tabbar,
-html.sf-standalone.sf-compact body.account-page .customer-tabbar {
+html.sf-app-shell body.booking-page .customer-tabbar,
+html.sf-app-shell body.track-page .customer-tabbar,
+html.sf-app-shell body.account-page .customer-tabbar {
   min-height: var(--sf-pwa-tabbar-clearance);
 }
 
 html.sf-compact body.customer-account-page.customer-account-loaded .customer-account-shell,
-html.sf-standalone.sf-compact body.booking-page .booking-flow-shell,
-html.sf-standalone.sf-compact body.track-page .track-shell {
+html.sf-app-shell body.booking-page .booking-flow-shell,
+html.sf-app-shell body.track-page .track-shell {
   padding-left: 16px;
   padding-right: 16px;
 }
@@ -939,23 +947,23 @@ html.sf-standalone.sf-compact body.track-page .track-shell {
    Keep app routes feeling native and reduce public-site clutter only when the
    app is installed/standalone. */
 html.sf-compact body.customer-account-page.customer-account-loaded,
-html.sf-standalone.sf-compact body.booking-page,
-html.sf-standalone.sf-compact body.track-page,
-html.sf-standalone.sf-compact body.account-page {
+html.sf-app-shell body.booking-page,
+html.sf-app-shell body.track-page,
+html.sf-app-shell body.account-page {
   --sf-customer-app-gutter: clamp(14px, 4vw, 18px);
 }
 
 html.sf-compact body.customer-account-page.customer-account-loaded .customer-account-shell,
-html.sf-standalone.sf-compact body.booking-page .booking-flow-shell,
-html.sf-standalone.sf-compact body.track-page .track-shell {
+html.sf-app-shell body.booking-page .booking-flow-shell,
+html.sf-app-shell body.track-page .track-shell {
   padding-left: var(--sf-customer-app-gutter);
   padding-right: var(--sf-customer-app-gutter);
 }
 
 html.sf-compact body.customer-account-page.customer-account-loaded .customer-dashboard,
-html.sf-standalone.sf-compact body.booking-page .booking-flow,
-html.sf-standalone.sf-compact body.track-page .track-search-card,
-html.sf-standalone.sf-compact body.track-page .track-request-card {
+html.sf-app-shell body.booking-page .booking-flow,
+html.sf-app-shell body.track-page .track-search-card,
+html.sf-app-shell body.track-page .track-request-card {
   border-radius: 22px;
   box-shadow: 0 14px 34px rgba(4, 26, 24, 0.2);
 }
@@ -989,64 +997,64 @@ html.sf-compact body.customer-account-page.customer-account-loaded .customer-car
   border-radius: 14px;
 }
 
-html.sf-standalone.sf-compact body.booking-page .booking-step-header,
-html.sf-standalone.sf-compact body.track-page .track-request-summary {
+html.sf-app-shell body.booking-page .booking-step-header,
+html.sf-app-shell body.track-page .track-request-summary {
   min-height: 58px;
 }
 
-html.sf-standalone.sf-compact body.booking-page .booking-step-panel,
-html.sf-standalone.sf-compact body.booking-page .booking-panel,
-html.sf-standalone.sf-compact body.booking-page .booking-step-content {
+html.sf-app-shell body.booking-page .booking-step-panel,
+html.sf-app-shell body.booking-page .booking-panel,
+html.sf-app-shell body.booking-page .booking-step-content {
   padding-left: 0 !important;
   padding-right: 0 !important;
 }
 
-html.sf-standalone.sf-compact body.booking-page .booking-accordion-card,
-html.sf-standalone.sf-compact body.booking-page .returning-option-card,
-html.sf-standalone.sf-compact body.track-page .tk-sub-acc,
-html.sf-standalone.sf-compact body.track-page .tk-card,
-html.sf-standalone.sf-compact body.track-page .estimated-total-card {
+html.sf-app-shell body.booking-page .booking-accordion-card,
+html.sf-app-shell body.booking-page .returning-option-card,
+html.sf-app-shell body.track-page .tk-sub-acc,
+html.sf-app-shell body.track-page .tk-card,
+html.sf-app-shell body.track-page .estimated-total-card {
   border-radius: 18px;
 }
 
-html.sf-standalone.sf-compact body.booking-page .booking-step-actions,
-html.sf-standalone.sf-compact body.track-page .track-search-actions {
+html.sf-app-shell body.booking-page .booking-step-actions,
+html.sf-app-shell body.track-page .track-search-actions {
   display: grid;
   grid-template-columns: 1fr;
   gap: 10px;
 }
 
-html.sf-standalone.sf-compact body.booking-page .button,
-html.sf-standalone.sf-compact body.track-page .button,
-html.sf-standalone.sf-compact body.account-page .button {
+html.sf-app-shell body.booking-page .button,
+html.sf-app-shell body.track-page .button,
+html.sf-app-shell body.account-page .button {
   min-height: 50px;
   border-radius: 14px;
 }
 
-html.sf-standalone.sf-compact body.track-page .tk-hero {
+html.sf-app-shell body.track-page .tk-hero {
   margin-top: 0;
 }
 
-html.sf-standalone.sf-compact body.track-page .track-request-body {
+html.sf-app-shell body.track-page .track-request-body {
   gap: 10px;
 }
 
-html.sf-standalone.sf-compact body.track-page .tk-detail-grid {
+html.sf-app-shell body.track-page .tk-detail-grid {
   gap: 10px;
 }
 
-html.sf-standalone.sf-compact body.track-page .tk-sub-acc-history {
+html.sf-app-shell body.track-page .tk-sub-acc-history {
   margin-top: 0;
 }
 
-html.sf-standalone.sf-compact body.track-page .review-panel {
+html.sf-app-shell body.track-page .review-panel {
   border-radius: 18px;
 }
 
-html.sf-standalone.sf-compact body.track-page .app-tab[href*="/track"],
-html.sf-standalone.sf-compact body.booking-page .app-tab[href*="/book"],
+html.sf-app-shell body.track-page .app-tab[href*="/track"],
+html.sf-app-shell body.booking-page .app-tab[href*="/book"],
 html.sf-compact body.customer-account-page .app-tab.is-active,
-html.sf-standalone.sf-compact body.account-page .app-tab.is-active {
+html.sf-app-shell body.account-page .app-tab.is-active {
   color: #1e7d52;
   background: rgba(30,125,82,.12);
 }
@@ -1054,17 +1062,17 @@ html.sf-standalone.sf-compact body.account-page .app-tab.is-active {
 html.sf-compact body.customer-account-page .customer-request-card,
 html.sf-compact body.customer-account-page .customer-data-card,
 html.sf-compact body.customer-account-page .customer-empty-card,
-html.sf-standalone.sf-compact body.booking-page .booking-flow,
-html.sf-standalone.sf-compact body.track-page .track-search-card,
-html.sf-standalone.sf-compact body.account-page .account-layout {
+html.sf-app-shell body.booking-page .booking-flow,
+html.sf-app-shell body.track-page .track-search-card,
+html.sf-app-shell body.account-page .account-layout {
   border-radius: var(--sf-pwa-card-radius);
 }
 
 html.sf-compact body.customer-account-page .customer-request-card .button,
 html.sf-compact body.customer-account-page .customer-data-card .button,
-html.sf-standalone.sf-compact body.booking-page .button,
-html.sf-standalone.sf-compact body.track-page .button,
-html.sf-standalone.sf-compact body.account-page .button {
+html.sf-app-shell body.booking-page .button,
+html.sf-app-shell body.track-page .button,
+html.sf-app-shell body.account-page .button {
   min-height: 46px;
 }
 
@@ -1187,9 +1195,9 @@ html.sf-compact body.customer-account-page:not(.customer-account-loaded) .custom
 /* Light off-white body — same background as the public site */
 html.sf-compact body.customer-account-page.customer-account-loaded,
 html.sf-compact body.account-page,
-html.sf-standalone.sf-compact body.booking-page,
-html.sf-standalone.sf-compact body.track-page,
-html.sf-standalone.sf-compact body.account-page {
+html.sf-app-shell body.booking-page,
+html.sf-app-shell body.track-page,
+html.sf-app-shell body.account-page {
   background:
     radial-gradient(circle at top left, rgba(167, 191, 166, 0.18), transparent 34rem),
     var(--sf-off-white);
@@ -1199,9 +1207,9 @@ html.sf-standalone.sf-compact body.account-page {
 /* Solid dark-green header band (matches the landing page header) */
 html.sf-compact body.customer-account-page.customer-account-loaded .site-header,
 html.sf-compact body.account-page .site-header,
-html.sf-standalone.sf-compact body.account-page .site-header,
-html.sf-standalone.sf-compact body.booking-page .site-header,
-html.sf-standalone.sf-compact body.track-page .site-header {
+html.sf-app-shell body.account-page .site-header,
+html.sf-app-shell body.booking-page .site-header,
+html.sf-app-shell body.track-page .site-header {
   position: static;
   width: auto;
   margin: calc(env(safe-area-inset-top) + 10px) 14px 4px !important;
@@ -1217,10 +1225,10 @@ html.sf-compact body.customer-account-page.customer-account-loaded .site-header 
 html.sf-compact body.customer-account-page.customer-account-loaded .site-header .logo span,
 html.sf-compact body.account-page .site-header .logo,
 html.sf-compact body.account-page .site-header .logo span,
-html.sf-standalone.sf-compact body.booking-page .site-header .logo,
-html.sf-standalone.sf-compact body.booking-page .site-header .logo span,
-html.sf-standalone.sf-compact body.track-page .site-header .logo,
-html.sf-standalone.sf-compact body.track-page .site-header .logo span {
+html.sf-app-shell body.booking-page .site-header .logo,
+html.sf-app-shell body.booking-page .site-header .logo span,
+html.sf-app-shell body.track-page .site-header .logo,
+html.sf-app-shell body.track-page .site-header .logo span {
   color: var(--sf-white);
 }
 
@@ -1273,9 +1281,9 @@ html.sf-compact body.customer-account-page.customer-account-loaded .customer-rec
 html.sf-compact body.customer-account-page.customer-account-loaded .customer-quickaction,
 html.sf-compact body.customer-account-page.customer-account-loaded .customer-shortcut,
 html.sf-compact body.account-page .account-layout,
-html.sf-standalone.sf-compact body.account-page .account-layout,
-html.sf-standalone.sf-compact body.booking-page .booking-flow,
-html.sf-standalone.sf-compact body.track-page .track-search-card {
+html.sf-app-shell body.account-page .account-layout,
+html.sf-app-shell body.booking-page .booking-flow,
+html.sf-app-shell body.track-page .track-search-card {
   border: 1px solid var(--sf-border);
   box-shadow: var(--sf-shadow-soft);
 }

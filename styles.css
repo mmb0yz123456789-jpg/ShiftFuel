@@ -1317,6 +1317,30 @@ font-size: 0.85rem;
   display: none;
 }
 
+/* Auth pre-check gate (see the anti-FOUC script in customer.html's <head>): while
+   sf-auth-pending is set, a saved session exists but hasn't been verified yet.
+   Hide the sign-in/marketing screen and show a neutral spinner instead of
+   flashing "Welcome back, sign in" before the dashboard loads. */
+html.sf-auth-pending body.customer-account-page .customer-account-access {
+  display: none;
+}
+
+html.sf-auth-pending body.customer-account-page .customer-account-shell::before {
+  content: "";
+  display: block;
+  width: 32px;
+  height: 32px;
+  margin: 96px auto;
+  border: 3px solid rgba(13, 59, 59, 0.15);
+  border-top-color: var(--sf-teal-dark);
+  border-radius: 50%;
+  animation: sf-auth-spin 0.8s linear infinite;
+}
+
+@keyframes sf-auth-spin {
+  to { transform: rotate(360deg); }
+}
+
 .customer-dashboard-actions {
   display: flex;
   flex-wrap: wrap;

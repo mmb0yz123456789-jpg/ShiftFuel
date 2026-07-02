@@ -9,45 +9,23 @@
   min-height: 100vh;
 }
 
-.account-header {
-  background: #ffffff;
-  border-bottom: 1px solid #e5e7e9;
-  padding: 16px 24px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  position: sticky;
-  top: 0;
-  z-index: 100;
-}
-
+/* The header itself is intentionally NOT overridden here — it uses the shared
+   .site-header (dark teal gradient bar) that Home/Book/Track already use, so the
+   customer app looks like one app when switching between those pages. Only the
+   logo/nav text colors need adjusting for readability against the dark bar. */
 .account-header .logo {
   display: flex;
   align-items: center;
   gap: 10px;
   font-weight: 700;
   font-size: 1.1rem;
-  color: #073233;
+  color: var(--sf-white, #fff);
   text-decoration: none;
 }
 
 .account-header .logo-mark img {
   width: 32px;
   height: 32px;
-}
-
-.account-header-nav a {
-  color: #073233;
-  text-decoration: none;
-  font-size: 0.9rem;
-  font-weight: 500;
-  padding: 8px 16px;
-  border-radius: 8px;
-  transition: background 0.2s;
-}
-
-.account-header-nav a:hover {
-  background: #f0f4f3;
 }
 
 /* Main Layout - Sidebar + Content */

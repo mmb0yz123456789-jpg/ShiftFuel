@@ -17,7 +17,17 @@
       (function(){var d=document.documentElement,m=window.matchMedia,
         s=(m&&m('(display-mode: standalone)').matches)||navigator.standalone===true,
         c=!m||m('(max-width: 760px)').matches;
-        d.classList.add(s?'sf-standalone':'sf-browser',c?'sf-compact':'sf-wide');})();
+        d.classList.add(s?'sf-standalone':'sf-browser',c?'sf-compact':'sf-wide');
+        /* sf-app-shell: a signed-in customer on a compact screen is "in the app"
+           even in a plain mobile browser tab, not just when truly installed.
+           Guests never get this — they keep the public marketing page. */
+        var signedIn = false;
+        try {
+          var acct = JSON.parse(localStorage.getItem('shiftfuel_customer_account') || 'null');
+          signedIn = !!(acct && acct.phone && acct.email);
+        } catch (e) {}
+        if (c && (s || signedIn)) d.classList.add('sf-app-shell');
+      })();
     </script>
     <link rel="stylesheet" href="styles.css">
     <link rel="stylesheet" href="layout-width-polish.css">

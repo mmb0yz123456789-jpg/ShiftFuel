@@ -17,7 +17,16 @@
       (function(){var d=document.documentElement,m=window.matchMedia,
         s=(m&&m('(display-mode: standalone)').matches)||navigator.standalone===true,
         c=!m||m('(max-width: 760px)').matches;
-        d.classList.add(s?'sf-standalone':'sf-browser',c?'sf-compact':'sf-wide');})();
+        d.classList.add(s?'sf-standalone':'sf-browser',c?'sf-compact':'sf-wide');
+        /* Auth pre-check (anti-FOUC): if a saved customer session exists, hold the
+           screen in a neutral loading state instead of flashing the sign-in form
+           while customer-account.js verifies it. Removed by that script once the
+           session is confirmed valid or invalid. */
+        try {
+          var acct = JSON.parse(localStorage.getItem('shiftfuel_customer_account') || 'null');
+          if (acct && acct.phone && acct.email) d.classList.add('sf-auth-pending');
+        } catch (e) {}
+      })();
     </script>
     <link rel="stylesheet" href="styles.css">
     <link rel="stylesheet" href="layout-width-polish.css">
