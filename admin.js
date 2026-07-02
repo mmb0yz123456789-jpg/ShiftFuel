@@ -4135,13 +4135,14 @@ function renderSupportMessages(messages) {
     const mailto = `mailto:${message.customer_email}?subject=${replySubject}&body=${replyBody}`;
     const note = message.admin_note || '';
     return `
-      <article class="request-card support-message-card" data-support-id="${escapeHtml(message.id)}">
-        <div class="request-card-header">
+      <article class="request-card support-message-card is-collapsed" data-support-id="${escapeHtml(message.id)}">
+        <div class="request-card-header support-message-header" role="button" tabindex="0" aria-expanded="false">
           <div>
             <p class="eyebrow">${escapeHtml(formatDateTime(message.created_at))}</p>
             <h3>${escapeHtml(subject)}</h3>
           </div>
           ${supportStatusPill(message.status)}
+          <span class="support-accordion-chevron" aria-hidden="true"></span>
         </div>
         <div class="request-details">
           <p><strong>Customer:</strong> ${escapeHtml(message.customer_name)} &middot; ${escapeHtml(message.customer_email)}${message.customer_phone ? ` &middot; ${escapeHtml(formatPhone(message.customer_phone))}` : ''}</p>
@@ -4212,6 +4213,28 @@ supportMessageList?.addEventListener('click', async (event) => {
   } finally {
     button.disabled = false;
   }
+});
+
+// Accordion: on phones the support tickets start collapsed so the list is a short
+// stack of headers. Tapping a header toggles that ticket open. Desktop ignores the
+// is-collapsed class (see mobile-polish.css), so this is a no-op on wide screens.
+function toggleSupportCard(header) {
+  if (!window.matchMedia || !window.matchMedia('(max-width: 760px)').matches) return;
+  const card = header.closest('.support-message-card');
+  if (!card) return;
+  const collapsed = card.classList.toggle('is-collapsed');
+  header.setAttribute('aria-expanded', String(!collapsed));
+}
+supportMessageList?.addEventListener('click', (event) => {
+  const header = event.target.closest('.support-message-header');
+  if (header) toggleSupportCard(header);
+});
+supportMessageList?.addEventListener('keydown', (event) => {
+  if (event.key !== 'Enter' && event.key !== ' ') return;
+  const header = event.target.closest('.support-message-header');
+  if (!header) return;
+  event.preventDefault();
+  toggleSupportCard(header);
 });
 
 async function hireApplicant(applicantId) {
@@ -7105,6 +7128,14 @@ function switchAdminTab(tab) {
 
 adminPageTabs.forEach((btn) => {
   btn.addEventListener('click', () => switchPageTab(btn.dataset.page));
+});
+// Header logo/brand returns to the Dashboard tab, like tapping a home button.
+const adminLogoHome = document.getElementById('admin-logo-home');
+adminLogoHome?.addEventListener('click', () => switchPageTab('dashboard'));
+adminLogoHome?.addEventListener('keydown', (event) => {
+  if (event.key !== 'Enter' && event.key !== ' ') return;
+  event.preventDefault();
+  switchPageTab('dashboard');
 });
 document.querySelectorAll('[data-page-action]').forEach((btn) => {
   btn.addEventListener('click', () => {

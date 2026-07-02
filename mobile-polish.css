@@ -1632,6 +1632,56 @@
 }
 
 /* ─────────────────────────────────────────────────────────────────────────
+   Task 1 — Customer app header matches the admin/worker portal bar on phones.
+   The signed-in customer header was a tall, rounded, floating card with the
+   brand wrapped onto two lines and a large avatar. Give it the same compact,
+   flush, single-line app-bar treatment the admin/worker portals use: logo
+   left on one line, small avatar pinned right.
+   ───────────────────────────────────────────────────────────────────────── */
+@media (max-width: 760px) {
+  body.customer-account-page .site-header {
+    top: 0 !important;
+    margin-top: 0 !important;
+    padding: 8px 12px !important;
+    border-radius: 0 !important;
+    flex-wrap: nowrap !important;
+    align-items: center !important;
+    gap: 10px;
+  }
+  body.customer-account-page .site-header .logo {
+    flex: 1 1 auto;
+    min-width: 0;
+    font-size: 0.95rem;
+    line-height: 1.1;
+  }
+  /* Keep the brand on one line so the bar stays a single compact row. */
+  body.customer-account-page .site-header .logo span:last-child {
+    white-space: nowrap;
+    max-width: none;
+  }
+  body.customer-account-page .site-header .logo-mark {
+    width: 30px;
+    height: 30px;
+    flex: 0 0 30px;
+    font-size: 1.3rem;
+  }
+  /* Avatar cluster pinned right, sized to match the admin avatar. */
+  body.customer-account-loaded .customer-header-signed {
+    gap: 6px;
+    margin-left: auto;
+  }
+  body.customer-account-page .customer-header-signed .customer-avatar {
+    width: 34px;
+    height: 34px;
+    font-size: 0.85rem;
+  }
+  body.customer-account-page .customer-avatar-chevron {
+    width: 16px;
+    height: 16px;
+  }
+}
+
+/* ─────────────────────────────────────────────────────────────────────────
    Worker Dashboard cards on phones: full-width facts + sticky next-action.
    When a worker is inside the active job, the main action button sticks to the
    bottom of the screen (just above the tab bar) so it's always reachable.
@@ -2138,5 +2188,46 @@ body.admin-portal-page .admin-requests-table tr.queue-row td[data-label="Action"
     margin: 6px 0 0;
     font-size: 0.95rem;
     color: #55706c;
+  }
+
+  /* Services tab (mobile) reuses the admin Support panel, but the "Customer profile
+     lookup" card duplicates the Find tab's search — hide it in the app only. */
+  .admin-support-panel .support-identity-card {
+    display: none;
+  }
+
+  /* Support tickets are an accordion in the app: header stays, details collapse. */
+  .support-message-card .request-details {
+    overflow: hidden;
+    transition: none;
+  }
+  .support-message-card.is-collapsed .request-details {
+    display: none;
+  }
+  .support-message-header {
+    cursor: pointer;
+    align-items: center;
+  }
+  .support-accordion-chevron {
+    display: inline-block;
+    width: 10px;
+    height: 10px;
+    margin-left: 8px;
+    border-right: 2px solid #55706c;
+    border-bottom: 2px solid #55706c;
+    transform: rotate(45deg);
+    transition: transform 0.15s ease;
+    flex: 0 0 auto;
+  }
+  .support-message-card.is-collapsed .support-accordion-chevron {
+    transform: rotate(-45deg);
+  }
+}
+
+/* Desktop keeps every ticket fully expanded and the chevron hidden — the accordion
+   is a phone-only affordance. */
+@media (min-width: 761px) {
+  .support-accordion-chevron {
+    display: none;
   }
 }

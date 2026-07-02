@@ -151,7 +151,7 @@
     </script>
 
     <header class="portal-header unified-portal-header worker-top-nav">
-      <span class="logo">
+      <span class="logo" id="worker-logo-home" role="button" tabindex="0" aria-label="ShiftFuel Concierge, go to Today's Job">
         <span class="logo-mark"><img src="icon-main.svg" alt="" aria-hidden="true"></span>
         <span>ShiftFuel Concierge</span>
       </span>
@@ -742,6 +742,15 @@
       function initWorkerTabs() {
         document.querySelectorAll('#worker-tabbar .app-tab').forEach(function(button) {
           button.addEventListener('click', function() { switchWorkerTab(button.dataset.tab); });
+        });
+
+        // Header logo/brand returns to the Today's Job (dashboard) tab.
+        var workerLogoHome = document.getElementById('worker-logo-home');
+        workerLogoHome?.addEventListener('click', function() { switchWorkerTab('dashboard'); });
+        workerLogoHome?.addEventListener('keydown', function(event) {
+          if (event.key !== 'Enter' && event.key !== ' ') return;
+          event.preventDefault();
+          switchWorkerTab('dashboard');
         });
 
         // "View jobs" button on Dashboard → switch to Jobs tab

@@ -984,13 +984,18 @@ dashboard?.addEventListener("click", async (event) => {
     || !window.matchMedia
     || window.matchMedia("(max-width: 760px)").matches;
 
-  if (compact) {
+  const session = readSession();
+
+  // In compact (mobile) mode, first-time visitors see the sign-in form up front.
+  // But a returning, signed-in customer must NOT flash the login screen before
+  // their dashboard loads (tapping Home would show sign-on, then the home page).
+  // Only open the form when there is no saved session to restore.
+  if (compact && !session) {
     if (accountIntroTitle) accountIntroTitle.textContent = "Welcome back";
     if (accountIntroCopy) accountIntroCopy.textContent = "Sign in to access your saved vehicles and bookings.";
     openAccountForm("login", { focus: false, scroll: false });
   }
 
-  const session = readSession();
   if (!session || !loginForm) return;
   loginForm.elements.phone.value = formatPhone(session.phone);
   loginForm.elements.email.value = session.email;
